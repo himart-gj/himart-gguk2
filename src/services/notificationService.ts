@@ -99,12 +99,12 @@ export async function sendMobileNotification(payload: NotificationPayload): Prom
   if (!isNotificationSupported()) return false;
   if (Notification.permission !== 'granted') return false;
 
-  const title = payload.title || '🔔 롯데하이마트 경기광주점 알림';
+  const title = payload.title || '🔔 국지CRM 알림';
   const options: NotificationOptions = {
     body: payload.body,
-    icon: './pwa-192x192.png',
-    badge: './pwa-192x192.png',
-    tag: payload.tag || 'himart-notification',
+    icon: './icon.svg',
+    badge: './icon.svg',
+    tag: payload.tag || 'kukji-crm-notification',
     // @ts-ignore 진동 패턴 (모바일 기기에서 진동 알림)
     vibrate: [200, 100, 200, 100, 200],
     data: {

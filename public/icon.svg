@@ -1,1 +1,59 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#2563eb"/><text x="50%" y="50%" fill="white" font-size="120" font-family="sans-serif" font-weight="bold" dominant-baseline="middle" text-anchor="middle">견적서</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- 배경 그라디언트: 프리미엄 딥 흑청 & 퍼플 럭셔리 톤 -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#311042"/>
+    </linearGradient>
+
+    <!-- 엠블럼 테두리 그라디언트: 로즈 골드 & 샴페인 -->
+    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="50%" stop-color="#fb7185"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+
+    <!-- 내부 액센트 그라디언트 -->
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#fed7aa"/>
+    </linearGradient>
+
+    <!-- 글로우 필터 -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- 배경 사각형 (부드러운 둥근 라운드) -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)"/>
+
+  <!-- 은은한 내부 테두리 링 -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="none" stroke="url(#borderGrad)" stroke-width="6" opacity="0.65"/>
+
+  <!-- 상단 스파클 (보석 효과) -->
+  <path d="M 256 70 L 263 92 L 285 99 L 263 106 L 256 128 L 249 106 L 227 99 L 249 92 Z" fill="#fb7185" opacity="0.9" filter="url(#glow)"/>
+
+  <!-- 중앙 국지 메인 로고 텍스트 (국지) -->
+  <g id="logoText">
+    <text x="256" y="275" font-family="'Pretendard', -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif" font-weight="900" font-size="160" fill="url(#accentGrad)" text-anchor="middle" letter-spacing="-6" filter="url(#glow)">
+      국지
+    </text>
+  </g>
+
+  <!-- 하단 CRM 배지 필 -->
+  <g transform="translate(156, 325)">
+    <rect width="200" height="64" rx="32" fill="url(#borderGrad)" filter="url(#glow)"/>
+    <text x="100" y="44" font-family="'Pretendard', -apple-system, sans-serif" font-weight="900" font-size="34" fill="#ffffff" text-anchor="middle" letter-spacing="4">
+      CRM
+    </text>
+  </g>
+
+  <!-- 장식용 미세 광채 점들 -->
+  <circle cx="100" cy="140" r="4" fill="#818cf8" opacity="0.8"/>
+  <circle cx="410" cy="150" r="5" fill="#fb7185" opacity="0.8"/>
+  <circle cx="390" cy="380" r="3" fill="#ffffff" opacity="0.6"/>
+  <circle cx="120" cy="370" r="4" fill="#fed7aa" opacity="0.7"/>
+</svg>

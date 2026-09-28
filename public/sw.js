@@ -25,7 +25,7 @@ self.addEventListener('fetch', (event) => {
 // 🔔 Push Event: 백그라운드 푸시 수신 시 모바일 상단 알림 표시
 self.addEventListener('push', (event) => {
   let data = {
-    title: '🔔 롯데하이마트 경기광주점 알림',
+    title: '🔔 국지CRM 알림',
     body: '오늘 배송 일정 및 신규 고객 알림을 확인하세요.',
     url: '/',
   };
@@ -40,8 +40,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body,
-    icon: './pwa-192x192.png',
-    badge: './pwa-192x192.png',
+    icon: './icon.svg',
+    badge: './icon.svg',
     vibrate: [200, 100, 200, 100, 200],
     data: {
       url: data.url || '/',

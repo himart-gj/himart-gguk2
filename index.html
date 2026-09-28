@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>롯데하이마트 경기광주점 - 고객 CRM & 배송 파이프라인 및 통합 견적 시스템</title>
-<meta name="description" content="롯데하이마트 경기광주점 고객 CRM, 배송 파이프라인 관리 및 프리미엄 통합 견적 시스템">
-<meta property="og:title" content="롯데하이마트 경기광주점 - 고객 CRM & 배송 파이프라인 및 통합 견적 시스템">
-<meta property="og:description" content="롯데하이마트 경기광주점 고객 CRM, 배송 파이프라인 관리 및 프리미엄 통합 견적 시스템">
+<title>국지CRM</title>
+<meta name="description" content="국지CRM - 고객 관리 및 통합 가전 견적 시스템 (경기광주점)">
+<meta property="og:title" content="국지CRM">
+<meta property="og:description" content="국지CRM - 고객 관리 및 통합 가전 견적 시스템 (경기광주점)">
 
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -108,10 +108,12 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 details > summary { list-style: none; }
 details > summary::-webkit-details-marker { display: none; }
 </style>
-<link rel="manifest" href="./app-manifest.json?v=3">
-<link rel="apple-touch-icon" href="./apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="192x192" href="./pwa-192x192.png">
-<meta name="apple-mobile-web-app-title" content="견적서">
+<link rel="manifest" href="./app-manifest.json?v=4">
+<link rel="icon" type="image/svg+xml" href="./icon.svg?v=4">
+<link rel="apple-touch-icon" href="./icon.svg?v=4">
+<link rel="icon" type="image/png" sizes="192x192" href="./pwa-192x192.png?v=4">
+<meta name="apple-mobile-web-app-title" content="국지CRM">
+<meta name="application-name" content="국지CRM">
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
@@ -132,8 +134,8 @@ details > summary::-webkit-details-marker { display: none; }
 <div id="root">
   <div id="app-init-loader" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: white; font-family: -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif; padding: 24px; text-align: center;">
     <div style="width: 44px; height: 44px; border: 3.5px solid rgba(255,255,255,0.15); border-top-color: #f43f5e; border-radius: 50%; animation: appSpin 0.75s linear infinite; margin-bottom: 18px;"></div>
-    <div style="font-size: 15px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 6px;">롯데하이마트 경기광주점</div>
-    <div style="font-size: 12px; color: #94a3b8; font-weight: 500;">고객 CRM &amp; 견적 시스템 연결 중...</div>
+    <div style="font-size: 16px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 4px;">국지<span style="color:#fb7185;">CRM</span></div>
+    <div style="font-size: 12px; color: #94a3b8; font-weight: 500;">고객 관리 &amp; 통합 견적 시스템 연결 중...</div>
     <style>@keyframes appSpin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
   </div>
 </div>
@@ -159,11 +161,11 @@ details > summary::-webkit-details-marker { display: none; }
 <div class="max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 pt-3 sm:pt-4 pb-24 xl:pb-8" id="capture-area">
 
 <!-- 견적 계산기 상단 핵심 뷰 전환 탭: ✏️ 견적 입력 vs 📄 고객용 견적서 (1~6번) 보기 -->
-<div class="bg-white p-2 sm:p-2.5 rounded-2xl shadow-sm border border-slate-200 mb-3 sm:mb-4 flex items-center justify-between gap-2">
-  <button id="mob-tab-input" type="button" onclick="setMobileView('input', true)" class="flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-slate-900 text-white shadow-xs cursor-pointer">
+<div class="bg-white/95 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl shadow-sm border border-slate-200/90 mb-3 sm:mb-4 flex items-center justify-between gap-1.5 sm:gap-2">
+  <button id="mob-tab-input" type="button" onclick="setMobileView('input', true)" class="flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-xs border border-slate-700 cursor-pointer">
     <span>✏️ 1. 견적 입력 패널</span>
   </button>
-  <button id="mob-tab-sheet" type="button" onclick="setMobileView('sheet', true)" class="flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 cursor-pointer">
+  <button id="mob-tab-sheet" type="button" onclick="setMobileView('sheet', true)" class="flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 cursor-pointer">
     <span>📄 2. 고객용 견적서 보기 (1~6번)</span>
   </button>
 </div>
@@ -1781,10 +1783,10 @@ function setMobileView(view, shouldScroll = false) {
             sheetPanel.classList.add('lg:block');
         }
         if (tabInput) {
-            tabInput.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-slate-900 text-white shadow-xs cursor-pointer";
+            tabInput.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-xs border border-slate-700 cursor-pointer";
         }
         if (tabSheet) {
-            tabSheet.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 cursor-pointer";
+            tabSheet.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 cursor-pointer";
         }
         if (bottomInputActions) bottomInputActions.classList.remove('hidden');
         if (bottomSheetActions) bottomSheetActions.classList.add('hidden');
@@ -1801,10 +1803,10 @@ function setMobileView(view, shouldScroll = false) {
             sheetPanel.classList.add('lg:block');
         }
         if (tabInput) {
-            tabInput.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 cursor-pointer";
+            tabInput.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 cursor-pointer";
         }
         if (tabSheet) {
-            tabSheet.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-rose-600 text-white shadow-xs cursor-pointer";
+            tabSheet.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs border border-rose-400/40 cursor-pointer";
         }
         if (bottomInputActions) bottomInputActions.classList.add('hidden');
         if (bottomSheetActions) bottomSheetActions.classList.remove('hidden');

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Building2, 
   Settings, 
   RotateCw, 
   UserPlus, 
@@ -10,7 +9,8 @@ import {
   Cloud,
   Bell,
   Save,
-  ArrowLeft
+  ArrowLeft,
+  Sparkles
 } from 'lucide-react';
 
 interface CRMHeaderProps {
@@ -65,22 +65,30 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
         <div className="flex items-center justify-between gap-1.5 sm:gap-3">
           
           {/* 1. Left: Brand & Indicator */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <div 
               onClick={() => onSwitchTab('crm')}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-rose-600 to-red-600 flex items-center justify-center shadow flex-shrink-0 cursor-pointer active:scale-95 transition"
-              title="롯데하이마트 경기광주점"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-rose-500 via-rose-600 to-indigo-700 flex items-center justify-center shadow-md shadow-rose-900/30 flex-shrink-0 cursor-pointer active:scale-95 transition border border-white/20 group"
+              title="국지CRM (롯데하이마트 경기광주점)"
             >
-              <Building2 className="w-4 h-4 text-white" />
+              <span className="text-[12px] sm:text-[13px] font-black text-white tracking-tighter group-hover:scale-105 transition-transform">
+                국지
+              </span>
             </div>
 
             <div className="hidden min-[480px]:block">
-              <h1 
-                onClick={() => onSwitchTab('crm')}
-                className="text-xs sm:text-sm font-black tracking-tight text-white cursor-pointer hover:text-rose-200 transition whitespace-nowrap"
-              >
-                하이마트 <span className="text-rose-400">경기광주점</span>
-              </h1>
+              <div className="flex items-center gap-1.5">
+                <h1 
+                  onClick={() => onSwitchTab('crm')}
+                  className="text-xs sm:text-sm font-black tracking-tight text-white cursor-pointer hover:text-rose-200 transition whitespace-nowrap flex items-center gap-1"
+                >
+                  <span>국지</span>
+                  <span className="text-rose-400 bg-rose-500/10 px-1 py-0.2 rounded border border-rose-500/20 text-[11px] sm:text-xs">CRM</span>
+                </h1>
+                <span className="text-[9px] text-slate-400 font-medium px-1.5 py-0.5 rounded-full bg-slate-800/80 border border-slate-700/60 hidden sm:inline">
+                  경기광주점
+                </span>
+              </div>
               <div className="flex items-center gap-1 text-[10px]">
                 {isGasConnected ? (
                   <span className="text-emerald-400 font-medium flex items-center gap-0.5">
@@ -98,14 +106,14 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
           </div>
 
           {/* 2. Center: Core CRM <-> Calculator Navigation Tabs (ALWAYS visible, highly prominent) */}
-          <div className="flex items-center bg-slate-800/95 p-1 rounded-xl border border-slate-700/80 shadow-inner gap-1 flex-shrink-0">
+          <div className="flex items-center bg-slate-800/90 p-1 rounded-2xl border border-slate-700/70 shadow-inner gap-1 flex-shrink-0">
             <button
               type="button"
               onClick={() => onSwitchTab('crm')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                 currentTab === 'crm'
-                  ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400/50'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-md shadow-rose-950/40 ring-1 ring-rose-400/50'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
               title="고객 CRM / 배송 파이프라인 관리 화면으로 이동"
             >
@@ -116,10 +124,10 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
             <button
               type="button"
               onClick={() => onSwitchTab('calculator')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
                 currentTab === 'calculator'
-                  ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-400/50'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
+                  ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-950/40 ring-1 ring-indigo-400/50'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
               title="견적 계산기 (Sheet 1~6) 화면으로 이동"
             >

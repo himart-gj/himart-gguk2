@@ -76,7 +76,7 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
     if (res.granted) {
       // 모바일(안드로이드/아이폰)과 데스크톱 모두 100% 호환되는 showNotification으로 테스트 알림 전송
       await sendMobileNotification({
-        title: '🔔 롯데하이마트 경기광주점 알림',
+        title: '🔔 국지CRM 알림',
         body: `오늘 배송 ${todayDeliveries.length}건, 신규 예약 ${newUnsentCustomers.length}건이 있습니다.`,
       });
     }
