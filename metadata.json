@@ -1,0 +1,8 @@
+{
+  "name": "견적 계산기(신),고객관리",
+  "description": "",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
