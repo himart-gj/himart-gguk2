@@ -1,4 +1,5 @@
 import { CustomerItem, QuoteRecord } from '../types/crm';
+import { extractQuotationWithGemini } from './gemini';
 
 export interface ParsedQuotation {
   customerType: '일반' | '이사' | '입주' | '웨딩';
@@ -228,32 +229,11 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
 }
 
 /**
- * Call server-side Gemini AI for high-accuracy customer quotation extraction.
+ * Call Gemini 3.8 Flash for high-accuracy customer quotation extraction.
+ * Works seamlessly in client-side static deployments (GitHub Pages) and dev servers.
  */
 export async function fetchAIExtractedQuotation(customer: CustomerItem): Promise<ParsedQuotation | null> {
-  try {
-    const response = await fetch('/api/ai-extract-quote', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ customer }),
-    });
-
-    if (!response.ok) {
-      console.warn('AI quotation extraction endpoint returned non-200:', response.status);
-      return null;
-    }
-
-    const json = await response.json();
-    if (json.success && json.data) {
-      return json.data as ParsedQuotation;
-    }
-    return null;
-  } catch (error) {
-    console.warn('AI quotation extraction failed, falling back to local parser:', error);
-    return null;
-  }
+  return await extractQuotationWithGemini(customer);
 }
 
 /**

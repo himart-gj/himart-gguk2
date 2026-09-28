@@ -60,7 +60,7 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
   };
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-40 bg-slate-900/98 backdrop-blur-md text-white border-b border-slate-800 shadow-md">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-slate-900/98 backdrop-blur-md text-white border-b border-slate-800 shadow-md">
       <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 sm:py-2.5">
         <div className="flex items-center justify-between gap-2 sm:gap-4">
           
@@ -108,38 +108,38 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
                     title="클릭하여 구글 시트 URL을 등록하세요"
                   >
                     <CloudOff className="w-3 h-3 text-amber-400" />
-                    <span>체험 모드</span>
+                    <span>로컬 영구보관 모드</span>
                   </button>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Desktop Core Tab Switcher (Visible on sm+ screens) */}
-          <div className="hidden sm:flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 shadow-inner">
+          {/* Desktop Core Tab Switcher (Visible on md+ screens, centered & prominent) */}
+          <div className="hidden md:flex items-center bg-slate-800/90 p-1 rounded-xl border border-slate-700/80 shadow-inner gap-1">
             <button
               type="button"
               onClick={() => onSwitchTab('crm')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black transition-all ${
                 currentTab === 'crm'
-                  ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                  ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>고객 CRM</span>
+              <span>👥</span>
+              <span>고객 CRM / 배송 파이프라인</span>
             </button>
             <button
               type="button"
               onClick={() => onSwitchTab('calculator')}
-              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-black transition-all ${
                 currentTab === 'calculator'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                  ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-400/40'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
               }`}
             >
-              <Calculator className="w-3.5 h-3.5 text-indigo-300" />
-              <span>견적 계산기</span>
+              <span>🧮</span>
+              <span>견적 계산기 (Sheet 1~6)</span>
             </button>
           </div>
 
@@ -181,23 +181,24 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
                       (window as any).openSaveModal();
                     }
                   }}
-                  className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition active:scale-95"
-                  title="현재 계산된 견적 저장"
+                  className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow transition active:scale-95 ring-1 ring-indigo-400/40"
+                  title="현재 작성된 견적을 CRM 고객으로 등록 및 저장"
                 >
                   <Save className="w-3.5 h-3.5 text-indigo-200" />
-                  <span className="hidden sm:inline">견적 저장</span>
-                  <span className="sm:hidden">저장</span>
+                  <span className="hidden sm:inline">CRM으로 등록</span>
+                  <span className="sm:hidden">등록</span>
                 </button>
 
-                {/* Return to CRM Button (Desktop) */}
+                {/* Return to CRM Button */}
                 <button
                   type="button"
                   onClick={() => onSwitchTab('crm')}
-                  className="hidden sm:flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold border border-slate-700 transition active:scale-95"
-                  title="CRM 대시보드로 복귀"
+                  className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-600/90 hover:bg-rose-600 text-white text-xs font-bold border border-rose-500 transition active:scale-95 shadow-sm"
+                  title="고객 CRM 대시보드로 즉시 복귀"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5 text-rose-400" />
-                  <span>CRM 복귀</span>
+                  <ArrowLeft className="w-3.5 h-3.5 text-rose-100" />
+                  <span className="hidden sm:inline">CRM으로 복귀</span>
+                  <span className="sm:hidden">CRM</span>
                 </button>
               </>
             ) : (
@@ -256,31 +257,31 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
           </div>
         </div>
 
-        {/* Mobile Dedicated Core Tab Switcher Row (Always visible, thumb-friendly, perfectly fits all mobile screens) */}
-        <div className="sm:hidden grid grid-cols-2 gap-1.5 p-1 bg-slate-800/95 rounded-xl border border-slate-700/90 shadow-inner mt-1.5">
+        {/* Mobile Dedicated Core Tab Switcher Row (Always visible, thumb-friendly, perfectly fits all mobile & tablet screens) */}
+        <div className="md:hidden grid grid-cols-2 gap-1.5 p-1 bg-slate-800/95 rounded-xl border border-slate-700/90 shadow-inner mt-1.5">
           <button
             type="button"
             onClick={() => onSwitchTab('crm')}
-            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-black transition-all ${
               currentTab === 'crm'
-                ? 'bg-rose-600 text-white shadow-sm'
+                ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400/40'
                 : 'text-slate-300 hover:text-white bg-slate-800/60'
             }`}
           >
-            <Layers className="w-3.5 h-3.5" />
-            <span>고객 CRM</span>
+            <span>👥</span>
+            <span className="truncate">고객 CRM / 배송</span>
           </button>
           <button
             type="button"
             onClick={() => onSwitchTab('calculator')}
-            className={`flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${
+            className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-black transition-all ${
               currentTab === 'calculator'
-                ? 'bg-indigo-600 text-white shadow-sm'
+                ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-400/40'
                 : 'text-slate-300 hover:text-white bg-slate-800/60'
             }`}
           >
-            <Calculator className="w-3.5 h-3.5 text-indigo-300" />
-            <span>견적 계산기</span>
+            <span>🧮</span>
+            <span className="truncate">견적 계산기 (Sheet 1~6)</span>
           </button>
         </div>
       </div>

@@ -278,6 +278,19 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {getDDayBadge()}
+              {customer.reservationType && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-md font-extrabold border ${
+                  customer.reservationType === '이사'
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : customer.reservationType === '입주'
+                    ? 'bg-sky-100 text-sky-800 border-sky-300'
+                    : customer.reservationType === '웨딩'
+                    ? 'bg-rose-100 text-rose-800 border-rose-300'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}>
+                  🏷️ {customer.reservationType}
+                </span>
+              )}
               <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-slate-100 text-slate-500 border border-slate-200">
                 {customer.source === 'tab1' ? '온라인 예약' : '매장 전표'}
               </span>
@@ -323,10 +336,10 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
               className="text-xs font-bold py-1.5 px-2 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
             >
               <option value="신규/미발송">📋 신규/미발송</option>
-              <option value="상담진행중">💬 상담진행중</option>
+              <option value="상담진행중">💬 상담진행</option>
+              <option value="미구매/고민중">🤔 미구매/팔로우업</option>
+              <option value="물류대기">📦 물류입고대기</option>
               <option value="배송대기">🚚 배송대기</option>
-              <option value="물류대기">📦 물류대기</option>
-              <option value="미구매/고민중">🤔 미구매/고민중</option>
               <option value="배송완료">✅ 배송완료</option>
             </select>
 
@@ -816,6 +829,21 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           )}
         </div>
       </div>
+
+      {/* 📦 배송 완료 단계 전용 관리 액션 바 (사장님 확인 및 보관/삭제) */}
+      {customer.status === '배송완료' && onDeleteCustomer && (
+        <div className="px-3 pt-2 pb-0">
+          <button
+            type="button"
+            onClick={handleDeleteCustomerClick}
+            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-md transition active:scale-95 border border-slate-700 cursor-pointer"
+            title="배송 완료 확인 후 메인 목록에서 보관/삭제 처리합니다."
+          >
+            <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <span>📦 배송 완료 확인 및 보관/삭제</span>
+          </button>
+        </div>
+      )}
 
       {/* Bottom Action Area (Clean, comfortable hierarchy) */}
       <div className="p-3 border-t border-slate-100 bg-slate-50/80 flex items-center gap-2">

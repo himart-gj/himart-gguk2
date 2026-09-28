@@ -394,7 +394,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <label className="block font-bold text-slate-800 mb-1 flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Gemini AI API Key (스펙요약/AI상담톡 기능용)</span>
+                  <span>Gemini AI API Key (최신 gemini-3.8-flash 초고속 가전 분석용)</span>
                 </label>
                 <input
                   type="password"

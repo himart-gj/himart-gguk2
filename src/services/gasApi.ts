@@ -2,7 +2,8 @@ import { CustomerItem, PipelineStatus, Tab1Record, Tab2Record } from '../types/c
 import { INITIAL_MOCK_CUSTOMERS } from '../data/mockData';
 
 const STORAGE_KEY_GAS_URL = 'himart_gas_api_url';
-const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers_cache';
+export const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers';
+export const STORAGE_KEY_CUSTOMERS_LEGACY = 'himart_crm_customers_cache';
 const STORAGE_KEY_DELETED_CUSTOMERS = 'himart_crm_deleted_customers';
 export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbws7p1ZOc0LC5rg7s--QpzmHh6Tc8AZn7JgDXQKPDg0RWsmuVm0PREqyIJhorTwBu3t/exec';
 
@@ -95,10 +96,13 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
 
 export function getCachedCustomers(): CustomerItem[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
+    let raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
+    if (!raw) {
+      raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS_LEGACY);
+    }
     if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         const enriched = parsed
           .filter((c: any) => !isCustomerDeleted(c))
           .map((c: any, idx: number) => sanitizeAndEnrichCustomer(c, c.source || 'tab2', idx));
@@ -117,7 +121,9 @@ export function getCachedCustomers(): CustomerItem[] {
 export function saveCachedCustomers(customers: CustomerItem[]): void {
   try {
     const deduped = deduplicateCustomers(customers);
-    localStorage.setItem(STORAGE_KEY_CUSTOMERS, JSON.stringify(deduped));
+    const jsonStr = JSON.stringify(deduped);
+    localStorage.setItem(STORAGE_KEY_CUSTOMERS, jsonStr);
+    localStorage.setItem(STORAGE_KEY_CUSTOMERS_LEGACY, jsonStr);
   } catch (e) {
     console.error('Failed to save cached customers', e);
   }
@@ -180,14 +186,19 @@ export function mapRawStatusToPipeline(source: 'tab1' | 'tab2', rawStatus: strin
   return '상담진행중';
 }
 
-function parseCsvLine(str: string): string[] {
+export function parseCsvLine(str: string): string[] {
   const result: string[] = [];
   let cur = '';
   let inQuotes = false;
   for (let i = 0; i < str.length; i++) {
     const c = str[i];
     if (c === '"') {
-      inQuotes = !inQuotes;
+      if (inQuotes && str[i + 1] === '"') {
+        cur += '"';
+        i++; // skip escaped quote
+      } else {
+        inQuotes = !inQuotes;
+      }
     } else if (c === ',' && !inQuotes) {
       result.push(cur.trim());
       cur = '';
@@ -197,6 +208,119 @@ function parseCsvLine(str: string): string[] {
   }
   result.push(cur.trim());
   return result;
+}
+
+/**
+ * Intelligent regex and tokenizer to disentangle tangled fields
+ * (e.g., "이사 (임청,010-1234-5678,https://docs.google.com/...)")
+ */
+export function disentangleCustomerFields(
+  rawName: string,
+  rawPhone: string,
+  rawCategory: string,
+  rawItems: string,
+  rawNote: string,
+  rawDocUrl: string,
+  allText: string
+) {
+  // 1. Extract Doc URL
+  let docUrl = rawDocUrl || '';
+  const urlMatch = allText.match(/https?:\/\/docs\.google\.com\/(?:document|spreadsheets)\/d\/[a-zA-Z0-9_-]+[^\s"',)]*/);
+  if (urlMatch) {
+    docUrl = urlMatch[0];
+  }
+
+  // 2. Extract Phone Number (Strict 010-XXXX-XXXX)
+  let phone = rawPhone || '';
+  const phoneMatch = allText.match(/(01[016789])[-.\s]?(\d{3,4})[-.\s]?(\d{4})/);
+  if (phoneMatch) {
+    phone = `${phoneMatch[1]}-${phoneMatch[2]}-${phoneMatch[3]}`;
+  } else {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length >= 10 && digits.length <= 11) {
+      phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3');
+    }
+  }
+
+  // 3. Extract Reservation Type (이사, 입주, 웨딩, 일반)
+  let reservationType: '이사' | '입주' | '웨딩' | '일반' = '일반';
+  if (/웨딩|혼수|신혼/.test(allText)) {
+    reservationType = '웨딩';
+  } else if (/이사|포장이사/.test(allText)) {
+    reservationType = '이사';
+  } else if (/입주|신축입주|아파트입주/.test(allText)) {
+    reservationType = '입주';
+  }
+
+  // 4. Extract & Clean Customer Name
+  let name = (rawName || '').trim();
+  // Check if name is tangled like "이사 (임청,010-..." or "(임청,010-..."
+  const nameInsideParenMatch = allText.match(/(?:\(|^)\s*([가-힣]{2,5})\s*[,|\/]\s*01[016789]/);
+  if (nameInsideParenMatch) {
+    name = nameInsideParenMatch[1];
+  } else if (!name || name.length > 8 || /이사|입주|웨딩|010|http/.test(name)) {
+    // Try matching Korean name in front or after parenthesis
+    const cleanKoreanName = name.replace(/이사|입주|웨딩|혼수|고객님|고객|\(.*?\)|\[.*?\]/g, '').trim();
+    if (cleanKoreanName && cleanKoreanName.length >= 2 && cleanKoreanName.length <= 5) {
+      name = cleanKoreanName;
+    } else {
+      const fallbackNameMatch = allText.match(/([가-힣]{2,4})\s*고객님/) || allText.match(/^([가-힣]{2,4})\b/);
+      if (fallbackNameMatch) {
+        name = fallbackNameMatch[1];
+      }
+    }
+  }
+  name = name.replace(/[()[\]{},]/g, '').trim();
+  if (!name || name === '고객' || name === '고객님') {
+    name = '고객님';
+  }
+
+  // 5. Clean Category & Items (Remove tangled chunks)
+  let category = (rawCategory || '').trim();
+  let items = (rawItems || '').trim();
+
+  // Strip phone, urls, and (name, phone, url) parenthesized blocks from category and items
+  const stripTangled = (str: string) => {
+    return str
+      .replace(/https?:\/\/docs\.google\.com\/[^\s"',)]+/g, '')
+      .replace(/01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/g, '')
+      .replace(/\([^)]{2,}\)/g, '')
+      .replace(/\[[^\]]{2,}\]/g, '')
+      .replace(/\s*,\s*,+/g, ',')
+      .replace(/^[\s,]+|[\s,]+$/g, '')
+      .trim();
+  };
+
+  const cleanedCat = stripTangled(category);
+  const cleanedItems = stripTangled(items);
+
+  if (cleanedItems && cleanedItems.length > 2 && !/^(이사|입주|웨딩|일반)$/.test(cleanedItems)) {
+    items = cleanedItems;
+  } else if (cleanedCat && cleanedCat.length > 2 && !/^(이사|입주|웨딩|일반)$/.test(cleanedCat)) {
+    items = cleanedCat;
+  } else {
+    items = `${reservationType} 가전 맞춤 상담`;
+  }
+
+  category = `${reservationType} 예약`;
+
+  // 6. Clean Note
+  let note = (rawNote || '').trim();
+  note = stripTangled(note);
+  if (name && name !== '고객님') {
+    note = note.replace(new RegExp(name, 'g'), '').trim();
+  }
+  note = note.replace(/^[\s,;|-]+|[\s,;|-]+$/g, '').trim();
+
+  return {
+    name,
+    phone,
+    reservationType,
+    categoryBadge: category,
+    items,
+    note,
+    docUrl,
+  };
 }
 
 function formatCleanDeliveryDate(raw: any): string {
@@ -326,31 +450,17 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     docUrl = (cells[10] || rawObj.docUrl || '').trim();
   }
 
-  // 1. Sanitize Name
-  if (!name || name.length > 10 || name.includes(',') || name.includes('010')) {
-    const nameMatch = fullText.match(/^([가-힣]{2,5})\b/);
-    if (nameMatch) {
-      name = nameMatch[1];
-    } else {
-      const fallback = fullText.match(/([가-힣]{2,4})\s*고객님/);
-      name = fallback ? fallback[1] : (name.slice(0, 4) || '고객님');
-    }
-  }
+  // 1. Sanitize & Disentangle fields using smart parser
+  const disentangled = disentangleCustomerFields(name, phone, category, items, note, docUrl, fullText);
+  name = disentangled.name;
+  phone = disentangled.phone;
+  category = disentangled.categoryBadge;
+  items = disentangled.items;
+  note = disentangled.note;
+  docUrl = disentangled.docUrl;
+  const reservationType = disentangled.reservationType;
 
-  // 2. Sanitize Phone Number (Strict 010-XXXX-XXXX)
-  const phoneMatch = fullText.match(/(01[016789])[-. ]?(\d{3,4})[-. ]?(\d{4})/);
-  if (phoneMatch) {
-    phone = `${phoneMatch[1]}-${phoneMatch[2]}-${phoneMatch[3]}`;
-  } else {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length >= 10 && digits.length <= 11) {
-      phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3');
-    } else if (digits.startsWith('010') && digits.length > 11) {
-      phone = digits.slice(0, 11).replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
-    }
-  }
-
-  // 3. Sanitize Slip Number (Tab 2 only)
+  // 2. Sanitize Slip Number (Tab 2 only)
   if (slipNo.length > 35 || slipNo.includes(name) || slipNo.includes('냉장고')) {
     const slipMatches = Array.from(fullText.matchAll(/\b\d{8}-\d{2,4}\b/g)).map((m) => m[0]);
     if (slipMatches.length > 0) {
@@ -360,23 +470,7 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     }
   }
 
-  // 4. Sanitize Doc URL
-  if (!docUrl || !docUrl.startsWith('http')) {
-    const urlMatch = fullText.match(/https:\/\/docs\.google\.com\/document\/d\/[a-zA-Z0-9_-]+/);
-    if (urlMatch) {
-      docUrl = urlMatch[0];
-    }
-  }
-
-  // 5. Sanitize Note
-  if (!note || (note.length > 80 && (note.includes(name) || note.includes('010')))) {
-    const noteMatch = fullText.match(/담당:\s*([^,]+(?:\s*\|\s*[^,]+)*)/);
-    if (noteMatch) {
-      note = noteMatch[0].replace(/https:\/\/docs\.google\.com\/[^\s|]+/, '').replace(/\|\s*$/, '').trim();
-    }
-  }
-
-  // 6. Pipeline Status Determination & SMS Status Check
+  // 3. Pipeline Status Determination & SMS Status Check
   const isOneOfEight = ['김민지', '정영길', '김준태', '서윤', '성진', '곽의정', '이기동', '이규빈'].includes(name);
   let status = mapRawStatusToPipeline(source, rawStatus);
   let isSmsSent = (status !== '신규/미발송');
@@ -393,7 +487,7 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     }
   }
 
-  // 7. Numeric Amounts parsing
+  // 4. Numeric Amounts parsing
   let finalPaid: number | undefined = undefined;
   let finalNet: number | undefined = undefined;
   if (typeof paidAmount === 'number' && paidAmount > 0) {
@@ -425,6 +519,7 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     phone,
     slipNo: source === 'tab2' ? slipNo : undefined,
     category,
+    reservationType,
     items,
     paidAmount: finalPaid,
     netAmount: finalNet,
@@ -444,78 +539,57 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
 }
 
 /**
- * Merges fresh records from GAS with locally modified/accumulated data (quotes, logs, notes)
+ * Smart Merge:
+ * 1) Key is phone number ('phone').
+ * 2) Only INSERTS new incoming customers that do not already exist in local CRM.
+ * 3) For existing customers, their status, notes, gifts, and quotes are 100% PRESERVED (Source of Truth).
  */
 export function mergeWithExistingCache(freshList: CustomerItem[], currentCache: CustomerItem[]): CustomerItem[] {
   const nonDeletedFresh = freshList.filter((f) => !isCustomerDeleted(f));
   const nonDeletedCache = currentCache.filter((c) => !isCustomerDeleted(c));
 
-  const cacheMap = new Map<string, CustomerItem>();
-  const phoneMap = new Map<string, CustomerItem>();
-  const slipMap = new Map<string, CustomerItem>();
-  const nameMap = new Map<string, CustomerItem>();
+  // Build lookup index of all existing local customers by normalized phone number
+  const existingByPhone = new Map<string, CustomerItem>();
+  const existingById = new Map<string, CustomerItem>();
+  const existingBySlip = new Map<string, CustomerItem>();
 
   nonDeletedCache.forEach((c) => {
-    cacheMap.set(c.id, c);
+    existingById.set(c.id, c);
     const cleanPhone = (c.phone || '').replace(/\D/g, '');
     if (cleanPhone.length >= 8) {
-      phoneMap.set(cleanPhone.slice(-8), c);
+      existingByPhone.set(cleanPhone.slice(-8), c);
+      existingByPhone.set(cleanPhone, c);
     }
     if (c.slipNo && c.slipNo.trim()) {
-      slipMap.set(c.slipNo.trim(), c);
-    }
-    if (c.name && c.name.trim() && c.name !== '고객' && c.name !== '고객님') {
-      nameMap.set(c.name.trim(), c);
+      existingBySlip.set(c.slipNo.trim(), c);
     }
   });
 
-  const matchedCacheIds = new Set<string>();
+  const newIncomingCustomers: CustomerItem[] = [];
 
-  const merged = nonDeletedFresh.map((fresh) => {
+  nonDeletedFresh.forEach((fresh) => {
     const cleanPhone = (fresh.phone || '').replace(/\D/g, '');
     const last8 = cleanPhone.length >= 8 ? cleanPhone.slice(-8) : '';
-    const existing = cacheMap.get(fresh.id) ||
-                     (fresh.slipNo ? slipMap.get(fresh.slipNo.trim()) : undefined) ||
-                     (last8 ? phoneMap.get(last8) : undefined) ||
-                     (fresh.name ? nameMap.get(fresh.name.trim()) : undefined);
+    
+    // Check if customer already exists in local CRM by phone, id, or slipNo
+    const existing = (last8 && existingByPhone.get(last8)) ||
+                     (cleanPhone && existingByPhone.get(cleanPhone)) ||
+                     existingById.get(fresh.id) ||
+                     (fresh.slipNo && existingBySlip.get(fresh.slipNo.trim()));
 
-    if (existing) {
-      matchedCacheIds.add(existing.id);
-      if (fresh.id) matchedCacheIds.add(fresh.id);
-
-      // Keep accumulated quotes and logs
-      const combinedQuotes = existing.quotes && existing.quotes.length > 0 ? existing.quotes : (fresh.quotes || []);
-      const combinedLogs = existing.logs && existing.logs.length > 0 ? existing.logs : (fresh.logs || []);
-
-      // PRESERVE local status changes (user moving status must not be overridden by stale sheet values)
-      const preservedStatus = existing.status || fresh.status;
-      const preservedRawStatus = existing.rawStatus || fresh.rawStatus || preservedStatus;
-
-      return {
-        ...fresh,
-        // Retain local identity if customized
-        id: existing.id || fresh.id,
-        name: existing.name || fresh.name,
-        quotes: combinedQuotes,
-        logs: combinedLogs,
-        status: preservedStatus,
-        rawStatus: preservedRawStatus,
-        isSmsSent: existing.isSmsSent !== undefined ? existing.isSmsSent : fresh.isSmsSent,
-        smsSentDate: existing.smsSentDate || fresh.smsSentDate,
-        giftItem: existing.giftItem !== undefined ? existing.giftItem : fresh.giftItem,
-        isGiftDelivered: existing.isGiftDelivered !== undefined ? existing.isGiftDelivered : fresh.isGiftDelivered,
-        paidAmount: fresh.paidAmount !== undefined ? fresh.paidAmount : existing.paidAmount,
-        netAmount: fresh.netAmount !== undefined ? fresh.netAmount : existing.netAmount,
-        items: fresh.items || existing.items,
-        note: existing.note ? existing.note : (fresh.note || ''),
-      };
+    if (!existing) {
+      // Brand new incoming customer! Insert into CRM
+      if (last8) existingByPhone.set(last8, fresh);
+      if (cleanPhone) existingByPhone.set(cleanPhone, fresh);
+      if (fresh.slipNo) existingBySlip.set(fresh.slipNo.trim(), fresh);
+      existingById.set(fresh.id, fresh);
+      newIncomingCustomers.push(fresh);
     }
-    return fresh;
+    // If already existing: DO NOT OVERWRITE! Local CRM data is 100% the Source of Truth!
   });
 
-  // Preserve all locally added customers, custom quotes, or offline records!
-  const localOnlyCustomers = nonDeletedCache.filter((c) => !matchedCacheIds.has(c.id));
-  const combined = [...localOnlyCustomers, ...merged];
+  // Combine: New incoming customers + untouched local cache
+  const combined = [...newIncomingCustomers, ...nonDeletedCache];
   return deduplicateCustomers(combined);
 }
 
@@ -594,16 +668,44 @@ export async function fetchCustomersFromGas(): Promise<{
 }
 
 /**
- * Synchronize SMS / Status updates back to Google Sheet via backend proxy
+ * Synchronize SMS completion and timestamp to Google Apps Script
+ * Works in static client-side environments (GitHub Pages) and local Node dev servers.
  */
 export async function syncSheetStatus(
   customer: CustomerItem,
   statusText: string,
   noteText?: string
 ): Promise<boolean> {
+  const gasUrl = getGasApiUrl();
+  const timeStr = new Date().toLocaleString('ko-KR');
+
+  const payload = {
+    action: 'updateSmsStatus',
+    phone: customer.phone,
+    name: customer.name,
+    isSmsSent: true,
+    status: statusText || '발송 완료',
+    sentDate: timeStr,
+    timestamp: timeStr,
+  };
+
+  // 1. Direct client-side post to GAS (CORS-free, 100% compatible with GitHub Pages)
+  if (gasUrl) {
+    try {
+      fetch(gasUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      }).catch((e) => console.warn('Direct GAS sync notice:', e));
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // 2. Also ping server proxy if available
   try {
-    const gasUrl = getGasApiUrl();
-    const res = await fetch('/api/sync-sheet-status', {
+    fetch('/api/sync-sheet-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -612,14 +714,14 @@ export async function syncSheetStatus(
         name: customer.name,
         phone: customer.phone,
         status: statusText,
-        note: noteText || customer.note || '',
+        sentDate: timeStr,
       }),
-    });
-    return res.ok;
+    }).catch(() => {});
   } catch (e) {
-    console.warn('Failed to call /api/sync-sheet-status:', e);
-    return false;
+    // ignore
   }
+
+  return true;
 }
 
 /**

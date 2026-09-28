@@ -76,6 +76,7 @@ export interface CustomerItem {
   phone: string;
   slipNo?: string;
   category?: string;
+  reservationType?: '이사' | '입주' | '웨딩' | '일반' | string;
   items?: string;
   paidAmount?: number;
   netAmount?: number;

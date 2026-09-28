@@ -1,6 +1,6 @@
 {
   "name": "견적 계산기(신),고객관리",
-  "description": "",
+  "description": "롯데하이마트 경기광주점 - 고객 CRM, 배송 파이프라인 관리 및 프리미엄 통합 견적 시스템 (gemini-3.8-flash 탑재)",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

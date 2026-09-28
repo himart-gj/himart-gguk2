@@ -15,11 +15,11 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
   const tabs: { key: PipelineStatus | '전체'; label: string; icon: string }[] = [
     { key: '전체', label: '전체보기', icon: '⚡' },
     { key: '신규/미발송', label: '신규/미발송', icon: '📋' },
-    { key: '배송대기', label: '배송 관리', icon: '🚚' },
-    { key: '물류대기', label: '물류 대기', icon: '📦' },
-    { key: '미구매/고민중', label: '미구매/팔로업', icon: '🤔' },
-    { key: '상담진행중', label: '상담 진행중', icon: '💬' },
-    { key: '배송완료', label: '배송 완료', icon: '✅' },
+    { key: '상담진행중', label: '상담진행', icon: '💬' },
+    { key: '미구매/고민중', label: '미구매/팔로우업', icon: '🤔' },
+    { key: '물류대기', label: '물류입고대기', icon: '📦' },
+    { key: '배송대기', label: '배송대기', icon: '🚚' },
+    { key: '배송완료', label: '배송완료', icon: '✅' },
   ];
 
   return (
