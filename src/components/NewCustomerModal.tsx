@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, UserPlus, Calendar, Phone, FileText } from 'lucide-react';
 import { CustomerItem, PipelineStatus } from '../types/crm';
 import { calculateDDay } from '../services/gasApi';
+import { formatLocalDate } from '../utils/date';
 
 interface NewCustomerModalProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
+  const formRef = useRef<HTMLFormElement>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<PipelineStatus>('배송대기');
@@ -28,6 +30,13 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [note, setNote] = useState('');
   const [docUrl, setDocUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // 에러 발생 시 사용자가 바로 인지할 수 있도록 스크롤을 팝업 최상단으로 자동 이동
+  useEffect(() => {
+    if (errorMessage && formRef.current) {
+      formRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [errorMessage]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +61,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       deliveryDate: deliveryDate || undefined,
       status,
       rawStatus: status,
-      date: new Date().toLocaleDateString('ko-KR'),
+      date: formatLocalDate(new Date()),
       note: note.trim(),
       docUrl: docUrl.trim(),
       dDay,
@@ -85,7 +94,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-3.5 text-xs">
+        <form ref={formRef} onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-3.5 text-xs">
           {errorMessage && (
             <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
               {errorMessage}

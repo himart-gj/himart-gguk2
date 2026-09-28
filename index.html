@@ -114,10 +114,14 @@ details > summary::-webkit-details-marker { display: none; }
 <meta name="apple-mobile-web-app-title" content="견적서">
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(function(registrations) {
-      for(let registration of registrations) {
-        registration.unregister();
-      }
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('./sw.js')
+        .then(function(reg) {
+          console.log('PWA ServiceWorker registered successfully:', reg.scope);
+        })
+        .catch(function(err) {
+          console.warn('PWA ServiceWorker registration failed:', err);
+        });
     });
   }
 </script>
@@ -934,7 +938,11 @@ const phone = document.getElementById('i-c-phone').value.trim() || '연락처없
 document.getElementById('save-c-name').value = `${name} (${phone})`;
 
 const data = gatherQuotationData();
-document.getElementById('save-quote-title').value = `${new Date().toLocaleDateString('ko-KR').substring(2)} ${data.itemSummary}`;
+const _now = new Date();
+const _y = String(_now.getFullYear()).slice(2);
+const _m = String(_now.getMonth() + 1).padStart(2, '0');
+const _d = String(_now.getDate()).padStart(2, '0');
+document.getElementById('save-quote-title').value = `${_y}-${_m}-${_d} ${data.itemSummary}`;
 
 const folders = getFolders();
 const selectEl = document.getElementById('save-folder-select');

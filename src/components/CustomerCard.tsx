@@ -19,6 +19,7 @@ import {
   CheckCheck
 } from 'lucide-react';
 import { CustomerItem, PipelineStatus, QuoteRecord, ConsultationLog } from '../types/crm';
+import { formatLocalDateTime } from '../utils/date';
 
 interface CustomerCardProps {
   customer: CustomerItem;
@@ -205,7 +206,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
 
     const newLog: ConsultationLog = {
       id: 'log-' + Date.now(),
-      date: new Date().toLocaleDateString('ko-KR') + ' ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+      date: formatLocalDateTime(new Date()),
       type: logType,
       content: logContent.trim(),
       author: '담당자',

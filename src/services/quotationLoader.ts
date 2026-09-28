@@ -1,5 +1,22 @@
 import { CustomerItem, QuoteRecord } from '../types/crm';
 import { extractQuotationWithGemini } from './gemini';
+import { formatLocalDate, formatLocalDateTime } from '../utils/date';
+
+/**
+ * 텍스트에서 금액과 단위를 추출하여 계산합니다.
+ * "500만" -> 5000000 ("만"이 붙은 경우에만 * 10000)
+ * "5,000,000원", "5000000" -> 5000000
+ */
+function extractAmountValue(rawNumStr?: string, unitStr?: string): number {
+  if (!rawNumStr) return 0;
+  const clean = rawNumStr.replace(/,/g, '').trim();
+  const val = parseInt(clean, 10);
+  if (isNaN(val)) return 0;
+  if (unitStr === '만') {
+    return val * 10000;
+  }
+  return val;
+}
 
 export interface ParsedQuotation {
   customerType: '일반' | '이사' | '입주' | '웨딩';
@@ -75,9 +92,9 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
   // 4. Target Price / Amounts
   let targetPrice = customer.paidAmount || 0;
   if (!targetPrice) {
-    const priceMatch = fullText.match(/(?:1차견적|1안|체감|결제|보장)?\s*([\d,]+)만/);
-    if (priceMatch) {
-      targetPrice = parseInt(priceMatch[1].replace(/,/g, ''), 10) * 10000;
+    const priceMatch = fullText.match(/(?:1차견적|1안|체감|결제|보장)?\s*([\d,]+)\s*(만|원)?/);
+    if (priceMatch && priceMatch[1]) {
+      targetPrice = extractAmountValue(priceMatch[1], priceMatch[2]);
     }
   }
 
@@ -102,22 +119,24 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
 
   // 6. Discounts & Points
   let lumpDc = 0;
-  const dcMatch = fullText.match(/할인\s*([\d,]+)만/);
-  if (dcMatch) lumpDc = parseInt(dcMatch[1].replace(/,/g, ''), 10) * 10000;
+  const dcMatch = fullText.match(/할인\s*([\d,]+)\s*(만|원)?/);
+  if (dcMatch && dcMatch[1]) {
+    lumpDc = extractAmountValue(dcMatch[1], dcMatch[2]);
+  }
 
   let lumpPtUse = 0;
   let lumpPtTot = 0;
-  const ptMatch = fullText.match(/포인트\s*([\d,]+)만/);
-  if (ptMatch) {
-    lumpPtUse = parseInt(ptMatch[1].replace(/,/g, ''), 10) * 10000;
+  const ptMatch = fullText.match(/포인트\s*([\d,]+)\s*(만|원)?/);
+  if (ptMatch && ptMatch[1]) {
+    lumpPtUse = extractAmountValue(ptMatch[1], ptMatch[2]);
     lumpPtTot = lumpPtUse;
   }
 
   let lumpCash = 0;
-  const cashMatch = fullText.match(/캐시백\s*([\d,]+)(?:~([\d,]+))?만/);
+  const cashMatch = fullText.match(/캐시백\s*([\d,]+)(?:~([\d,]+))?\s*(만|원)?/);
   if (cashMatch) {
-    const cashVal = cashMatch[2] || cashMatch[1];
-    lumpCash = parseInt(cashVal.replace(/,/g, ''), 10) * 10000;
+    const cashValStr = cashMatch[2] || cashMatch[1];
+    lumpCash = extractAmountValue(cashValStr, cashMatch[3]);
   }
 
   // 7. Hi-Freed
@@ -560,12 +579,12 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
   const subCardCorp = rawData?.subCardCorp || (document.getElementById('s-card-corp') as HTMLSelectElement | null)?.value || '';
   const subCardTier = rawData?.subCardTier || parseInt((document.getElementById('s-card-tier') as HTMLSelectElement | null)?.value || '0', 10) || 0;
 
-  const title = customTitle || `${new Date().toLocaleDateString('ko-KR').substring(2)} ${itemSummary || '가전 견적'} (${mode === 'lump' ? '일시불' : '구독'})`;
+  const title = customTitle || `${formatLocalDate(new Date()).substring(2)} ${itemSummary || '가전 견적'} (${mode === 'lump' ? '일시불' : '구독'})`;
 
   return {
     id: 'Q_' + Date.now(),
     title,
-    createdAt: new Date().toLocaleString('ko-KR'),
+    createdAt: formatLocalDateTime(new Date()),
     mode,
     paidAmount,
     netAmount,

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Send, Copy, Check, MessageSquare, CheckCheck, RefreshCw } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
 import { syncSheetStatus } from '../services/gasApi';
+import { formatLocalDateTime } from '../utils/date';
 
 interface SMSModalProps {
   customer: CustomerItem | null;
@@ -84,7 +85,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
 
   const doSyncAndMark = async () => {
     setIsSyncing(true);
-    const nowStr = new Date().toLocaleDateString('ko-KR') + ' ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    const nowStr = formatLocalDateTime(new Date());
     const statusText = `발송 완료 (${nowStr})`;
     
     // Sync to Google Sheet Apps Script

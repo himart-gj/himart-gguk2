@@ -28,6 +28,7 @@ import {
 } from './services/gasApi';
 import { CRMHeader } from './components/CRMHeader';
 import { KPIDashboard } from './components/KPIDashboard';
+import { formatLocalDateTime } from './utils/date';
 import { FilterTabs } from './components/FilterTabs';
 import { CustomerCard } from './components/CustomerCard';
 import { SMSModal } from './components/SMSModal';
@@ -227,7 +228,7 @@ export const App: React.FC = () => {
 
   // Mark SMS sent (with optional sent text to record in logs)
   const handleMarkSmsSent = (id: string, sentText?: string) => {
-    const timeStr = new Date().toLocaleDateString('ko-KR') + ' ' + new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    const timeStr = formatLocalDateTime(new Date());
     setCustomers((prev) => {
       const updated = prev.map((c) => {
         if (c.id === id) {

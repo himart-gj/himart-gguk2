@@ -14,6 +14,7 @@ import {
   Volume2
 } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
+import { formatLocalDate } from '../utils/date';
 
 interface MorningBriefingModalProps {
   isOpen: boolean;
@@ -102,8 +103,8 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-500/30 text-rose-300 border border-rose-500/40">
                   Daily Briefing
                 </span>
-                <span className="text-xs text-slate-300">
-                  {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })}
+                <span className="text-xs text-slate-300 font-medium">
+                  {formatLocalDate(new Date())}
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-black text-white mt-0.5">
@@ -120,64 +121,64 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
           </button>
         </div>
 
-        {/* 4 Metric Pills */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:p-4 bg-slate-50 border-b border-slate-200">
+        {/* 4 Metric Pills (Mobile & iPhone SE optimized) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 p-2.5 sm:p-4 bg-slate-50 border-b border-slate-200">
           <div 
             onClick={() => onFilterByStatus && onFilterByStatus('배송대기')}
-            className="bg-white p-2.5 rounded-2xl border border-rose-200 shadow-2xs cursor-pointer hover:border-rose-400 transition"
+            className="bg-white p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border border-rose-200 shadow-2xs cursor-pointer hover:border-rose-400 transition min-w-0 flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between text-rose-600 mb-1">
-              <Truck className="w-4 h-4" />
-              <span className="text-[10px] font-black bg-rose-100 px-1.5 py-0.2 rounded-full">D-Day 임박</span>
+            <div className="flex items-center justify-between gap-1 text-rose-600 mb-1">
+              <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="text-[9px] sm:text-[10px] font-black bg-rose-100 px-1.5 py-0.5 rounded-full whitespace-nowrap leading-none">D-Day 임박</span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">오늘/내일 배송</p>
-            <p className="text-lg font-black text-slate-900">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate leading-tight">오늘/내일 배송</p>
+            <p className="text-base sm:text-lg font-black text-slate-900 leading-none mt-1">
               {todayDeliveries.length + tomorrowDeliveries.length}
-              <span className="text-xs font-normal text-slate-500 ml-0.5">건</span>
+              <span className="text-[11px] sm:text-xs font-normal text-slate-500 ml-0.5">건</span>
             </p>
           </div>
 
           <div 
             onClick={() => onFilterByStatus && onFilterByStatus('신규/미발송')}
-            className="bg-white p-2.5 rounded-2xl border border-amber-200 shadow-2xs cursor-pointer hover:border-amber-400 transition"
+            className="bg-white p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border border-amber-200 shadow-2xs cursor-pointer hover:border-amber-400 transition min-w-0 flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between text-amber-600 mb-1">
-              <UserCheck className="w-4 h-4" />
-              <span className="text-[10px] font-black bg-amber-100 px-1.5 py-0.2 rounded-full">신규 접수</span>
+            <div className="flex items-center justify-between gap-1 text-amber-600 mb-1">
+              <UserCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="text-[9px] sm:text-[10px] font-black bg-amber-100 px-1.5 py-0.5 rounded-full whitespace-nowrap leading-none">신규 접수</span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">예약 미발송</p>
-            <p className="text-lg font-black text-slate-900">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate leading-tight">예약 미발송</p>
+            <p className="text-base sm:text-lg font-black text-slate-900 leading-none mt-1">
               {newUnsentCustomers.length}
-              <span className="text-xs font-normal text-slate-500 ml-0.5">건</span>
+              <span className="text-[11px] sm:text-xs font-normal text-slate-500 ml-0.5">건</span>
             </p>
           </div>
 
           <div 
-            className="bg-white p-2.5 rounded-2xl border border-rose-300 shadow-2xs bg-rose-50/30"
+            className="bg-white p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border border-rose-300 shadow-2xs bg-rose-50/30 min-w-0 flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between text-rose-600 mb-1">
-              <span className="text-sm">🎁</span>
-              <span className="text-[10px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.2 rounded-full">지급 대기</span>
+            <div className="flex items-center justify-between gap-1 text-rose-600 mb-1">
+              <span className="text-xs sm:text-sm flex-shrink-0">🎁</span>
+              <span className="text-[9px] sm:text-[10px] font-black bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded-full whitespace-nowrap leading-none">지급 대기</span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">미지급 사은품</p>
-            <p className="text-lg font-black text-rose-600">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate leading-tight">미지급 사은품</p>
+            <p className="text-base sm:text-lg font-black text-rose-600 leading-none mt-1">
               {undeliveredGiftCustomers.length}
-              <span className="text-xs font-normal text-slate-500 ml-0.5">건</span>
+              <span className="text-[11px] sm:text-xs font-normal text-slate-500 ml-0.5">건</span>
             </p>
           </div>
 
           <div 
             onClick={() => onFilterByStatus && onFilterByStatus('물류대기')}
-            className="bg-white p-2.5 rounded-2xl border border-purple-200 shadow-2xs cursor-pointer hover:border-purple-400 transition"
+            className="bg-white p-2 sm:p-2.5 rounded-xl sm:rounded-2xl border border-purple-200 shadow-2xs cursor-pointer hover:border-purple-400 transition min-w-0 flex flex-col justify-between"
           >
-            <div className="flex items-center justify-between text-purple-600 mb-1">
-              <Package className="w-4 h-4" />
-              <span className="text-[10px] font-black bg-purple-100 px-1.5 py-0.2 rounded-full">입고 대기</span>
+            <div className="flex items-center justify-between gap-1 text-purple-600 mb-1">
+              <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4 flex-shrink-0" />
+              <span className="text-[9px] sm:text-[10px] font-black bg-purple-100 px-1.5 py-0.5 rounded-full whitespace-nowrap leading-none">입고 대기</span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">물류 대기</p>
-            <p className="text-lg font-black text-slate-900">
+            <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate leading-tight">물류 대기</p>
+            <p className="text-base sm:text-lg font-black text-slate-900 leading-none mt-1">
               {logisticsWaitCustomers.length}
-              <span className="text-xs font-normal text-slate-500 ml-0.5">건</span>
+              <span className="text-[11px] sm:text-xs font-normal text-slate-500 ml-0.5">건</span>
             </p>
           </div>
         </div>
