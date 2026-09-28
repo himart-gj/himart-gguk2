@@ -397,6 +397,9 @@ export const App: React.FC = () => {
         isGasConnected={isGasConnected}
       />
 
+      {/* Header Height Spacer: Ensures content below never gets hidden behind fixed header */}
+      <div className="h-14 sm:h-16 w-full flex-shrink-0" aria-hidden="true" />
+
       {/* Floating Status Notification Toast */}
       {statusMessage && (
         <div className="fixed top-20 sm:top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-slate-900/95 text-white text-xs font-bold shadow-2xl flex items-center gap-2 border border-slate-700 animate-in fade-in slide-in-from-top-3">
@@ -407,7 +410,7 @@ export const App: React.FC = () => {
 
       {/* CRM Main Content Area (Displayed when activeTab === 'crm') */}
       {activeTab === 'crm' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6 pt-20 sm:pt-24 space-y-4 sm:space-y-5">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6 pt-3 sm:pt-4 space-y-4 sm:space-y-5">
           {/* Notice Banner: Clearly answers whether sheet URL is set or using mock data */}
           {!isGasConnected ? (
             <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
