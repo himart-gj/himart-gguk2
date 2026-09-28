@@ -15,6 +15,12 @@ import {
 } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
 import { formatLocalDate } from '../utils/date';
+import { 
+  requestNotificationPermission, 
+  sendMobileNotification, 
+  isIOS, 
+  isStandalone 
+} from '../services/notificationService';
 
 interface MorningBriefingModalProps {
   isOpen: boolean;
@@ -59,32 +65,23 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
     onClose();
   };
 
-  // Request browser Notification Permission
+  // Request browser Notification Permission (Mobile & Desktop compatible)
   const requestWebPush = async () => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      setPushStatusMessage('현재 브라우저는 웹 알림 기능을 지원하지 않습니다.');
-      setTimeout(() => setPushStatusMessage(null), 4000);
-      return;
+    const res = await requestNotificationPermission();
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(Notification.permission);
+    }
+    setPushStatusMessage(res.message);
+
+    if (res.granted) {
+      // 모바일(안드로이드/아이폰)과 데스크톱 모두 100% 호환되는 showNotification으로 테스트 알림 전송
+      await sendMobileNotification({
+        title: '🔔 롯데하이마트 경기광주점 알림',
+        body: `오늘 배송 ${todayDeliveries.length}건, 신규 예약 ${newUnsentCustomers.length}건이 있습니다.`,
+      });
     }
 
-    try {
-      const permission = await Notification.requestPermission();
-      setPushPermission(permission);
-      if (permission === 'granted') {
-        setPushStatusMessage('✅ 브라우저 푸시 알림이 활성화되었습니다! 앱을 내려두어도 알림을 수신합니다.');
-        // Fire a test notification
-        new Notification('🔔 롯데하이마트 경기광주점 알림', {
-          body: `오늘 배송 ${todayDeliveries.length}건, 신규 예약 ${newUnsentCustomers.length}건이 있습니다.`,
-          icon: '/favicon.ico',
-        });
-      } else if (permission === 'denied') {
-        setPushStatusMessage('⚠️ 브라우저 주소창 좌측 자물쇠 아이콘에서 알림 권한을 허용해주세요.');
-      }
-    } catch (e: any) {
-      console.error(e);
-      setPushStatusMessage('알림 권한 요청 중 오류가 발생했습니다.');
-    }
-    setTimeout(() => setPushStatusMessage(null), 5000);
+    setTimeout(() => setPushStatusMessage(null), 7000);
   };
 
   if (!isOpen) return null;
@@ -348,9 +345,9 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
             <div className="flex items-start gap-2.5">
               <span className="text-xl">🔔</span>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h4 className="font-black text-xs text-indigo-950">
-                    앱을 켜두지 않아도 알림 받기 (브라우저 웹 푸시)
+                    스마트폰 & PC 백그라운드 푸시 알림
                   </h4>
                   {pushPermission === 'granted' && (
                     <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full border border-emerald-300">
@@ -358,9 +355,21 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-slate-600 mt-0.5 leading-relaxed">
-                  브라우저 알림 권한을 켜두시면 <b>앱 창을 최소화하거나 다른 작업을 하고 계셔도</b> 신규 고객 유입 및 오늘 배송 알림이 윈도우/맥/스마트폰 알림창으로 뜹니다.
+                <p className="text-[11px] text-slate-600 mt-1 leading-relaxed">
+                  알림을 켜두시면 <b>앱 창을 닫거나 다른 작업을 하고 계셔도</b> 신규 고객 유입 및 오늘 배송 알림이 스마트폰 상단 알림 바와 진동으로 즉시 전송됩니다.
                 </p>
+
+                {/* iPhone 특별 안내 배너 */}
+                {isIOS() && !isStandalone() && (
+                  <div className="mt-2 p-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[11px] leading-relaxed">
+                    <p className="font-bold flex items-center gap-1 text-amber-800">
+                      <span>📱</span> 아이폰(iOS) 알림 설정 안내
+                    </p>
+                    <p className="mt-0.5">
+                      사파리 브라우저 하단의 <b>[공유(사각형 화살표) ➔ 홈 화면에 추가]</b>를 누르신 후, 홈 화면에 생성된 앱 아이콘으로 접속하시면 핸드폰 푸시 알림이 완벽하게 지원됩니다.
+                    </p>
+                  </div>
+                )}
 
                 {pushStatusMessage && (
                   <p className="mt-2 text-[11px] font-bold text-indigo-700 bg-white p-2 rounded-lg border border-indigo-200">
@@ -368,17 +377,17 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
                   </p>
                 )}
 
-                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <div className="mt-2.5 flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={requestWebPush}
-                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition active:scale-95 flex items-center gap-1"
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-xs transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
                   >
                     <Volume2 className="w-3.5 h-3.5" />
-                    <span>{pushPermission === 'granted' ? '알림 테스트 전송' : '🔔 웹 푸시 알림 켜기'}</span>
+                    <span>{pushPermission === 'granted' ? '🔔 알림 테스트 전송 (진동 울림)' : '🔔 핸드폰 알림 켜기'}</span>
                   </button>
                   <span className="text-[10px] text-slate-400">
-                    * 완전히 브라우저를 종료해도 폰 알림을 받으시려면 카카오 알림톡/PWA 앱 설치 연동이 가능합니다.
+                    * Android Chrome / iOS 16.4+ PWA / Windows / Mac 완벽 지원
                   </span>
                 </div>
               </div>
