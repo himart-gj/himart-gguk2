@@ -151,17 +151,7 @@ details > summary::-webkit-details-marker { display: none; }
 <!-- 견적 계산기 컨테이너 (CRM과 상호전환 지원, 기존 계산기 기능 100% 완전 보존) -->
 <div id="calculator-container" style="display: none;">
 
-<div class="max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 pt-[100px] sm:pt-[72px] pb-24 xl:pb-8" id="capture-area">
-
-<!-- 모바일/태블릿 화면용 상단 뷰 전환 탭: ✏️ 견적 입력 vs 📄 고객용 견적서 보기 (Sheet 1~6) -->
-<div class="xl:hidden bg-white p-2 rounded-xl shadow-md border border-slate-200 mb-3 flex items-center justify-between gap-2 sticky top-[96px] sm:top-[66px] z-30">
-  <button id="mob-tab-input" type="button" onclick="setMobileView('input', true)" class="flex-1 py-2 px-2.5 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1.5 bg-slate-900 text-white shadow-sm">
-    <span>✏️ 1. 견적 입력 패널</span>
-  </button>
-  <button id="mob-tab-sheet" type="button" onclick="setMobileView('sheet', true)" class="flex-1 py-2 px-2.5 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1.5 text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200">
-    <span>📄 2. 고객용 견적서 보기 (Sheet 1~6)</span>
-  </button>
-</div>
+<div class="max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 pt-[68px] sm:pt-[72px] pb-24 xl:pb-8" id="capture-area">
 
 <!-- 모바일 뷰 상태 표시용 히든 요소 (CRMHeader와 연동) -->
 <span id="mob-badge-net" class="hidden">0원</span>

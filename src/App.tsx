@@ -406,7 +406,7 @@ export const App: React.FC = () => {
 
       {/* CRM Main Content Area (Displayed when activeTab === 'crm') */}
       {activeTab === 'crm' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6 pt-[100px] sm:pt-[72px] space-y-4 sm:space-y-5">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6 pt-[64px] sm:pt-[68px] space-y-4 sm:space-y-5">
           {/* Notice Banner: Clearly answers whether sheet URL is set or using mock data */}
           {!isGasConnected ? (
             <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
