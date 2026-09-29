@@ -855,24 +855,54 @@ export async function fetchCustomersFromGas(): Promise<{
     };
   }
 
+  let data: any = null;
+  const timestamp = Date.now();
+  const cleanUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + timestamp;
+
+  // 1. 브라우저 직통 단순 요청 (CORS Preflight를 유발하는 커스텀 헤더 없이 표준 GET 요청)
   try {
-    // 3중 캐시 방지 (Cache-busting): URL에 timestamp 파라미터 추가 + cache: 'no-store' + Pragma no-cache
-    const fetchUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-    const res = await fetch(fetchUrl, {
+    const res = await fetch(cleanUrl, {
       method: 'GET',
-      cache: 'no-store',
+      redirect: 'follow',
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        Pragma: 'no-cache',
         Accept: 'application/json',
       },
     });
 
-    if (!res.ok) {
-      throw new Error(`HTTP Error: ${res.status}`);
+    if (res.ok) {
+      data = await res.json();
     }
+  } catch (directErr) {
+    console.warn('Direct GAS fetch failed or blocked by CORS, trying backend proxy...', directErr);
+  }
 
-    const data = await res.json();
+  // 2. 브라우저 직통 통신 실패 시 백엔드 프록시 엔드포인트(/api/gas-fetch)로 100% 안전 폴백
+  if (!data) {
+    try {
+      const proxyUrl = `/api/gas-fetch?url=${encodeURIComponent(url)}&_t=${timestamp}`;
+      const proxyRes = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (proxyRes.ok) {
+        data = await proxyRes.json();
+      } else {
+        throw new Error(`Proxy HTTP Error: ${proxyRes.status}`);
+      }
+    } catch (proxyErr: any) {
+      console.warn('Backend proxy fetch also failed, using cached data:', proxyErr);
+      return {
+        customers: currentLocal,
+        fromGas: false,
+        message: `구글 시트 연결 지연 (${proxyErr.message || '네트워크'}). 최신 로컬 데이터를 안전하게 표시합니다.`,
+      };
+    }
+  }
+
+  try {
     let unified: CustomerItem[] = [];
 
     // Support both { tab1: [...], tab2: [...] } and unified array
@@ -880,15 +910,15 @@ export async function fetchCustomersFromGas(): Promise<{
       const tab1List: any[] = data.tab1 || [];
       const tab2List: any[] = data.tab2 || [];
 
-      tab1List.forEach((r, idx) => {
+      tab1List.forEach((r: any, idx: number) => {
         unified.push(sanitizeAndEnrichCustomer(r, 'tab1', idx));
       });
 
-      tab2List.forEach((r, idx) => {
+      tab2List.forEach((r: any, idx: number) => {
         unified.push(sanitizeAndEnrichCustomer(r, 'tab2', idx));
       });
     } else if (Array.isArray(data)) {
-      data.forEach((r, idx) => {
+      data.forEach((r: any, idx: number) => {
         unified.push(sanitizeAndEnrichCustomer(r, 'tab2', idx));
       });
     } else if (data.customers && Array.isArray(data.customers)) {
@@ -909,11 +939,11 @@ export async function fetchCustomersFromGas(): Promise<{
       throw new Error('데이터 형식이 올바르지 않거나 시트가 비어있습니다.');
     }
   } catch (err: any) {
-    console.warn('GAS Fetch failed, falling back to local cache', err);
+    console.warn('Data processing error:', err);
     return {
       customers: currentLocal,
       fromGas: false,
-      message: `구글 시트 연결 실패 (${err.message || '네트워크 오류'}). 로컬 데이터를 표시합니다.`,
+      message: `구글 시트 데이터 분석 오류: ${err.message}`,
     };
   }
 }

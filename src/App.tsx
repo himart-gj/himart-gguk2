@@ -540,53 +540,7 @@ export const App: React.FC = () => {
       {/* CRM Main Content Area (Displayed when activeTab === 'crm') */}
       {activeTab === 'crm' && (
         <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6 pt-3 sm:pt-4 space-y-4 sm:space-y-5">
-          {/* Notice Banner: Clearly answers whether sheet URL is set or using mock data */}
-          {!isGasConnected ? (
-            <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-300/80 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2.5">
-                <span className="text-xl flex-shrink-0">📢</span>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-1.5 py-0.5 rounded">
-                      체험 모드
-                    </span>
-                    <h3 className="font-bold text-xs sm:text-sm text-slate-800">
-                      현재 [경기광주점 실제 매장 Mock Data]가 표시 중입니다.
-                    </h3>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    매장 구글 스프레드시트 배포 Web App URL을 등록하시면 실시간 데이터로 자동 동기화됩니다.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(true)}
-                className="w-full sm:w-auto px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-xs transition active:scale-95 flex items-center justify-center gap-1.5 flex-shrink-0"
-              >
-                <Settings className="w-3.5 h-3.5 text-white" />
-                <span>시트 URL 등록</span>
-              </button>
-            </div>
-          ) : (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-2 shadow-2xs">
-              <div className="flex items-center gap-2 text-xs font-bold">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>구글 스프레드시트 실시간 동기화 상태 활성화됨</span>
-                <span className="text-[11px] text-emerald-700 font-normal hidden sm:inline">
-                  (온라인 예약접수 tab1 & 매장결제/배송관리 tab2 결합)
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => loadData(true)}
-                className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 hover:underline"
-              >
-                <RotateCw className="w-3 h-3" />
-                <span>지금 갱신</span>
-              </button>
-            </div>
-          )}
+
 
           {/* 1. 슬림 업무 요약 바 (시각적 부하 최소화) */}
           <div className="bg-slate-900 text-white rounded-2xl px-4 py-2.5 shadow-sm border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
