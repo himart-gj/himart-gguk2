@@ -178,69 +178,74 @@ details > summary::-webkit-details-marker { display: none; }
 <!-- 왼쪽 입력 패널 -->
 <div class="lg:col-span-5 space-y-4 sm:space-y-6" id="input-panel" oninput="calc()" onchange="calc()">
 
-<div class="bg-gray-900 text-white p-3 sm:p-4 rounded-xl shadow-lg flex flex-col sm:flex-row gap-2.5 sm:gap-4 justify-between sm:items-center">
-  <div>
-    <h1 class="text-base sm:text-lg font-bold flex items-center gap-1.5">
-      <span>🛠️</span> <span>견적 계산기 입력 패널</span>
-    </h1>
-    <p class="text-gray-400 text-[11px] sm:text-xs mt-0.5">실시간 계산 및 견적서(Sheet 1~6) 자동 동기화</p>
+<!-- 통합 상단 바: [← CRM 복귀] 👤 [고객명] 견적 작성 중 | [💾 CRM 저장] [💬 AI톡] [⋮ 더보기] -->
+<div class="bg-slate-900 text-white p-3 sm:p-3.5 rounded-2xl shadow-lg border border-slate-800 flex items-center justify-between gap-2 relative mb-3">
+  <!-- 좌측: [← CRM 복귀] + 👤 [고객명] 견적 작성 중 -->
+  <div class="flex items-center gap-2 min-w-0">
+    <button type="button" onclick="if(window.switchAppTab) window.switchAppTab('crm');" class="flex-shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition active:scale-95 flex items-center gap-1 cursor-pointer" title="고객 CRM 대시보드로 즉시 복귀">
+      <span>←</span>
+      <span class="hidden sm:inline">CRM 복귀</span>
+    </button>
+    <div class="min-w-0 flex items-center gap-1.5 truncate">
+      <span class="text-base flex-shrink-0">👤</span>
+      <span id="active-customer-banner-name" class="text-xs sm:text-sm font-black truncate tracking-tight text-white">신규 고객</span>
+      <span class="text-[10px] text-slate-400 font-medium hidden md:inline">견적 작성 중</span>
+    </div>
   </div>
-  <div class="flex flex-wrap gap-1.5 w-full sm:w-auto justify-end">
-    <button type="button" onclick="openSaveModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-black py-1.5 px-3 rounded-lg text-xs flex items-center justify-center gap-1 shadow-md ring-2 ring-indigo-400/40 transition active:scale-95">💾 CRM으로 고객/견적 등록</button>
-    <button type="button" onclick="resetQuotation()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-1.5 px-2.5 rounded-lg text-xs flex items-center justify-center gap-1 shadow">🔄 초기화</button>
-    <button type="button" onclick="scanComputer()" class="bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold py-1.5 px-2.5 rounded-lg text-xs flex items-center justify-center gap-1 shadow">📷 스캔 입력</button>
-  </div>
-</div>
 
-<!-- CRM 고객 견적 연동 배너 -->
-<div id="crm-loaded-banner" class="hidden bg-gradient-to-r from-rose-50 via-indigo-50 to-emerald-50 border border-indigo-200 rounded-xl p-3 shadow-xs mb-3">
-  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-    <div class="flex items-center gap-2 min-w-0">
-      <span class="text-xl">👤</span>
-      <div class="min-w-0">
-        <div class="flex items-center gap-2 flex-wrap">
-          <p id="crm-loaded-title" class="text-xs sm:text-sm font-extrabold text-slate-900 truncate">CRM 고객 견적 로드됨</p>
-          <span id="crm-loaded-autosave-badge">
-            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-              💾 견적 수동 저장 모드
-            </span>
-          </span>
+  <!-- 우측 액션: [💾 CRM 저장] [💬 AI톡] [⋮ 더보기] -->
+  <div class="flex items-center gap-1.5 flex-shrink-0">
+    <button type="button" onclick="openSaveModal()" class="bg-rose-600 hover:bg-rose-500 text-white font-black py-1.5 px-3 rounded-xl text-xs flex items-center gap-1 shadow-md ring-1 ring-rose-400/40 transition active:scale-95 cursor-pointer">
+      <span>💾</span>
+      <span>CRM 저장</span>
+    </button>
+    <button type="button" onclick="openAIMsgModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-2.5 rounded-xl text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer" title="고객 카톡 견적 안내문 생성">
+      <span>💬</span>
+      <span class="hidden sm:inline">AI톡</span>
+    </button>
+
+    <!-- [⋮ 더보기] 드롭다운 토글 메뉴 -->
+    <div class="relative inline-block text-left" id="calc-more-menu-container">
+      <button type="button" onclick="toggleCalcMoreMenu(event)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 py-1.5 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold" title="추가 도구 더보기">
+        <span>⋮</span>
+        <span class="hidden sm:inline text-[11px]">더보기</span>
+      </button>
+
+      <!-- 드롭다운 메뉴 (기존 부가 기능 100% 완전 보존) -->
+      <div id="calc-more-dropdown" class="hidden absolute right-0 mt-2 w-52 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs font-bold divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
+        <div class="py-1">
+          <button type="button" onclick="scanComputer(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-amber-50 hover:text-amber-900 flex items-center gap-2 transition cursor-pointer">
+            <span>📷</span> 전산 스캔 입력 (OCR)
+          </button>
+          <button type="button" onclick="if(window.openCRMQuotePicker) window.openCRMQuotePicker(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-rose-50 hover:text-rose-900 flex items-center gap-2 transition cursor-pointer">
+            <span>👥</span> CRM 견적 불러오기
+          </button>
+          <button type="button" onclick="openManageModal(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-indigo-50 hover:text-indigo-900 flex items-center gap-2 transition cursor-pointer">
+            <span>📂</span> 기기 보관함 폴더 관리
+          </button>
         </div>
-        <p id="crm-loaded-desc" class="text-[11px] text-slate-600 truncate mt-0.5">고객 정보, 상담 품목, 혜택이 계산기에 오차 없이 반영되었습니다.</p>
+        <div class="py-1">
+          <button type="button" onclick="resetQuotation(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition cursor-pointer">
+            <span>🔄</span> 견적 내용 전체 초기화
+          </button>
+          <button type="button" onclick="openAdminSettings(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition cursor-pointer">
+            <span>⚙️</span> 요율/API 관리자 설정
+          </button>
+          <button type="button" onclick="downloadHTML(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-slate-100 text-slate-700 flex items-center gap-2 transition cursor-pointer">
+            <span>📥</span> HTML 오프라인 백업 다운로드
+          </button>
+        </div>
       </div>
     </div>
-    <div class="flex items-center gap-1.5 flex-wrap flex-shrink-0">
-      <button type="button" onclick="openSaveModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg shadow-xs flex items-center gap-1 transition">
-        <span>💾</span> 새 견적(+차수) 저장
-      </button>
-      <button type="button" onclick="openAIMsgModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-2.5 rounded-lg shadow-xs flex items-center gap-1 transition">
-        <span>💬</span> 카톡 안내문
-      </button>
-      <a id="crm-loaded-doc-link" href="#" target="_blank" class="hidden bg-slate-700 hover:bg-slate-800 text-white text-xs font-bold py-1.5 px-2.5 rounded-lg shadow-xs flex items-center gap-1">
-        <span>📄</span> 원문 카드
-      </a>
-      <button type="button" onclick="document.getElementById('crm-loaded-banner').classList.add('hidden');" class="text-slate-400 hover:text-slate-600 p-1 text-xs font-bold">✕</button>
-    </div>
   </div>
 </div>
 
-<!-- 로컬 폴더(고객별) 연동 컨트롤 바 -->
-<div class="bg-indigo-50/70 border border-indigo-200/80 rounded-xl p-2.5 sm:p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
-  <div class="flex items-center gap-2">
-    <span class="text-base">📁</span>
-    <div>
-      <p class="text-xs font-bold text-indigo-950">고객별 견적 아카이브</p>
-      <p class="text-[10px] text-indigo-600">내 기기에 고객/폴더별로 견적을 안전하게 보관</p>
-    </div>
-  </div>
-  <div class="flex items-center gap-1.5">
-    <button type="button" onclick="if(window.openCRMQuotePicker) window.openCRMQuotePicker();" class="flex-1 sm:flex-none justify-center bg-rose-600 hover:bg-rose-700 text-white font-extrabold py-1.5 px-3 rounded-lg text-xs shadow-2xs flex items-center gap-1 transition" title="CRM 미구매·상담중 고객의 견적 내용을 계산기로 즉시 불러옵니다">
-      <span>👥</span> CRM 견적 불러오기
-    </button>
-    <button type="button" onclick="openManageModal()" class="flex-1 sm:flex-none justify-center bg-slate-800 hover:bg-slate-700 text-white font-bold py-1.5 px-3 rounded-lg text-xs shadow-2xs flex items-center gap-1 transition">
-      <span>📂</span> 폴더 관리
-    </button>
-  </div>
+<!-- 호환성 보존용 히든 컨테이너 (스크립트 에러 방지) -->
+<div id="crm-loaded-banner" class="hidden">
+  <span id="crm-loaded-title"></span>
+  <span id="crm-loaded-desc"></span>
+  <span id="crm-loaded-autosave-badge"></span>
+  <a id="crm-loaded-doc-link" href="#" class="hidden"></a>
 </div>
 
 <!-- 기본 정보 -->
@@ -253,7 +258,7 @@ details > summary::-webkit-details-marker { display: none; }
 <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="웨딩" class="accent-rose-500 w-4 h-4"> 웨딩</label>
 </div>
 <div class="grid grid-cols-2 gap-2.5">
-<div><label class="block text-xs text-gray-500 mb-1">고객 성명</label><input type="text" id="i-name" class="input-box" placeholder="고객 성명"></div>
+<div><label class="block text-xs text-gray-500 mb-1">고객 성명</label><input type="text" id="i-name" class="input-box" placeholder="고객 성명" oninput="updateCalcHeaderCustomerName(); calc();"></div>
 <div><label class="block text-xs text-blue-600 font-bold mb-1">고객 연락처</label><input type="text" id="i-c-phone" class="input-box border-blue-300 bg-blue-50" placeholder="010-0000-0000"></div>
 <div><label class="block text-xs text-gray-500 mb-1">매장 연락처</label><input type="text" id="i-phone" class="input-box" value="031-767-1044"></div>
 <div><label class="block text-xs text-gray-500 mb-1">판매 담당자</label><input type="text" id="i-manager" class="input-box" placeholder="담당자 성명"></div>
@@ -892,6 +897,29 @@ details > summary::-webkit-details-marker { display: none; }
 <input type="file" id="camera-input" accept="image/*" class="hidden" multiple>
 
 <script>
+function toggleCalcMoreMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('calc-more-dropdown');
+  if (menu) menu.classList.toggle('hidden');
+}
+function closeCalcMoreMenu() {
+  const menu = document.getElementById('calc-more-dropdown');
+  if (menu) menu.classList.add('hidden');
+}
+document.addEventListener('click', function(e) {
+  const container = document.getElementById('calc-more-menu-container');
+  if (container && !container.contains(e.target)) {
+    closeCalcMoreMenu();
+  }
+});
+function updateCalcHeaderCustomerName() {
+  const nameEl = document.getElementById('i-name');
+  const bannerName = document.getElementById('active-customer-banner-name');
+  if (bannerName) {
+    const val = nameEl && nameEl.value ? nameEl.value.trim() : '';
+    bannerName.innerText = val ? `${val} 고객님` : '신규 고객';
+  }
+}
 
 
 
@@ -2040,6 +2068,7 @@ function executeResetQuotation() {
   document.getElementById('lump-inputs').innerHTML = ''; addLumpRow(); document.getElementById('l-card').selectedIndex = 0; document.getElementById('lump-hp-container').innerHTML = ''; document.getElementById('lump-benefit-container').innerHTML = '';
   document.getElementById('sub-inputs').innerHTML = ''; addSubRow(); document.getElementById('s-card-corp').value = 'none'; updateCardTiers(); document.getElementById('sub-hp-container').innerHTML = '';
   calc();
+  if (typeof updateCalcHeaderCustomerName === 'function') updateCalcHeaderCustomerName();
   currentEditingFolderId = null;
   currentEditingQuoteId = null;
   window.currentActiveCustomerId = null;

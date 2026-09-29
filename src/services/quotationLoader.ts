@@ -478,6 +478,11 @@ export async function loadCustomerIntoCalculatorWithAI(
     }
   }
 
+  const bannerName = document.getElementById('active-customer-banner-name');
+  if (bannerName) {
+    bannerName.innerText = `${customer.name} 고객님`;
+  }
+
   if (onNotify) {
     onNotify(`[${customer.name}] 고객 견적이 계산기에 입력되었습니다. (수정 후 [견적저장] 클릭 시 보관)`, false);
   }
@@ -774,5 +779,10 @@ export function loadQuoteRecordIntoCalculator(quote: QuoteRecord, customer: Cust
     if (autoSaveBadge) {
       autoSaveBadge.innerHTML = `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">✓ [${quote.title}] 복원 완료</span>`;
     }
+  }
+
+  const bannerName = document.getElementById('active-customer-banner-name');
+  if (bannerName) {
+    bannerName.innerText = `${customer.name} 고객님`;
   }
 }
