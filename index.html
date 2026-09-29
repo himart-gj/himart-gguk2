@@ -299,9 +299,10 @@ details > summary::-webkit-details-marker { display: none; }
   </div>
 </div>
 
-<div class="flex gap-2 mb-2 mt-4">
-<button id="input-tab-lump" type="button" onclick="switchInputTab('lump')" class="flex-1 py-2.5 text-sm font-bold bg-rose-600 text-white rounded-xl shadow transition-colors">일반구매 (일시불)</button>
-<button id="input-tab-sub" type="button" onclick="switchInputTab('sub')" class="flex-1 py-2.5 text-sm font-bold bg-gray-200 text-gray-600 rounded-xl hover:bg-gray-300 transition-colors">구독구매 (월납)</button>
+<div class="grid grid-cols-3 gap-1.5 sm:gap-2 mb-2 mt-4">
+<button id="input-tab-lump" type="button" onclick="switchInputTab('lump')" class="py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-rose-600 text-white rounded-xl shadow transition-colors cursor-pointer">일반구매 (일시불)</button>
+<button id="input-tab-sub" type="button" onclick="switchInputTab('sub')" class="py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gray-200 text-gray-600 rounded-xl hover:bg-gray-300 transition-colors cursor-pointer">구독구매 (월납)</button>
+<button id="input-tab-both" type="button" onclick="switchInputTab('both')" class="py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gray-200 text-gray-600 rounded-xl hover:bg-gray-300 transition-colors cursor-pointer">일반+구독 혼합</button>
 </div>
 
 <!-- 일반 구매 -->
@@ -580,22 +581,86 @@ details > summary::-webkit-details-marker { display: none; }
 <div class="text-right text-xs font-bold text-gray-500">롯데하이마트 경기광주점</div>
 </div>
 
-<!-- 시트 4: 동시 -->
+<!-- 시트 4: 동시 (일반 + 구독 혼합 맞춤형 견적서) -->
 <div id="sheet4" class="sheet-view">
-<div class="text-center mb-5 border-b-2 border-gray-800 pb-3">
-<h1 class="text-2xl font-extrabold text-gray-900">일반 + 구독 패키지 동시 진행 견적</h1>
+<div class="text-center mb-4 border-b-2 border-gray-800 pb-3">
+  <span class="text-xs bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded">일반 일시불 + 월납 구독 결합 패키지</span>
+  <h1 class="text-2xl font-extrabold text-gray-900 mt-1">프리미엄 맞춤형 견적서 (일반+구독 혼합)</h1>
+  <p class="text-xs text-gray-500 mt-0.5">핵심 대형가전(일시불 특가)과 생활·위생가전(월납 케어)을 최적의 조건으로 조합한 견적입니다.</p>
+</div>
+
+<!-- 고객 정보 테이블 -->
+<div class="overflow-x-auto">
+<table class="w-full print-table mb-3">
+<tr><th class="w-20">고객성명</th><td class="w-1/3 font-bold text-sm" id="s4-name"></td><th class="w-20">담당자</th><td class="w-1/3" id="s4-manager"></td></tr>
+<tr><th>전표/일자</th><td id="s4-no"></td><th>연락처/결제</th><td><span id="s4-phone"></span> <span id="s4-card" class="text-rose-700 font-bold ml-1"></span></td></tr>
+</table>
+</div>
+
+<!-- 1. 일반 구매 상품 내역 -->
+<div class="mb-3.5">
+<div class="flex justify-between items-center mb-1">
+  <h2 class="text-xs font-bold text-rose-800">■ 1. 일반 구매 상품 내역 (일시불/카드할부)</h2>
+  <span class="text-[11px] text-gray-600 font-medium">출고가 합계: <strong class="text-slate-900" id="s4-l-sum">0 원</strong></span>
 </div>
 <div class="overflow-x-auto">
-<table class="w-full print-table mb-4">
+<table class="w-full print-table">
+<thead><tr><th class="w-[22%]">품목명</th><th class="w-[44%]">모델명</th><th class="w-[12%]">수량</th><th class="w-[22%]">행사가격</th></tr></thead>
+<tbody id="s4-l-tbody"></tbody>
+</table>
+</div>
+</div>
+
+<!-- 2. 일반 구매 상세 혜택 및 실결제 내역 -->
+<div class="mb-3.5">
+<h2 class="text-xs font-bold text-rose-800 mb-1">■ 2. 일반 구매 상세 혜택 및 실결제 내역</h2>
+<div class="overflow-x-auto">
+<table class="w-full print-table">
+<tbody id="s4-l-benefit-tbody"></tbody>
+</table>
+</div>
+</div>
+
+<!-- 3. 구독 구매 상품 내역 -->
+<div class="mb-3.5">
+<div class="flex justify-between items-center mb-1">
+  <h2 class="text-xs font-bold text-blue-800">■ 3. 구독 구매 상품 내역 (월납 케어 가전)</h2>
+  <span class="text-[11px] text-gray-600 font-medium">기본 월구독료: <strong class="text-slate-900" id="s4-s-month">0 원</strong></span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full print-table">
+<thead><tr><th class="w-[22%]">품목명</th><th class="w-[38%]">모델명</th><th class="w-[14%]">약정기간</th><th class="w-[26%]">월 구독료</th></tr></thead>
+<tbody id="s4-s-tbody"></tbody>
+</table>
+</div>
+</div>
+
+<!-- 4. 구독 구매 월납 및 할인/캐시백 혜택 내역 -->
+<div class="mb-3.5">
+<h2 class="text-xs font-bold text-blue-800 mb-1">■ 4. 구독 구매 월납 및 할인/캐시백 혜택 내역</h2>
+<div class="overflow-x-auto">
+<table class="w-full print-table">
+<tbody id="s4-s-benefit-tbody"></tbody>
+</table>
+</div>
+</div>
+
+<!-- 5. 일반 + 구독 혼합 패키지 최종 결합 정산 -->
+<h2 class="text-xs font-bold mb-1 text-purple-900">■ 5. 일반 + 구독 혼합 패키지 최종 결합 정산</h2>
+<div class="overflow-x-auto mb-3">
+<table class="w-full print-table">
 <tbody>
-<tr><td class="font-bold bg-gray-50 w-1/2 text-gray-900">▶ 일반 구매 체감 순비용</td><td class="text-right text-lg font-bold text-gray-900" id="s4-lump">0 원</td></tr>
-<tr><td class="font-bold bg-gray-50 text-gray-900">▶ 구독 구매 체감 순비용 (총합)</td><td class="text-right text-lg font-bold text-gray-900" id="s4-sub">0 원</td></tr>
-<tr class="border-t-2 border-gray-800"><td class="font-extrabold text-lg bg-gray-100 text-gray-900">★ 동시진행 합산 최종 체감비용 ★</td><td class="text-right font-extrabold text-2xl text-rose-600" id="s4-total">0 원</td></tr>
+<tr><td class="font-bold bg-gray-50 w-1/2 text-gray-800">총 출고/계약가 합계 (일반+구독)</td><td class="text-right text-sm font-bold text-gray-900" id="s4-total-original">0 원</td></tr>
+<tr class="bg-emerald-50"><td class="font-extrabold text-emerald-900">🎁 패키지 결합 총 할인/캐시백 혜택 합산</td><td class="text-right text-base font-extrabold text-emerald-700" id="s4-total-benefit">0 원</td></tr>
+<tr><td class="font-bold bg-rose-50/70 text-rose-900">▶ [1] 일반 구매 최종 체감 순비용 (일시불)</td><td class="text-right text-base font-bold text-rose-800" id="s4-lump">0 원</td></tr>
+<tr><td class="font-bold bg-blue-50/70 text-blue-900">▶ [2] 구독 구매 최종 체감 순비용 (약정 총합)</td><td class="text-right text-base font-bold text-blue-800" id="s4-sub">0 원</td></tr>
+<tr class="border-t-2 border-slate-800 bg-purple-50"><td class="font-extrabold text-sm sm:text-base text-purple-950">★ 일반 + 구독 혼합 패키지 최종 합산 체감비용 ★</td><td class="text-right font-extrabold text-xl sm:text-2xl text-purple-700" id="s4-total">0 원</td></tr>
 </tbody>
 </table>
 </div>
+
 <div class="space-y-1.5 mb-4">
-<div class="notice-box">📌 대형 핵심가전(일반 일시불) + 생활/위생가전(구독 월납)을 혼합하여 월 예산에 최적화된 패키지입니다.</div>
+<div class="notice-box">📌 대형 핵심가전(일반 일시불 특가) + 생활/위생가전(구독 월납)을 혼합하여 월 예산에 최적화된 패키지입니다.</div>
 <div id="s4-hp-warning" class="warning-box hidden">⚠️ 하이프리드(웅진프리드라이프) 혜택은 150개월 완납 시 전액 환급됩니다.</div>
 </div>
 
@@ -1413,12 +1478,14 @@ const subCardCorp = document.getElementById('s-card-corp')?.value || 'none'; con
 const subHp = Array.from(document.querySelectorAll('.hp-sub-row')).map(row => ({ val: row.querySelector('.hp-val').value, cnt: parseInt(row.querySelector('.hp-cnt').value) }));
 const memoCust = document.getElementById('i-memo-customer')?.value || '';
 const memoMy = document.getElementById('i-memo')?.value || '';
+const isMixedTab = !document.getElementById('input-lump-sec')?.classList.contains('hidden') && !document.getElementById('input-sub-sec')?.classList.contains('hidden');
+const calcMode = isMixedTab ? 'both' : (document.getElementById('input-lump-sec')?.classList.contains('hidden') ? 'sub' : 'lump');
 return {
-id: 'Q-' + Date.now(), type, name, cPhone, customerPhone: cPhone, storePhone: phone, phone: cPhone || '', manager, no, date, deliveryDate, slipNo: no, itemSummary: itemSummary || '가전 견적',
-totalPrice: type === '일반' ? (window.currentSumLump || 0) : (window.currentContractSub || 0), 
-payPrice: type === '일반' ? (window.currentPayPriceLump || 0) : (window.currentContractSub || 0), 
-finalPrice: type === '일반' ? (window.currentNetPriceLump || 0) : (window.currentNetPriceSub || 0), 
-netPrice: type === '일반' ? (window.currentNetPriceLump || 0) : (window.currentNetPriceSub || 0), 
+id: 'Q-' + Date.now(), type, mode: calcMode, name, cPhone, customerPhone: cPhone, storePhone: phone, phone: cPhone || '', manager, no, date, deliveryDate, slipNo: no, itemSummary: itemSummary || '가전 견적',
+totalPrice: isMixedTab ? ((window.currentSumLump || 0) + (window.currentContractSub || 0)) : (calcMode === 'lump' ? (window.currentSumLump || 0) : (window.currentContractSub || 0)), 
+payPrice: isMixedTab ? ((window.currentPayPriceLump || 0) + (window.currentContractSub || 0)) : (calcMode === 'lump' ? (window.currentPayPriceLump || 0) : (window.currentContractSub || 0)), 
+finalPrice: isMixedTab ? (window.currentNetPriceTotal || 0) : (calcMode === 'lump' ? (window.currentNetPriceLump || 0) : (window.currentNetPriceSub || 0)), 
+netPrice: isMixedTab ? (window.currentNetPriceTotal || 0) : (calcMode === 'lump' ? (window.currentNetPriceLump || 0) : (window.currentNetPriceSub || 0)), 
 lumpSum: window.currentSumLump || 0, subSum: window.currentContractSub || 0,
 lumpItems, lumpCard, lumpDc, lumpPtTot, lumpPtUse, lumpCash, lumpHp, lumpBenefits, subItems, subCardCorp, subCardTier, subCash, subHp, memoCust, memoMy
 };
@@ -1429,7 +1496,11 @@ function applyQuotationData(data) {
 if (!data) return;
 const typeRadio = document.querySelector(`input[name="i-type"][value="${data.type || '일반'}"]`); if (typeRadio) typeRadio.checked = true;
 if (typeof switchInputTab === 'function') {
-  switchInputTab(data.type === '구독' ? 'sub' : 'lump');
+  if (data.mode === 'both' || data.mode === '혼합' || (data.lumpItems?.length > 0 && data.subItems?.length > 0)) {
+    switchInputTab('both');
+  } else {
+    switchInputTab(data.mode === 'sub' || data.type === '구독' ? 'sub' : 'lump');
+  }
 }
 document.getElementById('i-name').value = data.name || ''; document.getElementById('i-c-phone').value = data.cPhone || data.phone || '';
 document.getElementById('i-phone').value = data.phone || '031-767-1044';
@@ -1489,18 +1560,32 @@ function closeModal() { document.getElementById('custom-modal').classList.add('h
 function switchInputTab(mode) {
     const lBtn = document.getElementById("input-tab-lump");
     const sBtn = document.getElementById("input-tab-sub");
+    const bBtn = document.getElementById("input-tab-both");
     const lSec = document.getElementById("input-lump-sec");
     const sSec = document.getElementById("input-sub-sec");
+    const inactiveClass = "py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-gray-200 text-gray-600 rounded-xl hover:bg-gray-300 transition-colors cursor-pointer";
+
     if (mode === "lump") {
-        lSec.classList.remove("hidden"); sSec.classList.add("hidden");
-        lBtn.className = "flex-1 py-2.5 text-sm font-bold bg-rose-600 text-white rounded-xl shadow transition-colors";
-        sBtn.className = "flex-1 py-2.5 text-sm font-bold bg-gray-200 text-gray-600 rounded-xl hover:bg-gray-300 transition-colors";
+        lSec.classList.remove("hidden"); 
+        sSec.classList.add("hidden");
+        if (lBtn) lBtn.className = "py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-rose-600 text-white rounded-xl shadow transition-colors cursor-pointer";
+        if (sBtn) sBtn.className = inactiveClass;
+        if (bBtn) bBtn.className = inactiveClass;
         showSheet('sheet1', document.querySelector('button[onclick*="sheet1"]'));
-    } else {
-        lSec.classList.add("hidden"); sSec.classList.remove("hidden");
-        sBtn.className = "flex-1 py-2.5 text-sm font-bold bg-blue-600 text-white rounded-xl shadow transition-colors";
-        lBtn.className = "flex-1 py-2.5 text-sm font-bold bg-gray-200 text-gray-600 rounded-xl hover:bg-gray-300 transition-colors";
+    } else if (mode === "sub") {
+        lSec.classList.add("hidden"); 
+        sSec.classList.remove("hidden");
+        if (sBtn) sBtn.className = "py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-blue-600 text-white rounded-xl shadow transition-colors cursor-pointer";
+        if (lBtn) lBtn.className = inactiveClass;
+        if (bBtn) bBtn.className = inactiveClass;
         showSheet('sheet2', document.querySelector('button[onclick*="sheet2"]'));
+    } else if (mode === "both" || mode === "mixed") {
+        lSec.classList.remove("hidden"); 
+        sSec.classList.remove("hidden");
+        if (bBtn) bBtn.className = "py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-purple-600 text-white rounded-xl shadow transition-colors cursor-pointer";
+        if (lBtn) lBtn.className = inactiveClass;
+        if (sBtn) sBtn.className = inactiveClass;
+        showSheet('sheet4', document.querySelector('button[onclick*="sheet4"]'));
     }
 }
 
@@ -1810,7 +1895,7 @@ setTxt('s3-cash-sub', '- ' + format(sAutoCash + sExtraCash) + ' 원');
 setTxt('s3-net-lump', format(lNet) + ' 원'); let s3_sub_txt = format(sNetTotal) + ' 원'; if (sNetTotal_raw < 0) s3_sub_txt = `0 원 (+${format(Math.abs(sNetTotal_raw))} 원 혜택)`;
 setTxt('s3-net-sub', s3_sub_txt);
 const memoCust = document.getElementById('i-memo-customer') ? document.getElementById('i-memo-customer').value : '';
-['s1', 's2'].forEach(p => {
+['s1', 's2', 's4'].forEach(p => {
     const cont = document.getElementById(`${p}-memo-container`);
     const txt = document.getElementById(`${p}-memo-text`);
     if (cont && txt) {
@@ -1823,7 +1908,83 @@ const memoCust = document.getElementById('i-memo-customer') ? document.getElemen
     }
 });
 
+// Sheet 4 (일반 + 구독 혼합 맞춤형 견적서) 상세 데이터 렌더링
+setTxt('s4-name', document.getElementById('i-name')?.value || '-');
+setTxt('s4-manager', document.getElementById('i-manager')?.value || '-');
+setTxt('s4-no', (document.getElementById('i-no')?.value || '-') + ' / ' + (document.getElementById('i-date')?.value || '-'));
+setTxt('s4-phone', document.getElementById('i-c-phone')?.value || document.getElementById('i-phone')?.value || '-');
+const lCardValStr = document.getElementById('l-card')?.value;
+setTxt('s4-card', lCardValStr && lCardValStr !== '미정(상담안함)' ? `[카드: ${lCardValStr}]` : '');
 
+// 1. 일반 구매 품목 테이블 바인딩
+setTxt('s4-l-sum', format(lSum) + ' 원');
+const s4LBody = document.getElementById('s4-l-tbody');
+if (s4LBody) {
+    s4LBody.innerHTML = s1Tbody || '<tr><td colspan="4" class="text-center text-gray-400 py-2">등록된 일반구매 품목이 없습니다.</td></tr>';
+}
+
+// Sheet 4 - [2] 일반 구매 상세 혜택 및 실결제 테이블 바인딩
+const s4LBenefitBody = document.getElementById('s4-l-benefit-tbody');
+if (s4LBenefitBody) {
+    let s4LBenefitRows = `<tr><td class="bg-gray-50 font-bold w-2/3">총 행사가 합계</td><td class="text-right font-bold text-gray-900">${format(lSum)} 원</td></tr>`;
+    if (lDc > 0) s4LBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 기본 즉시 할인액</td><td class="text-right text-rose-600">- ${format(lDc)} 원</td></tr>`;
+    benefitRows.filter(b=>b.type==='dc').forEach(b => {
+        s4LBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) [추가할인] ${b.desc}</td><td class="text-right text-rose-600">- ${format(b.val)} 원</td></tr>`;
+    });
+    if (lPtUse > 0) s4LBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 포인트 즉시 사용</td><td class="text-right text-rose-600">- ${format(lPtUse)} 원</td></tr>`;
+    if (lHpVal > 0) s4LBenefitRows += `<tr><td class="bg-gray-50 font-bold text-rose-700">(-) 하이프리드 결합 지원금</td><td class="text-right text-rose-600 font-bold">- ${format(lHpVal)} 원</td></tr>`;
+    s4LBenefitRows += `<tr><td class="bg-gray-200 font-extrabold text-gray-900">최종 결제 금액 (실결제 기준)</td><td class="text-right font-extrabold text-base text-gray-900">${format(lPay)} 원</td></tr>`;
+    if (lAutoCash > 0) s4LBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 결제금액별 자동 캐시백</td><td class="text-right text-blue-600">- ${format(lAutoCash)} 원</td></tr>`;
+    if (getVal('l-cash') > 0) s4LBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 기본 추가 캐시백</td><td class="text-right text-blue-600">- ${format(getVal('l-cash'))} 원</td></tr>`;
+    benefitRows.filter(b=>b.type==='etc').forEach(b => {
+        s4LBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) [추가혜택] ${b.desc}</td><td class="text-right text-blue-600">- ${format(b.val)} 원</td></tr>`;
+    });
+    s4LBenefitRows += `<tr class="border-t-2 border-rose-300 bg-rose-50/70"><td class="font-extrabold text-rose-900">★ 일반 구매 최종 체감 순비용</td><td class="text-right font-extrabold text-base text-rose-700">${format(lNet)} 원</td></tr>`;
+    s4LBenefitBody.innerHTML = s4LBenefitRows;
+}
+
+// Sheet 4 - [3] 구독 구매 품목 테이블 바인딩
+setTxt('s4-s-month', '월 ' + format(sMonthSum) + ' 원');
+const s4SBody = document.getElementById('s4-s-tbody');
+if (s4SBody) {
+    let s4SubRows = '';
+    document.querySelectorAll('.s-name').forEach((el, i) => {
+        const n = el.value || '-';
+        const m = document.querySelectorAll('.s-model')[i]?.value || '-';
+        const p = parseInt(document.querySelectorAll('.s-price')[i]?.value) || 0;
+        const mo = parseInt(document.querySelectorAll('.s-months')[i]?.value) || 60;
+        if (n !== '-' || p > 0) {
+            s4SubRows += `<tr><td>${n}</td><td class="model-cell">${m}</td><td class="text-center">${mo}개월</td><td class="text-right">${format(p)} 원/월</td></tr>`;
+        }
+    });
+    s4SBody.innerHTML = s4SubRows || '<tr><td colspan="4" class="text-center text-gray-400 py-2">등록된 구독구매 품목이 없습니다.</td></tr>';
+}
+
+// Sheet 4 - [4] 구독 구매 상세 혜택 및 실부담 테이블 바인딩
+const s4SBenefitBody = document.getElementById('s4-s-benefit-tbody');
+if (s4SBenefitBody) {
+    let s4SBenefitRows = `<tr><td class="bg-gray-50 font-bold w-2/3">기본 월 구독료 합계 (1~36개월)</td><td class="text-right font-bold text-gray-900">${format(sMonthSum)} 원</td></tr>`;
+    if (sCardVal > 0) s4SBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 제휴카드 할인</td><td class="text-right text-blue-600">월 -${format(sCardVal)} 원 (${cardDuration}개월)</td></tr>`;
+    if (sHpVal > 0) s4SBenefitRows += `<tr><td class="bg-gray-50 font-bold text-blue-700">(-) 하이프리드 매월 페이백 (35회)</td><td class="text-right text-blue-600 font-bold">월 -${format(sHpVal)} 원</td></tr>`;
+    const sMonthNet1to35 = Math.max(0, sMonthSum - sCardVal - sHpVal);
+    s4SBenefitRows += `<tr class="bg-blue-50/70"><td class="font-bold text-blue-900">고객 체감 월 구독료 (1~35회차 기준)</td><td class="text-right font-extrabold text-base text-blue-700">월 ${format(sMonthNet1to35)} 원</td></tr>`;
+    s4SBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">전체 구독 총 계약금액</td><td class="text-right text-gray-900 font-bold">${format(sContract)} 원</td></tr>`;
+    if (sCardVal * cardDuration > 0) s4SBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 제휴카드 총 혜택액</td><td class="text-right text-blue-600">- ${format(sCardVal * cardDuration)} 원</td></tr>`;
+    if (sHpVal * 35 > 0) s4SBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 하이프리드 총 혜택액 (35회)</td><td class="text-right text-blue-600">- ${format(sHpVal * 35)} 원</td></tr>`;
+    if (sAutoCash > 0) s4SBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 결제금액별 캐시백 (삼성/신한 등)</td><td class="text-right text-blue-600">- ${format(sAutoCash)} 원</td></tr>`;
+    if (sExtraCash > 0) s4SBenefitRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 추가 캐시백 (배송익월말)</td><td class="text-right text-blue-600">- ${format(sExtraCash)} 원</td></tr>`;
+    s4SBenefitRows += `<tr class="border-t-2 border-blue-300 bg-blue-50/70"><td class="font-extrabold text-blue-900">★ 구독 구매 최종 체감 순비용 (총합)</td><td class="text-right font-extrabold text-base text-blue-700">${s3_sub_txt}</td></tr>`;
+    s4SBenefitBody.innerHTML = s4SBenefitRows;
+}
+
+// Sheet 4 - [5] 결합 종합 합계 및 총 혜택 계산
+const s4TotalOriginal = lSum + sContract;
+const lumpTotalBenefit = (lSum - lNet);
+const subTotalBenefit = (sContract - sNetTotal_raw);
+const s4TotalBenefit = Math.max(0, lumpTotalBenefit + subTotalBenefit);
+
+setTxt('s4-total-original', format(s4TotalOriginal) + ' 원');
+setTxt('s4-total-benefit', '- ' + format(s4TotalBenefit) + ' 원 혜택');
 
 setTxt('s4-lump', format(lNet) + ' 원'); setTxt('s4-sub', s3_sub_txt); 
 const s4_total_raw = lNet + sNetTotal_raw;
@@ -1852,8 +2013,11 @@ setTxt('s6-cnt', sHpCnt + '구좌 가입'); setTxt('s6-month', format(sHpMonth) 
 const mobBadge = document.getElementById('mob-badge-net');
 const mobBottom = document.getElementById('mob-bottom-net');
 const isSubTab = document.getElementById('input-tab-sub')?.classList.contains('bg-blue-600');
+const isBothTab = document.getElementById('input-tab-both')?.classList.contains('bg-purple-600');
 let mobNetTxt = '';
-if (isSubTab) {
+if (isBothTab) {
+    mobNetTxt = s4_total_txt;
+} else if (isSubTab) {
     mobNetTxt = sNetTotal_raw < 0 ? `0원 (+${format(Math.abs(sNetTotal_raw))}원)` : `월 ${format(sNetTotal)}원`;
 } else {
     mobNetTxt = lNet_raw < 0 ? `0원 (+${format(Math.abs(lNet_raw))}원)` : `${format(lNet)}원`;
