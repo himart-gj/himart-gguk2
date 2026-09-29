@@ -51,7 +51,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(customer.note || '');
 
-  // Promised Gift state
+  // Promised Gift state (아코디언 접기/펼치기 지원)
+  const [isGiftOpen, setIsGiftOpen] = useState(false);
   const [isEditingGift, setIsEditingGift] = useState(false);
   const [giftValue, setGiftValue] = useState(customer.giftItem || '');
 
@@ -237,7 +238,11 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
   };
 
   const quotesCount = customer.quotes?.length || 0;
-  const logsCount = customer.logs?.length || 0;
+  // 문자 보낸 기록만 필터링 (사용자 요청: 매장 메모란이 따로 있으므로 문자 기록만 관리)
+  const smsLogs = (customer.logs || []).filter(
+    (l) => l.type === '문자발송' || l.type === '문자' || (l.content && l.content.startsWith('[문자발송]'))
+  );
+  const smsLogsCount = smsLogs.length;
 
   return (
     <div className="relative bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col justify-between">
@@ -461,110 +466,141 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           )}
         </div>
 
-        {/* 🎁 약속 사은품 관리 (Promised Gifts Box) */}
-        <div className={`rounded-xl p-2.5 sm:p-3 text-xs border transition ${
+        {/* 🎁 약속 사은품 관리 (견적이력/상담기록처럼 접기/펼치기 지원) */}
+        <div className={`rounded-xl border transition overflow-hidden ${
           customer.giftItem
             ? customer.isGiftDelivered
               ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950 shadow-2xs'
               : 'bg-amber-50 border-amber-300 text-amber-950 shadow-2xs ring-1 ring-amber-400/40'
             : 'bg-slate-50 border-slate-200 text-slate-700'
         }`}>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Header Bar: 클릭하여 접기/펼치기 */}
+          <div 
+            onClick={() => setIsGiftOpen(!isGiftOpen)}
+            className="p-2.5 sm:p-3 flex items-center justify-between cursor-pointer hover:bg-black/5 transition select-none"
+          >
+            <div className="flex items-center gap-1.5 flex-wrap min-w-0">
               <span className="text-sm">🎁</span>
               <span className="font-black text-slate-900 text-xs">약속 사은품</span>
               {customer.giftItem ? (
-                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                  customer.isGiftDelivered 
-                    ? 'bg-emerald-200 text-emerald-900 border border-emerald-300' 
-                    : 'bg-rose-500 text-white animate-pulse shadow-2xs'
-                }`}>
-                  {customer.isGiftDelivered ? '✓ 지급완료' : '⚠️ 미지급'}
-                </span>
+                <>
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                    customer.isGiftDelivered 
+                      ? 'bg-emerald-200 text-emerald-900 border border-emerald-300' 
+                      : 'bg-rose-500 text-white animate-pulse shadow-2xs'
+                  }`}>
+                    {customer.isGiftDelivered ? '✓ 지급완료' : '⚠️ 미지급'}
+                  </span>
+                  <span className="text-xs font-bold text-slate-800 truncate max-w-[150px] sm:max-w-[260px]">
+                    {customer.giftItem}
+                  </span>
+                </>
               ) : (
-                <span className="text-[10px] text-slate-400 font-medium">(지급 약속 메모)</span>
+                <span className="text-[10px] text-slate-400 font-medium">(등록된 사은품 없음)</span>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              {/* Checkbox for delivery completion */}
-              <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-slate-800 hover:text-emerald-700 bg-white px-2 py-1 rounded-lg border border-slate-300 shadow-2xs transition active:scale-95">
-                <input
-                  type="checkbox"
-                  checked={Boolean(customer.isGiftDelivered)}
-                  onChange={handleToggleGiftDelivered}
-                  className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer"
-                />
-                <span className={customer.isGiftDelivered ? 'text-emerald-700 font-black' : 'text-slate-700'}>
-                  {customer.isGiftDelivered ? '✓ 지급완료' : '지급완료 체크'}
-                </span>
-              </label>
-
-              {!isEditingGift ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              {!customer.giftItem && (
                 <button
                   type="button"
-                  onClick={() => { setGiftValue(customer.giftItem || ''); setIsEditingGift(true); }}
-                  className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded hover:bg-indigo-50 transition cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsGiftOpen(true);
+                    setIsEditingGift(true);
+                  }}
+                  className="text-[10px] text-indigo-600 font-bold bg-white px-2 py-0.5 rounded border border-indigo-200 hover:bg-indigo-50 shadow-2xs cursor-pointer"
                 >
-                  <Edit3 className="w-3 h-3" /> {customer.giftItem ? '수정' : '+ 등록'}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleSaveGift}
-                  className="text-emerald-700 hover:text-emerald-900 font-black flex items-center gap-0.5 text-[11px] px-2 py-0.5 rounded bg-emerald-100 border border-emerald-300 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" /> 저장
+                  + 등록
                 </button>
               )}
+              <div className="p-0.5 text-slate-500 hover:text-slate-800 transition">
+                {isGiftOpen ? (
+                  <ChevronUp className="w-4 h-4 text-slate-600" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-600" />
+                )}
+              </div>
             </div>
           </div>
 
-          {isEditingGift ? (
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <input
-                type="text"
-                value={giftValue}
-                onChange={(e) => setGiftValue(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveGift(); }}
-                placeholder="예: 냄비 3종 세트, 신세계 5만원권, 에어프라이어 등"
-                className="flex-1 text-xs p-2 border border-indigo-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={handleSaveGift}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
-              >
-                저장
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEditingGift(false)}
-                className="px-2.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
-              >
-                취소
-              </button>
-            </div>
-          ) : (
-            <div 
-              onClick={() => { setGiftValue(customer.giftItem || ''); setIsEditingGift(true); }}
-              className="p-1.5 rounded-lg hover:bg-black/5 cursor-pointer transition flex items-center justify-between"
-              title="클릭하여 약속 사은품 내용 입력/수정"
-            >
-              <p className="font-semibold text-xs text-slate-800">
-                {customer.giftItem ? (
-                  <span className="font-black text-slate-900">🎁 {customer.giftItem}</span>
-                ) : (
-                  <span className="text-slate-400 italic flex items-center gap-1">
-                    <span>+ 고객님께 주기로 한 사은품을 적어두세요 (클릭)</span>
+          {/* Expanded Drawer: 상세 수정 및 지급완료 체크박스 */}
+          {isGiftOpen && (
+            <div className="p-3 pt-0 border-t border-black/5 space-y-2 mt-1">
+              <div className="flex items-center justify-between gap-2 pt-2">
+                <label className="flex items-center gap-1.5 cursor-pointer text-[11px] font-bold text-slate-800 hover:text-emerald-700 bg-white px-2 py-1 rounded-lg border border-slate-300 shadow-2xs transition active:scale-95">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(customer.isGiftDelivered)}
+                    onChange={handleToggleGiftDelivered}
+                    className="w-4 h-4 rounded text-emerald-600 accent-emerald-600 cursor-pointer"
+                  />
+                  <span className={customer.isGiftDelivered ? 'text-emerald-700 font-black' : 'text-slate-700'}>
+                    {customer.isGiftDelivered ? '✓ 지급완료' : '지급완료 체크'}
                   </span>
+                </label>
+
+                {!isEditingGift ? (
+                  <button
+                    type="button"
+                    onClick={() => { setGiftValue(customer.giftItem || ''); setIsEditingGift(true); }}
+                    className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-0.5 text-[11px] px-2 py-1 rounded bg-white border border-indigo-200 hover:bg-indigo-50 transition cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" /> {customer.giftItem ? '사은품 내용 수정' : '+ 사은품 등록'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleSaveGift}
+                    className="text-emerald-700 hover:text-emerald-900 font-black flex items-center gap-0.5 text-[11px] px-2.5 py-1 rounded bg-emerald-100 border border-emerald-300 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" /> 저장
+                  </button>
                 )}
-              </p>
-              {!customer.giftItem && (
-                <span className="text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                  + 사은품 적기
-                </span>
+              </div>
+
+              {isEditingGift ? (
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <input
+                    type="text"
+                    value={giftValue}
+                    onChange={(e) => setGiftValue(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleSaveGift(); }}
+                    placeholder="예: 냄비 3종 세트, 신세계 5만원권, 에어프라이어 등"
+                    className="flex-1 text-xs p-2 border border-indigo-300 rounded-lg bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-inner"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveGift}
+                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+                  >
+                    저장
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingGift(false)}
+                    className="px-2.5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                  >
+                    취소
+                  </button>
+                </div>
+              ) : (
+                <div 
+                  onClick={() => { setGiftValue(customer.giftItem || ''); setIsEditingGift(true); }}
+                  className="p-2 rounded-lg bg-white/70 border border-black/5 hover:bg-white cursor-pointer transition"
+                  title="클릭하여 약속 사은품 내용 입력/수정"
+                >
+                  <p className="font-semibold text-xs text-slate-800">
+                    {customer.giftItem ? (
+                      <span className="font-black text-slate-900">🎁 {customer.giftItem}</span>
+                    ) : (
+                      <span className="text-slate-400 italic">
+                        + 고객님께 주기로 약속한 사은품을 여기에 입력하세요 (클릭)
+                      </span>
+                    )}
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -579,7 +615,7 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           >
             <div className="flex items-center gap-1.5">
               <FolderOpen className="w-3.5 h-3.5 text-indigo-600" />
-              <span>견적 이력 ({quotesCount}건) · 상담기록 ({logsCount}건)</span>
+              <span>견적 이력 ({quotesCount}건) · 문자 발송 이력 ({smsLogsCount}건)</span>
             </div>
             {isHistoryOpen ? (
               <ChevronUp className="w-4 h-4 text-indigo-600" />
@@ -613,7 +649,7 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  💬 상담 & 특이사항 ({logsCount})
+                  📱 문자 발송 이력 ({smsLogsCount})
                 </button>
               </div>
 
@@ -730,98 +766,85 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
                 </div>
               )}
 
-              {/* Logs & Notes Tab */}
+              {/* SMS Logs Tab (문자 보낸 기록 전용) */}
               {activeHistoryTab === 'logs' && (
                 <div className="space-y-2.5">
-                  {/* Inline quick add */}
-                  <form onSubmit={handleAddQuickLog} className="flex gap-1.5 items-center">
-                    <select
-                      value={logType}
-                      onChange={(e) => setLogType(e.target.value as any)}
-                      className="text-xs p-1.5 border border-slate-300 rounded-lg bg-white text-slate-700 shrink-0 font-medium"
-                    >
-                      <option value="상담메모">상담메모</option>
-                      <option value="특이사항">특이사항</option>
-                      <option value="문자발송">문자발송</option>
-                      <option value="배송조율">배송조율</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={logContent}
-                      onChange={(e) => setLogContent(e.target.value)}
-                      placeholder="상담 내용, 특이사항 입력..."
-                      className="text-xs flex-1 p-1.5 border border-slate-300 rounded-lg focus:outline-indigo-500"
-                    />
+                  <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-[11px] text-slate-600">
+                    <span className="flex items-center gap-1 font-medium">
+                      <span>📱</span> 고객 문자 발송 시 여기에 자동으로 기록됩니다.
+                    </span>
                     <button
-                      type="submit"
-                      className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shrink-0 shadow-2xs"
+                      type="button"
+                      onClick={() => onOpenSMS(customer)}
+                      className="px-2 py-0.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] shadow-2xs transition active:scale-95 cursor-pointer flex items-center gap-0.5"
                     >
-                      기록
+                      <MessageSquare className="w-2.5 h-2.5" /> 문자 작성
                     </button>
-                  </form>
+                  </div>
 
-                  {logsCount === 0 ? (
-                    <p className="text-center py-3 text-xs text-slate-400">등록된 상담 기록이 없습니다.</p>
+                  {smsLogsCount === 0 ? (
+                    <div className="text-center py-5 bg-slate-50/70 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs text-slate-400">아직 발송된 문자 기록이 없습니다.</p>
+                      <button
+                        type="button"
+                        onClick={() => onOpenSMS(customer)}
+                        className="mt-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                      >
+                        [💬 고객에게 문자(SMS) 발송하기]
+                      </button>
+                    </div>
                   ) : (
-                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                      {customer.logs?.map((l, lIdx) => {
-                        let badgeColor = 'bg-slate-100 text-slate-700';
-                        if (l.type === '문자발송') badgeColor = 'bg-sky-100 text-sky-800';
-                        if (l.type === '견적산출') badgeColor = 'bg-indigo-100 text-indigo-800';
-                        if (l.type === '특이사항') badgeColor = 'bg-rose-100 text-rose-800';
-                        if (l.type === '배송조율') badgeColor = 'bg-amber-100 text-amber-800';
-
-                        return (
-                          <div
-                            key={`${l.id}-${lIdx}`}
-                            className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 text-xs flex flex-col gap-0.5"
-                          >
-                            <div className="flex items-center justify-between text-[10px]">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`px-1.5 py-0.5 rounded font-bold ${badgeColor}`}>
-                                  {l.type}
-                                </span>
-                                <span className="text-slate-400">{l.date}</span>
-                              </div>
-                              {onDeleteLog && (
-                                deletingLogId === l.id ? (
-                                  <div className="flex items-center gap-1 bg-rose-50 p-0.5 rounded border border-rose-200">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        onDeleteLog(customer.id, l.id);
-                                        setDeletingLogId(null);
-                                      }}
-                                      className="text-[9px] px-1.5 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
-                                    >
-                                      삭제
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setDeletingLogId(null)}
-                                      className="text-[9px] px-1 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium cursor-pointer"
-                                    >
-                                      취소
-                                    </button>
-                                  </div>
-                                ) : (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {smsLogs.map((l, lIdx) => (
+                        <div
+                          key={`${l.id}-${lIdx}`}
+                          className="p-2.5 rounded-xl bg-sky-50/70 border border-sky-200/90 text-xs flex flex-col gap-1 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between text-[10px]">
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-1.5 py-0.5 rounded font-black bg-sky-100 text-sky-800 border border-sky-300">
+                                ✉️ 문자발송
+                              </span>
+                              <span className="text-slate-500 font-medium">{l.date}</span>
+                            </div>
+                            {onDeleteLog && (
+                              deletingLogId === l.id ? (
+                                <div className="flex items-center gap-1 bg-rose-50 p-0.5 rounded border border-rose-200">
                                   <button
                                     type="button"
-                                    onClick={() => setDeletingLogId(l.id)}
-                                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 transition cursor-pointer"
-                                    title="상담메모 삭제"
+                                    onClick={() => {
+                                      onDeleteLog(customer.id, l.id);
+                                      setDeletingLogId(null);
+                                    }}
+                                    className="text-[9px] px-1.5 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-bold cursor-pointer"
                                   >
-                                    <Trash2 className="w-3 h-3" />
+                                    삭제
                                   </button>
-                                )
-                              )}
-                            </div>
-                            <p className="text-slate-800 whitespace-pre-wrap leading-relaxed mt-1">
-                              {l.content}
-                            </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeletingLogId(null)}
+                                    className="text-[9px] px-1 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium cursor-pointer"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setDeletingLogId(l.id)}
+                                  className="text-slate-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-50 transition cursor-pointer"
+                                  title="문자 발송 이력 삭제"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )
+                            )}
                           </div>
-                        );
-                      })}
+                          <p className="text-slate-800 whitespace-pre-wrap leading-relaxed mt-0.5 bg-white p-2 rounded-lg border border-sky-100 text-[11px]">
+                            {l.content}
+                          </p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>

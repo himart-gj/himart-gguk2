@@ -210,16 +210,16 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
     });
   }
 
-  // 9. Memos
+  // 9. Memos: 매장 메모(customer.note)는 고객 메모가 아닌 '나의 상담메모(internalMemo / i-memo)'로 연결
   const customerMemo = [
-    customer.note ? `[상담메모] ${customer.note}` : '',
     customer.deliveryDate ? `[배송요청] ${customer.deliveryDate}` : '',
   ]
     .filter(Boolean)
     .join('\n');
 
   const internalMemo = [
-    `[CRM 파이프라인] ${customer.status}`,
+    customer.note ? customer.note : '',
+    customer.status ? `[CRM 상태] ${customer.status}` : '',
     customer.docUrl ? `[구글문서 견적서] ${customer.docUrl}` : '',
   ]
     .filter(Boolean)

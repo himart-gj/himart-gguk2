@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Copy, Check, MessageSquare, CheckCheck, RefreshCw } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
-import { syncSheetStatus } from '../services/gasApi';
 import { formatLocalDateTime } from '../utils/date';
 
 interface SMSModalProps {
@@ -83,13 +82,9 @@ export const SMSModal: React.FC<SMSModalProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const doSyncAndMark = async () => {
+  const doSyncAndMark = () => {
     setIsSyncing(true);
-    const nowStr = formatLocalDateTime(new Date());
-    const statusText = `발송 완료 (${nowStr})`;
-    
-    // Sync to Google Sheet Apps Script
-    await syncSheetStatus(customer, statusText, `[문자발송] ${selectedTemplate}: ${customText.slice(0, 60)}`);
+    // 구글 시트 원본 시트에는 빈 행/로그를 남기지 않고, 국지CRM 내부 타임라인에만 문자 발송 기록을 보관합니다.
     onMarkSent(customer.id, customText);
     setIsSyncing(false);
   };

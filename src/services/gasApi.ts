@@ -668,59 +668,15 @@ export async function fetchCustomersFromGas(): Promise<{
 }
 
 /**
- * Synchronize SMS completion and timestamp to Google Apps Script
- * Works in static client-side environments (GitHub Pages) and local Node dev servers.
+ * Synchronize SMS completion:
+ * 사용자의 구글 시트 원본에 빈 행/시간이 무단으로 추가되는 것을 방지하기 위해
+ * 시트에는 오직 신규 고객 불러오기(Read-only)만 수행하며 외부 POST 요청을 일체 전송하지 않습니다.
  */
 export async function syncSheetStatus(
-  customer: CustomerItem,
-  statusText: string,
-  noteText?: string
+  _customer: CustomerItem,
+  _statusText: string,
+  _noteText?: string
 ): Promise<boolean> {
-  const gasUrl = getGasApiUrl();
-  const timeStr = new Date().toLocaleString('ko-KR');
-
-  const payload = {
-    action: 'updateSmsStatus',
-    phone: customer.phone,
-    name: customer.name,
-    isSmsSent: true,
-    status: statusText || '발송 완료',
-    sentDate: timeStr,
-    timestamp: timeStr,
-  };
-
-  // 1. Direct client-side post to GAS (CORS-free, 100% compatible with GitHub Pages)
-  if (gasUrl) {
-    try {
-      fetch(gasUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload),
-      }).catch((e) => console.warn('Direct GAS sync notice:', e));
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  // 2. Also ping server proxy if available
-  try {
-    fetch('/api/sync-sheet-status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        gasUrl,
-        customerId: customer.id,
-        name: customer.name,
-        phone: customer.phone,
-        status: statusText,
-        sentDate: timeStr,
-      }),
-    }).catch(() => {});
-  } catch (e) {
-    // ignore
-  }
-
   return true;
 }
 
