@@ -301,8 +301,14 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
                 {customer.source === 'tab1' ? '온라인 예약' : '매장 전표'}
               </span>
               {customer.slipNo && (
-                <span className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]" title={customer.slipNo}>
-                  {customer.slipNo}
+                <span className="text-[10px] text-slate-700 font-bold bg-slate-100 px-2 py-0.5 rounded-md border border-slate-300 font-mono shadow-2xs truncate max-w-[200px]" title={customer.slipNo}>
+                  전표 {customer.slipNo}
+                </span>
+              )}
+              {customer.date && (
+                <span className="text-[10px] text-slate-500 font-medium flex items-center gap-0.5">
+                  <Clock className="w-2.5 h-2.5 text-slate-400" />
+                  <span>상담: {customer.date}</span>
                 </span>
               )}
             </div>
@@ -406,17 +412,28 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           </div>
         )}
 
-        {/* Delivery / Registration Date */}
+        {/* Delivery / Registration Date (배송희망일 및 D-Day 중단 표시) */}
         <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
           {customer.deliveryDate ? (
-            <div className="flex items-center gap-1.5 text-rose-700 font-semibold bg-rose-50 px-2.5 py-1 rounded-md">
+            <div className="flex items-center gap-1.5 text-rose-700 font-bold bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200/80 shadow-2xs">
               <Calendar className="w-3.5 h-3.5 text-rose-500" />
-              <span>배송예정일: {customer.deliveryDate}</span>
+              <span>배송희망일: {customer.deliveryDate}</span>
+              {customer.dDay !== undefined && customer.dDay !== null && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ml-1 ${
+                  customer.dDay === 0 
+                    ? 'bg-rose-600 text-white animate-pulse' 
+                    : customer.dDay > 0 && customer.dDay <= 3 
+                    ? 'bg-amber-500 text-white' 
+                    : 'bg-rose-100 text-rose-700'
+                }`}>
+                  {customer.dDay === 0 ? 'D-Day 오늘!' : customer.dDay > 0 ? `D-${customer.dDay}` : `D+${Math.abs(customer.dDay)}`}
+                </span>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-1.5 text-slate-500">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>접수일시: {customer.date || '-'}</span>
+              <span>상담접수: {customer.date || '-'}</span>
             </div>
           )}
 

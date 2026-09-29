@@ -257,8 +257,41 @@ details > summary::-webkit-details-marker { display: none; }
 <div><label class="block text-xs text-blue-600 font-bold mb-1">고객 연락처</label><input type="text" id="i-c-phone" class="input-box border-blue-300 bg-blue-50" placeholder="010-0000-0000"></div>
 <div><label class="block text-xs text-gray-500 mb-1">매장 연락처</label><input type="text" id="i-phone" class="input-box" value="031-767-1044"></div>
 <div><label class="block text-xs text-gray-500 mb-1">판매 담당자</label><input type="text" id="i-manager" class="input-box" placeholder="담당자 성명"></div>
-<div class="col-span-2"><label class="block text-xs text-gray-500 mb-1">전표 번호 / 일자</label><input type="text" id="i-no" class="input-box" placeholder="전표번호 및 상담일"></div>
+<div>
+  <label class="block text-xs text-slate-700 font-bold mb-1">📅 상담일자</label>
+  <input type="date" id="i-date" class="input-box text-xs bg-slate-50">
 </div>
+<div>
+  <label class="block text-xs text-slate-700 font-bold mb-1">🧾 전표번호</label>
+  <input type="text" id="i-no" class="input-box font-mono text-xs" placeholder="예: 20260928-0012">
+</div>
+<div class="col-span-2">
+  <label class="block text-xs text-rose-600 font-bold mb-1">🚚 배송희망일</label>
+  <input type="date" id="i-delivery-date" class="input-box border-rose-300 bg-rose-50/60 font-semibold text-rose-900 text-xs">
+</div>
+</div>
+</div>
+
+<!-- 실시간 금액 확인 요약 패널 (입력 화면에서 기본 합계 금액과 고객결제 금액을 즉시 확인) -->
+<div class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-slate-700/80 my-3.5 grid grid-cols-2 sm:grid-cols-3 gap-2.5 items-center">
+  <div>
+    <span class="text-[11px] text-slate-300 font-semibold block flex items-center gap-1">
+      <span>🏷️</span> 기본 합계 금액
+    </span>
+    <span class="text-base sm:text-lg font-black text-white tracking-tight" id="live-sum-amount">0원</span>
+  </div>
+  <div>
+    <span class="text-[11px] text-rose-300 font-bold block flex items-center gap-1">
+      <span>💳</span> 고객 결제 금액 (실결제)
+    </span>
+    <span class="text-base sm:text-lg font-black text-rose-400 tracking-tight" id="live-pay-amount">0원</span>
+  </div>
+  <div class="col-span-2 sm:col-span-1 border-t sm:border-t-0 sm:border-l border-slate-700/80 pt-2 sm:pt-0 sm:pl-3">
+    <span class="text-[11px] text-amber-300 font-bold block flex items-center gap-1">
+      <span>✨</span> 최종 체감 혜택가
+    </span>
+    <span class="text-base sm:text-lg font-black text-amber-400 tracking-tight" id="live-net-amount">0원</span>
+  </div>
 </div>
 
 <div class="flex gap-2 mb-2 mt-4">
@@ -980,27 +1013,38 @@ selectEl.appendChild(opt);
 if (f.name === name && f.phone === phone) matchedFolderId = f.id;
 });
 
-// 초기화
+// 초기화: 기본값은 'new_folder' (새 고객으로 신규 등록)
 document.querySelector('input[name="save-method"][value="new_folder"]').checked = true;
 selectEl.classList.add('hidden');
 document.getElementById('lbl-save-overwrite').classList.add('hidden');
+document.getElementById('lbl-save-overwrite').classList.remove('flex');
 document.getElementById('save-edit-notice').classList.add('hidden');
 
-// 현재 수정 중인 견적이 있다면 덮어쓰기 옵션 활성화
+// 덮어쓰기 옵션 판별:
+// 기존에 편집 중이던 견적 ID가 있고, 현재 입력된 고객 이름이 기존 작업 고객과 일치할 때만 덮어쓰기 활성화!
 const activeQId = currentEditingQuoteId || window.currentActiveQuoteId;
-if (activeQId) {
-document.getElementById('save-edit-notice').classList.remove('hidden');
-const overRadio = document.querySelector('input[name="save-method"][value="overwrite"]');
-if (overRadio) overRadio.checked = true;
-document.getElementById('lbl-save-overwrite').classList.remove('hidden');
-document.getElementById('lbl-save-overwrite').classList.add('flex');
-} else if (folders.length > 0) {
-// 기존 폴더가 있으면 기존 폴더 선택 라디오 활성화 및 자동 선택
-if (matchedFolderId) {
-document.querySelector('input[name="save-method"][value="existing_folder"]').checked = true;
-selectEl.classList.remove('hidden');
-selectEl.value = matchedFolderId;
-}
+const activeCustName = window.currentActiveCustomerName;
+const isSameCustomer = Boolean(activeCustName && name && (name === activeCustName || activeCustName.includes(name) || name.includes(activeCustName)));
+
+if (activeQId && isSameCustomer) {
+  document.getElementById('save-edit-notice').classList.remove('hidden');
+  const overRadio = document.querySelector('input[name="save-method"][value="overwrite"]');
+  if (overRadio) overRadio.checked = true;
+  document.getElementById('lbl-save-overwrite').classList.remove('hidden');
+  document.getElementById('lbl-save-overwrite').classList.add('flex');
+} else {
+  // 새 고객이거나 다른 고객인 경우: 이전 견적/고객 바인딩을 리셋하고 무조건 '새 폴더(신규 고객) 등록'으로 기본 설정
+  window.currentActiveQuoteId = null;
+  window.currentEditingQuoteId = null;
+  currentEditingQuoteId = null;
+  window.currentActiveCustomerId = null;
+  window.currentActiveCustomerName = null;
+  document.querySelector('input[name="save-method"][value="new_folder"]').checked = true;
+  if (matchedFolderId) {
+    document.querySelector('input[name="save-method"][value="existing_folder"]').checked = true;
+    selectEl.classList.remove('hidden');
+    selectEl.value = matchedFolderId;
+  }
 }
 
 if (folders.length === 0) {
@@ -1298,7 +1342,9 @@ const name = document.getElementById('i-name').value || '';
 const cPhone = document.getElementById('i-c-phone').value || '';
 const phone = document.getElementById('i-phone').value || '031-767-1044';
 const manager = document.getElementById('i-manager').value || '';
-const no = document.getElementById('i-no').value || '';
+const date = document.getElementById('i-date')?.value || new Date().toISOString().split('T')[0];
+const no = document.getElementById('i-no')?.value || '';
+const deliveryDate = document.getElementById('i-delivery-date')?.value || '';
 
 const lumpItems = []; let itemSummary = '';
 document.querySelectorAll('.l-name').forEach((el, i) => {
@@ -1322,7 +1368,7 @@ const subHp = Array.from(document.querySelectorAll('.hp-sub-row')).map(row => ({
 const memoCust = document.getElementById('i-memo-customer')?.value || '';
 const memoMy = document.getElementById('i-memo')?.value || '';
 return {
-id: 'Q-' + Date.now(), type, name, cPhone, phone, manager, no, itemSummary: itemSummary || '가전 견적',
+id: 'Q-' + Date.now(), type, name, cPhone, phone, manager, no, date, deliveryDate, slipNo: no, itemSummary: itemSummary || '가전 견적',
 totalPrice: type === '일반' ? (window.currentSumLump || 0) : (window.currentContractSub || 0), 
 payPrice: type === '일반' ? (window.currentPayPriceLump || 0) : (window.currentContractSub || 0), 
 finalPrice: type === '일반' ? (window.currentNetPriceLump || 0) : (window.currentNetPriceSub || 0), 
@@ -1339,9 +1385,12 @@ const typeRadio = document.querySelector(`input[name="i-type"][value="${data.typ
 if (typeof switchInputTab === 'function') {
   switchInputTab(data.type === '구독' ? 'sub' : 'lump');
 }
-document.getElementById('i-name').value = data.name || ''; document.getElementById('i-c-phone').value = data.cPhone || '';
+document.getElementById('i-name').value = data.name || ''; document.getElementById('i-c-phone').value = data.cPhone || data.phone || '';
 document.getElementById('i-phone').value = data.phone || '031-767-1044';
-document.getElementById('i-manager').value = data.manager || ''; document.getElementById('i-no').value = data.no || '';
+document.getElementById('i-manager').value = data.manager || '';
+if (document.getElementById('i-date')) document.getElementById('i-date').value = data.date || '';
+if (document.getElementById('i-no')) document.getElementById('i-no').value = data.no || data.slipNo || '';
+if (document.getElementById('i-delivery-date')) document.getElementById('i-delivery-date').value = data.deliveryDate || '';
 
 document.getElementById('lump-inputs').innerHTML = '';
 if (data.lumpItems && data.lumpItems.length > 0) data.lumpItems.forEach(i => addLumpRow(i.name, i.model, i.price, i.qty)); else addLumpRow();
@@ -1480,10 +1529,13 @@ const typeText = document.querySelector('input[name="i-type"]:checked')?.value |
 const cName = document.getElementById('i-name').value ? `[${typeText}] ${document.getElementById('i-name').value} 고객님` : `[${typeText}] 고객님`;
 const cPhone = document.getElementById('i-c-phone').value || '';
 const cMan = document.getElementById('i-manager').value || '-';
-const cNo = document.getElementById('i-no').value || '-';
+const cDate = document.getElementById('i-date')?.value || '';
+const cNo = document.getElementById('i-no')?.value || '';
+const cDelivery = document.getElementById('i-delivery-date')?.value || '';
+const fullNoText = [cNo ? `전표: ${cNo}` : '', cDate ? `상담일: ${cDate}` : '', cDelivery ? `배송희망: ${cDelivery}` : ''].filter(Boolean).join(' | ') || (cNo || '-');
 
 ['s1','s2'].forEach(p => {
-setTxt(`${p}-name`, cName); setTxt(`${p}-manager`, cMan); setTxt(`${p}-no`, cNo); setTxt(`${p}-phone`, cPhone ? `${cPhone}` : '');
+setTxt(`${p}-name`, cName); setTxt(`${p}-manager`, cMan); setTxt(`${p}-no`, fullNoText); setTxt(`${p}-phone`, cPhone ? `${cPhone}` : '');
 });
 
 const lCardText = document.getElementById('l-card')?.value; setTxt('s1-card', lCardText && lCardText !== '미정(상담안함)' ? `[${lCardText}]` : ''); const sCardCorpObj = document.getElementById('s-card-corp'); setTxt('s2-card-name', sCardCorpObj && sCardCorpObj.value !== 'none' ? `[${sCardCorpObj.options[sCardCorpObj.selectedIndex].text} 제휴]` : '');
@@ -1763,6 +1815,22 @@ if (isSubTab) {
 if (mobBadge) mobBadge.innerText = mobNetTxt;
 if (mobBottom) mobBottom.innerText = mobNetTxt;
 
+// 실시간 입력 요약 패널 업데이트 (기본 합계 금액 및 고객 결제 금액 즉시 확인)
+const liveSumEl = document.getElementById('live-sum-amount');
+const livePayEl = document.getElementById('live-pay-amount');
+const liveNetEl = document.getElementById('live-net-amount');
+if (liveSumEl && livePayEl && liveNetEl) {
+    if (isSubTab) {
+        liveSumEl.innerText = `월 ${format(sMonthSum)}원 (총 ${format(sContract)}원)`;
+        livePayEl.innerText = `월 ${format(p1_billed)}원`;
+        liveNetEl.innerText = sNetTotal_raw < 0 ? `0원 (+${format(Math.abs(sNetTotal_raw))}원)` : `월 ${format(sNetTotal)}원`;
+    } else {
+        liveSumEl.innerText = `${format(lSum)}원`;
+        livePayEl.innerText = `${format(lPay)}원`;
+        liveNetEl.innerText = lNet_raw < 0 ? `0원 (+${format(Math.abs(lNet_raw))}원)` : `${format(lNet)}원`;
+    }
+}
+
 }
 
 // [모바일 반응형 뷰 자동 전환 스크립트]
@@ -1943,18 +2011,26 @@ function resetQuotation() {
 
 function executeResetQuotation() {
   document.querySelector('input[name="i-type"][value="일반"]').checked = true;
-  ['i-name', 'i-c-phone', 'i-manager', 'i-no', 'l-dc', 'l-pt-tot', 'l-pt-use', 'l-cash', 's-cash', 'i-memo-customer', 'i-memo'].forEach(id => { const el=document.getElementById(id); if(el)el.value=''; });
+  ['i-name', 'i-c-phone', 'i-manager', 'i-no', 'i-delivery-date', 'l-dc', 'l-pt-tot', 'l-pt-use', 'l-cash', 's-cash', 'i-memo-customer', 'i-memo'].forEach(id => { 
+    const el = document.getElementById(id); 
+    if (el) el.value = ''; 
+  });
+  if (document.getElementById('i-date')) {
+    document.getElementById('i-date').value = new Date().toISOString().split('T')[0];
+  }
   document.getElementById('i-phone').value = '031-767-1044';
   document.getElementById('lump-inputs').innerHTML = ''; addLumpRow(); document.getElementById('l-card').selectedIndex = 0; document.getElementById('lump-hp-container').innerHTML = ''; document.getElementById('lump-benefit-container').innerHTML = '';
   document.getElementById('sub-inputs').innerHTML = ''; addSubRow(); document.getElementById('s-card-corp').value = 'none'; updateCardTiers(); document.getElementById('sub-hp-container').innerHTML = '';
   calc();
   currentEditingFolderId = null;
   currentEditingQuoteId = null;
-  const banner = document.getElementById('crm-loaded-banner');
-  if (banner) banner.classList.add('hidden');
   window.currentActiveCustomerId = null;
   window.currentActiveCustomerName = null;
-  showModal('초기화 완료 🔄', '내용이 모두 초기화되었습니다.', true, false);
+  window.currentActiveQuoteId = null;
+  window.currentEditingQuoteId = null;
+  const banner = document.getElementById('crm-loaded-banner');
+  if (banner) banner.classList.add('hidden');
+  showModal('초기화 완료 🔄', '모든 고객 정보, 품목 및 견적 내용이 깨끗하게 초기화되었습니다. 신규 고객을 입력해주세요.', true, false);
 }
 
 function updateCardTiers() {

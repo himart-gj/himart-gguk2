@@ -686,7 +686,7 @@ export async function syncSheetStatus(
 export function saveCustomerQuote(
   customerId: string,
   quote: import('../types/crm').QuoteRecord,
-  customerFallbackInfo?: { name?: string; phone?: string },
+  customerFallbackInfo?: { name?: string; phone?: string; date?: string; slipNo?: string; deliveryDate?: string },
   overwriteQuoteId?: string
 ): CustomerItem[] {
   const current = getCachedCustomers();
@@ -694,13 +694,17 @@ export function saveCustomerQuote(
   const cleanQPhone = (quote.rawCalculatorData?.phone || quote.rawCalculatorData?.cPhone || customerFallbackInfo?.phone || '').replace(/\D/g, '');
   const qName = (quote.rawCalculatorData?.name || customerFallbackInfo?.name || '').trim();
   const qLast8 = cleanQPhone.length >= 8 ? cleanQPhone.slice(-8) : '';
+  const newSlipNo = customerFallbackInfo?.slipNo || quote.rawCalculatorData?.slipNo || quote.rawCalculatorData?.no || '';
+  const newDate = customerFallbackInfo?.date || quote.rawCalculatorData?.date || '';
+  const newDeliveryDate = customerFallbackInfo?.deliveryDate || quote.rawCalculatorData?.deliveryDate || '';
 
   const updated = current.map((c) => {
     const cleanCPhone = (c.phone || '').replace(/\D/g, '');
     const cLast8 = cleanCPhone.length >= 8 ? cleanCPhone.slice(-8) : '';
-    const isTarget = (customerId && c.id === customerId) || 
-                     (qLast8 && cLast8 && qLast8 === cLast8) ||
-                     (qName && qName !== '고객' && qName !== '고객님' && qName !== '고객 성명' && c.name.trim() === qName);
+    // 오버라이트 요청이거나 정확한 customerId 일치 시에만 타겟팅 (새 고객 등록 시 엉뚱한 기존 고객으로 흡수되지 않도록 방지)
+    const isTarget = overwriteQuoteId 
+      ? ((customerId && c.id === customerId) || (qLast8 && cLast8 && qLast8 === cLast8) || (qName && c.name.trim() === qName))
+      : (customerId && c.id === customerId);
 
     if (isTarget) {
       found = true;
@@ -713,20 +717,21 @@ export function saveCustomerQuote(
       if (quoteIdx < 0 && quote.id) {
         quoteIdx = existingQuotes.findIndex((q) => q.id === quote.id);
       }
-      // If user requested overwrite (or overwriteQuoteId was specified) but exact ID wasn't found,
-      // fallback to overwriting the most recent quote (index 0) rather than duplicating
       if (quoteIdx < 0 && overwriteQuoteId && existingQuotes.length > 0) {
         quoteIdx = 0;
       }
 
       if (quoteIdx >= 0) {
         // OVERWRITE existing quote in-place
-        quote.id = existingQuotes[quoteIdx].id; // maintain identical quote ID
+        quote.id = existingQuotes[quoteIdx].id;
         existingQuotes[quoteIdx] = quote;
       } else {
         // Add new quote
         existingQuotes.unshift(quote);
       }
+
+      const updatedDeliveryDate = newDeliveryDate || c.deliveryDate;
+      const updatedDDay = updatedDeliveryDate ? calculateDDay(updatedDeliveryDate) : c.dDay;
 
       return {
         ...c,
@@ -734,26 +739,34 @@ export function saveCustomerQuote(
         netAmount: quote.netAmount,
         items: quote.itemSummary || c.items,
         quotes: existingQuotes,
+        slipNo: newSlipNo || c.slipNo,
+        date: newDate || c.date,
+        deliveryDate: updatedDeliveryDate,
+        dDay: updatedDDay,
       };
     }
     return c;
   });
 
-  // If customer not found in existing list, create a new CRM customer record so quote is NEVER lost
+  // If customer not found in existing list (신규 고객 등록), create a new CRM customer record
   if (!found) {
-    const fallbackName = qName || customerFallbackInfo?.name || '일반 고객';
+    const fallbackName = qName || customerFallbackInfo?.name || '신규 고객';
+    const finalDeliveryDate = newDeliveryDate || undefined;
     const newCustomer: CustomerItem = {
       id: customerId || 'cust-' + Date.now(),
       source: 'tab1',
       name: fallbackName,
       phone: quote.rawCalculatorData?.phone || quote.rawCalculatorData?.cPhone || customerFallbackInfo?.phone || '연락처 미등록',
+      slipNo: newSlipNo || undefined,
       category: quote.itemSummary || '가전 견적',
       items: quote.itemSummary || '가전 견적',
       paidAmount: quote.paidAmount,
       netAmount: quote.netAmount,
       status: '상담진행중',
       rawStatus: '상담진행',
-      date: new Date().toISOString().split('T')[0],
+      date: newDate || new Date().toISOString().split('T')[0],
+      deliveryDate: finalDeliveryDate,
+      dDay: finalDeliveryDate ? calculateDDay(finalDeliveryDate) : undefined,
       note: quote.internalMemo || quote.customerMemo || '견적 계산기에서 직접 작성 및 저장됨',
       quotes: [quote],
       logs: [],

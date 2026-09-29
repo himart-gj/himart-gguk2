@@ -230,7 +230,9 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
     name: customer.name || '고객님',
     phone: customer.phone || '',
     manager,
-    slipNo: customer.slipNo || customer.date || '',
+    slipNo: customer.slipNo || '',
+    date: customer.date || '',
+    deliveryDate: customer.deliveryDate || '',
     mode,
     items,
     lumpCard,
@@ -244,7 +246,7 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
     customerMemo,
     internalMemo,
     docUrl: customer.docUrl,
-  };
+  } as ParsedQuotation & { date?: string; deliveryDate?: string };
 }
 
 /**
@@ -258,7 +260,7 @@ export async function fetchAIExtractedQuotation(customer: CustomerItem): Promise
 /**
  * Injects structured quotation data into the Quotation Calculator DOM and recalculates.
  */
-export function applyQuotationDataToDOM(data: ParsedQuotation): void {
+export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string; deliveryDate?: string }): void {
   // 1. Switch Mode Tab (일반구매 or 구독구매)
   if (typeof (window as any).switchInputTab === 'function') {
     (window as any).switchInputTab(data.mode);
@@ -276,12 +278,16 @@ export function applyQuotationDataToDOM(data: ParsedQuotation): void {
   const nameInput = document.getElementById('i-name') as HTMLInputElement | null;
   const phoneInput = document.getElementById('i-c-phone') as HTMLInputElement | null;
   const managerInput = document.getElementById('i-manager') as HTMLInputElement | null;
+  const dateInput = document.getElementById('i-date') as HTMLInputElement | null;
   const noInput = document.getElementById('i-no') as HTMLInputElement | null;
+  const deliveryDateInput = document.getElementById('i-delivery-date') as HTMLInputElement | null;
 
   if (nameInput) nameInput.value = data.name || '';
   if (phoneInput) phoneInput.value = data.phone || '';
   if (managerInput) managerInput.value = data.manager || '';
+  if (dateInput && data.date) dateInput.value = data.date;
   if (noInput) noInput.value = data.slipNo || '';
+  if (deliveryDateInput && data.deliveryDate) deliveryDateInput.value = data.deliveryDate;
 
   // 4. Items & Pricing
   if (data.mode === 'lump') {
@@ -602,6 +608,10 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
       name: (document.getElementById('i-name') as HTMLInputElement | null)?.value || '',
       phone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value || '',
       manager: (document.getElementById('i-manager') as HTMLInputElement | null)?.value || '',
+      date: (document.getElementById('i-date') as HTMLInputElement | null)?.value || new Date().toISOString().split('T')[0],
+      no: (document.getElementById('i-no') as HTMLInputElement | null)?.value || '',
+      slipNo: (document.getElementById('i-no') as HTMLInputElement | null)?.value || '',
+      deliveryDate: (document.getElementById('i-delivery-date') as HTMLInputElement | null)?.value || '',
       lumpItems: mode === 'lump' ? items : [],
       subItems: mode === 'sub' ? items : [],
     },
@@ -615,45 +625,40 @@ export function saveCurrentCalculatorAsQuote(customTitle?: string, isOverwrite?:
   const quote = extractQuoteRecordFromDOM(customTitle);
   if (!quote) return null;
 
+  const currentName = (document.getElementById('i-name') as HTMLInputElement | null)?.value?.trim() || (window as any).currentActiveCustomerName || '';
+  const currentPhone = (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || '';
+  const currentDate = (document.getElementById('i-date') as HTMLInputElement | null)?.value || new Date().toISOString().split('T')[0];
+  const currentSlipNo = (document.getElementById('i-no') as HTMLInputElement | null)?.value?.trim() || '';
+  const currentDelivery = (document.getElementById('i-delivery-date') as HTMLInputElement | null)?.value || '';
+
   const activeQuoteId = (window as any).currentActiveQuoteId || (window as any).currentEditingQuoteId;
   if (isOverwrite && activeQuoteId) {
     quote.id = activeQuoteId;
   }
 
-  const activeCustomerId = (window as any).currentActiveCustomerId;
-  const currentName = (document.getElementById('i-name') as HTMLInputElement | null)?.value?.trim() || (window as any).currentActiveCustomerName || '';
-  const currentPhone = (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || '';
-
-  // Find target customer ID
-  let targetId = activeCustomerId;
-  if (!targetId && (currentName || currentPhone)) {
-    try {
-      const cached = JSON.parse(localStorage.getItem('himart_crm_customers_cache') || '[]');
-      const cleanP = (currentPhone || '').replace(/\D/g, '');
-      const last8 = cleanP.length >= 8 ? cleanP.slice(-8) : '';
-      const found = cached.find((c: any) => {
-        const cPhone = (c.phone || '').replace(/\D/g, '');
-        const cLast8 = cPhone.length >= 8 ? cPhone.slice(-8) : '';
-        return (last8 && cLast8 && last8 === cLast8) ||
-               (currentName && c.name && c.name.trim() === currentName);
-      });
-      if (found) targetId = found.id;
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  if (!targetId) {
+  // targetId 결정 로직:
+  // 오직 isOverwrite가 true이고 기존 activeCustomerId가 일치할 때만 덮어쓰기 대상 ID 사용!
+  // 신규 고객 등록일 때는 무조건 고유한 신규 ID 발급!
+  let targetId: string;
+  if (isOverwrite && (window as any).currentActiveCustomerId) {
+    targetId = (window as any).currentActiveCustomerId;
+  } else {
     targetId = 'crm-' + Date.now();
   }
 
   // Import and call saveCustomerQuote immediately
   import('./gasApi').then(({ saveCustomerQuote }) => {
-    const finalName = currentName || '일반 고객';
+    const finalName = currentName || '신규 고객';
     saveCustomerQuote(
       targetId,
       quote,
-      { name: finalName, phone: currentPhone },
+      { 
+        name: finalName, 
+        phone: currentPhone,
+        date: currentDate,
+        slipNo: currentSlipNo,
+        deliveryDate: currentDelivery
+      },
       isOverwrite ? (activeQuoteId || 'true') : undefined
     );
     
