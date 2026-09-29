@@ -17,7 +17,9 @@ import {
   FileSpreadsheet,
   Trash2,
   Clock,
-  UserCheck
+  UserCheck,
+  Bell,
+  Smartphone
 } from 'lucide-react';
 import { 
   getGasApiUrl, 
@@ -31,6 +33,10 @@ import {
   permanentlyDeleteCustomer,
   purgeAllDeletedCustomers
 } from '../services/gasApi';
+import { 
+  requestNotificationPermission, 
+  sendMobileNotification 
+} from '../services/notificationService';
 import { DeletedCustomerRecord } from '../types/crm';
 
 interface SettingsModalProps {
@@ -347,6 +353,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </button>
                     )
                   )}
+                </div>
+              </div>
+
+              {/* Auto Sync & Mobile Notifications Management */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🔔</span>
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-xs sm:text-sm">
+                        실시간 자동 동기화 &amp; 모바일 알림
+                      </h4>
+                      <p className="text-[11px] text-slate-500">
+                        오전 9시 · 오후 1시 · 오후 6시 정시 자동 동기화 및 3분 주기 실시간 감지
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await requestNotificationPermission();
+                      if (res.granted) {
+                        await sendMobileNotification({
+                          title: '🔔 국지CRM 알림 활성화 완료',
+                          body: '스마트폰 화면이 꺼져있거나 다른 앱 사용 중에도 신규 고객 접수 및 배송 알림이 도착합니다.',
+                        });
+                      }
+                      alert(res.message);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition active:scale-95 cursor-pointer shrink-0 flex items-center gap-1"
+                  >
+                    <Smartphone className="w-3.5 h-3.5 text-rose-400" />
+                    <span>알림 켜기 / 테스트</span>
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-[11px] font-bold text-slate-600 pt-1">
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-2xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>3분 주기 실시간 감지</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-2xs">
+                    <span className="text-xs">⏰</span>
+                    <span>09:00 / 13:00 / 18:00 정시</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-xl border border-slate-200 flex items-center gap-1.5 shadow-2xs">
+                    <span className="text-xs">⚡</span>
+                    <span>화면 복귀 시 즉시 동기화</span>
+                  </div>
                 </div>
               </div>
 

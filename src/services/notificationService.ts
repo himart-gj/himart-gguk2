@@ -139,3 +139,69 @@ export async function sendMobileNotification(payload: NotificationPayload): Prom
     }
   }
 }
+
+/**
+ * 📱 모바일 상단바 알림창 상주 고정 알림 (Persistent Notification)
+ * 앱을 닫거나 다른 작업을 해도 스마트폰 알림창에 실시간 업무 현황이 상시 노출됩니다.
+ */
+export async function updatePersistentStatusNotification(summary: {
+  newLeadCount: number;
+  todayDeliveryCount: number;
+  giftCount: number;
+}): Promise<boolean> {
+  if (!isNotificationSupported() || Notification.permission !== 'granted') return false;
+
+  const title = `⚡ [국지CRM] 실시간 매장 업무 현황`;
+  const body = `신규 미발송 ${summary.newLeadCount}건 · 오늘 배송 ${summary.todayDeliveryCount}건 · 미지급 사은품 ${summary.giftCount}건`;
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && typeof reg.showNotification === 'function') {
+        await reg.showNotification(title, {
+          body,
+          icon: './icon.svg',
+          badge: './icon.svg',
+          tag: 'himart-persistent-status-bar',
+          // @ts-ignore
+          renotify: false,
+          requireInteraction: true, // 사용자가 지우기 전까지 상단바 상주
+          data: { url: window.location.origin + window.location.pathname },
+        });
+        return true;
+      }
+    }
+  } catch (e) {
+    console.error('Failed to update persistent notification:', e);
+  }
+  return false;
+}
+
+/**
+ * 🚨 신규 고객 유입 시 즉시 팝업/진동 알림
+ */
+export async function sendNewCustomerAlert(customerName: string, itemsSummary: string): Promise<boolean> {
+  // 모바일 기기 진동
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      navigator.vibrate([300, 150, 300, 150, 400]);
+    } catch (e) {}
+  }
+
+  return sendMobileNotification({
+    title: `🚨 [신규 접수] ${customerName} 고객님 등록!`,
+    body: `${itemsSummary || '가전 견적 상담'}\n지금 즉시 CRM에서 확인하고 문자를 발송하세요.`,
+    tag: `new-customer-${Date.now()}`,
+  });
+}
+
+/**
+ * ⏰ 정시(09:00, 13:00, 18:00) 정기 브리핑 알림
+ */
+export async function sendScheduledSyncNotification(timeLabel: string, stats: { newCount: number; deliveryCount: number }): Promise<boolean> {
+  return sendMobileNotification({
+    title: `⏰ [${timeLabel} 정기 점검] 구글 시트 동기화 완료`,
+    body: `신규 미발송 ${stats.newCount}건, 오늘 배송 ${stats.deliveryCount}건이 있습니다. 현황을 점검하세요!`,
+    tag: `scheduled-sync-${timeLabel}`,
+  });
+}

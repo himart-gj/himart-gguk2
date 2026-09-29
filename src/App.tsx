@@ -24,8 +24,15 @@ import {
   calculateDDay,
   deleteCustomerLog,
   updateCustomerGift,
-  deleteCustomer
+  deleteCustomer,
+  normalizePipelineStatus
 } from './services/gasApi';
+import { 
+  sendNewCustomerAlert, 
+  sendScheduledSyncNotification, 
+  updatePersistentStatusNotification,
+  requestNotificationPermission
+} from './services/notificationService';
 import { CRMHeader } from './components/CRMHeader';
 import { CompactCustomerCard } from './components/CompactCustomerCard';
 import { CustomerDetailModal } from './components/CustomerDetailModal';
@@ -66,14 +73,36 @@ export const App: React.FC = () => {
   const [isQuotePickerOpen, setIsQuotePickerOpen] = useState(false);
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
 
-  // Initial load
+  // Initial and Scheduled Data Load
   const loadData = async (showToast = false) => {
     setIsRefreshing(true);
+    const prevList = getCachedCustomers();
+    const prevIds = new Set(prevList.map((c) => c.id));
+    const prevPhones = new Set(prevList.map((c) => (c.phone || '').replace(/\D/g, '')).filter(Boolean));
+
     const result = await fetchCustomersFromGas();
     setCustomers(result.customers);
     setIsGasConnected(result.fromGas);
     setIsRefreshing(false);
-    if (showToast && result.message) {
+
+    // 신규 고객 유입 감지 (이전에 없던 고객이 새로 들어왔을 때 실시간 알림)
+    if (result.fromGas && prevList.length > 0) {
+      const newArrived = result.customers.filter((c) => {
+        const cleanP = (c.phone || '').replace(/\D/g, '');
+        return !prevIds.has(c.id) && (!cleanP || !prevPhones.has(cleanP));
+      });
+
+      if (newArrived.length > 0) {
+        const first = newArrived[0];
+        const alertMsg = `🔔 신규 고객 [${first.name}]님 외 ${newArrived.length - 1}명이 구글 시트에서 실시간 자동 등록되었습니다!`;
+        setStatusMessage(alertMsg);
+        sendNewCustomerAlert(first.name, first.items || first.category || '가전 상담 접수');
+        setTimeout(() => setStatusMessage(null), 5000);
+      } else if (showToast && result.message) {
+        setStatusMessage(result.message);
+        setTimeout(() => setStatusMessage(null), 4000);
+      }
+    } else if (showToast && result.message) {
       setStatusMessage(result.message);
       setTimeout(() => setStatusMessage(null), 4000);
     }
@@ -82,7 +111,67 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadData();
     setIsGasConnected(Boolean(getGasApiUrl()));
+
+    // 알림 권한 자동 확인/요청
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      setTimeout(() => {
+        requestNotificationPermission();
+      }, 3000);
+    }
   }, []);
+
+  // 1. 화면 포커스 복귀(스마트폰 켜짐, 다른 앱에서 복귀) 시 자동 백그라운드 동기화
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadData(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
+
+  // 2. 3분 주기 자동 폴링 및 매일 09시, 13시, 18시 정시 자동 동기화 & 알림 스케줄러
+  useEffect(() => {
+    const checkScheduledTimes = () => {
+      const now = new Date();
+      const hour = now.getHours();
+      const minute = now.getMinutes();
+      const dateStr = now.toISOString().split('T')[0];
+
+      // 09:00, 13:00, 18:00 정시 감지 (0~4분 사이)
+      const targetHours = [9, 13, 18];
+      if (targetHours.includes(hour) && minute <= 4) {
+        const lockKey = `himart_scheduled_sync_${dateStr}_${hour}`;
+        if (!localStorage.getItem(lockKey)) {
+          localStorage.setItem(lockKey, 'done');
+          loadData(true);
+          const timeLabel = hour === 9 ? '오전 9시' : hour === 13 ? '오후 1시' : '오후 6시';
+          const newCount = customers.filter((c) => normalizePipelineStatus(c.status) === '신규/미발송').length;
+          const todayDelivery = customers.filter((c) => c.dDay === 0).length;
+          sendScheduledSyncNotification(timeLabel, { newCount, deliveryCount: todayDelivery });
+          
+          if (hour === 9) {
+            setIsBriefingOpen(true);
+          }
+        }
+      }
+    };
+
+    // 3분(180초)마다 시트 자동 백그라운드 갱신
+    const pollingInterval = setInterval(() => {
+      loadData(false);
+      checkScheduledTimes();
+    }, 3 * 60 * 1000);
+
+    // 1분마다 정시 시각 체크
+    const clockInterval = setInterval(checkScheduledTimes, 60 * 1000);
+
+    return () => {
+      clearInterval(pollingInterval);
+      clearInterval(clockInterval);
+    };
+  }, [customers]);
 
   // Sync activeTab with DOM #calculator-container
   useEffect(() => {
@@ -302,7 +391,7 @@ export const App: React.FC = () => {
     }, 100);
   };
 
-  // Calculate status counts
+  // Calculate status counts (Normalized to prevent count mismatch)
   const counts = useMemo(() => {
     const map: Record<string, number> = {
       전체: customers.length,
@@ -314,8 +403,11 @@ export const App: React.FC = () => {
       배송완료: 0,
     };
     customers.forEach((c) => {
-      if (map[c.status] !== undefined) {
-        map[c.status] += 1;
+      const st = normalizePipelineStatus(c.status);
+      if (map[st] !== undefined) {
+        map[st] += 1;
+      } else {
+        map['신규/미발송'] += 1;
       }
     });
     return map as Record<PipelineStatus | '전체', number>;
@@ -326,8 +418,11 @@ export const App: React.FC = () => {
     return customers
       .filter((c) => {
         // Tab Filter
-        if (filterStatus !== '전체' && c.status !== filterStatus) {
-          return false;
+        if (filterStatus !== '전체') {
+          const st = normalizePipelineStatus(c.status);
+          if (st !== filterStatus) {
+            return false;
+          }
         }
 
         // Search Query
@@ -352,7 +447,8 @@ export const App: React.FC = () => {
         if (sortBy === 'delivery') {
           // 신규 미발송 고객은 배송일자 미지정이더라도 CRM 상단에 최우선 노출
           const getWeight = (c: CustomerItem) => {
-            if (c.status === '신규/미발송') return -10;
+            const st = normalizePipelineStatus(c.status);
+            if (st === '신규/미발송') return -10;
             if (c.dDay === null || c.dDay === undefined) return 99999;
             if (c.dDay < 0) return 90000 + Math.abs(c.dDay); // Past delivery dates
             return c.dDay;
@@ -373,13 +469,30 @@ export const App: React.FC = () => {
 
   // Calculate urgent items count (today/tomorrow deliveries, new unsent inquiries, logistics wait, undelivered promised gifts)
   const urgentCount = useMemo(() => {
-    return customers.filter((c) => 
-      (c.dDay !== null && c.dDay >= 0 && c.dDay <= 1) || 
-      (c.status === '신규/미발송' || (!c.isSmsSent && c.source === 'tab1')) ||
-      (c.status === '물류대기') ||
-      (Boolean(c.giftItem) && !c.isGiftDelivered)
-    ).length;
+    return customers.filter((c) => {
+      const st = normalizePipelineStatus(c.status);
+      return (
+        (c.dDay !== null && c.dDay >= 0 && c.dDay <= 1) || 
+        (st === '신규/미발송' || (!c.isSmsSent && c.source === 'tab1')) ||
+        (st === '물류대기') ||
+        (Boolean(c.giftItem) && !c.isGiftDelivered)
+      );
+    }).length;
   }, [customers]);
+
+  // Update persistent notification on Android notification bar
+  useEffect(() => {
+    if (customers.length > 0) {
+      const todayDeliveries = customers.filter((c) => c.dDay === 0).length;
+      const newLeads = counts['신규/미발송'] || 0;
+      const undeliveredGifts = customers.filter((c) => Boolean(c.giftItem) && !c.isGiftDelivered).length;
+      updatePersistentStatusNotification({
+        newLeadCount: newLeads,
+        todayDeliveryCount: todayDeliveries,
+        giftCount: undeliveredGifts,
+      });
+    }
+  }, [customers, counts]);
 
   // Automatically trigger morning briefing popup on first open of the day if urgent items exist
   useEffect(() => {

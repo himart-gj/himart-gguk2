@@ -296,44 +296,49 @@ export function calculateDDay(targetDateStr?: string): number | null {
   return diffDays;
 }
 
-export function mapRawStatusToPipeline(source: 'tab1' | 'tab2', rawStatus: string): PipelineStatus {
-  const s = (rawStatus || '').trim();
-
-  if (source === 'tab1') {
-    if (s.includes('발송완료') || s.includes('발송 완료') || s.includes('상담진행') || s.includes('상담중')) {
-      return '상담진행중';
-    }
-    if (s.includes('배송완료') || s.includes('설치완료')) {
-      return '배송완료';
-    }
-    if (s.includes('미구매') || s.includes('고민')) {
-      return '미구매/고민중';
-    }
-    if (s.includes('배송대기') || s.includes('배송예정')) {
-      return '배송대기';
-    }
-    // Tab1: Unprocessed / Blank status represents new incoming lead
+export function normalizePipelineStatus(raw: string | undefined | null, defaultFallback: PipelineStatus = '신규/미발송'): PipelineStatus {
+  if (!raw) return defaultFallback;
+  const s = String(raw).trim();
+  
+  if (
+    s === '신규/미발송' || 
+    s.includes('신규') || 
+    s.includes('미발송') || 
+    s.includes('접수') || 
+    s.includes('미처리') || 
+    s.includes('미확인') || 
+    (!s.includes('배송') && !s.includes('물류') && s.includes('대기'))
+  ) {
     return '신규/미발송';
   }
-
-  // tab2 (Store In-store Orders & Delivery Tracking)
-  if (s.includes('배송 완료') || s.includes('배송완료') || s.includes('설치완료')) {
+  if (s.includes('배송완료') || s.includes('배송 완료') || s.includes('설치완료') || s.includes('설치 완료')) {
     return '배송완료';
   }
   if (s.includes('물류') || s.includes('입고')) {
     return '물류대기';
   }
-  if (s.includes('미구매') || s.includes('고민') || s.includes('비교')) {
+  if (s.includes('미구매') || s.includes('고민') || s.includes('취소') || s.includes('보류') || s.includes('비교')) {
     return '미구매/고민중';
   }
-  if (s.includes('배송대기') || s.includes('결제완료') || s.includes('배송예정')) {
+  if (s.includes('배송대기') || s.includes('배송예정') || s.includes('결제완료')) {
     return '배송대기';
   }
-  if (s.includes('상담') || s.includes('견적대기') || s.includes('리뉴얼')) {
+  if (s.includes('상담') || s.includes('진행') || s.includes('발송완료') || s.includes('발송 완료')) {
     return '상담진행중';
   }
+  
+  return defaultFallback;
+}
 
-  return '상담진행중';
+export function mapRawStatusToPipeline(source: 'tab1' | 'tab2', rawStatus: string): PipelineStatus {
+  const s = (rawStatus || '').trim();
+
+  // If status is empty, blank, hyphen, or explicitly indicates new lead
+  if (!s || s === '-' || s.includes('신규') || s.includes('미발송') || s.includes('접수') || s.includes('미처리')) {
+    return '신규/미발송';
+  }
+
+  return normalizePipelineStatus(s, source === 'tab1' ? '신규/미발송' : '배송대기');
 }
 
 export function parseCsvLine(str: string): string[] {
@@ -697,7 +702,7 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     netAmount: finalNet,
     benefit,
     deliveryDate: finalDeliveryDate,
-    status: rawObj.status || status,
+    status: normalizePipelineStatus(rawObj.status || status),
     rawStatus: rawStatus || (source === 'tab1' ? (isSmsSent ? '발송 완료' : '신규(미발송)') : '배송대기'),
     date: rawObj.date || intakeDate || new Date().toISOString().split('T')[0],
     note,
@@ -1212,5 +1217,22 @@ function doPost(e) {
     return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
       .setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// 🔔 [선택 옵션] 앱이 완전히 꺼져있어도 스마트폰으로 100% 즉시 알림 받기 (구글 시트 자체 트리거)
+// Apps Script 좌측 [트리거 (시계 아이콘)] -> [트리거 추가] -> onNewCustomerAlert 함수 선택 -> [수정 시] 또는 [시간 기반(매일 9시, 13시, 18시)] 등록
+function onNewCustomerAlert(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("tab1") || ss.getSheetByName("온라인예약");
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return;
+
+  var name = sheet.getRange(lastRow, 1).getValue();
+  var phone = sheet.getRange(lastRow, 2).getValue();
+  var category = sheet.getRange(lastRow, 3).getValue();
+
+  // 담당자 이메일(스마트폰 Gmail 알림)로 즉시 팝업/진동 전송 (필요 시 주석 해제 후 본인 이메일 입력)
+  // MailApp.sendEmail(Session.getActiveUser().getEmail(), "[국지CRM] 신규 고객 접수: " + name + "님", "신규 접수: " + name + " (" + phone + ") - " + category);
 }
 `;
