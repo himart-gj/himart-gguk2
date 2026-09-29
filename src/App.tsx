@@ -350,13 +350,16 @@ export const App: React.FC = () => {
       })
       .sort((a, b) => {
         if (sortBy === 'delivery') {
-          // Urgent delivery D-day first (0, 1, 2, ...), negative (passed) or items with no date at end
+          // 신규 미발송 고객은 배송일자 미지정이더라도 CRM 상단에 최우선 노출
           const getWeight = (c: CustomerItem) => {
+            if (c.status === '신규/미발송') return -10;
             if (c.dDay === null || c.dDay === undefined) return 99999;
             if (c.dDay < 0) return 90000 + Math.abs(c.dDay); // Past delivery dates
             return c.dDay;
           };
-          return getWeight(a) - getWeight(b);
+          const diff = getWeight(a) - getWeight(b);
+          if (diff !== 0) return diff;
+          return (b.date || b.id).localeCompare(a.date || a.id);
         }
         if (sortBy === 'price') {
           const priceA = a.paidAmount || 0;
@@ -394,7 +397,12 @@ export const App: React.FC = () => {
       {/* Universal Top Header */}
       <CRMHeader
         currentTab={activeTab}
-        onSwitchTab={setActiveTab}
+        onSwitchTab={(tab) => {
+          setActiveTab(tab);
+          if (tab === 'crm') {
+            setCustomers(getCachedCustomers());
+          }
+        }}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onRefresh={() => loadData(true)}
         onOpenNewCustomer={() => setIsNewCustomerOpen(true)}

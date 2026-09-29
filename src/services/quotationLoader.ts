@@ -1,6 +1,7 @@
 import { CustomerItem, QuoteRecord } from '../types/crm';
 import { extractQuotationWithGemini } from './gemini';
 import { formatLocalDate, formatLocalDateTime } from '../utils/date';
+import { saveCustomerQuote } from './gasApi';
 
 /**
  * 텍스트에서 금액과 단위를 추출하여 계산합니다.
@@ -603,17 +604,20 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
     subCardTier,
     customerMemo: rawData?.memoCust || memoCustEl?.value || '',
     internalMemo: rawData?.memoMy || memoMyEl?.value || '',
-    rawCalculatorData: rawData || {
+    rawCalculatorData: {
+      ...(rawData || {}),
       type: mode === 'lump' ? '일반' : '구독',
-      name: (document.getElementById('i-name') as HTMLInputElement | null)?.value || '',
-      phone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value || '',
-      manager: (document.getElementById('i-manager') as HTMLInputElement | null)?.value || '',
-      date: (document.getElementById('i-date') as HTMLInputElement | null)?.value || new Date().toISOString().split('T')[0],
-      no: (document.getElementById('i-no') as HTMLInputElement | null)?.value || '',
-      slipNo: (document.getElementById('i-no') as HTMLInputElement | null)?.value || '',
-      deliveryDate: (document.getElementById('i-delivery-date') as HTMLInputElement | null)?.value || '',
-      lumpItems: mode === 'lump' ? items : [],
-      subItems: mode === 'sub' ? items : [],
+      name: (document.getElementById('i-name') as HTMLInputElement | null)?.value?.trim() || rawData?.name || '',
+      cPhone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || rawData?.cPhone || '',
+      customerPhone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || rawData?.cPhone || '',
+      phone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || rawData?.cPhone || '',
+      manager: (document.getElementById('i-manager') as HTMLInputElement | null)?.value || rawData?.manager || '',
+      date: (document.getElementById('i-date') as HTMLInputElement | null)?.value || rawData?.date || new Date().toISOString().split('T')[0],
+      no: (document.getElementById('i-no') as HTMLInputElement | null)?.value || rawData?.no || '',
+      slipNo: (document.getElementById('i-no') as HTMLInputElement | null)?.value || rawData?.slipNo || '',
+      deliveryDate: (document.getElementById('i-delivery-date') as HTMLInputElement | null)?.value || rawData?.deliveryDate || '',
+      lumpItems: mode === 'lump' ? items : (rawData?.lumpItems || []),
+      subItems: mode === 'sub' ? items : (rawData?.subItems || []),
     },
   };
 }
@@ -655,44 +659,48 @@ export function saveCurrentCalculatorAsQuote(customTitle?: string, isOverwrite?:
     targetId = 'crm-' + Date.now();
   }
 
-  // Import and call saveCustomerQuote immediately
-  import('./gasApi').then(({ saveCustomerQuote }) => {
-    const finalName = currentName || '신규 고객';
-    saveCustomerQuote(
-      targetId,
-      quote,
-      { 
-        name: finalName, 
-        phone: currentPhone,
-        date: currentDate,
-        slipNo: currentSlipNo,
-        deliveryDate: currentDelivery
-      },
-      isOverwrite ? (activeQuoteId || 'true') : undefined
-    );
-    
-    // Set as active customer ID and quote ID
-    (window as any).currentActiveCustomerId = targetId;
-    (window as any).currentActiveQuoteId = quote.id;
-    (window as any).currentEditingQuoteId = quote.id;
-    (window as any).currentActiveCustomerName = finalName;
+  const finalName = currentName || '신규 고객';
 
-    // Dispatch event for React components to update
-    window.dispatchEvent(new CustomEvent('crm-customer-updated', { detail: { customerId: targetId } }));
+  // 즉시 동기 실행: 로컬 스토리지에 확실하고 즉각적으로 저장
+  saveCustomerQuote(
+    targetId,
+    quote,
+    { 
+      name: finalName, 
+      phone: currentPhone,
+      date: currentDate,
+      slipNo: currentSlipNo,
+      deliveryDate: currentDelivery
+    },
+    isOverwrite ? (activeQuoteId || 'true') : undefined
+  );
+  
+  // Set as active customer ID and quote ID
+  (window as any).currentActiveCustomerId = targetId;
+  (window as any).currentActiveQuoteId = quote.id;
+  (window as any).currentEditingQuoteId = quote.id;
+  (window as any).currentActiveCustomerName = finalName;
 
-    // Update banner in calculator DOM
-    const banner = document.getElementById('crm-loaded-banner');
-    const title = document.getElementById('crm-loaded-title');
-    const desc = document.getElementById('crm-loaded-desc');
-    const autoSaveBadge = document.getElementById('crm-loaded-autosave-badge');
+  // React 상태 즉시 동기화
+  if (typeof (window as any).refreshCRMCustomers === 'function') {
+    (window as any).refreshCRMCustomers();
+  }
 
-    if (banner) banner.classList.remove('hidden');
-    if (title) title.innerText = `👤 [${finalName}] ${isOverwrite ? '견적 덮어쓰기(수정) 완료' : '견적 저장됨'}`;
-    if (desc) desc.innerText = `체감가: ${quote.netAmount.toLocaleString()}원 | ${quote.itemSummary}`;
-    if (autoSaveBadge) {
-      autoSaveBadge.innerHTML = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">✓ ${isOverwrite ? 'CRM 견적 덮어쓰기 완료' : 'CRM 견적 저장 완료'} (${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})</span>`;
-    }
-  });
+  // Dispatch event for React components to update
+  window.dispatchEvent(new CustomEvent('crm-customer-updated', { detail: { customerId: targetId } }));
+
+  // Update banner in calculator DOM
+  const banner = document.getElementById('crm-loaded-banner');
+  const title = document.getElementById('crm-loaded-title');
+  const desc = document.getElementById('crm-loaded-desc');
+  const autoSaveBadge = document.getElementById('crm-loaded-autosave-badge');
+
+  if (banner) banner.classList.remove('hidden');
+  if (title) title.innerText = `👤 [${finalName}] ${isOverwrite ? '견적 덮어쓰기(수정) 완료' : '견적 저장됨'}`;
+  if (desc) desc.innerText = `체감가: ${quote.netAmount.toLocaleString()}원 | ${quote.itemSummary}`;
+  if (autoSaveBadge) {
+    autoSaveBadge.innerHTML = `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs">✓ ${isOverwrite ? 'CRM 견적 덮어쓰기 완료' : 'CRM 견적 저장 완료'} (${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })})</span>`;
+  }
 
   return quote;
 }

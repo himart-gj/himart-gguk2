@@ -230,12 +230,15 @@ export function disentangleCustomerFields(
     docUrl = urlMatch[0];
   }
 
-  // 2. Extract Phone Number (Strict 010-XXXX-XXXX)
+  // 2. Extract Phone Number (Strict 010-XXXX-XXXX, exclude store phone like 031-767-1044)
   let phone = rawPhone || '';
+  if (phone.includes('031-767-1044') || phone.includes('031-797-2850')) {
+    phone = '';
+  }
   const phoneMatch = allText.match(/(01[016789])[-.\s]?(\d{3,4})[-.\s]?(\d{4})/);
   if (phoneMatch) {
     phone = `${phoneMatch[1]}-${phoneMatch[2]}-${phoneMatch[3]}`;
-  } else {
+  } else if (phone && !phone.startsWith('031')) {
     const digits = phone.replace(/\D/g, '');
     if (digits.length >= 10 && digits.length <= 11) {
       phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3');
@@ -712,7 +715,17 @@ export function saveCustomerQuote(
 ): CustomerItem[] {
   const current = getCachedCustomers();
   let found = false;
-  const cleanQPhone = (quote.rawCalculatorData?.phone || quote.rawCalculatorData?.cPhone || customerFallbackInfo?.phone || '').replace(/\D/g, '');
+  // 고객 실제 휴대폰 번호 추출 (매장 유선전화 031-xxx-xxxx 등이 고객 번호로 들어가지 않도록 엄격 분리)
+  const isStorePhone = (p?: string) => Boolean(p && (p.includes('031-767-1044') || p.includes('031-797-2850') || p.startsWith('031')));
+  const rawCustomerPhone = (
+    (customerFallbackInfo?.phone && !isStorePhone(customerFallbackInfo.phone) ? customerFallbackInfo.phone.trim() : '') ||
+    (quote.rawCalculatorData?.cPhone && !isStorePhone(quote.rawCalculatorData.cPhone) ? quote.rawCalculatorData.cPhone.trim() : '') ||
+    (quote.rawCalculatorData?.customerPhone && !isStorePhone(quote.rawCalculatorData.customerPhone) ? quote.rawCalculatorData.customerPhone.trim() : '') ||
+    (quote.rawCalculatorData?.phone && !isStorePhone(quote.rawCalculatorData.phone) ? quote.rawCalculatorData.phone.trim() : '') ||
+    customerFallbackInfo?.phone?.trim() ||
+    ''
+  );
+  const cleanQPhone = rawCustomerPhone.replace(/\D/g, '');
   const qName = (quote.rawCalculatorData?.name || customerFallbackInfo?.name || '').trim();
   const qLast8 = cleanQPhone.length >= 8 ? cleanQPhone.slice(-8) : '';
 
@@ -782,6 +795,7 @@ export function saveCustomerQuote(
 
       return {
         ...c,
+        phone: (c.phone && !isStorePhone(c.phone)) ? c.phone : (rawCustomerPhone || c.phone),
         source: finalSlipNo ? 'tab2' : (c.reservationType ? 'tab1' : c.source),
         paidAmount: quote.paidAmount > 0 ? quote.paidAmount : c.paidAmount,
         netAmount: quote.netAmount,
@@ -804,14 +818,15 @@ export function saveCustomerQuote(
       id: customerId || 'cust-' + Date.now(),
       source: newSlipNo ? 'tab2' : 'tab1',
       name: fallbackName,
-      phone: quote.rawCalculatorData?.phone || quote.rawCalculatorData?.cPhone || customerFallbackInfo?.phone || '연락처 미등록',
+      phone: rawCustomerPhone || '연락처 미등록',
       slipNo: newSlipNo || undefined,
       category: quote.itemSummary || '가전 견적',
       items: quote.itemSummary || '가전 견적',
       paidAmount: quote.paidAmount,
       netAmount: quote.netAmount,
-      status: '상담진행중',
-      rawStatus: '상담진행',
+      status: '신규/미발송',
+      rawStatus: '신규(미발송)',
+      isSmsSent: false,
       date: newDate || new Date().toISOString().split('T')[0],
       deliveryDate: finalDeliveryDate,
       dDay: finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null,

@@ -1159,8 +1159,8 @@ if (typeof window.refreshCRMCustomers === 'function') {
 
 document.getElementById('save-quote-modal').classList.add('hidden');
 showModal(
-  isOverwrite ? '수정(덮어쓰기) 완료 ✅' : '저장 완료 ✅', 
-  `<b>[${name}]</b> 고객님의 견적이 <b>CRM 고객 관리 시스템</b> 및 기기에 ${isOverwrite ? '안전하게 덮어쓰기(수정)' : '성공적으로 저장'}되었습니다!<br><br>👉 상단의 <b>[📊 CRM 복귀]</b> 버튼을 누르시면 해당 고객 카드의 <b>[견적 이력]</b>에서 바로 확인하실 수 있습니다.`, 
+  isOverwrite ? '수정(덮어쓰기) 완료 ✅' : 'CRM 신규 고객 등록 완료 ✅', 
+  `<b>[${name}]</b> 고객님의 견적이 <b>CRM [신규/미발송] 고객 카드</b>로 즉시 등록되었습니다!<br><br>👉 상단의 <b>[👥 고객 CRM]</b> 탭을 누르시면 최상단에서 바로 확인 및 관리하실 수 있습니다.`, 
   true, 
   false
 );
@@ -1386,7 +1386,7 @@ const subHp = Array.from(document.querySelectorAll('.hp-sub-row')).map(row => ({
 const memoCust = document.getElementById('i-memo-customer')?.value || '';
 const memoMy = document.getElementById('i-memo')?.value || '';
 return {
-id: 'Q-' + Date.now(), type, name, cPhone, phone, manager, no, date, deliveryDate, slipNo: no, itemSummary: itemSummary || '가전 견적',
+id: 'Q-' + Date.now(), type, name, cPhone, customerPhone: cPhone, storePhone: phone, phone: cPhone || '', manager, no, date, deliveryDate, slipNo: no, itemSummary: itemSummary || '가전 견적',
 totalPrice: type === '일반' ? (window.currentSumLump || 0) : (window.currentContractSub || 0), 
 payPrice: type === '일반' ? (window.currentPayPriceLump || 0) : (window.currentContractSub || 0), 
 finalPrice: type === '일반' ? (window.currentNetPriceLump || 0) : (window.currentNetPriceSub || 0), 
