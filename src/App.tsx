@@ -27,10 +27,9 @@ import {
   deleteCustomer
 } from './services/gasApi';
 import { CRMHeader } from './components/CRMHeader';
-import { KPIDashboard } from './components/KPIDashboard';
+import { CompactCustomerCard } from './components/CompactCustomerCard';
+import { CustomerDetailModal } from './components/CustomerDetailModal';
 import { formatLocalDateTime } from './utils/date';
-import { FilterTabs } from './components/FilterTabs';
-import { CustomerCard } from './components/CustomerCard';
 import { SMSModal } from './components/SMSModal';
 import { SettingsModal } from './components/SettingsModal';
 import { NewCustomerModal } from './components/NewCustomerModal';
@@ -60,6 +59,7 @@ export const App: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Modals
+  const [detailCustomer, setDetailCustomer] = useState<CustomerItem | null>(null);
   const [smsCustomer, setSmsCustomer] = useState<CustomerItem | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNewCustomerOpen, setIsNewCustomerOpen] = useState(false);
@@ -475,22 +475,101 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* 5 Core KPI Metrics Cards */}
-          <KPIDashboard
-            counts={counts}
-            activeStatusFilter={filterStatus}
-            onSelectStatus={setFilterStatus}
-          />
+          {/* 1. TODAY WORK QUEUE (Compact Single Dashboard Container) */}
+          <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 shadow-2xs flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-lg">⚡</span>
+                <div>
+                  <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+                    <span>오늘 먼저 처리할 고객</span>
+                    <span className="text-[10px] text-slate-400 font-mono font-medium hidden sm:inline">TODAY WORK QUEUE</span>
+                  </h2>
+                  <p className="text-[11px] text-slate-500 hidden sm:block">
+                    신규 미발송 문의, 배송 전 확인, 물류 점검이 필요한 우선순위 큐
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-1 rounded-xl border border-rose-200 text-xs font-black">
+                <span>우선처리</span>
+                <span className="bg-rose-600 text-white rounded-full px-1.5 py-0.2 text-[11px]">
+                  {urgentCount}건
+                </span>
+              </div>
+            </div>
 
-          {/* Segment Filter Tabs */}
-          <FilterTabs
-            activeTab={filterStatus}
-            onSelectTab={setFilterStatus}
-            counts={counts}
-          />
+            {/* 3 Quick Action Filter Buttons */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setFilterStatus((prev) => (prev === '신규/미발송' ? '전체' : '신규/미발송'))}
+                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition active:scale-95 cursor-pointer ${
+                  filterStatus === '신규/미발송'
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                    : 'bg-rose-50/70 hover:bg-rose-100 text-rose-900 border-rose-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterStatus === '신규/미발송' ? 'bg-white' : 'bg-rose-500'}`} />
+                  <span className="truncate">[신규] 미발송</span>
+                </div>
+                <span
+                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-black ${
+                    filterStatus === '신규/미발송' ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-800'
+                  }`}
+                >
+                  {counts['신규/미발송'] || 0}
+                </span>
+              </button>
 
-          {/* Search & Sort Toolbar */}
-          <div className="bg-white rounded-2xl p-3 sm:p-3.5 border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setFilterStatus((prev) => (prev === '배송대기' ? '전체' : '배송대기'))}
+                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition active:scale-95 cursor-pointer ${
+                  filterStatus === '배송대기'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-blue-50/70 hover:bg-blue-100 text-blue-900 border-blue-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterStatus === '배송대기' ? 'bg-white' : 'bg-blue-500'}`} />
+                  <span className="truncate">[배송] 배송대기</span>
+                </div>
+                <span
+                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-black ${
+                    filterStatus === '배송대기' ? 'bg-white/20 text-white' : 'bg-blue-200 text-blue-800'
+                  }`}
+                >
+                  {counts['배송대기'] || 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFilterStatus((prev) => (prev === '물류대기' ? '전체' : '물류대기'))}
+                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition active:scale-95 cursor-pointer ${
+                  filterStatus === '물류대기'
+                    ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                    : 'bg-purple-50/70 hover:bg-purple-100 text-purple-900 border-purple-200'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterStatus === '물류대기' ? 'bg-white' : 'bg-purple-500'}`} />
+                  <span className="truncate">[물류] 물류대기</span>
+                </div>
+                <span
+                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-black ${
+                    filterStatus === '물류대기' ? 'bg-white/20 text-white' : 'bg-purple-200 text-purple-800'
+                  }`}
+                >
+                  {counts['물류대기'] || 0}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Integrated 1-Line Toolbar (Search + Status Select + Sort Select) */}
+          <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
             {/* Real-time search box */}
             <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -498,7 +577,7 @@ export const App: React.FC = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="고객명, 전화번호 뒤4자리, 전표번호, 구매품목 실시간 검색..."
+                placeholder="고객명 · 전화번호 · 전표 · 품목 검색..."
                 className="w-full pl-9 pr-8 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm bg-slate-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 transition"
               />
               {searchQuery && (
@@ -512,43 +591,57 @@ export const App: React.FC = () => {
               )}
             </div>
 
-            {/* Sort & Count info */}
-            <div className="flex items-center justify-between sm:justify-end gap-2.5 text-xs flex-wrap">
-              <span className="text-slate-500 font-medium">
-                조회결과 <strong className="text-slate-900">{filteredCustomers.length}</strong>건
-              </span>
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 ml-1.5" />
+            {/* Controls: Status Select & Sort Select */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Status Filter Select Box */}
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value as any)}
+                className="flex-1 md:flex-initial py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
+                title="상태별 필터"
+              >
+                <option value="전체">전체 상태 ({counts['전체']}건)</option>
+                <option value="신규/미발송">신규/미발송 ({counts['신규/미발송']}건)</option>
+                <option value="상담진행중">상담진행중 ({counts['상담진행중']}건)</option>
+                <option value="미구매/고민중">미구매/고민중 ({counts['미구매/고민중']}건)</option>
+                <option value="물류대기">물류대기 ({counts['물류대기']}건)</option>
+                <option value="배송대기">배송대기 ({counts['배송대기']}건)</option>
+                <option value="배송완료">배송완료 ({counts['배송완료']}건)</option>
+              </select>
+
+              {/* Sort Select Box */}
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-transparent text-xs font-bold text-slate-700 pr-2 py-0.5 focus:outline-none cursor-pointer"
+                  className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                  title="목록 정렬"
                 >
-                  <option value="delivery">배송 임박순 (D-Day)</option>
+                  <option value="delivery">배송 임박순</option>
                   <option value="latest">최신 등록순</option>
                   <option value="price">결제 금액순</option>
                 </select>
               </div>
+
+              {/* Result Count Badge */}
+              <span className="hidden lg:inline text-xs text-slate-500 font-medium whitespace-nowrap pl-1">
+                <strong className="text-slate-900">{filteredCustomers.length}</strong>건
+              </span>
             </div>
           </div>
 
-          {/* Customer Cards Grid */}
+          {/* 3. Customer Cards Grid (Rendered with CompactCustomerCard) */}
           {filteredCustomers.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-              {filteredCustomers.map((customer, idx) => (
-                <CustomerCard
-                  key={`${customer.id}-${idx}`}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredCustomers.map((customer) => (
+                <CompactCustomerCard
+                  key={customer.id}
                   customer={customer}
                   onOpenSMS={(c) => setSmsCustomer(c)}
                   onOpenQuote={handleOpenQuote}
-                  onLoadQuoteRecord={handleLoadQuoteRecord}
+                  onOpenDetail={(c) => setDetailCustomer(c)}
                   onUpdateStatus={handleUpdateStatus}
-                  onUpdateNote={handleUpdateNote}
-                  onAddLog={handleAddLog}
-                  onDeleteLog={handleDeleteLog}
-                  onDeleteQuote={handleDeleteQuote}
-                  onUpdateGift={handleUpdateGift}
-                  onDeleteCustomer={handleDeleteCustomer}
                 />
               ))}
             </div>
@@ -561,7 +654,7 @@ export const App: React.FC = () => {
                 해당 조건의 고객 데이터가 없습니다.
               </h3>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                검색어를 초기화하시거나 다른 상태 탭을 선택해 보세요.
+                검색어를 초기화하시거나 다른 상태 조건을 선택해 보세요.
               </p>
               <button
                 type="button"
@@ -569,7 +662,7 @@ export const App: React.FC = () => {
                   setSearchQuery('');
                   setFilterStatus('전체');
                 }}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shadow hover:bg-slate-800"
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold shadow hover:bg-slate-800 transition active:scale-95 cursor-pointer"
               >
                 전체보기로 초기화
               </button>
@@ -579,6 +672,23 @@ export const App: React.FC = () => {
       )}
 
       {/* Modals */}
+      {/* Customer Full Detail & Management Modal */}
+      <CustomerDetailModal
+        customer={detailCustomer ? (customers.find((c) => c.id === detailCustomer.id) || detailCustomer) : null}
+        isOpen={Boolean(detailCustomer)}
+        onClose={() => setDetailCustomer(null)}
+        onOpenSMS={(c) => setSmsCustomer(c)}
+        onOpenQuote={handleOpenQuote}
+        onLoadQuoteRecord={handleLoadQuoteRecord}
+        onUpdateStatus={handleUpdateStatus}
+        onUpdateNote={handleUpdateNote}
+        onAddLog={handleAddLog}
+        onDeleteLog={handleDeleteLog}
+        onDeleteQuote={handleDeleteQuote}
+        onUpdateGift={handleUpdateGift}
+        onDeleteCustomer={handleDeleteCustomer}
+      />
+
       <MorningBriefingModal
         isOpen={isBriefingOpen}
         onClose={() => setIsBriefingOpen(false)}

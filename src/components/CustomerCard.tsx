@@ -23,6 +23,7 @@ import { formatLocalDateTime } from '../utils/date';
 
 interface CustomerCardProps {
   customer: CustomerItem;
+  defaultExpanded?: boolean;
   onOpenSMS: (customer: CustomerItem) => void;
   onOpenQuote: (customer: CustomerItem) => void;
   onLoadQuoteRecord?: (quote: QuoteRecord, customer: CustomerItem) => void;
@@ -37,6 +38,7 @@ interface CustomerCardProps {
 
 export const CustomerCard: React.FC<CustomerCardProps> = ({
   customer,
+  defaultExpanded = false,
   onOpenSMS,
   onOpenQuote,
   onLoadQuoteRecord,
@@ -48,8 +50,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   onUpdateGift,
   onDeleteCustomer,
 }) => {
-  // Card Expansion State (기본값: 접힌 상태)
-  const [isCardExpanded, setIsCardExpanded] = useState(false);
+  // Card Expansion State (기본값: defaultExpanded prop 또는 접힌 상태)
+  const [isCardExpanded, setIsCardExpanded] = useState(defaultExpanded);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(customer.note || '');
 
