@@ -103,6 +103,8 @@ export const App: React.FC = () => {
       } else {
         calcContainer.style.display = 'none';
         window.scrollTo({ top: 0, behavior: 'instant' });
+        // CRM 탭으로 돌아왔을 때 항상 최신 캐시 데이터를 동기화
+        setCustomers(getCachedCustomers());
       }
     }
   }, [activeTab]);
@@ -112,12 +114,18 @@ export const App: React.FC = () => {
     (window as any).switchAppTab = (tab: 'crm' | 'calculator') => {
       setActiveTab(tab);
       window.scrollTo({ top: 0, behavior: 'instant' });
+      if (tab === 'crm') {
+        setCustomers(getCachedCustomers());
+      }
     };
     (window as any).openAppSettings = () => {
       setIsSettingsOpen(true);
     };
     (window as any).openCRMQuotePicker = () => {
       setIsQuotePickerOpen(true);
+    };
+    (window as any).refreshCRMCustomers = () => {
+      setCustomers(getCachedCustomers());
     };
 
     // Auto-update React state when quote is auto-saved or manual-saved from calculator

@@ -48,6 +48,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   onUpdateGift,
   onDeleteCustomer,
 }) => {
+  // Card Expansion State (기본값: 접힌 상태)
+  const [isCardExpanded, setIsCardExpanded] = useState(false);
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteValue, setNoteValue] = useState(customer.note || '');
 
@@ -340,82 +342,64 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
             </div>
           </div>
 
-          {/* Quick status change dropdown & Delete button */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <select
-              value={customer.status}
-              onChange={(e) => onUpdateStatus(customer.id, e.target.value as PipelineStatus)}
-              className="text-xs font-bold py-1.5 px-2 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
-            >
-              <option value="신규/미발송">📋 신규/미발송</option>
-              <option value="상담진행중">💬 상담진행</option>
-              <option value="미구매/고민중">🤔 미구매/팔로우업</option>
-              <option value="물류대기">📦 물류입고대기</option>
-              <option value="배송대기">🚚 배송대기</option>
-              <option value="배송완료">✅ 배송완료</option>
-            </select>
+            {/* Quick status change dropdown, Expand toggle & Delete button */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <select
+                value={customer.status}
+                onChange={(e) => onUpdateStatus(customer.id, e.target.value as PipelineStatus)}
+                className="text-xs font-bold py-1.5 px-2 rounded-lg border border-slate-200 bg-white text-slate-700 shadow-2xs hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
+              >
+                <option value="신규/미발송">📋 신규/미발송</option>
+                <option value="상담진행중">💬 상담진행</option>
+                <option value="미구매/고민중">🤔 미구매/팔로우업</option>
+                <option value="물류대기">📦 물류입고대기</option>
+                <option value="배송대기">🚚 배송대기</option>
+                <option value="배송완료">✅ 배송완료</option>
+              </select>
 
-            {onDeleteCustomer && (
               <button
                 type="button"
-                onClick={handleDeleteCustomerClick}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition cursor-pointer"
-                title="고객 카드 영구 삭제"
+                onClick={() => setIsCardExpanded(!isCardExpanded)}
+                className={`py-1.5 px-2 rounded-lg border transition cursor-pointer flex items-center gap-1 text-xs font-bold shadow-2xs ${
+                  isCardExpanded
+                    ? 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                    : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+                }`}
+                title={isCardExpanded ? '상세 접기' : '상세 펼치기'}
               >
-                <Trash2 className="w-4 h-4 text-slate-400 hover:text-rose-600" />
+                {isCardExpanded ? (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-600" />
+                    <span className="hidden sm:inline text-[11px]">접기</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5 text-rose-600" />
+                    <span className="hidden sm:inline text-[11px]">펼치기</span>
+                  </>
+                )}
               </button>
-            )}
-          </div>
+
+              {onDeleteCustomer && (
+                <button
+                  type="button"
+                  onClick={handleDeleteCustomerClick}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition cursor-pointer"
+                  title="고객 카드 영구 삭제"
+                >
+                  <Trash2 className="w-4 h-4 text-slate-400 hover:text-rose-600" />
+                </button>
+              )}
+            </div>
         </div>
       </div>
 
       {/* Body Information */}
       <div className="p-3.5 sm:p-4 space-y-2.5 text-xs text-slate-600 flex-1">
-        {/* Category or Items */}
-        <div>
-          <div className="flex items-center gap-1.5 text-slate-400 mb-1">
-            <Tag className="w-3.5 h-3.5 text-rose-500" />
-            <span className="font-semibold text-[11px] text-slate-500">관심 및 구매 품목</span>
-          </div>
-          <p className="font-bold text-slate-800 text-xs sm:text-sm pl-5 leading-snug">
-            {customer.items || customer.category || '품목 정보 미기재'}
-          </p>
-        </div>
-
-        {/* Pricing / Financials if available */}
-        {(customer.paidAmount !== undefined || customer.netAmount !== undefined || customer.benefit) && (
-          <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-2">
-            {customer.paidAmount !== undefined && (
-              <div>
-                <span className="text-[10px] text-slate-400 block">실결제금액</span>
-                <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
-                  {formatPrice(customer.paidAmount)}
-                </span>
-              </div>
-            )}
-            {customer.netAmount !== undefined && (
-              <div>
-                <span className="text-[10px] text-rose-500 block font-medium">최종 체감가</span>
-                <span className="font-extrabold text-rose-600 text-xs sm:text-sm">
-                  {customer.netAmount === 0 ? '체감 0원' : formatPrice(customer.netAmount)}
-                </span>
-              </div>
-            )}
-            {customer.benefit && (
-              <div className="col-span-2 sm:col-span-1">
-                <span className="text-[10px] text-slate-400 block">적용 혜택</span>
-                <span className="text-[11px] text-slate-700 font-semibold truncate block">
-                  {customer.benefit}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Delivery / Registration Date (배송희망일 및 D-Day 중단 표시) */}
-        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+        {/* 1. [항상 노출] Delivery Date / Registration Date (배송희망일 및 D-Day 중단 표시) */}
+        <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
           {customer.deliveryDate ? (
-            <div className="flex items-center gap-1.5 text-rose-700 font-bold bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200/80 shadow-2xs">
+            <div className="flex items-center gap-1.5 text-rose-700 font-bold bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-200/80 shadow-2xs">
               <Calendar className="w-3.5 h-3.5 text-rose-500" />
               <span>배송희망일: {customer.deliveryDate}</span>
               {customer.dDay !== undefined && customer.dDay !== null && (
@@ -431,9 +415,9 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 text-slate-500">
+            <div className="flex items-center gap-1.5 text-slate-500 bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/60">
               <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>상담접수: {customer.date || '-'}</span>
+              <span>상담접수: {customer.date || '-'} (배송일 미지정)</span>
             </div>
           )}
 
@@ -444,17 +428,20 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           )}
         </div>
 
-        {/* Note / Memo box */}
-        <div className="bg-amber-50/60 border border-amber-200/70 rounded-xl p-2.5 text-[11px] text-slate-700 relative">
+        {/* 2. [항상 노출] Note / Memo box (매장 메모 / 특이사항) */}
+        <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl p-2.5 text-[11px] text-slate-700 relative">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold text-amber-800 flex items-center gap-1">
+            <span className="font-bold text-amber-900 flex items-center gap-1">
               <span>📌</span> 매장 메모 / 특이사항
             </span>
             {!isEditingNote ? (
               <button
                 type="button"
-                onClick={() => setIsEditingNote(true)}
-                className="text-amber-700 hover:text-amber-900 font-semibold flex items-center gap-0.5 text-[10px]"
+                onClick={() => {
+                  if (!isCardExpanded) setIsCardExpanded(true);
+                  setIsEditingNote(true);
+                }}
+                className="text-amber-700 hover:text-amber-900 font-semibold flex items-center gap-0.5 text-[10px] cursor-pointer"
               >
                 <Edit3 className="w-2.5 h-2.5" /> 수정
               </button>
@@ -462,7 +449,7 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
               <button
                 type="button"
                 onClick={handleSaveNote}
-                className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-0.5 text-[10px]"
+                className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-0.5 text-[10px] cursor-pointer"
               >
                 <Check className="w-3 h-3" /> 저장
               </button>
@@ -477,11 +464,55 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
               rows={2}
             />
           ) : (
-            <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">
-              {customer.note || '등록된 메모가 없습니다.'}
+            <p className={`text-slate-800 text-xs leading-relaxed font-medium ${isCardExpanded ? 'whitespace-pre-wrap' : 'line-clamp-2'}`}>
+              {customer.note || '등록된 매장 메모가 없습니다.'}
             </p>
           )}
         </div>
+
+        {/* 3. [펼쳐졌을 때만 노출되는 상세 정보 영역] */}
+        {isCardExpanded && (
+          <div className="space-y-2.5 pt-1 border-t border-slate-100">
+            {/* Category or Items */}
+            <div>
+              <div className="flex items-center gap-1.5 text-slate-400 mb-1">
+                <Tag className="w-3.5 h-3.5 text-rose-500" />
+                <span className="font-semibold text-[11px] text-slate-500">관심 및 구매 품목</span>
+              </div>
+              <p className="font-bold text-slate-800 text-xs sm:text-sm pl-5 leading-snug">
+                {customer.items || customer.category || '품목 정보 미기재'}
+              </p>
+            </div>
+
+            {/* Pricing / Financials if available */}
+            {(customer.paidAmount !== undefined || customer.netAmount !== undefined || customer.benefit) && (
+              <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {customer.paidAmount !== undefined && (
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">실결제금액</span>
+                    <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                      {formatPrice(customer.paidAmount)}
+                    </span>
+                  </div>
+                )}
+                {customer.netAmount !== undefined && (
+                  <div>
+                    <span className="text-[10px] text-rose-500 block font-medium">최종 체감가</span>
+                    <span className="font-extrabold text-rose-600 text-xs sm:text-sm">
+                      {customer.netAmount === 0 ? '체감 0원' : formatPrice(customer.netAmount)}
+                    </span>
+                  </div>
+                )}
+                {customer.benefit && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <span className="text-[10px] text-slate-400 block">적용 혜택</span>
+                    <span className="text-[11px] text-slate-700 font-semibold truncate block">
+                      {customer.benefit}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
         {/* 🎁 약속 사은품 관리 (견적이력/상담기록처럼 접기/펼치기 지원) */}
         <div className={`rounded-xl border transition overflow-hidden ${
@@ -870,9 +901,11 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           )}
         </div>
       </div>
+      )}
+      </div>
 
       {/* 📦 배송 완료 단계 전용 관리 액션 바 (사장님 확인 및 보관/삭제) */}
-      {customer.status === '배송완료' && onDeleteCustomer && (
+      {isCardExpanded && customer.status === '배송완료' && onDeleteCustomer && (
         <div className="px-3 pt-2 pb-0">
           <button
             type="button"
@@ -921,6 +954,25 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
           <span className="truncate">견적서 계산</span>
         </button>
       </div>
+
+      {/* 4. Card Toggle Accordion Bar */}
+      <button
+        type="button"
+        onClick={() => setIsCardExpanded(!isCardExpanded)}
+        className="w-full py-2 px-3 border-t border-slate-100 bg-slate-50/50 hover:bg-slate-100 text-slate-500 hover:text-slate-800 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer select-none"
+      >
+        {isCardExpanded ? (
+          <>
+            <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+            <span className="text-[11px]">상세 정보 접기</span>
+          </>
+        ) : (
+          <>
+            <ChevronDown className="w-3.5 h-3.5 text-rose-500" />
+            <span className="text-[11px] text-rose-600 font-extrabold">상세 정보 펼쳐보기 (품목, 견적이력, 사은품)</span>
+          </>
+        )}
+      </button>
     </div>
   );
 };

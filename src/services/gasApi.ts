@@ -420,19 +420,26 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     const cat = (cells[2] || rawObj.category || '').trim();
     const srv = (cells[3] || rawObj.service || '').trim();
     category = srv && srv !== '-' ? `${cat} (${srv})` : (cat || '온라인 접수');
-    items = category;
+    items = rawObj.items || category;
     intakeDate = (cells[4] || rawObj.date || '').trim();
     rawStatus = (cells[5] || rawObj.status || '').trim();
     note = (cells[6] || rawObj.note || '').trim();
     docUrl = (cells[7] || rawObj.docUrl || '').trim();
+    slipNo = (rawObj.slipNo || '').trim();
+    paidAmount = rawObj.paidAmount;
+    netAmount = rawObj.netAmount;
+    benefit = (rawObj.benefit || '').trim();
+    deliveryDate = formatCleanDeliveryDate(rawObj.deliveryDate);
 
-    // Check if delivery request is in note (e.g. 11/21 설치희망)
-    const desiredMatch = note.match(/(?:(\d{1,2})[월/](\d{1,2})일?\s*(?:이사|설치|배송)희망|\b(202\d)[-/.](\d{1,2})[-/.](\d{1,2})\s*배송)/);
-    if (desiredMatch) {
-      const year = desiredMatch[3] || new Date().getFullYear();
-      const month = String(desiredMatch[1] || desiredMatch[4]).padStart(2, '0');
-      const day = String(desiredMatch[2] || desiredMatch[5]).padStart(2, '0');
-      deliveryDate = `${year}-${month}-${day}`;
+    // Check if delivery request is in note (e.g. 11/21 설치희망) if deliveryDate still empty
+    if (!deliveryDate) {
+      const desiredMatch = note.match(/(?:(\d{1,2})[월/](\d{1,2})일?\s*(?:이사|설치|배송)희망|\b(202\d)[-/.](\d{1,2})[-/.](\d{1,2})\s*배송)/);
+      if (desiredMatch) {
+        const year = desiredMatch[3] || new Date().getFullYear();
+        const month = String(desiredMatch[1] || desiredMatch[4]).padStart(2, '0');
+        const day = String(desiredMatch[2] || desiredMatch[5]).padStart(2, '0');
+        deliveryDate = `${year}-${month}-${day}`;
+      }
     }
   } else {
     // Tab 2: [0: 성함, 1: 연락처, 2: 전표번호, 3: 품목, 4: 결제금액, 5: 실체감가, 6: 제휴혜택, 7: 배송희망일, 8: 상태, 9: 메모, 10: 구글문서]
@@ -460,14 +467,21 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
   docUrl = disentangled.docUrl;
   const reservationType = disentangled.reservationType;
 
-  // 2. Sanitize Slip Number (Tab 2 only)
-  if (slipNo.length > 35 || slipNo.includes(name) || slipNo.includes('냉장고')) {
+  // 2. Slip Number handling: If slipNo is explicitly given in rawObj, ALWAYS prioritize and preserve it!
+  if (rawObj.slipNo && String(rawObj.slipNo).trim()) {
+    slipNo = String(rawObj.slipNo).trim();
+  } else if (slipNo.length > 35 || slipNo.includes(name) || slipNo.includes('냉장고')) {
     const slipMatches = Array.from(fullText.matchAll(/\b\d{8}-\d{2,4}\b/g)).map((m) => m[0]);
     if (slipMatches.length > 0) {
       slipNo = Array.from(new Set(slipMatches)).join(', ');
     } else {
       slipNo = '';
     }
+  }
+
+  // If slip number exists, set source to 'tab2' (매장 전표) for consistent header badge display
+  if (slipNo) {
+    source = 'tab2';
   }
 
   // 3. Pipeline Status Determination & SMS Status Check
@@ -508,31 +522,32 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
     }
   }
 
-  const dDay = (status === '배송대기' || status === '물류대기' || status === '배송완료')
-    ? calculateDDay(deliveryDate)
-    : null;
+  const finalDeliveryDate = deliveryDate || formatCleanDeliveryDate(rawObj.deliveryDate) || undefined;
+  const dDay = finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null;
 
   return {
     id: rawObj.id || `${source}-${idx + 1}`,
     source,
     name: name || '고객님',
     phone,
-    slipNo: source === 'tab2' ? slipNo : undefined,
+    slipNo: slipNo || undefined,
     category,
     reservationType,
     items,
     paidAmount: finalPaid,
     netAmount: finalNet,
     benefit,
-    deliveryDate: deliveryDate || undefined,
-    status,
+    deliveryDate: finalDeliveryDate,
+    status: rawObj.status || status,
     rawStatus: rawStatus || (source === 'tab1' ? (isSmsSent ? '발송 완료' : '신규(미발송)') : '배송대기'),
-    date: intakeDate || rawObj.date || new Date().toISOString().split('T')[0],
+    date: rawObj.date || intakeDate || new Date().toISOString().split('T')[0],
     note,
     docUrl: docUrl || undefined,
     dDay,
     isSmsSent,
     smsSentDate,
+    giftItem: rawObj.giftItem || undefined,
+    isGiftDelivered: Boolean(rawObj.isGiftDelivered),
     quotes: Array.isArray(rawObj.quotes) ? rawObj.quotes : [],
     logs: Array.isArray(rawObj.logs) ? rawObj.logs : [],
   };
@@ -735,6 +750,7 @@ export function saveCustomerQuote(
 
       return {
         ...c,
+        source: newSlipNo ? 'tab2' : c.source,
         paidAmount: quote.paidAmount > 0 ? quote.paidAmount : c.paidAmount,
         netAmount: quote.netAmount,
         items: quote.itemSummary || c.items,
@@ -754,7 +770,7 @@ export function saveCustomerQuote(
     const finalDeliveryDate = newDeliveryDate || undefined;
     const newCustomer: CustomerItem = {
       id: customerId || 'cust-' + Date.now(),
-      source: 'tab1',
+      source: newSlipNo ? 'tab2' : 'tab1',
       name: fallbackName,
       phone: quote.rawCalculatorData?.phone || quote.rawCalculatorData?.cPhone || customerFallbackInfo?.phone || '연락처 미등록',
       slipNo: newSlipNo || undefined,
@@ -766,7 +782,7 @@ export function saveCustomerQuote(
       rawStatus: '상담진행',
       date: newDate || new Date().toISOString().split('T')[0],
       deliveryDate: finalDeliveryDate,
-      dDay: finalDeliveryDate ? calculateDDay(finalDeliveryDate) : undefined,
+      dDay: finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null,
       note: quote.internalMemo || quote.customerMemo || '견적 계산기에서 직접 작성 및 저장됨',
       quotes: [quote],
       logs: [],
