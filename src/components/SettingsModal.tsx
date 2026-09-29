@@ -19,7 +19,8 @@ import {
   Clock,
   UserCheck,
   Bell,
-  Smartphone
+  Smartphone,
+  RefreshCw
 } from 'lucide-react';
 import { 
   getGasApiUrl, 
@@ -31,7 +32,8 @@ import {
   getDeletedCustomerRecords,
   restoreIndividualCustomer,
   permanentlyDeleteCustomer,
-  purgeAllDeletedCustomers
+  purgeAllDeletedCustomers,
+  fetchCustomersFromGas
 } from '../services/gasApi';
 import { 
   requestNotificationPermission, 
@@ -324,35 +326,54 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
                 <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
                   <span>※ 배포 시 액세스 권한: <strong>모든 사용자(Anyone)</strong> 설정 필수</span>
-                  {url && (
-                    isConfirmingReset ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-rose-600 font-bold text-[10px]">정말 초기화?</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const result = await fetchCustomersFromGas();
+                        if (result.fromGas) {
+                          alert(`✅ 구글 시트 실시간 동기화 완료!\n총 ${result.customers.length}명의 고객 데이터를 성공적으로 로드했습니다.`);
+                          onSaved();
+                          onClose();
+                        } else {
+                          alert(`⚠️ 동기화 실패: ${result.message || 'URL을 확인해주세요.'}`);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>구글 시트 즉시 강제 로드</span>
+                    </button>
+                    {url && (
+                      isConfirmingReset ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-rose-600 font-bold text-[10px]">정말 초기화?</span>
+                          <button
+                            type="button"
+                            onClick={handleResetToSample}
+                            className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px] cursor-pointer"
+                          >
+                            초기화
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsConfirmingReset(false)}
+                            className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] cursor-pointer"
+                          >
+                            취소
+                          </button>
+                        </div>
+                      ) : (
                         <button
                           type="button"
-                          onClick={handleResetToSample}
-                          className="px-2 py-0.5 rounded bg-rose-600 text-white font-bold text-[10px] cursor-pointer"
+                          onClick={() => setIsConfirmingReset(true)}
+                          className="text-rose-600 hover:underline font-semibold cursor-pointer text-[11px]"
                         >
-                          초기화
+                          URL 삭제 (샘플 모드로 복귀)
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsConfirmingReset(false)}
-                          className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] cursor-pointer"
-                        >
-                          취소
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setIsConfirmingReset(true)}
-                        className="text-rose-600 hover:underline font-semibold cursor-pointer"
-                      >
-                        URL 삭제 (샘플 모드로 복귀)
-                      </button>
-                    )
-                  )}
+                      )
+                    )}
+                  </div>
                 </div>
               </div>
 

@@ -10,6 +10,9 @@ export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbws7p1ZO
 const AUTO_PURGE_DAYS = 30; // 30일 보관 후 자동 영구삭제
 
 export function getDeletedCustomerKeys(): Set<string> {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return new Set();
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DELETED_CUSTOMERS);
     if (raw) {
@@ -28,6 +31,9 @@ export function getDeletedCustomerKeys(): Set<string> {
  * 30일 자동 삭제(Auto-purge)가 적용된 휴지통 삭제 고객 목록 조회
  */
 export function getDeletedCustomerRecords(): DeletedCustomerRecord[] {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return [];
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DELETED_RECORDS);
     if (!raw) return [];
@@ -73,9 +79,14 @@ export function getDeletedCustomerRecords(): DeletedCustomerRecord[] {
 export function isCustomerDeleted(customer: Partial<CustomerItem>): boolean {
   const keys = getDeletedCustomerKeys();
   if (keys.size === 0) return false;
-  if (customer.id && keys.has(customer.id)) return true;
+
+  // 구글 시트의 자동 행 인덱스 ID(예: tab1_19, tab2_2)는 행 추가/정렬 시 다른 신규 고객에게 부여될 수 있으므로,
+  // 인덱스 ID 단독으로 차단하지 않고 실제 전화번호 또는 [고객명_번호]로 정확하게 필터링합니다.
+  const isGenericIndexId = Boolean(customer.id && /^(tab1|tab2|tab)[-_]\d+$/i.test(customer.id));
+  if (customer.id && !isGenericIndexId && keys.has(customer.id)) return true;
+
   const cleanPhone = (customer.phone || '').replace(/\D/g, '');
-  if (cleanPhone.length >= 8 && keys.has('phone:' + cleanPhone)) return true;
+  if (cleanPhone.length >= 7 && keys.has('phone:' + cleanPhone)) return true;
   if (customer.slipNo && keys.has('slip:' + customer.slipNo.trim())) return true;
   if (customer.name && cleanPhone.length >= 4 && keys.has(`namephone:${customer.name.trim()}_${cleanPhone}`)) return true;
   return false;
@@ -210,16 +221,21 @@ export function getDeletedCustomerCount(): number {
 }
 
 export function getGasApiUrl(): string {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return DEFAULT_GAS_URL;
+  }
   return localStorage.getItem(STORAGE_KEY_GAS_URL) || localStorage.getItem('google_sheet_url') || DEFAULT_GAS_URL;
 }
 
 export function setGasApiUrl(url: string): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   const clean = url.trim();
   localStorage.setItem(STORAGE_KEY_GAS_URL, clean);
   localStorage.setItem('google_sheet_url', clean);
 }
 
 export function clearGasApiUrl(): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   localStorage.removeItem(STORAGE_KEY_GAS_URL);
   localStorage.removeItem('google_sheet_url');
 }
@@ -245,6 +261,9 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
 }
 
 export function getCachedCustomers(): CustomerItem[] {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return INITIAL_MOCK_CUSTOMERS;
+  }
   try {
     let raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
     if (!raw) {
@@ -269,6 +288,7 @@ export function getCachedCustomers(): CustomerItem[] {
 }
 
 export function saveCachedCustomers(customers: CustomerItem[]): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   try {
     const deduped = deduplicateCustomers(customers);
     const jsonStr = JSON.stringify(deduped);
@@ -444,8 +464,8 @@ export function disentangleCustomerFields(
       .replace(/01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/g, '')
       .replace(/\([^)]{2,}\)/g, '')
       .replace(/\[[^\]]{2,}\]/g, '')
-      .replace(/\s*,\s*,+/g, ',')
-      .replace(/^[\s,]+|[\s,]+$/g, '')
+      .replace(/[()[\]{},;]/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
   };
 
@@ -727,49 +747,96 @@ export function mergeWithExistingCache(freshList: CustomerItem[], currentCache: 
   const nonDeletedFresh = freshList.filter((f) => !isCustomerDeleted(f));
   const nonDeletedCache = currentCache.filter((c) => !isCustomerDeleted(c));
 
-  // Build lookup index of all existing local customers by normalized phone number
+  // Build lookup index of all existing local customers
   const existingByPhone = new Map<string, CustomerItem>();
   const existingById = new Map<string, CustomerItem>();
   const existingBySlip = new Map<string, CustomerItem>();
+  const existingByName = new Map<string, CustomerItem>();
 
   nonDeletedCache.forEach((c) => {
     existingById.set(c.id, c);
     const cleanPhone = (c.phone || '').replace(/\D/g, '');
-    if (cleanPhone.length >= 8) {
+    if (cleanPhone.length >= 7) {
       existingByPhone.set(cleanPhone.slice(-8), c);
       existingByPhone.set(cleanPhone, c);
     }
     if (c.slipNo && c.slipNo.trim()) {
       existingBySlip.set(c.slipNo.trim(), c);
     }
+    if (c.name && c.name !== '고객님' && c.name.length >= 2) {
+      existingByName.set(c.name.trim(), c);
+    }
   });
 
-  const newIncomingCustomers: CustomerItem[] = [];
+  const mergedList: CustomerItem[] = [];
+  const processedExistingIds = new Set<string>();
 
+  // 1. Process Fresh incoming items from Google Sheet
   nonDeletedFresh.forEach((fresh) => {
     const cleanPhone = (fresh.phone || '').replace(/\D/g, '');
-    const last8 = cleanPhone.length >= 8 ? cleanPhone.slice(-8) : '';
-    
-    // Check if customer already exists in local CRM by phone, id, or slipNo
-    const existing = (last8 && existingByPhone.get(last8)) ||
-                     (cleanPhone && existingByPhone.get(cleanPhone)) ||
-                     existingById.get(fresh.id) ||
-                     (fresh.slipNo && existingBySlip.get(fresh.slipNo.trim()));
+    const last8 = cleanPhone.length >= 7 ? cleanPhone.slice(-8) : '';
+
+    // Match with existing customer by phone, slip, or name
+    let existing: CustomerItem | undefined = undefined;
+    if (cleanPhone.length >= 7) {
+      existing = existingByPhone.get(cleanPhone) || (last8 ? existingByPhone.get(last8) : undefined);
+    }
+    if (!existing && fresh.slipNo && fresh.slipNo.trim()) {
+      existing = existingBySlip.get(fresh.slipNo.trim());
+    }
+    if (!existing && fresh.name && fresh.name !== '고객님' && fresh.name.length >= 2) {
+      const matchByName = existingByName.get(fresh.name.trim());
+      if (matchByName) {
+        const mCleanPhone = (matchByName.phone || '').replace(/\D/g, '');
+        if (!cleanPhone || !mCleanPhone || cleanPhone.slice(-4) === mCleanPhone.slice(-4)) {
+          existing = matchByName;
+        }
+      }
+    }
 
     if (!existing) {
-      // Brand new incoming customer! Insert into CRM
-      if (last8) existingByPhone.set(last8, fresh);
-      if (cleanPhone) existingByPhone.set(cleanPhone, fresh);
-      if (fresh.slipNo) existingBySlip.set(fresh.slipNo.trim(), fresh);
-      existingById.set(fresh.id, fresh);
-      newIncomingCustomers.push(fresh);
+      // Brand new incoming customer! Insert at the top of CRM
+      mergedList.push(fresh);
+    } else {
+      // Existing customer: Smart Update!
+      // Preserve local quotes, logs, gifts, but sync sheet updates (delivery date, amounts, items, slip, docUrl)
+      processedExistingIds.add(existing.id);
+      const updatedExisting: CustomerItem = {
+        ...existing,
+        // 시트의 최신 배송일이 있으면 갱신
+        deliveryDate: fresh.deliveryDate || existing.deliveryDate,
+        dDay: fresh.deliveryDate ? fresh.dDay : existing.dDay,
+        // 품목 및 금액이 시트에 더 구체적이면 갱신
+        items: (fresh.items && fresh.items.length > (existing.items || '').length) ? fresh.items : (existing.items || fresh.items),
+        paidAmount: fresh.paidAmount !== undefined && fresh.paidAmount > 0 ? fresh.paidAmount : existing.paidAmount,
+        netAmount: fresh.netAmount !== undefined ? fresh.netAmount : existing.netAmount,
+        benefit: fresh.benefit || existing.benefit,
+        slipNo: fresh.slipNo || existing.slipNo,
+        docUrl: fresh.docUrl || existing.docUrl,
+        // 상태: CRM에서 견적을 별도 저장하지 않은 고객은 시트의 최신 상태를 적극 반영
+        status: existing.quotes && existing.quotes.length > 0 
+          ? existing.status 
+          : (fresh.status || existing.status),
+        rawStatus: fresh.rawStatus || existing.rawStatus,
+        phone: (fresh.phone && fresh.phone.length >= (existing.phone || '').length) ? fresh.phone : (existing.phone || fresh.phone),
+        // CRM 고유 작업 데이터 100% 보존
+        quotes: existing.quotes || [],
+        logs: existing.logs || [],
+        giftItem: existing.giftItem || fresh.giftItem,
+        isGiftDelivered: existing.isGiftDelivered ?? fresh.isGiftDelivered,
+      };
+      mergedList.push(updatedExisting);
     }
-    // If already existing: DO NOT OVERWRITE! Local CRM data is 100% the Source of Truth!
   });
 
-  // Combine: New incoming customers + untouched local cache
-  const combined = [...newIncomingCustomers, ...nonDeletedCache];
-  return deduplicateCustomers(combined);
+  // 2. Retain local customers that were not in the sheet
+  nonDeletedCache.forEach((c) => {
+    if (!processedExistingIds.has(c.id)) {
+      mergedList.push(c);
+    }
+  });
+
+  return deduplicateCustomers(mergedList);
 }
 
 export async function fetchCustomersFromGas(): Promise<{
@@ -789,9 +856,14 @@ export async function fetchCustomersFromGas(): Promise<{
   }
 
   try {
-    const res = await fetch(url, {
+    // 3중 캐시 방지 (Cache-busting): URL에 timestamp 파라미터 추가 + cache: 'no-store' + Pragma no-cache
+    const fetchUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+    const res = await fetch(fetchUrl, {
       method: 'GET',
+      cache: 'no-store',
       headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
         Accept: 'application/json',
       },
     });
@@ -834,14 +906,14 @@ export async function fetchCustomersFromGas(): Promise<{
         message: `구글 시트 연동 성공! 총 ${finalUnified.length}건의 데이터를 실시간으로 동기화했습니다.`,
       };
     } else {
-      throw new Error('데이터 형식이 올바르지 않습니다.');
+      throw new Error('데이터 형식이 올바르지 않거나 시트가 비어있습니다.');
     }
   } catch (err: any) {
     console.warn('GAS Fetch failed, falling back to local cache', err);
     return {
       customers: currentLocal,
       fromGas: false,
-      message: `구글 시트 통신 지연 (${err.message || 'CORS/네트워크'}). 최신 로컬 데이터를 안전하게 표시합니다.`,
+      message: `구글 시트 연결 실패 (${err.message || '네트워크 오류'}). 로컬 데이터를 표시합니다.`,
     };
   }
 }
