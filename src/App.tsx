@@ -475,159 +475,117 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {/* 1. TODAY WORK QUEUE (Compact Single Dashboard Container) */}
-          <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200/90 shadow-2xs flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-base sm:text-lg">⚡</span>
-                <div>
-                  <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight flex items-center gap-1.5">
-                    <span>오늘 먼저 처리할 고객</span>
-                    <span className="text-[10px] text-slate-400 font-mono font-medium hidden sm:inline">TODAY WORK QUEUE</span>
-                  </h2>
-                  <p className="text-[11px] text-slate-500 hidden sm:block">
-                    신규 미발송 문의, 배송 전 확인, 물류 점검이 필요한 우선순위 큐
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 bg-rose-50 text-rose-700 px-2.5 py-1 rounded-xl border border-rose-200 text-xs font-black">
-                <span>우선처리</span>
-                <span className="bg-rose-600 text-white rounded-full px-1.5 py-0.2 text-[11px]">
-                  {urgentCount}건
-                </span>
-              </div>
+          {/* 1. 슬림 업무 요약 바 (시각적 부하 최소화) */}
+          <div className="bg-slate-900 text-white rounded-2xl px-4 py-2.5 shadow-sm border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">⚡</span>
+              <span className="text-xs font-black tracking-tight">오늘의 업무 현황</span>
             </div>
-
-            {/* 3 Quick Action Filter Buttons */}
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => setFilterStatus((prev) => (prev === '신규/미발송' ? '전체' : '신규/미발송'))}
-                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition active:scale-95 cursor-pointer ${
-                  filterStatus === '신규/미발송'
-                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                    : 'bg-rose-50/70 hover:bg-rose-100 text-rose-900 border-rose-200'
+            <div className="flex items-center gap-2 sm:gap-3 text-xs font-bold">
+              <button 
+                type="button" 
+                onClick={() => setFilterStatus(filterStatus === '신규/미발송' ? '전체' : '신규/미발송')}
+                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === '신규/미발송' ? 'bg-rose-600 text-white' : 'hover:bg-slate-800 text-rose-400'
                 }`}
               >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterStatus === '신규/미발송' ? 'bg-white' : 'bg-rose-500'}`} />
-                  <span className="truncate">[신규] 미발송</span>
-                </div>
-                <span
-                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-black ${
-                    filterStatus === '신규/미발송' ? 'bg-white/20 text-white' : 'bg-rose-200 text-rose-800'
-                  }`}
-                >
-                  {counts['신규/미발송'] || 0}
-                </span>
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                <span>신규</span>
+                <strong className="text-white">{counts['신규/미발송'] || 0}</strong>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterStatus((prev) => (prev === '배송대기' ? '전체' : '배송대기'))}
-                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition active:scale-95 cursor-pointer ${
-                  filterStatus === '배송대기'
-                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                    : 'bg-blue-50/70 hover:bg-blue-100 text-blue-900 border-blue-200'
+              <span className="text-slate-700">|</span>
+              <button 
+                type="button" 
+                onClick={() => setFilterStatus(filterStatus === '상담진행중' ? '전체' : '상담진행중')}
+                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === '상담진행중' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 text-indigo-400'
                 }`}
               >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterStatus === '배송대기' ? 'bg-white' : 'bg-blue-500'}`} />
-                  <span className="truncate">[배송] 배송대기</span>
-                </div>
-                <span
-                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-black ${
-                    filterStatus === '배송대기' ? 'bg-white/20 text-white' : 'bg-blue-200 text-blue-800'
-                  }`}
-                >
-                  {counts['배송대기'] || 0}
-                </span>
+                <span>상담</span>
+                <strong className="text-white">{counts['상담진행중'] || 0}</strong>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setFilterStatus((prev) => (prev === '물류대기' ? '전체' : '물류대기'))}
-                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border transition active:scale-95 cursor-pointer ${
-                  filterStatus === '물류대기'
-                    ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                    : 'bg-purple-50/70 hover:bg-purple-100 text-purple-900 border-purple-200'
+              <span className="text-slate-700">|</span>
+              <button 
+                type="button" 
+                onClick={() => setFilterStatus(filterStatus === '배송대기' ? '전체' : '배송대기')}
+                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === '배송대기' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 text-blue-400'
                 }`}
               >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${filterStatus === '물류대기' ? 'bg-white' : 'bg-purple-500'}`} />
-                  <span className="truncate">[물류] 물류대기</span>
-                </div>
-                <span
-                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-black ${
-                    filterStatus === '물류대기' ? 'bg-white/20 text-white' : 'bg-purple-200 text-purple-800'
-                  }`}
-                >
-                  {counts['물류대기'] || 0}
-                </span>
+                <span>배송</span>
+                <strong className="text-white">{counts['배송대기'] || 0}</strong>
+              </button>
+              <span className="text-slate-700">|</span>
+              <button 
+                type="button" 
+                onClick={() => setFilterStatus(filterStatus === '미구매/고민중' ? '전체' : '미구매/고민중')}
+                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                  filterStatus === '미구매/고민중' ? 'bg-sky-600 text-white' : 'hover:bg-slate-800 text-sky-400'
+                }`}
+              >
+                <span>고민</span>
+                <strong className="text-white">{counts['미구매/고민중'] || 0}</strong>
               </button>
             </div>
           </div>
 
-          {/* 2. Integrated 1-Line Toolbar (Search + Status Select + Sort Select) */}
-          <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-2xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
-            {/* Real-time search box */}
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="고객명 · 전화번호 · 전표 · 품목 검색..."
-                className="w-full pl-9 pr-8 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm bg-slate-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 transition"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 font-bold"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Controls: Status Select & Sort Select */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Status Filter Select Box */}
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="flex-1 md:flex-initial py-2 px-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer"
-                title="상태별 필터"
-              >
-                <option value="전체">전체 상태 ({counts['전체']}건)</option>
-                <option value="신규/미발송">신규/미발송 ({counts['신규/미발송']}건)</option>
-                <option value="상담진행중">상담진행중 ({counts['상담진행중']}건)</option>
-                <option value="미구매/고민중">미구매/고민중 ({counts['미구매/고민중']}건)</option>
-                <option value="물류대기">물류대기 ({counts['물류대기']}건)</option>
-                <option value="배송대기">배송대기 ({counts['배송대기']}건)</option>
-                <option value="배송완료">배송완료 ({counts['배송완료']}건)</option>
-              </select>
-
-              {/* Sort Select Box */}
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5">
+          {/* 2. 통합 검색 및 실제 필터 툴바 */}
+          <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-2xs space-y-2.5">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="고객명, 연락처, 전표, 품목 검색..."
+                  className="w-full pl-9 pr-8 py-2 border border-slate-200 rounded-xl text-xs sm:text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500 transition"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shrink-0">
                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
                   className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
-                  title="목록 정렬"
                 >
                   <option value="delivery">배송 임박순</option>
                   <option value="latest">최신 등록순</option>
                   <option value="price">결제 금액순</option>
                 </select>
               </div>
+            </div>
 
-              {/* Result Count Badge */}
-              <span className="hidden lg:inline text-xs text-slate-500 font-medium whitespace-nowrap pl-1">
-                <strong className="text-slate-900">{filteredCustomers.length}</strong>건
-              </span>
+            {/* 가로 칩 형태의 상태 필터 */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
+              {(['전체', '신규/미발송', '상담진행중', '미구매/고민중', '물류대기', '배송대기', '배송완료'] as const).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setFilterStatus(st)}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition shrink-0 cursor-pointer flex items-center gap-1 border ${
+                    filterStatus === st
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>{st}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    filterStatus === st ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-600'
+                  }`}>
+                    {counts[st] || 0}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>
 

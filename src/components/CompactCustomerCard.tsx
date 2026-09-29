@@ -42,11 +42,8 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
     border: 'border-slate-200',
   };
 
-  // D-Day 배지 스타일 계산
   const getDDayBadge = () => {
-    if (customer.dDay === null || customer.dDay === undefined) {
-      return null;
-    }
+    if (customer.dDay === null || customer.dDay === undefined) return null;
     if (customer.dDay === 0) {
       return (
         <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse shadow-xs">
@@ -68,106 +65,73 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
         </span>
       );
     }
-    if (customer.dDay > 7) {
-      return (
-        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-          D-{customer.dDay}
-        </span>
-      );
-    }
     return (
       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
-        배송경과 (+{Math.abs(customer.dDay)}일)
+        {customer.dDay > 0 ? `D-${customer.dDay}` : `배송경과 (+${Math.abs(customer.dDay)}일)`}
       </span>
     );
   };
 
-  // 약속 사은품 미지급 여부
   const hasPendingGift = Boolean(customer.giftItem && !customer.isGiftDelivered);
-  const quoteCount = customer.quotes?.length || 0;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all duration-150 flex flex-col justify-between overflow-hidden group">
-      {/* 1. Card Top Row: Name, Status, Phone, D-Day & Detail Arrow */}
-      <div className="p-3.5 pb-2.5">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          {/* Left: Name, Badge, Tags */}
-          <div className="flex-1 min-w-0">
+      <div className="p-3.5 pb-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-black text-sm text-slate-900 tracking-tight truncate">
                 {customer.name}
               </span>
-              <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${statusTheme.bg} ${statusTheme.text} ${statusTheme.border}`}
-              >
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${statusTheme.bg} ${statusTheme.text} ${statusTheme.border}`}>
                 {customer.status}
               </span>
               {getDDayBadge()}
               {hasPendingGift && (
-                <span
-                  title={`약속 사은품 미지급: ${customer.giftItem}`}
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300"
-                >
-                  <Gift className="w-2.5 h-2.5 text-amber-600" />
-                  사은품대기
+                <span title={`사은품 미지급: ${customer.giftItem}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                  <Gift className="w-2.5 h-2.5 text-amber-600" /> 사은품
                 </span>
               )}
             </div>
-
             <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap">
               <span className="font-mono text-slate-600">{customer.phone || '연락처 없음'}</span>
-              {customer.slipNo && (
-                <span className="text-[11px] text-slate-400 font-mono">
-                  전표: {customer.slipNo}
-                </span>
-              )}
               {customer.deliveryDate && (
                 <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
-                  <Calendar className="w-3 h-3 text-slate-400" />
-                  {customer.deliveryDate}
+                  <Calendar className="w-3 h-3 text-slate-400" /> {customer.deliveryDate}
                 </span>
               )}
             </div>
           </div>
 
-          {/* Right: Open Detail Modal Button (>) */}
-          <button
-            type="button"
-            onClick={() => onOpenDetail(customer)}
-            className="flex-shrink-0 flex items-center gap-0.5 py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-bold text-xs border border-slate-200 transition active:scale-95 cursor-pointer"
-            title="고객 상세 정보 및 전체 견적/상담 이력 보기"
-          >
-            <span>상세</span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500 transition-colors" />
-          </button>
+          {/* 우측 상단: [상태 ▾] 컴팩트 드롭다운 */}
+          <div className="shrink-0">
+            <select
+              value={customer.status}
+              onChange={(e) => onUpdateStatus(customer.id, e.target.value as PipelineStatus)}
+              className="text-[11px] font-bold py-1 px-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
+              title="상태 빠른 변경"
+            >
+              {ALL_STATUSES.map((st) => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* 2. Middle: Items & Amount Summary */}
-        <div className="bg-slate-50/90 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between gap-2">
-          {/* Items */}
+        {/* 품목 및 체감가 요약 */}
+        <div className="mt-2 bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <Package className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+            <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span className="text-xs text-slate-700 font-medium truncate" title={customer.items || customer.category || '가전 견적'}>
               {customer.items || customer.category || '가전 견적'}
             </span>
-            {quoteCount > 0 && (
-              <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.2 bg-indigo-50 text-indigo-700 rounded border border-indigo-200">
-                견적 {quoteCount}건
-              </span>
-            )}
           </div>
-
-          {/* Price */}
-          <div className="text-right flex-shrink-0">
-            {customer.paidAmount > 0 ? (
+          <div className="text-right shrink-0">
+            {customer.paidAmount && customer.paidAmount > 0 ? (
               <div>
-                <span className="text-xs font-black text-slate-900">
-                  {customer.paidAmount.toLocaleString()}원
-                </span>
-                {customer.netAmount > 0 && customer.netAmount !== customer.paidAmount && (
-                  <div className="text-[10px] text-emerald-600 font-bold">
-                    체감 {customer.netAmount.toLocaleString()}원
-                  </div>
+                <span className="text-xs font-black text-slate-900">{customer.paidAmount.toLocaleString()}원</span>
+                {customer.netAmount !== undefined && customer.netAmount !== customer.paidAmount && (
+                  <div className="text-[10px] text-rose-600 font-bold">체감 {customer.netAmount.toLocaleString()}원</div>
                 )}
               </div>
             ) : (
@@ -177,62 +141,47 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
         </div>
       </div>
 
-      {/* 3. Bottom Action Row: Call, SMS, Quote + Status Select */}
+      {/* 하단 4대 액션 버튼: 전화, 문자, 견적서 계산, 상세 */}
       <div className="p-2.5 pt-0 bg-white">
         <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
-          {/* 1. Phone Call */}
           <a
             href={cleanPhone ? `tel:${cleanPhone}` : undefined}
-            onClick={(e) => {
-              if (!cleanPhone) {
-                e.preventDefault();
-                alert('연락처가 등록되지 않은 고객입니다.');
-              }
-            }}
-            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-bold text-xs border border-slate-200 hover:border-emerald-200 shadow-2xs transition active:scale-95 text-center flex-shrink-0"
+            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 text-center shrink-0"
             title="전화 걸기"
           >
             <Phone className="w-3.5 h-3.5 text-emerald-600" />
             <span>전화</span>
           </a>
 
-          {/* 2. SMS Send */}
           <button
             type="button"
             onClick={() => onOpenSMS(customer)}
-            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-sky-50 text-slate-700 hover:text-sky-700 font-bold text-xs border border-slate-200 hover:border-sky-200 shadow-2xs transition active:scale-95 text-center flex-shrink-0 cursor-pointer"
+            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-sky-50 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 text-center shrink-0 cursor-pointer"
             title="문자 발송"
           >
             <MessageSquare className="w-3.5 h-3.5 text-sky-600" />
             <span>문자</span>
           </button>
 
-          {/* 3. Quotation Calculator (Hero Action) */}
           <button
             type="button"
             onClick={() => onOpenQuote(customer)}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-2xs hover:shadow-xs transition active:scale-95 cursor-pointer truncate"
-            title="고객 정보와 견적 품목을 계산기에 자동 로드"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-2xs transition active:scale-95 cursor-pointer truncate"
+            title="계산기로 견적 작성/수정"
           >
-            <Calculator className="w-3.5 h-3.5 text-white flex-shrink-0" />
-            <span className="truncate">견적</span>
+            <Calculator className="w-3.5 h-3.5 text-white shrink-0" />
+            <span>견적서 계산</span>
           </button>
 
-          {/* 4. Inline Status Select */}
-          <div className="flex-shrink-0">
-            <select
-              value={customer.status}
-              onChange={(e) => onUpdateStatus(customer.id, e.target.value as PipelineStatus)}
-              className="text-[11px] font-bold py-1.5 px-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
-              title="고객 상태 변경"
-            >
-              {ALL_STATUSES.map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={() => onOpenDetail(customer)}
+            className="flex items-center justify-center gap-0.5 py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 cursor-pointer shrink-0"
+            title="고객 상세 및 이력 전체보기"
+          >
+            <span>상세</span>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+          </button>
         </div>
       </div>
     </div>

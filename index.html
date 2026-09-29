@@ -178,41 +178,43 @@ details > summary::-webkit-details-marker { display: none; }
 <!-- 왼쪽 입력 패널 -->
 <div class="lg:col-span-5 space-y-4 sm:space-y-6" id="input-panel" oninput="calc()" onchange="calc()">
 
-<!-- 통합 상단 바: [← CRM 복귀] 👤 [고객명] 견적 작성 중 | [💾 CRM 저장] [💬 AI톡] [⋮ 더보기] -->
-<div class="bg-slate-900 text-white p-3 sm:p-3.5 rounded-2xl shadow-lg border border-slate-800 flex items-center justify-between gap-2 relative mb-3">
-  <!-- 좌측: [← CRM 복귀] + 👤 [고객명] 견적 작성 중 -->
+<!-- 계산기 내부 통합 상단 바 -->
+<div class="bg-slate-900 text-white p-3 rounded-2xl shadow-lg border border-slate-800 flex items-center justify-between gap-2 relative mb-3">
+  <!-- 좌측: CRM 복귀 & 연결 고객 안내 -->
   <div class="flex items-center gap-2 min-w-0">
-    <button type="button" onclick="if(window.switchAppTab) window.switchAppTab('crm');" class="flex-shrink-0 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition active:scale-95 flex items-center gap-1 cursor-pointer" title="고객 CRM 대시보드로 즉시 복귀">
-      <span>←</span>
-      <span class="hidden sm:inline">CRM 복귀</span>
+    <button type="button" onclick="if(window.switchAppTab) window.switchAppTab('crm');" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition active:scale-95 flex items-center gap-1 cursor-pointer" title="CRM 대시보드로 복귀">
+      <span>←</span><span class="hidden sm:inline">CRM</span>
     </button>
     <div class="min-w-0 flex items-center gap-1.5 truncate">
-      <span class="text-base flex-shrink-0">👤</span>
-      <span id="active-customer-banner-name" class="text-xs sm:text-sm font-black truncate tracking-tight text-white">신규 고객</span>
-      <span class="text-[10px] text-slate-400 font-medium hidden md:inline">견적 작성 중</span>
+      <span class="text-xs">👤</span>
+      <span id="active-customer-banner-name" class="text-xs sm:text-sm font-black truncate text-white">신규 고객</span>
+      <span id="active-customer-status-tag" class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 hidden md:inline">새 견적</span>
     </div>
   </div>
 
-  <!-- 우측 액션: [💾 CRM 저장] [💬 AI톡] [⋮ 더보기] -->
-  <div class="flex items-center gap-1.5 flex-shrink-0">
+  <!-- 우측: 저장 상태 배지 + CRM 저장 + AI톡 + 더보기(⋮) -->
+  <div class="flex items-center gap-1.5 shrink-0">
+    <!-- 실시간 저장 상태 인디케이터 배지 -->
+    <span id="calc-save-status-badge" class="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1">
+      <span id="calc-save-status-dot" class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+      <span id="calc-save-status-text">저장 준비</span>
+    </span>
+
     <button type="button" onclick="openSaveModal()" class="bg-rose-600 hover:bg-rose-500 text-white font-black py-1.5 px-3 rounded-xl text-xs flex items-center gap-1 shadow-md ring-1 ring-rose-400/40 transition active:scale-95 cursor-pointer">
-      <span>💾</span>
-      <span>CRM 저장</span>
-    </button>
-    <button type="button" onclick="openAIMsgModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-2.5 rounded-xl text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer" title="고객 카톡 견적 안내문 생성">
-      <span>💬</span>
-      <span class="hidden sm:inline">AI톡</span>
+      <span>💾</span><span>CRM 저장</span>
     </button>
 
-    <!-- [⋮ 더보기] 드롭다운 토글 메뉴 -->
+    <button type="button" onclick="openAIMsgModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-2.5 rounded-xl text-xs flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer" title="AI 카톡 견적 안내문 생성">
+      <span>💬</span><span class="hidden sm:inline">AI톡</span>
+    </button>
+
+    <!-- [⋮ 더보기] 메뉴 (기존 6개 기능 100% 보존) -->
     <div class="relative inline-block text-left" id="calc-more-menu-container">
-      <button type="button" onclick="toggleCalcMoreMenu(event)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-2.5 py-1.5 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer flex items-center gap-1 text-xs font-bold" title="추가 도구 더보기">
+      <button type="button" onclick="toggleCalcMoreMenu(event)" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-xl border border-slate-700 transition active:scale-95 cursor-pointer text-xs font-bold">
         <span>⋮</span>
-        <span class="hidden sm:inline text-[11px]">더보기</span>
       </button>
 
-      <!-- 드롭다운 메뉴 (기존 부가 기능 100% 완전 보존) -->
-      <div id="calc-more-dropdown" class="hidden absolute right-0 mt-2 w-52 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs font-bold divide-y divide-slate-100 animate-in fade-in zoom-in-95 duration-100">
+      <div id="calc-more-dropdown" class="hidden absolute right-0 mt-2 w-52 bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 py-1.5 z-50 text-xs font-bold divide-y divide-slate-100">
         <div class="py-1">
           <button type="button" onclick="scanComputer(); closeCalcMoreMenu();" class="w-full text-left px-3.5 py-2 hover:bg-amber-50 hover:text-amber-900 flex items-center gap-2 transition cursor-pointer">
             <span>📷</span> 전산 스캔 입력 (OCR)
@@ -249,53 +251,57 @@ details > summary::-webkit-details-marker { display: none; }
 </div>
 
 <!-- 기본 정보 -->
-<div class="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
-<h2 class="text-sm font-bold mb-3 border-b pb-2 text-gray-700">1. 고객 및 상담 기본 정보</h2>
-<div class="flex gap-4 mb-3 text-xs font-semibold">
-<label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="일반" checked class="accent-rose-500 w-4 h-4"> 일반</label>
-<label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="이사" class="accent-rose-500 w-4 h-4"> 이사</label>
-<label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="입주" class="accent-rose-500 w-4 h-4"> 입주</label>
-<label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="웨딩" class="accent-rose-500 w-4 h-4"> 웨딩</label>
-</div>
-<div class="grid grid-cols-2 gap-2.5">
-<div><label class="block text-xs text-gray-500 mb-1">고객 성명</label><input type="text" id="i-name" class="input-box" placeholder="고객 성명" oninput="updateCalcHeaderCustomerName(); calc();"></div>
-<div><label class="block text-xs text-blue-600 font-bold mb-1">고객 연락처</label><input type="text" id="i-c-phone" class="input-box border-blue-300 bg-blue-50" placeholder="010-0000-0000"></div>
-<div><label class="block text-xs text-gray-500 mb-1">매장 연락처</label><input type="text" id="i-phone" class="input-box" value="031-767-1044"></div>
-<div><label class="block text-xs text-gray-500 mb-1">판매 담당자</label><input type="text" id="i-manager" class="input-box" placeholder="담당자 성명"></div>
-<div>
-  <label class="block text-xs text-slate-700 font-bold mb-1">📅 상담일자</label>
-  <input type="date" id="i-date" class="input-box text-xs bg-slate-50">
-</div>
-<div>
-  <label class="block text-xs text-slate-700 font-bold mb-1">🧾 전표번호</label>
-  <input type="text" id="i-no" class="input-box font-mono text-xs" placeholder="예: 20260928-0012">
-</div>
-<div class="col-span-2">
-  <label class="block text-xs text-rose-600 font-bold mb-1">🚚 배송희망일</label>
-  <input type="date" id="i-delivery-date" class="input-box border-rose-300 bg-rose-50/60 font-semibold text-rose-900 text-xs">
-</div>
-</div>
+<div class="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200">
+  <h2 class="text-xs font-black text-slate-800 mb-2.5 pb-1.5 border-b border-slate-100 flex items-center justify-between">
+    <span>1. 고객 기본 정보</span>
+    <span class="text-[10px] text-slate-400 font-normal">필수 정보 우선 기재</span>
+  </h2>
+  <div class="flex gap-3 mb-3 text-xs font-bold text-slate-700">
+    <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="일반" checked class="accent-rose-500 w-4 h-4"> 일반</label>
+    <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="이사" class="accent-rose-500 w-4 h-4"> 이사</label>
+    <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="입주" class="accent-rose-500 w-4 h-4"> 입주</label>
+    <label class="flex items-center gap-1 cursor-pointer"><input type="radio" name="i-type" value="웨딩" class="accent-rose-500 w-4 h-4"> 웨딩</label>
+  </div>
+  <!-- 1열: 고객명, 연락처 -->
+  <div class="grid grid-cols-2 gap-2 mb-2">
+    <div>
+      <label class="block text-[11px] font-bold text-slate-700 mb-1">고객 성명 *</label>
+      <input type="text" id="i-name" class="input-box font-bold" placeholder="고객 성명" oninput="markUnsavedChanges(); updateCalcHeaderCustomerName(); calc();">
+    </div>
+    <div>
+      <label class="block text-[11px] font-bold text-blue-700 mb-1">고객 연락처</label>
+      <input type="text" id="i-c-phone" class="input-box border-blue-200 bg-blue-50/50" placeholder="010-0000-0000" oninput="markUnsavedChanges(); calc();">
+    </div>
+  </div>
+  <!-- 2열: 배송희망일 -->
+  <div class="mb-2.5">
+    <label class="block text-[11px] font-bold text-rose-700 mb-1">🚚 배송희망일</label>
+    <input type="date" id="i-delivery-date" class="input-box border-rose-200 bg-rose-50/40 font-semibold text-rose-900" oninput="markUnsavedChanges(); calc();">
+  </div>
+  <!-- 3열: 보조 정보 (상담일자, 전표번호, 담당자, 매장연락처) -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs">
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">상담일자</label><input type="date" id="i-date" class="input-box text-xs bg-slate-50" oninput="markUnsavedChanges(); calc();"></div>
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">전표번호</label><input type="text" id="i-no" class="input-box font-mono text-xs" placeholder="전표번호" oninput="markUnsavedChanges(); calc();"></div>
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">담당자</label><input type="text" id="i-manager" class="input-box text-xs" placeholder="담당자" oninput="markUnsavedChanges(); calc();"></div>
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">매장연락처</label><input type="text" id="i-phone" class="input-box text-xs" value="031-767-1044" oninput="markUnsavedChanges(); calc();"></div>
+  </div>
 </div>
 
-<!-- 실시간 금액 확인 요약 패널 (입력 화면에서 기본 합계 금액과 고객결제 금액을 즉시 확인) -->
-<div class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-slate-700/80 my-3.5 grid grid-cols-2 sm:grid-cols-3 gap-2.5 items-center">
-  <div>
-    <span class="text-[11px] text-slate-300 font-semibold block flex items-center gap-1">
-      <span>🏷️</span> 기본 합계 금액
-    </span>
-    <span class="text-base sm:text-lg font-black text-white tracking-tight" id="live-sum-amount">0원</span>
-  </div>
-  <div>
-    <span class="text-[11px] text-rose-300 font-bold block flex items-center gap-1">
-      <span>💳</span> 고객 결제 금액 (실결제)
-    </span>
-    <span class="text-base sm:text-lg font-black text-rose-400 tracking-tight" id="live-pay-amount">0원</span>
-  </div>
-  <div class="col-span-2 sm:col-span-1 border-t sm:border-t-0 sm:border-l border-slate-700/80 pt-2 sm:pt-0 sm:pl-3">
+<!-- 실시간 금액 확인 요약 패널 -->
+<div class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3.5 sm:p-4 rounded-2xl shadow-md border border-slate-700/80 my-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 items-center">
+  <div class="order-1 sm:order-3 sm:border-l sm:border-slate-700 sm:pl-3">
     <span class="text-[11px] text-amber-300 font-bold block flex items-center gap-1">
       <span>✨</span> 최종 체감 혜택가
     </span>
-    <span class="text-base sm:text-lg font-black text-amber-400 tracking-tight" id="live-net-amount">0원</span>
+    <span class="text-xl sm:text-2xl font-black text-amber-400 tracking-tight" id="live-net-amount">0원</span>
+  </div>
+  <div class="order-2 sm:order-1">
+    <span class="text-[11px] text-slate-300 font-semibold block">기본 합계 금액</span>
+    <span class="text-sm sm:text-base font-black text-white" id="live-sum-amount">0원</span>
+  </div>
+  <div class="order-3 sm:order-2">
+    <span class="text-[11px] text-rose-300 font-bold block">고객 결제 금액 (실결제)</span>
+    <span class="text-sm sm:text-base font-black text-rose-400" id="live-pay-amount">0원</span>
   </div>
 </div>
 
@@ -335,30 +341,35 @@ details > summary::-webkit-details-marker { display: none; }
 <div class="flex justify-between items-center"><span class="font-medium text-rose-600">(-) 포인트 즉시 사용</span><input type="number" id="l-pt-use" class="input-box w-32" placeholder="0"></div>
 <div class="flex justify-between items-center"><span class="font-medium">배송 익월 추가 캐시백</span><input type="number" id="l-cash" class="input-box w-32" placeholder="0"></div>
 
-<div class="pt-3 mt-2 border-t border-rose-200">
-<div class="flex justify-between items-center mb-2">
-<span class="text-xs font-bold text-rose-800">추가혜택</span>
-<button type="button" onclick="addLumpBenefitRow()" class="text-xs bg-rose-100 border border-rose-300 text-rose-700 px-2 py-0.5 rounded shadow-sm">+ 혜택추가</button>
-</div>
-<div id="lump-benefit-container" class="space-y-1 mb-2"></div>
-</div>
-<div class="pt-3 mt-2 border-t border-rose-200">
-<div class="flex justify-between items-center mb-2">
-<span class="text-xs font-bold text-rose-800">하이프리드 결합 (최대 6건)</span>
-<button type="button" onclick="addHpRow('lump')" class="text-xs bg-rose-100 border border-rose-300 text-rose-700 px-2 py-0.5 rounded shadow-sm">+ 결합추가</button>
-</div>
-<div id="lump-hp-container" class="space-y-1 mb-2"></div>
-<div class="bg-rose-100/70 p-2.5 rounded flex justify-between items-end">
-<div class="text-left">
-<p class="text-[10px] text-rose-600 font-bold mb-0.5">상조 월 납입금</p>
-<p class="text-sm font-bold text-rose-800" id="lump-hp-month">0원</p>
-</div>
-<div class="text-right">
-<p class="text-[11px] text-rose-800 font-bold mb-0.5">150개월 만기 완납 환급액 (100% 전액)</p>
-<p class="text-base font-extrabold text-rose-700" id="lump-hp-preview">0원</p>
-</div>
-</div>
-</div>
+<!-- 추가 혜택 아코디언 -->
+<details id="details-lump-benefit" class="border border-rose-200 rounded-xl bg-white/70 overflow-hidden text-xs mt-2.5">
+  <summary class="px-3 py-2 bg-rose-50 font-bold text-rose-800 flex items-center justify-between cursor-pointer select-none">
+    <span>+ 추가 혜택 입력 (선택)</span>
+    <button type="button" onclick="event.preventDefault(); addLumpBenefitRow(); document.getElementById('details-lump-benefit').open = true;" class="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded border border-rose-300 font-bold">+ 혜택추가</button>
+  </summary>
+  <div id="lump-benefit-container" class="p-2.5 space-y-1"></div>
+</details>
+
+<!-- 하이프리드 결합 아코디언 -->
+<details id="details-lump-hp" class="border border-rose-200 rounded-xl bg-white/70 overflow-hidden text-xs mt-2">
+  <summary class="px-3 py-2 bg-rose-50 font-bold text-rose-800 flex items-center justify-between cursor-pointer select-none">
+    <span>+ 하이프리드 결합 (최대 6건)</span>
+    <button type="button" onclick="event.preventDefault(); addHpRow('lump'); document.getElementById('details-lump-hp').open = true;" class="text-[10px] bg-rose-100 text-rose-700 px-2 py-0.5 rounded border border-rose-300 font-bold">+ 결합추가</button>
+  </summary>
+  <div class="p-2.5 space-y-2">
+    <div id="lump-hp-container" class="space-y-1"></div>
+    <div class="bg-rose-100/70 p-2.5 rounded flex justify-between items-end">
+      <div class="text-left">
+        <p class="text-[10px] text-rose-600 font-bold">상조 월 납입금</p>
+        <p class="text-sm font-bold text-rose-800" id="lump-hp-month">0원</p>
+      </div>
+      <div class="text-right">
+        <p class="text-[11px] text-rose-800 font-bold">150개월 만기 완납 환급액 (100% 전액)</p>
+        <p class="text-base font-extrabold text-rose-700" id="lump-hp-preview">0원</p>
+      </div>
+    </div>
+  </div>
+</details>
 </div>
 </div>
 
@@ -1258,6 +1269,57 @@ showModal(
   false
 );
 }
+
+// 실시간 저장 상태 인디케이터 제어
+function markUnsavedChanges() {
+  const badge = document.getElementById('calc-save-status-badge');
+  const dot = document.getElementById('calc-save-status-dot');
+  const text = document.getElementById('calc-save-status-text');
+  if (badge && dot && text) {
+    dot.className = "w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse";
+    text.innerText = "미저장 변경사항";
+  }
+}
+
+function markSavedStatus() {
+  const badge = document.getElementById('calc-save-status-badge');
+  const dot = document.getElementById('calc-save-status-dot');
+  const text = document.getElementById('calc-save-status-text');
+  if (badge && dot && text) {
+    const timeStr = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400";
+    text.innerText = `저장됨 (${timeStr})`;
+  }
+}
+
+// openSaveModal에 상품 0개 저장 방지 가드 추가
+const originalOpenSaveModal = window.openSaveModal;
+window.openSaveModal = function() {
+  const lumpInputs = document.querySelectorAll('.l-name');
+  const subInputs = document.querySelectorAll('.s-name');
+  let hasValidItem = false;
+  lumpInputs.forEach(el => { if (el.value && el.value.trim()) hasValidItem = true; });
+  subInputs.forEach(el => { if (el.value && el.value.trim()) hasValidItem = true; });
+  
+  if (!hasValidItem && (window.currentSumLump || 0) === 0 && (window.currentContractSub || 0) === 0) {
+    showModal('견적 저장 확인 ⚠️', '견적서에 등록된 가전 상품이 없습니다.<br>상품명 또는 금액을 먼저 입력해주세요.', true, false);
+    return;
+  }
+  if (originalOpenSaveModal) {
+    originalOpenSaveModal.apply(this, arguments);
+  } else if (typeof openSaveModal === 'function') {
+    openSaveModal.apply(this, arguments);
+  }
+};
+
+// executeSaveQuotation 완료 시 markSavedStatus() 호출 연결
+const originalExecuteSave = window.executeSaveQuotation || executeSaveQuotation;
+window.executeSaveQuotation = function() {
+  if (originalExecuteSave) {
+    originalExecuteSave.apply(this, arguments);
+  }
+  markSavedStatus();
+};
 
 function syncWithGoogleSheet(action, data) {
   const sheetUrl = localStorage.getItem("google_sheet_url");
