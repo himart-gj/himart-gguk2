@@ -468,7 +468,11 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
   const reservationType = disentangled.reservationType;
 
   // 2. Slip Number handling: If slipNo is explicitly given in rawObj, ALWAYS prioritize and preserve it!
-  if (rawObj.slipNo && String(rawObj.slipNo).trim()) {
+  if (rawObj && rawObj.id) {
+    // If it's already an existing normalized customer record, strictly honor its slipNo & deliveryDate
+    slipNo = (rawObj.slipNo || '').trim();
+    deliveryDate = formatCleanDeliveryDate(rawObj.deliveryDate || '');
+  } else if (rawObj.slipNo && String(rawObj.slipNo).trim()) {
     slipNo = String(rawObj.slipNo).trim();
   } else if (slipNo.length > 35 || slipNo.includes(name) || slipNo.includes('냉장고')) {
     const slipMatches = Array.from(fullText.matchAll(/\b\d{8}-\d{2,4}\b/g)).map((m) => m[0]);
@@ -482,6 +486,8 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
   // If slip number exists, set source to 'tab2' (매장 전표) for consistent header badge display
   if (slipNo) {
     source = 'tab2';
+  } else if (rawObj && rawObj.source) {
+    source = rawObj.source;
   }
 
   // 3. Pipeline Status Determination & SMS Status Check
@@ -709,9 +715,22 @@ export function saveCustomerQuote(
   const cleanQPhone = (quote.rawCalculatorData?.phone || quote.rawCalculatorData?.cPhone || customerFallbackInfo?.phone || '').replace(/\D/g, '');
   const qName = (quote.rawCalculatorData?.name || customerFallbackInfo?.name || '').trim();
   const qLast8 = cleanQPhone.length >= 8 ? cleanQPhone.slice(-8) : '';
-  const newSlipNo = customerFallbackInfo?.slipNo || quote.rawCalculatorData?.slipNo || quote.rawCalculatorData?.no || '';
-  const newDate = customerFallbackInfo?.date || quote.rawCalculatorData?.date || '';
-  const newDeliveryDate = customerFallbackInfo?.deliveryDate || quote.rawCalculatorData?.deliveryDate || '';
+
+  // 사용자가 입력폼에서 전표번호나 배송일자를 지웠을 때(빈 문자열)도 CRM 카드에 명확하게 삭제 반영
+  const hasExplicitSlipNo = customerFallbackInfo?.slipNo !== undefined;
+  const newSlipNo = hasExplicitSlipNo 
+    ? (customerFallbackInfo.slipNo ? customerFallbackInfo.slipNo.trim() : '')
+    : (quote.rawCalculatorData?.slipNo || quote.rawCalculatorData?.no || '').trim();
+
+  const hasExplicitDeliveryDate = customerFallbackInfo?.deliveryDate !== undefined;
+  const newDeliveryDate = hasExplicitDeliveryDate
+    ? (customerFallbackInfo.deliveryDate ? formatCleanDeliveryDate(customerFallbackInfo.deliveryDate) : '')
+    : formatCleanDeliveryDate(quote.rawCalculatorData?.deliveryDate || '');
+
+  const hasExplicitDate = customerFallbackInfo?.date !== undefined;
+  const newDate = hasExplicitDate
+    ? (customerFallbackInfo.date ? customerFallbackInfo.date.trim() : '')
+    : (quote.rawCalculatorData?.date || '').trim();
 
   const updated = current.map((c) => {
     const cleanCPhone = (c.phone || '').replace(/\D/g, '');
@@ -745,20 +764,33 @@ export function saveCustomerQuote(
         existingQuotes.unshift(quote);
       }
 
-      const updatedDeliveryDate = newDeliveryDate || c.deliveryDate;
-      const updatedDDay = updatedDeliveryDate ? calculateDDay(updatedDeliveryDate) : c.dDay;
+      // 배송일자 처리: 사용자가 폼에서 지워 빈 문자열인 경우 undefined로 깨끗이 삭제
+      const finalDeliveryDate = hasExplicitDeliveryDate
+        ? (newDeliveryDate ? newDeliveryDate : undefined)
+        : (newDeliveryDate || c.deliveryDate || undefined);
+      const finalDDay = finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null;
+
+      // 전표번호 처리: 사용자가 폼에서 지워 빈 문자열인 경우 undefined로 깨끗이 삭제
+      const finalSlipNo = hasExplicitSlipNo
+        ? (newSlipNo ? newSlipNo : undefined)
+        : (newSlipNo || c.slipNo || undefined);
+
+      // 상담일자 처리:
+      const finalDate = hasExplicitDate
+        ? (newDate || c.date)
+        : (newDate || c.date);
 
       return {
         ...c,
-        source: newSlipNo ? 'tab2' : c.source,
+        source: finalSlipNo ? 'tab2' : (c.reservationType ? 'tab1' : c.source),
         paidAmount: quote.paidAmount > 0 ? quote.paidAmount : c.paidAmount,
         netAmount: quote.netAmount,
         items: quote.itemSummary || c.items,
         quotes: existingQuotes,
-        slipNo: newSlipNo || c.slipNo,
-        date: newDate || c.date,
-        deliveryDate: updatedDeliveryDate,
-        dDay: updatedDDay,
+        slipNo: finalSlipNo,
+        date: finalDate,
+        deliveryDate: finalDeliveryDate,
+        dDay: finalDDay,
       };
     }
     return c;
