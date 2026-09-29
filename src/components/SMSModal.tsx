@@ -14,17 +14,16 @@ export const SMSModal: React.FC<SMSModalProps> = ({
   onClose,
   onMarkSent,
 }) => {
-  if (!customer) return null;
-
   const [selectedTemplate, setSelectedTemplate] = useState<'delivery' | 'renewal' | 'welcome' | 'custom'>('welcome');
   const [copied, setCopied] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   const getInitialMessage = (type: string) => {
+    if (!customer) return '';
     switch (type) {
       case 'delivery':
         return `[롯데하이마트 경기광주점 배송안내]
-안녕하세요 ${customer.name} 고객님!
+안녕하세요 ${customer.name || ''} 고객님!
 주문하신 상품 배송 일정을 안내드립니다.
 
 - 구매품목: ${customer.items || customer.category || '가전 상품'}
@@ -38,7 +37,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
 
       case 'renewal':
         return `[롯데하이마트 경기광주점 리뉴얼 특가 안내]
-안녕하세요 ${customer.name} 고객님!
+안녕하세요 ${customer.name || ''} 고객님!
 롯데하이마트 경기광주점입니다.
 
 상담 받으셨던 품목(${customer.items || customer.category || '가전 패키지'}) 관련하여, 10/2 경기광주점 리뉴얼 그랜드 오픈 행사 조건으로 추가 혜택과 특별 사은품이 확정되었습니다.
@@ -51,7 +50,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
 
       case 'welcome':
         return `[롯데하이마트 경기광주점 접수안내]
-안녕하세요 ${customer.name} 고객님!
+안녕하세요 ${customer.name || ''} 고객님!
 롯데하이마트 경기광주점 온라인 사전예약 상담 접수가 정상적으로 완료되었습니다.
 
 - 문의품목: ${customer.category || customer.items || '가전 상담'}
@@ -62,7 +61,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
 
       default:
         return `[롯데하이마트 경기광주점]
-안녕하세요 ${customer.name} 고객님!
+안녕하세요 ${customer.name || ''} 고객님!
 `;
     }
   };
@@ -100,6 +99,8 @@ export const SMSModal: React.FC<SMSModalProps> = ({
     await doSyncAndMark();
     onClose();
   };
+
+  if (!customer) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs">

@@ -1,11 +1,13 @@
-import { CustomerItem, PipelineStatus, Tab1Record, Tab2Record } from '../types/crm';
+import { CustomerItem, PipelineStatus, Tab1Record, Tab2Record, DeletedCustomerRecord } from '../types/crm';
 import { INITIAL_MOCK_CUSTOMERS } from '../data/mockData';
 
 const STORAGE_KEY_GAS_URL = 'himart_gas_api_url';
 export const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers';
 export const STORAGE_KEY_CUSTOMERS_LEGACY = 'himart_crm_customers_cache';
 const STORAGE_KEY_DELETED_CUSTOMERS = 'himart_crm_deleted_customers';
+const STORAGE_KEY_DELETED_RECORDS = 'himart_crm_deleted_records';
 export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbws7p1ZOc0LC5rg7s--QpzmHh6Tc8AZn7JgDXQKPDg0RWsmuVm0PREqyIJhorTwBu3t/exec';
+const AUTO_PURGE_DAYS = 30; // 30일 보관 후 자동 영구삭제
 
 export function getDeletedCustomerKeys(): Set<string> {
   try {
@@ -22,6 +24,52 @@ export function getDeletedCustomerKeys(): Set<string> {
   return new Set();
 }
 
+/**
+ * 30일 자동 삭제(Auto-purge)가 적용된 휴지통 삭제 고객 목록 조회
+ */
+export function getDeletedCustomerRecords(): DeletedCustomerRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DELETED_RECORDS);
+    if (!raw) return [];
+    const records: DeletedCustomerRecord[] = JSON.parse(raw);
+    if (!Array.isArray(records)) return [];
+
+    const now = Date.now();
+    const thirtyDaysMs = AUTO_PURGE_DAYS * 24 * 60 * 60 * 1000;
+    let hasExpired = false;
+
+    // 30일 경과 검사 및 자동 영구 삭제 필터링
+    const activeRecords = records.filter((r) => {
+      const deletedAtMs = new Date(r.deletedAt).getTime();
+      const isExpired = isNaN(deletedAtMs) || (now - deletedAtMs) >= thirtyDaysMs;
+      if (isExpired) {
+        hasExpired = true;
+        return false;
+      }
+      return true;
+    }).map((r) => {
+      const deletedAtMs = new Date(r.deletedAt).getTime();
+      const elapsedDays = Math.floor((now - deletedAtMs) / (24 * 60 * 60 * 1000));
+      const daysRemaining = Math.max(0, AUTO_PURGE_DAYS - elapsedDays);
+      return {
+        ...r,
+        daysRemaining,
+      };
+    });
+
+    // 만료된 항목이 발견되면 스토리지 즉시 정제(동기화)
+    if (hasExpired) {
+      localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(activeRecords));
+    }
+
+    // 최신 삭제순 정렬
+    return activeRecords.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+  } catch (e) {
+    console.error('Failed to parse deleted customer records', e);
+    return [];
+  }
+}
+
 export function isCustomerDeleted(customer: Partial<CustomerItem>): boolean {
   const keys = getDeletedCustomerKeys();
   if (keys.size === 0) return false;
@@ -34,6 +82,7 @@ export function isCustomerDeleted(customer: Partial<CustomerItem>): boolean {
 }
 
 export function markCustomerAsDeleted(customer: Partial<CustomerItem>): void {
+  // 1. 차단 키 등록 (시트 자동 재유입 방지)
   const keys = getDeletedCustomerKeys();
   if (customer.id) keys.add(customer.id);
   const cleanPhone = (customer.phone || '').replace(/\D/g, '');
@@ -45,18 +94,119 @@ export function markCustomerAsDeleted(customer: Partial<CustomerItem>): void {
   } catch (e) {
     console.error('Failed to save deleted customer keys', e);
   }
+
+  // 2. 30일 보관 휴지통 레코드 등록
+  if (customer.id) {
+    try {
+      const records = getDeletedCustomerRecords();
+      const filtered = records.filter((r) => r.id !== customer.id);
+      const newRecord: DeletedCustomerRecord = {
+        id: customer.id,
+        customer: customer as CustomerItem,
+        deletedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + AUTO_PURGE_DAYS * 24 * 60 * 60 * 1000).toISOString(),
+        daysRemaining: AUTO_PURGE_DAYS,
+      };
+      filtered.unshift(newRecord);
+      localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(filtered));
+    } catch (e) {
+      console.error('Failed to save deleted customer record', e);
+    }
+  }
 }
 
-export function restoreAllDeletedCustomers(): void {
+/**
+ * 특정 고객만 개별 복원 (휴지통에서 메인 CRM 목록으로 되돌리기)
+ */
+export function restoreIndividualCustomer(customerId: string): CustomerItem[] {
+  const records = getDeletedCustomerRecords();
+  const targetRecord = records.find((r) => r.id === customerId);
+
+  // 휴지통에서 해당 고객 제거
+  const updatedRecords = records.filter((r) => r.id !== customerId);
   try {
+    localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(updatedRecords));
+  } catch (e) {
+    console.error('Failed to update deleted customer records', e);
+  }
+
+  // 차단 키 목록에서 제거
+  if (targetRecord) {
+    const keys = getDeletedCustomerKeys();
+    keys.delete(customerId);
+    const cleanPhone = (targetRecord.customer.phone || '').replace(/\D/g, '');
+    if (cleanPhone.length >= 8) keys.delete('phone:' + cleanPhone);
+    if (targetRecord.customer.slipNo) keys.delete('slip:' + targetRecord.customer.slipNo.trim());
+    if (targetRecord.customer.name && cleanPhone.length >= 4) keys.delete(`namephone:${targetRecord.customer.name.trim()}_${cleanPhone}`);
+    try {
+      localStorage.setItem(STORAGE_KEY_DELETED_CUSTOMERS, JSON.stringify(Array.from(keys)));
+    } catch (e) {
+      console.error('Failed to update deleted keys', e);
+    }
+
+    // 메인 CRM 고객 목록에 다시 추가
+    const currentCustomers = getCachedCustomers();
+    const exists = currentCustomers.some((c) => c.id === customerId);
+    if (!exists) {
+      const restoredList = [targetRecord.customer, ...currentCustomers];
+      saveCachedCustomers(restoredList);
+      return restoredList;
+    }
+  }
+
+  return getCachedCustomers();
+}
+
+/**
+ * 특정 고객을 휴지통에서 즉시 영구 삭제
+ */
+export function permanentlyDeleteCustomer(customerId: string): void {
+  try {
+    const records = getDeletedCustomerRecords();
+    const updatedRecords = records.filter((r) => r.id !== customerId);
+    localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(updatedRecords));
+  } catch (e) {
+    console.error('Failed to permanently delete customer', e);
+  }
+}
+
+/**
+ * 휴지통의 모든 고객을 전체 복원
+ */
+export function restoreAllDeletedCustomers(): CustomerItem[] {
+  try {
+    const records = getDeletedCustomerRecords();
+    const currentCustomers = getCachedCustomers();
+    const currentIds = new Set(currentCustomers.map((c) => c.id));
+    
+    // 휴지통에 있던 고객들 중 현재 목록에 없는 고객들 복원
+    const restoredItems = records.map((r) => r.customer).filter((c) => c && !currentIds.has(c.id));
+    const merged = [...restoredItems, ...currentCustomers];
+    saveCachedCustomers(merged);
+
+    // 휴지통 및 차단 키 모두 초기화
     localStorage.removeItem(STORAGE_KEY_DELETED_CUSTOMERS);
+    localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
+    return merged;
   } catch (e) {
     console.error('Failed to restore deleted customers', e);
+    return getCachedCustomers();
+  }
+}
+
+/**
+ * 휴지통 전체 비우기 (영구 삭제)
+ */
+export function purgeAllDeletedCustomers(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
+  } catch (e) {
+    console.error('Failed to purge deleted customers', e);
   }
 }
 
 export function getDeletedCustomerCount(): number {
-  return getDeletedCustomerKeys().size;
+  return getDeletedCustomerRecords().length;
 }
 
 export function getGasApiUrl(): string {

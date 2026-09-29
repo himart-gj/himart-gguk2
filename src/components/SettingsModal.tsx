@@ -14,7 +14,10 @@ import {
   Sliders,
   Sparkles,
   HelpCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2,
+  Clock,
+  UserCheck
 } from 'lucide-react';
 import { 
   getGasApiUrl, 
@@ -22,8 +25,13 @@ import {
   clearGasApiUrl, 
   GOOGLE_APPS_SCRIPT_SAMPLE_CODE,
   restoreAllDeletedCustomers,
-  getDeletedCustomerCount
+  getDeletedCustomerCount,
+  getDeletedCustomerRecords,
+  restoreIndividualCustomer,
+  permanentlyDeleteCustomer,
+  purgeAllDeletedCustomers
 } from '../services/gasApi';
+import { DeletedCustomerRecord } from '../types/crm';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -36,8 +44,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  if (!isOpen) return null;
-
   const [activeTab, setActiveTab] = useState<'sheet' | 'rates'>('sheet');
   const [url, setUrl] = useState(getGasApiUrl());
   const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
@@ -46,9 +52,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showCode, setShowCode] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
   const [isConfirmingReset, setIsConfirmingReset] = useState(false);
-  const [deletedCount, setDeletedCount] = useState(getDeletedCustomerCount());
+  const [deletedRecords, setDeletedRecords] = useState<DeletedCustomerRecord[]>(() => getDeletedCustomerRecords());
+  const [deletedCount, setDeletedCount] = useState(() => getDeletedCustomerRecords().length);
   const [restoreMessage, setRestoreMessage] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Sync deleted records on open
+  useEffect(() => {
+    const records = getDeletedCustomerRecords();
+    setDeletedRecords(records);
+    setDeletedCount(records.length);
+  }, [isOpen]);
 
   // HiPreed and Cards rates
   const [hipreedJson, setHipreedJson] = useState(() => {
@@ -161,12 +175,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSaved();
   };
 
-  const handleRestoreDeleted = () => {
-    restoreAllDeletedCustomers();
-    setDeletedCount(0);
-    setRestoreMessage('삭제된 고객이 성공적으로 복원되었습니다. 설정창을 닫으시면 CRM 목록에 즉시 복구됩니다.');
+  const handleRestoreIndividual = (customerId: string, customerName: string) => {
+    restoreIndividualCustomer(customerId);
+    const updated = getDeletedCustomerRecords();
+    setDeletedRecords(updated);
+    setDeletedCount(updated.length);
+    setRestoreMessage(`'${customerName}' 고객이 성공적으로 복원되었습니다.`);
     onSaved();
-    setTimeout(() => setRestoreMessage(null), 5000);
+    setTimeout(() => setRestoreMessage(null), 4000);
+  };
+
+  const handlePermanentDelete = (customerId: string, customerName: string) => {
+    if (window.confirm(`'${customerName}' 고객을 휴지통에서 즉시 영구 삭제하시겠습니까?\n(영구 삭제 시 복원할 수 없습니다)`)) {
+      permanentlyDeleteCustomer(customerId);
+      const updated = getDeletedCustomerRecords();
+      setDeletedRecords(updated);
+      setDeletedCount(updated.length);
+      setRestoreMessage(`'${customerName}' 고객이 휴지통에서 즉시 영구 삭제되었습니다.`);
+      onSaved();
+      setTimeout(() => setRestoreMessage(null), 4000);
+    }
+  };
+
+  const handleRestoreDeleted = () => {
+    if (window.confirm('휴지통에 보관된 모든 고객을 CRM 목록으로 복원하시겠습니까?')) {
+      restoreAllDeletedCustomers();
+      setDeletedRecords([]);
+      setDeletedCount(0);
+      setRestoreMessage('모든 삭제 고객이 성공적으로 전체 복원되었습니다.');
+      onSaved();
+      setTimeout(() => setRestoreMessage(null), 4000);
+    }
+  };
+
+  const handlePurgeAll = () => {
+    if (window.confirm('휴지통을 완전히 비우시겠습니까?\n보관 중인 모든 고객이 영구 삭제되며 복원할 수 없습니다.')) {
+      purgeAllDeletedCustomers();
+      setDeletedRecords([]);
+      setDeletedCount(0);
+      setRestoreMessage('휴지통이 완전히 비워졌습니다.');
+      onSaved();
+      setTimeout(() => setRestoreMessage(null), 4000);
+    }
   };
 
   const handleCopyCode = () => {
@@ -174,6 +224,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setCodeCopied(true);
     setTimeout(() => setCodeCopied(false), 2000);
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-xs">
@@ -298,34 +350,127 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Deleted Customers Management */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                <div className="flex items-center justify-between gap-2">
+              {/* Deleted Customers Management (휴지통 & 30일 자동삭제 & 개별복원/즉시삭제) */}
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <h4 className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
-                      <span>🗑️ CRM 삭제 고객 관리</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-200 text-slate-700 font-semibold">
-                        {deletedCount}건 보호/삭제됨
+                    <h4 className="font-bold text-slate-800 text-xs sm:text-sm flex items-center gap-1.5 flex-wrap">
+                      <span>🗑️ CRM 삭제 고객 관리 (휴지통)</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-rose-100 text-rose-800 font-bold border border-rose-200">
+                        {deletedCount}건 보관 중
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-800 font-semibold border border-amber-200 flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5 text-amber-600" />
+                        30일 경과 시 자동 영구삭제
                       </span>
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      CRM에서 삭제한 고객은 시트 자동 동기화 시에도 다시 나타나지 않도록 보호됩니다.
+                      원하는 고객만 <strong>[개별 복원]</strong>하거나 <strong>[즉시 삭제]</strong>할 수 있으며, 30일이 지난 고객은 자동으로 비워집니다.
                     </p>
                   </div>
                   {deletedCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleRestoreDeleted}
-                      className="px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold text-xs transition cursor-pointer shrink-0"
-                    >
-                      삭제 고객 전체 복원
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleRestoreDeleted}
+                        className="px-2.5 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 font-bold text-xs transition cursor-pointer"
+                        title="보관된 모든 고객을 CRM 목록으로 복원"
+                      >
+                        전체 복원
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePurgeAll}
+                        className="px-2.5 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 font-bold text-xs transition cursor-pointer"
+                        title="휴지통 완전히 비우기 (영구 삭제)"
+                      >
+                        휴지통 비우기
+                      </button>
+                    </div>
                   )}
                 </div>
+
                 {restoreMessage && (
-                  <p className="text-[11px] text-emerald-700 font-medium bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                  <p className="text-[11px] text-emerald-800 font-bold bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 animate-in fade-in duration-200">
                     {restoreMessage}
                   </p>
+                )}
+
+                {/* 개별 삭제 고객 리스트 */}
+                {deletedRecords.length > 0 ? (
+                  <div className="max-h-64 sm:max-h-72 overflow-y-auto space-y-2 pr-1 border-t border-slate-200/80 pt-2.5">
+                    {deletedRecords.map((record) => {
+                      const c = record.customer;
+                      const deletedDateFormatted = record.deletedAt
+                        ? new Date(record.deletedAt).toLocaleDateString('ko-KR', {
+                            month: 'numeric',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '삭제일 미상';
+
+                      return (
+                        <div
+                          key={record.id}
+                          className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs hover:border-slate-300 transition"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-xs text-slate-900 truncate">
+                                {c.name || '성명 미상'}
+                              </span>
+                              <span className="text-[11px] font-mono text-slate-500">
+                                {c.phone || '연락처 없음'}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
+                                {c.status}
+                              </span>
+                              <span
+                                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold border ${
+                                  record.daysRemaining <= 5
+                                    ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse'
+                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                }`}
+                              >
+                                D-{record.daysRemaining}일 후 자동삭제
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 truncate">
+                              <span>삭제일: {deletedDateFormatted}</span>
+                              {c.slipNo && <span>전표: {c.slipNo}</span>}
+                              {c.items && <span className="truncate">품목: {c.items}</span>}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreIndividual(record.id, c.name)}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs border border-emerald-200 transition active:scale-95 cursor-pointer flex items-center gap-1"
+                              title="해당 고객을 CRM 목록으로 복원"
+                            >
+                              <RotateCcw className="w-3 h-3 text-emerald-600" />
+                              <span>복원</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePermanentDelete(record.id, c.name)}
+                              className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs border border-rose-200 transition active:scale-95 cursor-pointer flex items-center gap-1"
+                              title="휴지통에서 즉시 영구 삭제 (복원 불가)"
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-600" />
+                              <span>즉시삭제</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-xs text-slate-400 font-medium border-t border-slate-200/80 pt-3">
+                    현재 휴지통에 보관된 고객이 없습니다.
+                  </div>
                 )}
               </div>
 

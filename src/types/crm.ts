@@ -97,3 +97,11 @@ export interface CustomerItem {
   logs?: ConsultationLog[];
 }
 
+export interface DeletedCustomerRecord {
+  id: string;
+  customer: CustomerItem;
+  deletedAt: string;
+  expiresAt: string;
+  daysRemaining: number;
+}
+

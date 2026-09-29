@@ -689,40 +689,50 @@ export const App: React.FC = () => {
         onDeleteCustomer={handleDeleteCustomer}
       />
 
-      <MorningBriefingModal
-        isOpen={isBriefingOpen}
-        onClose={() => setIsBriefingOpen(false)}
-        customers={customers}
-        onOpenSMS={(c) => setSmsCustomer(c)}
-        onSelectCustomer={handleOpenQuote}
-        onFilterByStatus={(st) => setFilterStatus(st)}
-        onUpdateGift={handleUpdateGift}
-      />
+      {isBriefingOpen && (
+        <MorningBriefingModal
+          isOpen={isBriefingOpen}
+          onClose={() => setIsBriefingOpen(false)}
+          customers={customers}
+          onOpenSMS={(c) => setSmsCustomer(c)}
+          onSelectCustomer={handleOpenQuote}
+          onFilterByStatus={(st) => setFilterStatus(st)}
+          onUpdateGift={handleUpdateGift}
+        />
+      )}
 
-      <SMSModal
-        customer={smsCustomer}
-        onClose={() => setSmsCustomer(null)}
-        onMarkSent={handleMarkSmsSent}
-      />
+      {smsCustomer && (
+        <SMSModal
+          customer={smsCustomer}
+          onClose={() => setSmsCustomer(null)}
+          onMarkSent={handleMarkSmsSent}
+        />
+      )}
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        onSaved={() => loadData(true)}
-      />
+      {isSettingsOpen && (
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          onSaved={() => loadData(true)}
+        />
+      )}
 
-      <NewCustomerModal
-        isOpen={isNewCustomerOpen}
-        onClose={() => setIsNewCustomerOpen(false)}
-        onAdd={handleAddCustomer}
-      />
+      {isNewCustomerOpen && (
+        <NewCustomerModal
+          isOpen={isNewCustomerOpen}
+          onClose={() => setIsNewCustomerOpen(false)}
+          onAdd={handleAddCustomer}
+        />
+      )}
 
-      <CRMQuotePickerModal
-        isOpen={isQuotePickerOpen}
-        onClose={() => setIsQuotePickerOpen(false)}
-        customers={customers}
-        onSelectCustomer={handleOpenQuote}
-      />
+      {isQuotePickerOpen && (
+        <CRMQuotePickerModal
+          isOpen={isQuotePickerOpen}
+          onClose={() => setIsQuotePickerOpen(false)}
+          customers={customers}
+          onSelectCustomer={handleOpenQuote}
+        />
+      )}
     </div>
   );
 };
