@@ -68,12 +68,14 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
           <div className="flex items-center gap-2 flex-shrink-0">
             <div 
               onClick={() => onSwitchTab('crm')}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-rose-500 via-rose-600 to-indigo-700 flex items-center justify-center shadow-md shadow-rose-900/30 flex-shrink-0 cursor-pointer active:scale-95 transition border border-white/20 group"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl overflow-hidden shadow-md flex-shrink-0 cursor-pointer active:scale-95 transition border border-amber-400/40 group bg-slate-950"
               title="국지CRM (롯데하이마트 경기광주점)"
             >
-              <span className="text-[12px] sm:text-[13px] font-black text-white tracking-tighter group-hover:scale-105 transition-transform">
-                국지
-              </span>
+              <img 
+                src="./pwa-192x192.png" 
+                alt="국지CRM 엠블럼" 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+              />
             </div>
 
             <div className="hidden min-[480px]:block">
