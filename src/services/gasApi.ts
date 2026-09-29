@@ -272,10 +272,8 @@ export function getCachedCustomers(): CustomerItem[] {
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const enriched = parsed
-          .filter((c: any) => !isCustomerDeleted(c))
-          .map((c: any, idx: number) => sanitizeAndEnrichCustomer(c, c.source || 'tab2', idx));
-        return deduplicateCustomers(enriched);
+        const validCustomers = parsed.filter((c: any) => !isCustomerDeleted(c));
+        return deduplicateCustomers(validCustomers);
       }
     }
   } catch (e) {
@@ -669,19 +667,15 @@ export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab
   }
 
   // 3. Pipeline Status Determination & SMS Status Check
-  const isOneOfEight = ['김민지', '정영길', '김준태', '서윤', '성진', '곽의정', '이기동', '이규빈'].includes(name);
   let status = mapRawStatusToPipeline(source, rawStatus);
   let isSmsSent = (status !== '신규/미발송');
   let smsSentDate = rawObj.smsSentDate;
 
-  if (isOneOfEight || rawStatus.includes('발송 완료') || rawStatus.includes('발송완료')) {
+  if (rawStatus.includes('발송 완료') || rawStatus.includes('발송완료')) {
     status = '상담진행중';
-    if (!rawStatus.includes('발송 완료')) {
-      rawStatus = '발송 완료 (2026-09-27 14:14)';
-    }
     isSmsSent = true;
     if (!smsSentDate) {
-      smsSentDate = '2026-09-27 14:14';
+      smsSentDate = rawObj.date || new Date().toISOString().slice(0, 16).replace('T', ' ');
     }
   }
 
@@ -747,11 +741,9 @@ export function mergeWithExistingCache(freshList: CustomerItem[], currentCache: 
   const nonDeletedFresh = freshList.filter((f) => !isCustomerDeleted(f));
   const nonDeletedCache = currentCache.filter((c) => !isCustomerDeleted(c));
 
-  // Build lookup index of all existing local customers
-  const existingByPhone = new Map<string, CustomerItem>();
   const existingById = new Map<string, CustomerItem>();
+  const existingByPhone = new Map<string, CustomerItem>();
   const existingBySlip = new Map<string, CustomerItem>();
-  const existingByName = new Map<string, CustomerItem>();
 
   nonDeletedCache.forEach((c) => {
     existingById.set(c.id, c);
@@ -763,20 +755,16 @@ export function mergeWithExistingCache(freshList: CustomerItem[], currentCache: 
     if (c.slipNo && c.slipNo.trim()) {
       existingBySlip.set(c.slipNo.trim(), c);
     }
-    if (c.name && c.name !== '고객님' && c.name.length >= 2) {
-      existingByName.set(c.name.trim(), c);
-    }
   });
 
   const mergedList: CustomerItem[] = [];
   const processedExistingIds = new Set<string>();
 
-  // 1. Process Fresh incoming items from Google Sheet
+  // 구글 시트에서 읽어온 데이터 처리
   nonDeletedFresh.forEach((fresh) => {
     const cleanPhone = (fresh.phone || '').replace(/\D/g, '');
     const last8 = cleanPhone.length >= 7 ? cleanPhone.slice(-8) : '';
 
-    // Match with existing customer by phone, slip, or name
     let existing: CustomerItem | undefined = undefined;
     if (cleanPhone.length >= 7) {
       existing = existingByPhone.get(cleanPhone) || (last8 ? existingByPhone.get(last8) : undefined);
@@ -784,52 +772,39 @@ export function mergeWithExistingCache(freshList: CustomerItem[], currentCache: 
     if (!existing && fresh.slipNo && fresh.slipNo.trim()) {
       existing = existingBySlip.get(fresh.slipNo.trim());
     }
-    if (!existing && fresh.name && fresh.name !== '고객님' && fresh.name.length >= 2) {
-      const matchByName = existingByName.get(fresh.name.trim());
-      if (matchByName) {
-        const mCleanPhone = (matchByName.phone || '').replace(/\D/g, '');
-        if (!cleanPhone || !mCleanPhone || cleanPhone.slice(-4) === mCleanPhone.slice(-4)) {
-          existing = matchByName;
-        }
-      }
+    if (!existing && fresh.id && existingById.has(fresh.id)) {
+      existing = existingById.get(fresh.id);
     }
 
     if (!existing) {
-      // Brand new incoming customer! Insert at the top of CRM
+      // 🌟 로컬에 없는 신규 고객: CRM 목록 최상단에 신규 등록
       mergedList.push(fresh);
     } else {
-      // Existing customer: Smart Update!
-      // Preserve local quotes, logs, gifts, but sync sheet updates (delivery date, amounts, items, slip, docUrl)
+      // 🛡️ 이미 로컬에 저장되어 관리 중인 고객:
+      // 시트의 기본 속성을 받되, 사용자가 수정한 상태/배송일/금액/메모/견적이력/사은품을 100% 최우선 유지!
       processedExistingIds.add(existing.id);
-      const updatedExisting: CustomerItem = {
-        ...existing,
-        // 시트의 최신 배송일이 있으면 갱신
-        deliveryDate: fresh.deliveryDate || existing.deliveryDate,
-        dDay: fresh.deliveryDate ? fresh.dDay : existing.dDay,
-        // 품목 및 금액이 시트에 더 구체적이면 갱신
-        items: (fresh.items && fresh.items.length > (existing.items || '').length) ? fresh.items : (existing.items || fresh.items),
-        paidAmount: fresh.paidAmount !== undefined && fresh.paidAmount > 0 ? fresh.paidAmount : existing.paidAmount,
-        netAmount: fresh.netAmount !== undefined ? fresh.netAmount : existing.netAmount,
-        benefit: fresh.benefit || existing.benefit,
-        slipNo: fresh.slipNo || existing.slipNo,
-        docUrl: fresh.docUrl || existing.docUrl,
-        // 상태: CRM에서 견적을 별도 저장하지 않은 고객은 시트의 최신 상태를 적극 반영
-        status: existing.quotes && existing.quotes.length > 0 
-          ? existing.status 
-          : (fresh.status || existing.status),
-        rawStatus: fresh.rawStatus || existing.rawStatus,
-        phone: (fresh.phone && fresh.phone.length >= (existing.phone || '').length) ? fresh.phone : (existing.phone || fresh.phone),
-        // CRM 고유 작업 데이터 100% 보존
+      const preservedCustomer: CustomerItem = {
+        ...fresh,
+        ...existing, // 사용자의 로컬 변경사항이 시트 원본을 덮어씀
+        status: existing.status,
+        rawStatus: existing.rawStatus || fresh.rawStatus,
+        deliveryDate: existing.deliveryDate || fresh.deliveryDate,
+        dDay: existing.deliveryDate ? calculateDDay(existing.deliveryDate) : fresh.dDay,
+        paidAmount: existing.paidAmount !== undefined ? existing.paidAmount : fresh.paidAmount,
+        netAmount: existing.netAmount !== undefined ? existing.netAmount : fresh.netAmount,
+        note: existing.note !== undefined ? existing.note : fresh.note,
+        items: existing.items || fresh.items,
         quotes: existing.quotes || [],
         logs: existing.logs || [],
         giftItem: existing.giftItem || fresh.giftItem,
         isGiftDelivered: existing.isGiftDelivered ?? fresh.isGiftDelivered,
+        docUrl: existing.docUrl || fresh.docUrl,
       };
-      mergedList.push(updatedExisting);
+      mergedList.push(preservedCustomer);
     }
   });
 
-  // 2. Retain local customers that were not in the sheet
+  // 시트에는 없고 로컬에만 직접 등록된 수동 고객들도 누락 없이 유지
   nonDeletedCache.forEach((c) => {
     if (!processedExistingIds.has(c.id)) {
       mergedList.push(c);
