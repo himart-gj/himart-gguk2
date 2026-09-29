@@ -632,16 +632,25 @@ export function saveCurrentCalculatorAsQuote(customTitle?: string, isOverwrite?:
   const currentDelivery = (document.getElementById('i-delivery-date') as HTMLInputElement | null)?.value || '';
 
   const activeQuoteId = (window as any).currentActiveQuoteId || (window as any).currentEditingQuoteId;
+  const activeCustomerId = (window as any).currentActiveCustomerId;
+  const activeCustName = (window as any).currentActiveCustomerName;
+
   if (isOverwrite && activeQuoteId) {
     quote.id = activeQuoteId;
   }
 
   // targetId 결정 로직:
-  // 오직 isOverwrite가 true이고 기존 activeCustomerId가 일치할 때만 덮어쓰기 대상 ID 사용!
-  // 신규 고객 등록일 때는 무조건 고유한 신규 ID 발급!
+  // 1. 활성 고객 ID(activeCustomerId)가 있고, 이름이 일치하면 무조건 해당 고객 카드로 귀속 저장!
+  //    (덮어쓰기이든 새 견적 추가이든 해당 고객의 카드 견적 이력으로 100% 저장됨)
+  // 2. 활성 고객이 없거나 완전히 새로운 고객인 경우에만 신규 CRM 고객 ID 발급
+  const isBoundToActiveCustomer = Boolean(
+    activeCustomerId &&
+    (!activeCustName || !currentName || currentName === activeCustName || activeCustName.includes(currentName) || currentName.includes(activeCustName))
+  );
+
   let targetId: string;
-  if (isOverwrite && (window as any).currentActiveCustomerId) {
-    targetId = (window as any).currentActiveCustomerId;
+  if (isBoundToActiveCustomer) {
+    targetId = activeCustomerId;
   } else {
     targetId = 'crm-' + Date.now();
   }

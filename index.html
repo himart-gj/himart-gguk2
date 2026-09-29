@@ -1020,13 +1020,28 @@ document.getElementById('lbl-save-overwrite').classList.add('hidden');
 document.getElementById('lbl-save-overwrite').classList.remove('flex');
 document.getElementById('save-edit-notice').classList.add('hidden');
 
-// 덮어쓰기 옵션 판별:
-// 기존에 편집 중이던 견적 ID가 있고, 현재 입력된 고객 이름이 기존 작업 고객과 일치할 때만 덮어쓰기 활성화!
-const activeQId = currentEditingQuoteId || window.currentActiveQuoteId;
+// 덮어쓰기 및 CRM 고객 연동 옵션 판별:
+const activeCustId = window.currentActiveCustomerId;
 const activeCustName = window.currentActiveCustomerName;
+const activeQId = currentEditingQuoteId || window.currentActiveQuoteId;
 const isSameCustomer = Boolean(activeCustName && name && (name === activeCustName || activeCustName.includes(name) || name.includes(activeCustName)));
 
-if (activeQId && isSameCustomer) {
+if (activeCustId && (isSameCustomer || !name || name === '이름없음')) {
+  // CRM 고객 카드에서 열고 들어온 경우: 활성 고객 바인딩 유지!
+  document.getElementById('save-edit-notice').classList.remove('hidden');
+  document.getElementById('save-edit-notice').innerHTML = `👤 CRM 고객 <b>[${activeCustName || name}]</b>님의 고객 카드로 견적이 저장됩니다.`;
+
+  if (activeQId) {
+    document.getElementById('lbl-save-overwrite').classList.remove('hidden');
+    document.getElementById('lbl-save-overwrite').classList.add('flex');
+    const overRadio = document.querySelector('input[name="save-method"][value="overwrite"]');
+    if (overRadio) overRadio.checked = true;
+  } else {
+    document.getElementById('lbl-save-overwrite').classList.add('hidden');
+    document.getElementById('lbl-save-overwrite').classList.remove('flex');
+    document.querySelector('input[name="save-method"][value="new_folder"]').checked = true;
+  }
+} else if (activeQId && isSameCustomer) {
   document.getElementById('save-edit-notice').classList.remove('hidden');
   const overRadio = document.querySelector('input[name="save-method"][value="overwrite"]');
   if (overRadio) overRadio.checked = true;
