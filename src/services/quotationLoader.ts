@@ -1,5 +1,5 @@
 import { CustomerItem, QuoteRecord } from '../types/crm';
-import { extractQuotationWithGemini } from './gemini';
+import { extractQuotationWithGemini, getGeminiApiKey } from './gemini';
 import { formatLocalDate, formatLocalDateTime } from '../utils/date';
 import { saveCustomerQuote } from './gasApi';
 
@@ -25,7 +25,7 @@ export interface ParsedQuotation {
   phone: string;
   manager: string;
   slipNo: string;
-  mode: 'lump' | 'sub';
+  mode: 'lump' | 'sub' | 'both';
   items: Array<{
     name: string;
     model: string;
@@ -88,7 +88,8 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
     fullText.includes('월납') ||
     fullText.includes('36개월') ||
     fullText.includes('60개월');
-  const mode: 'lump' | 'sub' = isSubscription ? 'sub' : 'lump';
+  const isMixed = fullText.includes('혼합') || (isSubscription && fullText.includes('일시불'));
+  const mode: 'lump' | 'sub' | 'both' = isMixed ? 'both' : isSubscription ? 'sub' : 'lump';
 
   // 4. Target Price / Amounts
   let targetPrice = customer.paidAmount || 0;
@@ -211,7 +212,7 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
     });
   }
 
-  // 9. Memos: 매장 메모(customer.note)는 고객 메모가 아닌 '나의 상담메모(internalMemo / i-memo)'로 연결
+  // 9. Memos
   const customerMemo = [
     customer.deliveryDate ? `[배송요청] ${customer.deliveryDate}` : '',
   ]
@@ -252,7 +253,6 @@ export function parseCustomerQuotationLocal(customer: CustomerItem): ParsedQuota
 
 /**
  * Call Gemini 3.8 Flash for high-accuracy customer quotation extraction.
- * Works seamlessly in client-side static deployments (GitHub Pages) and dev servers.
  */
 export async function fetchAIExtractedQuotation(customer: CustomerItem): Promise<ParsedQuotation | null> {
   return await extractQuotationWithGemini(customer);
@@ -262,7 +262,7 @@ export async function fetchAIExtractedQuotation(customer: CustomerItem): Promise
  * Injects structured quotation data into the Quotation Calculator DOM and recalculates.
  */
 export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string; deliveryDate?: string }): void {
-  // 1. Switch Mode Tab (일반구매 or 구독구매)
+  // 1. Switch Mode Tab (일반구매, 구독구매, 일반+구독 혼합)
   if (typeof (window as any).switchInputTab === 'function') {
     (window as any).switchInputTab(data.mode);
   }
@@ -290,14 +290,26 @@ export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string;
   if (noInput) noInput.value = data.slipNo || '';
   if (deliveryDateInput && data.deliveryDate) deliveryDateInput.value = data.deliveryDate;
 
+  const lumpItemsList = data.mode === 'both'
+    ? (data.items || []).filter((it) => !it.months || it.months === '0')
+    : data.mode === 'lump'
+    ? (data.items || [])
+    : [];
+
+  const subItemsList = data.mode === 'both'
+    ? (data.items || []).filter((it) => it.months && it.months !== '0')
+    : data.mode === 'sub'
+    ? (data.items || [])
+    : [];
+
   // 4. Items & Pricing
-  if (data.mode === 'lump') {
+  if (data.mode === 'lump' || data.mode === 'both') {
     const lumpInputs = document.getElementById('lump-inputs');
     if (lumpInputs) {
       lumpInputs.innerHTML = '';
       if (typeof (window as any).addLumpRow === 'function') {
-        if (data.items && data.items.length > 0) {
-          data.items.forEach((item) => {
+        if (lumpItemsList.length > 0) {
+          lumpItemsList.forEach((item) => {
             (window as any).addLumpRow(
               item.name || '품목',
               item.model || '-',
@@ -358,14 +370,15 @@ export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string;
         }
       }
     }
-  } else {
-    // Subscription Mode (구독구매)
+  }
+
+  if (data.mode === 'sub' || data.mode === 'both') {
     const subInputs = document.getElementById('sub-inputs');
     if (subInputs) {
       subInputs.innerHTML = '';
       if (typeof (window as any).addSubRow === 'function') {
-        if (data.items && data.items.length > 0) {
-          data.items.forEach((item) => {
+        if (subItemsList.length > 0) {
+          subItemsList.forEach((item) => {
             (window as any).addSubRow(
               item.name || '구독 품목',
               item.model || '-',
@@ -386,7 +399,6 @@ export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string;
         (window as any).updateCardTiers();
       }
 
-      // Tier discount
       const sCardTier = document.getElementById('s-card-tier') as HTMLSelectElement | null;
       if (sCardTier && data.subCardTier) {
         for (let i = 0; i < sCardTier.options.length; i++) {
@@ -400,7 +412,7 @@ export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string;
 
     // Subscription Hi-Freed
     const subHpContainer = document.getElementById('sub-hp-container');
-    if (subHpContainer) {
+    if (subHpContainer && data.mode === 'sub') {
       subHpContainer.innerHTML = '';
       if (data.hiFreed && data.hiFreed.enabled && data.hiFreed.cnt > 0) {
         if (typeof (window as any).addHpRow === 'function') {
@@ -433,17 +445,17 @@ export function applyQuotationDataToDOM(data: ParsedQuotation & { date?: string;
 /**
  * Intelligent Two-Stage Quote Loader:
  * Stage 1: Immediate local population (0ms delay)
- * Stage 2: AI-powered precision analysis in background, auto-updating form fields and notifying user.
+ * Stage 2: AI-powered precision analysis (gemini-3.8-flash) in background, auto-updating form fields and notifying user.
  */
 export async function loadCustomerIntoCalculatorWithAI(
   customer: CustomerItem,
   onNotify?: (message: string, isAiSuccess?: boolean) => void
 ): Promise<{ success: boolean; message: string }> {
-  // Step 1: Immediate local rule load
+  // Stage 1: Immediate local rule load
   const localData = parseCustomerQuotationLocal(customer);
   applyQuotationDataToDOM(localData);
 
-  // Set active customer ID on window for auto-saving
+  // Set active customer ID on window
   (window as any).currentActiveCustomerId = customer.id;
   (window as any).currentActiveCustomerName = customer.name;
   if (customer.quotes && customer.quotes.length > 0) {
@@ -484,7 +496,32 @@ export async function loadCustomerIntoCalculatorWithAI(
   }
 
   if (onNotify) {
-    onNotify(`[${customer.name}] 고객 견적이 계산기에 입력되었습니다. (수정 후 [견적저장] 클릭 시 보관)`, false);
+    onNotify(`[${customer.name}] 고객 견적이 계산기에 입력되었습니다.`, false);
+  }
+
+  // Stage 2: Background AI precision extraction using gemini-3.8-flash if API key is configured
+  const apiKey = getGeminiApiKey();
+  if (apiKey && (customer.items || customer.note || customer.benefit || customer.category)) {
+    fetchAIExtractedQuotation(customer)
+      .then((aiData) => {
+        if (aiData && (window as any).currentActiveCustomerId === customer.id) {
+          applyQuotationDataToDOM({
+            ...localData,
+            ...aiData,
+            name: aiData.name || customer.name,
+            phone: aiData.phone || customer.phone,
+            slipNo: aiData.slipNo || customer.slipNo || '',
+            date: customer.date || '',
+            deliveryDate: customer.deliveryDate || '',
+          });
+          if (onNotify) {
+            onNotify(`✨ AI(gemini-3.8-flash)가 [${customer.name}] 고객님의 품목·할인·혜택을 정밀 세팅했습니다!`, true);
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn('Stage 2 AI extraction skipped:', err);
+      });
   }
 
   return {
@@ -495,54 +532,86 @@ export async function loadCustomerIntoCalculatorWithAI(
 
 /**
  * Extracts currently entered data from Calculator DOM into a structured QuoteRecord
+ * Supports 'lump' | 'sub' | 'both' (일반+구독 혼합)
  */
 export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | null {
-  const isSub = document.getElementById('input-tab-sub')?.classList.contains('bg-blue-600') || false;
-  const mode: 'lump' | 'sub' = isSub ? 'sub' : 'lump';
+  const isSubTab = document.getElementById('input-tab-sub')?.classList.contains('bg-blue-600') || false;
+  const isBothTab =
+    document.getElementById('input-tab-both')?.classList.contains('bg-purple-600') ||
+    (!document.getElementById('input-lump-sec')?.classList.contains('hidden') &&
+      !document.getElementById('input-sub-sec')?.classList.contains('hidden'));
 
-  // Use the canonical vanilla gatherQuotationData if available
-  const rawData = typeof (window as any).gatherQuotationData === 'function'
-    ? (window as any).gatherQuotationData()
-    : null;
+  const mode: 'lump' | 'sub' | 'both' = isBothTab ? 'both' : isSubTab ? 'sub' : 'lump';
+
+  const rawData =
+    typeof (window as any).gatherQuotationData === 'function'
+      ? (window as any).gatherQuotationData()
+      : null;
 
   let items: Array<{ name: string; model: string; qty: number; price: number; months?: string }> = [];
+  let lumpItems: Array<{ name: string; model: string; qty: number; price: number }> = [];
+  let subItems: Array<{ name: string; model: string; qty: number; price: number; months?: string }> = [];
   let itemSummary = '';
   let paidAmount = 0;
   let netAmount = 0;
 
   if (rawData) {
-    if (mode === 'lump') {
-      items = (rawData.lumpItems || []).map((it: any) => ({
-        name: it.name || '품목',
-        model: it.model || '-',
-        qty: it.qty || 1,
-        price: it.price || 0,
-      }));
-      paidAmount = typeof (window as any).currentPayPriceLump === 'number'
-        ? (window as any).currentPayPriceLump
-        : (rawData.payPrice || 0);
-      netAmount = typeof (window as any).currentNetPriceLump === 'number'
-        ? (window as any).currentNetPriceLump
-        : (rawData.netPrice || 0);
+    lumpItems = (rawData.lumpItems || []).map((it: any) => ({
+      name: it.name || '품목',
+      model: it.model || '-',
+      qty: it.qty || 1,
+      price: it.price || 0,
+    }));
+    subItems = (rawData.subItems || []).map((it: any) => ({
+      name: it.name || '구독품목',
+      model: it.model || '-',
+      qty: 1,
+      price: it.price || 0,
+      months: it.months || '60',
+    }));
+
+    if (mode === 'both') {
+      items = [...lumpItems, ...subItems];
+      const payLump =
+        typeof (window as any).currentPayPriceLump === 'number'
+          ? (window as any).currentPayPriceLump
+          : rawData.lumpSum || 0;
+      const contractSub =
+        typeof (window as any).currentContractSub === 'number'
+          ? (window as any).currentContractSub
+          : rawData.subSum || 0;
+      paidAmount = payLump + contractSub;
+
+      const netTotal =
+        typeof (window as any).currentNetPriceTotal === 'number'
+          ? (window as any).currentNetPriceTotal
+          : ((window as any).currentNetPriceLump || 0) + ((window as any).currentNetPriceSub || 0);
+      netAmount = netTotal;
+    } else if (mode === 'lump') {
+      items = lumpItems;
+      paidAmount =
+        typeof (window as any).currentPayPriceLump === 'number'
+          ? (window as any).currentPayPriceLump
+          : rawData.payPrice || 0;
+      netAmount =
+        typeof (window as any).currentNetPriceLump === 'number'
+          ? (window as any).currentNetPriceLump
+          : rawData.netPrice || 0;
     } else {
-      items = (rawData.subItems || []).map((it: any) => ({
-        name: it.name || '구독품목',
-        model: it.model || '-',
-        qty: 1,
-        price: it.price || 0,
-        months: it.months || '60',
-      }));
-      paidAmount = typeof (window as any).currentContractSub === 'number'
-        ? (window as any).currentContractSub
-        : (rawData.subSum || 0);
-      netAmount = typeof (window as any).currentNetPriceSub === 'number'
-        ? (window as any).currentNetPriceSub
-        : (rawData.netPrice || 0);
+      items = subItems;
+      paidAmount =
+        typeof (window as any).currentContractSub === 'number'
+          ? (window as any).currentContractSub
+          : rawData.subSum || 0;
+      netAmount =
+        typeof (window as any).currentNetPriceSub === 'number'
+          ? (window as any).currentNetPriceSub
+          : rawData.netPrice || 0;
     }
     itemSummary = rawData.itemSummary || '';
   } else {
-    // Fallback: direct DOM extraction
-    if (mode === 'lump') {
+    // Fallback direct DOM extraction
+    if (mode === 'lump' || mode === 'both') {
       const names = document.querySelectorAll('.l-name');
       const models = document.querySelectorAll('.l-model');
       const qtys = document.querySelectorAll('.l-qty');
@@ -554,14 +623,15 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
         const q = parseInt((qtys[i] as HTMLInputElement)?.value || '1', 10) || 1;
         const p = parseInt((prices[i] as HTMLInputElement)?.value || '0', 10) || 0;
         if (n || p > 0) {
-          items.push({ name: n || '품목', model: m || '-', qty: q, price: p });
+          const entry = { name: n || '품목', model: m || '-', qty: q, price: p };
+          lumpItems.push(entry);
+          items.push(entry);
           if (!itemSummary && n) itemSummary = n;
         }
       });
-      if (items.length > 1) itemSummary += ` 외 ${items.length - 1}건`;
-      paidAmount = (window as any).currentPayPriceLump || 0;
-      netAmount = (window as any).currentNetPriceLump || 0;
-    } else {
+    }
+
+    if (mode === 'sub' || mode === 'both') {
       const names = document.querySelectorAll('.s-name');
       const models = document.querySelectorAll('.s-model');
       const prices = document.querySelectorAll('.s-price');
@@ -573,11 +643,26 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
         const p = parseInt((prices[i] as HTMLInputElement)?.value || '0', 10) || 0;
         const mo = (months[i] as HTMLSelectElement)?.value || '60';
         if (n || p > 0) {
-          items.push({ name: n || '구독품목', model: m || '-', qty: 1, price: p, months: mo });
+          const entry = { name: n || '구독품목', model: m || '-', qty: 1, price: p, months: mo };
+          subItems.push(entry);
+          items.push(entry);
           if (!itemSummary && n) itemSummary = `${n} (구독)`;
         }
       });
-      if (items.length > 1) itemSummary += ` 외 ${items.length - 1}건`;
+    }
+
+    if (items.length > 1) itemSummary += ` 외 ${items.length - 1}건`;
+
+    if (mode === 'both') {
+      paidAmount = ((window as any).currentPayPriceLump || 0) + ((window as any).currentContractSub || 0);
+      netAmount =
+        typeof (window as any).currentNetPriceTotal === 'number'
+          ? (window as any).currentNetPriceTotal
+          : ((window as any).currentNetPriceLump || 0) + ((window as any).currentNetPriceSub || 0);
+    } else if (mode === 'lump') {
+      paidAmount = (window as any).currentPayPriceLump || 0;
+      netAmount = (window as any).currentNetPriceLump || 0;
+    } else {
       paidAmount = (window as any).currentContractSub || 0;
       netAmount = (window as any).currentNetPriceSub || 0;
     }
@@ -591,7 +676,8 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
   const subCardCorp = rawData?.subCardCorp || (document.getElementById('s-card-corp') as HTMLSelectElement | null)?.value || '';
   const subCardTier = rawData?.subCardTier || parseInt((document.getElementById('s-card-tier') as HTMLSelectElement | null)?.value || '0', 10) || 0;
 
-  const title = customTitle || `${formatLocalDate(new Date()).substring(2)} ${itemSummary || '가전 견적'} (${mode === 'lump' ? '일시불' : '구독'})`;
+  const modeLabel = mode === 'both' ? '일반+구독 혼합' : mode === 'sub' ? '구독' : '일시불';
+  const title = customTitle || `${formatLocalDate(new Date()).substring(2)} ${itemSummary || '가전 견적'} (${modeLabel})`;
 
   return {
     id: 'Q_' + Date.now(),
@@ -611,7 +697,8 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
     internalMemo: rawData?.memoMy || memoMyEl?.value || '',
     rawCalculatorData: {
       ...(rawData || {}),
-      type: mode === 'lump' ? '일반' : '구독',
+      mode,
+      type: mode === 'both' ? '혼합' : mode === 'lump' ? '일반' : '구독',
       name: (document.getElementById('i-name') as HTMLInputElement | null)?.value?.trim() || rawData?.name || '',
       cPhone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || rawData?.cPhone || '',
       customerPhone: (document.getElementById('i-c-phone') as HTMLInputElement | null)?.value?.trim() || rawData?.cPhone || '',
@@ -621,8 +708,11 @@ export function extractQuoteRecordFromDOM(customTitle?: string): QuoteRecord | n
       no: (document.getElementById('i-no') as HTMLInputElement | null)?.value || rawData?.no || '',
       slipNo: (document.getElementById('i-no') as HTMLInputElement | null)?.value || rawData?.slipNo || '',
       deliveryDate: (document.getElementById('i-delivery-date') as HTMLInputElement | null)?.value || rawData?.deliveryDate || '',
-      lumpItems: mode === 'lump' ? items : (rawData?.lumpItems || []),
-      subItems: mode === 'sub' ? items : (rawData?.subItems || []),
+      lumpItems: mode === 'lump' || mode === 'both' ? lumpItems : rawData?.lumpItems || [],
+      subItems: mode === 'sub' || mode === 'both' ? subItems : rawData?.subItems || [],
+      payPrice: paidAmount,
+      netPrice: netAmount,
+      finalPrice: netAmount,
     },
   };
 }
@@ -648,53 +738,42 @@ export function saveCurrentCalculatorAsQuote(customTitle?: string, isOverwrite?:
     quote.id = activeQuoteId;
   }
 
-  // targetId 결정 로직:
-  // 1. 활성 고객 ID(activeCustomerId)가 있고, 이름이 일치하면 무조건 해당 고객 카드로 귀속 저장!
-  //    (덮어쓰기이든 새 견적 추가이든 해당 고객의 카드 견적 이력으로 100% 저장됨)
-  // 2. 활성 고객이 없거나 완전히 새로운 고객인 경우에만 신규 CRM 고객 ID 발급
   const isBoundToActiveCustomer = Boolean(
     activeCustomerId &&
-    (!activeCustName || !currentName || currentName === activeCustName || activeCustName.includes(currentName) || currentName.includes(activeCustName))
+      (!activeCustName ||
+        !currentName ||
+        currentName === activeCustName ||
+        activeCustName.includes(currentName) ||
+        currentName.includes(activeCustName))
   );
 
-  let targetId: string;
-  if (isBoundToActiveCustomer) {
-    targetId = activeCustomerId;
-  } else {
-    targetId = 'crm-' + Date.now();
-  }
-
+  const targetId = isBoundToActiveCustomer ? activeCustomerId : 'crm-' + Date.now();
   const finalName = currentName || '신규 고객';
 
-  // 즉시 동기 실행: 로컬 스토리지에 확실하고 즉각적으로 저장
   saveCustomerQuote(
     targetId,
     quote,
-    { 
-      name: finalName, 
+    {
+      name: finalName,
       phone: currentPhone,
       date: currentDate,
       slipNo: currentSlipNo,
-      deliveryDate: currentDelivery
+      deliveryDate: currentDelivery,
     },
-    isOverwrite ? (activeQuoteId || 'true') : undefined
+    isOverwrite ? activeQuoteId || 'true' : undefined
   );
-  
-  // Set as active customer ID and quote ID
+
   (window as any).currentActiveCustomerId = targetId;
   (window as any).currentActiveQuoteId = quote.id;
   (window as any).currentEditingQuoteId = quote.id;
   (window as any).currentActiveCustomerName = finalName;
 
-  // React 상태 즉시 동기화
   if (typeof (window as any).refreshCRMCustomers === 'function') {
     (window as any).refreshCRMCustomers();
   }
 
-  // Dispatch event for React components to update
   window.dispatchEvent(new CustomEvent('crm-customer-updated', { detail: { customerId: targetId } }));
 
-  // Update banner in calculator DOM
   const banner = document.getElementById('crm-loaded-banner');
   const title = document.getElementById('crm-loaded-title');
   const desc = document.getElementById('crm-loaded-desc');
@@ -710,33 +789,25 @@ export function saveCurrentCalculatorAsQuote(customTitle?: string, isOverwrite?:
   return quote;
 }
 
-// Global bridge for vanilla JS in index.html
 if (typeof window !== 'undefined') {
   (window as any).saveCurrentCalculatorAsQuote = saveCurrentCalculatorAsQuote;
   (window as any).extractQuoteRecordFromDOM = extractQuoteRecordFromDOM;
-
-  // Auto-save disabled per user instruction (manual save only)
-  (window as any).triggerAutoSaveFromCalculator = () => {
-    // No-op: Only saves when user explicitly clicks [저장]
-  };
+  (window as any).triggerAutoSaveFromCalculator = () => {};
 }
 
 /**
  * Restores a saved QuoteRecord back into the calculator DOM
  */
 export function loadQuoteRecordIntoCalculator(quote: QuoteRecord, customer: CustomerItem): void {
-  // Set active customer and active quote ID for precise overwriting
   (window as any).currentActiveCustomerId = customer.id;
   (window as any).currentActiveCustomerName = customer.name;
   (window as any).currentActiveQuoteId = quote.id;
   (window as any).currentEditingQuoteId = quote.id;
   (window as any).currentEditingFolderId = customer.id;
 
-  // 100% loss-free restore using canonical applyQuotationData if available
   if (quote.rawCalculatorData && typeof (window as any).applyQuotationData === 'function') {
     (window as any).applyQuotationData(quote.rawCalculatorData);
   } else {
-    // Fallback: convert QuoteRecord to ParsedQuotation
     const parsed: ParsedQuotation = {
       customerType: '일반',
       name: customer.name,
@@ -766,7 +837,6 @@ export function loadQuoteRecordIntoCalculator(quote: QuoteRecord, customer: Cust
     applyQuotationDataToDOM(parsed);
   }
 
-  // Update banner in DOM
   const banner = document.getElementById('crm-loaded-banner');
   const title = document.getElementById('crm-loaded-title');
   const desc = document.getElementById('crm-loaded-desc');

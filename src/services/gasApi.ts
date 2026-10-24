@@ -1,218 +1,123 @@
-import { CustomerItem, PipelineStatus, Tab1Record, Tab2Record, DeletedCustomerRecord } from '../types/crm';
-import { INITIAL_MOCK_CUSTOMERS } from '../data/mockData';
+import { CustomerItem, PipelineStatus, QuoteRecord, ConsultationLog, DeletedCustomerRecord } from '../types/crm';
+import { formatLocalDate, formatLocalDateTime } from '../utils/date';
 
-const STORAGE_KEY_GAS_URL = 'himart_gas_api_url';
-export const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers';
-export const STORAGE_KEY_CUSTOMERS_LEGACY = 'himart_crm_customers_cache';
-const STORAGE_KEY_DELETED_CUSTOMERS = 'himart_crm_deleted_customers';
+const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers';
+const STORAGE_KEY_CUSTOMERS_LEGACY = 'himart_crm_customers_v6';
 const STORAGE_KEY_DELETED_RECORDS = 'himart_crm_deleted_records';
-export const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbws7p1ZOc0LC5rg7s--QpzmHh6Tc8AZn7JgDXQKPDg0RWsmuVm0PREqyIJhorTwBu3t/exec';
-const AUTO_PURGE_DAYS = 30; // 30일 보관 후 자동 영구삭제
+const DELETED_RETENTION_DAYS = 30;
+const DELETED_RETENTION_MS = DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
-export function getDeletedCustomerKeys(): Set<string> {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return new Set();
+/**
+ * Calculates D-Day relative to today's local date (KST).
+ * e.g., 0 = Today, 1 = Tomorrow, -1 = Yesterday
+ */
+export function calculateDDay(dateStr?: string): number | null {
+  if (!dateStr) return null;
+  const match = String(dateStr).match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
+  let target: Date;
+  if (match) {
+    target = new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
+  } else {
+    target = new Date(dateStr);
   }
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_DELETED_CUSTOMERS);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        return new Set(arr);
-      }
-    }
-  } catch (e) {
-    console.error('Failed to parse deleted customer keys', e);
-  }
-  return new Set();
+  if (isNaN(target.getTime())) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+
+  const diffTime = target.getTime() - today.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
 }
 
 /**
- * 30일 자동 삭제(Auto-purge)가 적용된 휴지통 삭제 고객 목록 조회
+ * Normalizes any status string to a canonical PipelineStatus
+ */
+export function normalizePipelineStatus(raw?: string, source: 'tab1' | 'tab2' = 'tab2', isSmsSent?: boolean): PipelineStatus {
+  const s = (raw || '').trim();
+  if (s === '신규/미발송' || s === '배송대기' || s === '물류대기' || s === '미구매/고민중' || s === '상담진행중' || s === '배송완료') {
+    return s;
+  }
+  if (s.includes('완료') && (s.includes('배송') || s.includes('설치'))) return '배송완료';
+  if (s.includes('물류') || s.includes('입고')) return '물류대기';
+  if (s.includes('배송') && !s.includes('완료')) return '배송대기';
+  if (s.includes('미구매') || s.includes('고민') || s.includes('보류') || s.includes('취소')) return '미구매/고민중';
+  if (s.includes('상담') || s.includes('발송완료') || s.includes('발송 완료') || isSmsSent) return '상담진행중';
+  if (s.includes('미발송') || s.includes('신규') || source === 'tab1') return '신규/미발송';
+  return '상담진행중';
+}
+
+/**
+ * 30일 경과 자동 영구삭제 및 휴지통 레코드 조회
  */
 export function getDeletedCustomerRecords(): DeletedCustomerRecord[] {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return [];
-  }
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DELETED_RECORDS);
     if (!raw) return [];
-    const records: DeletedCustomerRecord[] = JSON.parse(raw);
-    if (!Array.isArray(records)) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
 
     const now = Date.now();
-    const thirtyDaysMs = AUTO_PURGE_DAYS * 24 * 60 * 60 * 1000;
-    let hasExpired = false;
+    let changed = false;
+    const validRecords: DeletedCustomerRecord[] = [];
 
-    // 30일 경과 검사 및 자동 영구 삭제 필터링
-    const activeRecords = records.filter((r) => {
-      const deletedAtMs = new Date(r.deletedAt).getTime();
-      const isExpired = isNaN(deletedAtMs) || (now - deletedAtMs) >= thirtyDaysMs;
-      if (isExpired) {
-        hasExpired = true;
-        return false;
+    for (const rec of parsed) {
+      if (!rec || !rec.customer) continue;
+      const deletedTime = new Date(rec.deletedAt).getTime();
+      const expiresTime = rec.expiresAt ? new Date(rec.expiresAt).getTime() : deletedTime + DELETED_RETENTION_MS;
+      const remainingMs = expiresTime - now;
+
+      if (remainingMs <= 0) {
+        changed = true;
+        continue;
       }
-      return true;
-    }).map((r) => {
-      const deletedAtMs = new Date(r.deletedAt).getTime();
-      const elapsedDays = Math.floor((now - deletedAtMs) / (24 * 60 * 60 * 1000));
-      const daysRemaining = Math.max(0, AUTO_PURGE_DAYS - elapsedDays);
-      return {
-        ...r,
-        daysRemaining,
-      };
-    });
 
-    // 만료된 항목이 발견되면 스토리지 즉시 정제(동기화)
-    if (hasExpired) {
-      localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(activeRecords));
+      const daysRemaining = Math.max(1, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
+      validRecords.push({
+        id: rec.id || rec.customer.id,
+        customer: rec.customer,
+        deletedAt: rec.deletedAt,
+        expiresAt: new Date(expiresTime).toISOString(),
+        daysRemaining,
+      });
     }
 
-    // 최신 삭제순 정렬
-    return activeRecords.sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
+    if (changed) {
+      localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(validRecords));
+    }
+
+    return validRecords;
   } catch (e) {
-    console.error('Failed to parse deleted customer records', e);
+    console.warn('Failed to parse deleted customer records', e);
     return [];
   }
 }
 
 export function isCustomerDeleted(customer: Partial<CustomerItem>): boolean {
-  const keys = getDeletedCustomerKeys();
-  if (keys.size === 0) return false;
-
-  // 구글 시트의 자동 행 인덱스 ID(예: tab1_19, tab2_2)는 행 추가/정렬 시 다른 신규 고객에게 부여될 수 있으므로,
-  // 인덱스 ID 단독으로 차단하지 않고 실제 전화번호 또는 [고객명_번호]로 정확하게 필터링합니다.
-  const isGenericIndexId = Boolean(customer.id && /^(tab1|tab2|tab)[-_]\d+$/i.test(customer.id));
-  if (customer.id && !isGenericIndexId && keys.has(customer.id)) return true;
-
-  const cleanPhone = (customer.phone || '').replace(/\D/g, '');
-  if (cleanPhone.length >= 7 && keys.has('phone:' + cleanPhone)) return true;
-  if (customer.slipNo && keys.has('slip:' + customer.slipNo.trim())) return true;
-  if (customer.name && cleanPhone.length >= 4 && keys.has(`namephone:${customer.name.trim()}_${cleanPhone}`)) return true;
-  return false;
-}
-
-export function markCustomerAsDeleted(customer: Partial<CustomerItem>): void {
-  // 1. 차단 키 등록 (시트 자동 재유입 방지)
-  const keys = getDeletedCustomerKeys();
-  if (customer.id) keys.add(customer.id);
-  const cleanPhone = (customer.phone || '').replace(/\D/g, '');
-  if (cleanPhone.length >= 8) keys.add('phone:' + cleanPhone);
-  if (customer.slipNo) keys.add('slip:' + customer.slipNo.trim());
-  if (customer.name && cleanPhone.length >= 4) keys.add(`namephone:${customer.name.trim()}_${cleanPhone}`);
-  try {
-    localStorage.setItem(STORAGE_KEY_DELETED_CUSTOMERS, JSON.stringify(Array.from(keys)));
-  } catch (e) {
-    console.error('Failed to save deleted customer keys', e);
-  }
-
-  // 2. 30일 보관 휴지통 레코드 등록
-  if (customer.id) {
-    try {
-      const records = getDeletedCustomerRecords();
-      const filtered = records.filter((r) => r.id !== customer.id);
-      const newRecord: DeletedCustomerRecord = {
-        id: customer.id,
-        customer: customer as CustomerItem,
-        deletedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + AUTO_PURGE_DAYS * 24 * 60 * 60 * 1000).toISOString(),
-        daysRemaining: AUTO_PURGE_DAYS,
-      };
-      filtered.unshift(newRecord);
-      localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(filtered));
-    } catch (e) {
-      console.error('Failed to save deleted customer record', e);
-    }
-  }
-}
-
-/**
- * 특정 고객만 개별 복원 (휴지통에서 메인 CRM 목록으로 되돌리기)
- */
-export function restoreIndividualCustomer(customerId: string): CustomerItem[] {
+  if (!customer || !customer.id) return false;
   const records = getDeletedCustomerRecords();
-  const targetRecord = records.find((r) => r.id === customerId);
-
-  // 휴지통에서 해당 고객 제거
-  const updatedRecords = records.filter((r) => r.id !== customerId);
-  try {
-    localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(updatedRecords));
-  } catch (e) {
-    console.error('Failed to update deleted customer records', e);
-  }
-
-  // 차단 키 목록에서 제거
-  if (targetRecord) {
-    const keys = getDeletedCustomerKeys();
-    keys.delete(customerId);
-    const cleanPhone = (targetRecord.customer.phone || '').replace(/\D/g, '');
-    if (cleanPhone.length >= 8) keys.delete('phone:' + cleanPhone);
-    if (targetRecord.customer.slipNo) keys.delete('slip:' + targetRecord.customer.slipNo.trim());
-    if (targetRecord.customer.name && cleanPhone.length >= 4) keys.delete(`namephone:${targetRecord.customer.name.trim()}_${cleanPhone}`);
-    try {
-      localStorage.setItem(STORAGE_KEY_DELETED_CUSTOMERS, JSON.stringify(Array.from(keys)));
-    } catch (e) {
-      console.error('Failed to update deleted keys', e);
-    }
-
-    // 메인 CRM 고객 목록에 다시 추가
-    const currentCustomers = getCachedCustomers();
-    const exists = currentCustomers.some((c) => c.id === customerId);
-    if (!exists) {
-      const restoredList = [targetRecord.customer, ...currentCustomers];
-      saveCachedCustomers(restoredList);
-      return restoredList;
-    }
-  }
-
-  return getCachedCustomers();
+  return records.some((r) => r.id === customer.id || r.customer.id === customer.id);
 }
 
-/**
- * 특정 고객을 휴지통에서 즉시 영구 삭제
- */
-export function permanentlyDeleteCustomer(customerId: string): void {
+export function markCustomerAsDeleted(customer: CustomerItem): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   try {
-    const records = getDeletedCustomerRecords();
-    const updatedRecords = records.filter((r) => r.id !== customerId);
-    localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(updatedRecords));
-  } catch (e) {
-    console.error('Failed to permanently delete customer', e);
-  }
-}
+    const records = getDeletedCustomerRecords().filter((r) => r.id !== customer.id);
+    const now = new Date();
+    const expires = new Date(now.getTime() + DELETED_RETENTION_MS);
 
-/**
- * 휴지통의 모든 고객을 전체 복원
- */
-export function restoreAllDeletedCustomers(): CustomerItem[] {
-  try {
-    const records = getDeletedCustomerRecords();
-    const currentCustomers = getCachedCustomers();
-    const currentIds = new Set(currentCustomers.map((c) => c.id));
-    
-    // 휴지통에 있던 고객들 중 현재 목록에 없는 고객들 복원
-    const restoredItems = records.map((r) => r.customer).filter((c) => c && !currentIds.has(c.id));
-    const merged = [...restoredItems, ...currentCustomers];
-    saveCachedCustomers(merged);
+    records.unshift({
+      id: customer.id,
+      customer,
+      deletedAt: now.toISOString(),
+      expiresAt: expires.toISOString(),
+      daysRemaining: DELETED_RETENTION_DAYS,
+    });
 
-    // 휴지통 및 차단 키 모두 초기화
-    localStorage.removeItem(STORAGE_KEY_DELETED_CUSTOMERS);
-    localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
-    return merged;
+    localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(records));
   } catch (e) {
-    console.error('Failed to restore deleted customers', e);
-    return getCachedCustomers();
-  }
-}
-
-/**
- * 휴지통 전체 비우기 (영구 삭제)
- */
-export function purgeAllDeletedCustomers(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
-  } catch (e) {
-    console.error('Failed to purge deleted customers', e);
+    console.error('Failed to save deleted customer record', e);
   }
 }
 
@@ -220,49 +125,69 @@ export function getDeletedCustomerCount(): number {
   return getDeletedCustomerRecords().length;
 }
 
-export function getGasApiUrl(): string {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return DEFAULT_GAS_URL;
+export function restoreIndividualCustomer(customerId: string): CustomerItem[] {
+  const records = getDeletedCustomerRecords();
+  const target = records.find((r) => r.id === customerId || r.customer.id === customerId);
+  const remaining = records.filter((r) => r.id !== customerId && r.customer.id !== customerId);
+  localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(remaining));
+
+  const current = getCachedCustomers();
+  if (target && target.customer) {
+    const updated = deduplicateCustomers([target.customer, ...current]);
+    saveCachedCustomers(updated);
+    return updated;
   }
-  return localStorage.getItem(STORAGE_KEY_GAS_URL) || localStorage.getItem('google_sheet_url') || DEFAULT_GAS_URL;
+  return current;
 }
 
-export function setGasApiUrl(url: string): void {
-  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
-  const clean = url.trim();
-  localStorage.setItem(STORAGE_KEY_GAS_URL, clean);
-  localStorage.setItem('google_sheet_url', clean);
+export function permanentlyDeleteCustomer(customerId: string): void {
+  const remaining = getDeletedCustomerRecords().filter((r) => r.id !== customerId && r.customer.id !== customerId);
+  localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(remaining));
 }
 
-export function clearGasApiUrl(): void {
+export function restoreAllDeletedCustomers(): CustomerItem[] {
+  const records = getDeletedCustomerRecords();
+  const restoredCustomers = records.map((r) => r.customer).filter(Boolean);
+  localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
+
+  const current = getCachedCustomers();
+  const updated = deduplicateCustomers([...restoredCustomers, ...current]);
+  saveCachedCustomers(updated);
+  return updated;
+}
+
+export function purgeAllDeletedCustomers(): void {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEY_GAS_URL);
-  localStorage.removeItem('google_sheet_url');
+  localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
 }
 
 /**
- * Enforce strictly unique IDs across all customer records to prevent duplicate key errors
+ * Deduplicate customers by ID while refreshing D-Day
  */
 export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
   const seenIds = new Set<string>();
   const result: CustomerItem[] = [];
-  list.forEach((item, index) => {
-    let id = item.id;
-    if (!id || seenIds.has(id)) {
-      id = `${item.source || 'tab'}-${item.phone ? item.phone.replace(/\D/g, '').slice(-4) : 'cust'}-${index + 1}`;
-      if (seenIds.has(id)) {
-        id = `${id}-${Date.now().toString().slice(-4)}`;
-      }
-    }
-    seenIds.add(id);
-    result.push({ ...item, id });
-  });
+
+  for (const item of list) {
+    if (!item || !item.id) continue;
+    if (seenIds.has(item.id)) continue;
+    seenIds.add(item.id);
+    result.push({
+      ...item,
+      status: normalizePipelineStatus(item.status, item.source, item.isSmsSent),
+      dDay: calculateDDay(item.deliveryDate),
+    });
+  }
+
   return result;
 }
 
+/**
+ * 100% LocalStorage Customer Loader (No sanitize re-parsing to preserve user edits)
+ */
 export function getCachedCustomers(): CustomerItem[] {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
-    return INITIAL_MOCK_CUSTOMERS;
+    return [];
   }
   try {
     let raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
@@ -271,814 +196,140 @@ export function getCachedCustomers(): CustomerItem[] {
     }
     if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const validCustomers = parsed.filter((c: any) => !isCustomerDeleted(c));
+      if (Array.isArray(parsed)) {
+        const validCustomers = parsed.filter((c: any) => c && !isCustomerDeleted(c));
         return deduplicateCustomers(validCustomers);
       }
     }
   } catch (e) {
     console.error('Failed to parse cached customers', e);
   }
-  const fallback = INITIAL_MOCK_CUSTOMERS
-    .filter((c: any) => !isCustomerDeleted(c))
-    .map((c: any, idx: number) => sanitizeAndEnrichCustomer(c, c.source || 'tab2', idx));
-  return deduplicateCustomers(fallback);
+  return [];
 }
 
+/**
+ * Save customers directly to LocalStorage
+ */
 export function saveCachedCustomers(customers: CustomerItem[]): void {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
   try {
-    const deduped = deduplicateCustomers(customers);
-    const jsonStr = JSON.stringify(deduped);
-    localStorage.setItem(STORAGE_KEY_CUSTOMERS, jsonStr);
-    localStorage.setItem(STORAGE_KEY_CUSTOMERS_LEGACY, jsonStr);
+    const cleaned = deduplicateCustomers(customers);
+    localStorage.setItem(STORAGE_KEY_CUSTOMERS, JSON.stringify(cleaned));
   } catch (e) {
-    console.error('Failed to save cached customers', e);
-  }
-}
-
-// Calculate D-Day relative to today (YYYY-MM-DD)
-export function calculateDDay(targetDateStr?: string): number | null {
-  if (!targetDateStr) return null;
-  // Match standard YYYY-MM-DD
-  const match = targetDateStr.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-  if (!match) return null;
-
-  const target = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  target.setHours(0, 0, 0, 0);
-
-  const diffTime = target.getTime() - today.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
-}
-
-export function normalizePipelineStatus(raw: string | undefined | null, defaultFallback: PipelineStatus = '신규/미발송'): PipelineStatus {
-  if (!raw) return defaultFallback;
-  const s = String(raw).trim();
-  
-  if (
-    s === '신규/미발송' || 
-    s.includes('신규') || 
-    s.includes('미발송') || 
-    s.includes('접수') || 
-    s.includes('미처리') || 
-    s.includes('미확인') || 
-    (!s.includes('배송') && !s.includes('물류') && s.includes('대기'))
-  ) {
-    return '신규/미발송';
-  }
-  if (s.includes('배송완료') || s.includes('배송 완료') || s.includes('설치완료') || s.includes('설치 완료')) {
-    return '배송완료';
-  }
-  if (s.includes('물류') || s.includes('입고')) {
-    return '물류대기';
-  }
-  if (s.includes('미구매') || s.includes('고민') || s.includes('취소') || s.includes('보류') || s.includes('비교')) {
-    return '미구매/고민중';
-  }
-  if (s.includes('배송대기') || s.includes('배송예정') || s.includes('결제완료')) {
-    return '배송대기';
-  }
-  if (s.includes('상담') || s.includes('진행') || s.includes('발송완료') || s.includes('발송 완료')) {
-    return '상담진행중';
-  }
-  
-  return defaultFallback;
-}
-
-export function mapRawStatusToPipeline(source: 'tab1' | 'tab2', rawStatus: string): PipelineStatus {
-  const s = (rawStatus || '').trim();
-
-  // If status is empty, blank, hyphen, or explicitly indicates new lead
-  if (!s || s === '-' || s.includes('신규') || s.includes('미발송') || s.includes('접수') || s.includes('미처리')) {
-    return '신규/미발송';
-  }
-
-  return normalizePipelineStatus(s, source === 'tab1' ? '신규/미발송' : '배송대기');
-}
-
-export function parseCsvLine(str: string): string[] {
-  const result: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < str.length; i++) {
-    const c = str[i];
-    if (c === '"') {
-      if (inQuotes && str[i + 1] === '"') {
-        cur += '"';
-        i++; // skip escaped quote
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (c === ',' && !inQuotes) {
-      result.push(cur.trim());
-      cur = '';
-    } else {
-      cur += c;
-    }
-  }
-  result.push(cur.trim());
-  return result;
-}
-
-/**
- * Intelligent regex and tokenizer to disentangle tangled fields
- * (e.g., "이사 (임청,010-1234-5678,https://docs.google.com/...)")
- */
-export function disentangleCustomerFields(
-  rawName: string,
-  rawPhone: string,
-  rawCategory: string,
-  rawItems: string,
-  rawNote: string,
-  rawDocUrl: string,
-  allText: string
-) {
-  // 1. Extract Doc URL
-  let docUrl = rawDocUrl || '';
-  const urlMatch = allText.match(/https?:\/\/docs\.google\.com\/(?:document|spreadsheets)\/d\/[a-zA-Z0-9_-]+[^\s"',)]*/);
-  if (urlMatch) {
-    docUrl = urlMatch[0];
-  }
-
-  // 2. Extract Phone Number (Strict 010-XXXX-XXXX, exclude store phone like 031-767-1044)
-  let phone = rawPhone || '';
-  if (phone.includes('031-767-1044') || phone.includes('031-797-2850')) {
-    phone = '';
-  }
-  const phoneMatch = allText.match(/(01[016789])[-.\s]?(\d{3,4})[-.\s]?(\d{4})/);
-  if (phoneMatch) {
-    phone = `${phoneMatch[1]}-${phoneMatch[2]}-${phoneMatch[3]}`;
-  } else if (phone && !phone.startsWith('031')) {
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length >= 10 && digits.length <= 11) {
-      phone = digits.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3');
-    }
-  }
-
-  // 3. Extract Reservation Type (이사, 입주, 웨딩, 일반)
-  let reservationType: '이사' | '입주' | '웨딩' | '일반' = '일반';
-  if (/웨딩|혼수|신혼/.test(allText)) {
-    reservationType = '웨딩';
-  } else if (/이사|포장이사/.test(allText)) {
-    reservationType = '이사';
-  } else if (/입주|신축입주|아파트입주/.test(allText)) {
-    reservationType = '입주';
-  }
-
-  // 4. Extract & Clean Customer Name
-  let name = (rawName || '').trim();
-  // Check if name is tangled like "이사 (임청,010-..." or "(임청,010-..."
-  const nameInsideParenMatch = allText.match(/(?:\(|^)\s*([가-힣]{2,5})\s*[,|\/]\s*01[016789]/);
-  if (nameInsideParenMatch) {
-    name = nameInsideParenMatch[1];
-  } else if (!name || name.length > 8 || /이사|입주|웨딩|010|http/.test(name)) {
-    // Try matching Korean name in front or after parenthesis
-    const cleanKoreanName = name.replace(/이사|입주|웨딩|혼수|고객님|고객|\(.*?\)|\[.*?\]/g, '').trim();
-    if (cleanKoreanName && cleanKoreanName.length >= 2 && cleanKoreanName.length <= 5) {
-      name = cleanKoreanName;
-    } else {
-      const fallbackNameMatch = allText.match(/([가-힣]{2,4})\s*고객님/) || allText.match(/^([가-힣]{2,4})\b/);
-      if (fallbackNameMatch) {
-        name = fallbackNameMatch[1];
-      }
-    }
-  }
-  name = name.replace(/[()[\]{},]/g, '').trim();
-  if (!name || name === '고객' || name === '고객님') {
-    name = '고객님';
-  }
-
-  // 5. Clean Category & Items (Remove tangled chunks)
-  let category = (rawCategory || '').trim();
-  let items = (rawItems || '').trim();
-
-  // Strip phone, urls, and (name, phone, url) parenthesized blocks from category and items
-  const stripTangled = (str: string) => {
-    return str
-      .replace(/https?:\/\/docs\.google\.com\/[^\s"',)]+/g, '')
-      .replace(/01[016789][-.\s]?\d{3,4}[-.\s]?\d{4}/g, '')
-      .replace(/\([^)]{2,}\)/g, '')
-      .replace(/\[[^\]]{2,}\]/g, '')
-      .replace(/[()[\]{},;]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
-  const cleanedCat = stripTangled(category);
-  const cleanedItems = stripTangled(items);
-
-  if (cleanedItems && cleanedItems.length > 2 && !/^(이사|입주|웨딩|일반)$/.test(cleanedItems)) {
-    items = cleanedItems;
-  } else if (cleanedCat && cleanedCat.length > 2 && !/^(이사|입주|웨딩|일반)$/.test(cleanedCat)) {
-    items = cleanedCat;
-  } else {
-    items = `${reservationType} 가전 맞춤 상담`;
-  }
-
-  category = `${reservationType} 예약`;
-
-  // 6. Clean Note
-  let note = (rawNote || '').trim();
-  note = stripTangled(note);
-  if (name && name !== '고객님') {
-    note = note.replace(new RegExp(name, 'g'), '').trim();
-  }
-  note = note.replace(/^[\s,;|-]+|[\s,;|-]+$/g, '').trim();
-
-  return {
-    name,
-    phone,
-    reservationType,
-    categoryBadge: category,
-    items,
-    note,
-    docUrl,
-  };
-}
-
-function formatCleanDeliveryDate(raw: any): string {
-  if (!raw) return '';
-  const str = String(raw).trim();
-  if (!str) return '';
-
-  // ISO format: 2026-09-23T00:00:00.000Z
-  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-  }
-
-  // English date string: Wed Sep 23 2026...
-  const engMatch = str.match(/[A-Z][a-z]{2}\s+([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})/);
-  if (engMatch) {
-    const d = new Date(str);
-    if (!isNaN(d.getTime())) {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    }
-  }
-
-  // Standard YYYY-MM-DD
-  const stdMatch = str.match(/\b(202\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/);
-  if (stdMatch) {
-    return `${stdMatch[1]}-${String(stdMatch[2]).padStart(2, '0')}-${String(stdMatch[3]).padStart(2, '0')}`;
-  }
-
-  // Korean expressions like "10월 말 ~ 11월 초 (일정 미정)"
-  return str;
-}
-
-/**
- * Intelligent Data Sanitizer and Normalizer:
- * Accurately extracts clean customer records for both Tab 1 (Online leads)
- * and Tab 2 (Store orders & deliveries), correctly distinguishing new leads from delivery pipelines.
- */
-export function sanitizeAndEnrichCustomer(raw: any, defaultSource: 'tab1' | 'tab2', idx: number): CustomerItem {
-  let source: 'tab1' | 'tab2' = defaultSource;
-  if (raw && raw.source) {
-    source = raw.source;
-  }
-
-  // Detect cell array or comma-separated row strings
-  let cells: string[] = [];
-  if (Array.isArray(raw)) {
-    cells = raw.map((c) => String(c ?? ''));
-  } else if (raw && Array.isArray(raw.paidAmount) && raw.paidAmount.length >= 3) {
-    cells = raw.paidAmount.map((c: any) => String(c ?? ''));
-    source = 'tab2';
-  } else if (raw && typeof raw.category === 'string' && raw.category.includes(',')) {
-    cells = parseCsvLine(raw.category);
-    source = 'tab1';
-  } else if (raw && typeof raw.slipNo === 'string' && raw.slipNo.includes(',') && raw.slipNo.length > 50) {
-    cells = parseCsvLine(raw.slipNo);
-    source = 'tab2';
-  }
-
-  const rawObj: any = typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
-
-  // Build full text for fallback extraction
-  const fullText = [
-    String(rawObj.name || ''),
-    String(rawObj.phone || ''),
-    String(rawObj.slipNo || ''),
-    String(rawObj.items || ''),
-    String(rawObj.category || ''),
-    String(rawObj.benefit || ''),
-    String(rawObj.deliveryDate || ''),
-    String(rawObj.status || ''),
-    String(rawObj.note || ''),
-    String(rawObj.docUrl || ''),
-    cells.join(' , '),
-  ].join(' | ');
-
-  let name = '';
-  let phone = '';
-  let slipNo = '';
-  let category = '';
-  let items = '';
-  let paidAmount: number | string | undefined = undefined;
-  let netAmount: number | string | undefined = undefined;
-  let benefit = '';
-  let deliveryDate = '';
-  let rawStatus = '';
-  let note = '';
-  let docUrl = '';
-  let intakeDate = '';
-
-  if (source === 'tab1') {
-    // Tab 1: [0: 이름, 1: 연락처, 2: 카테고리, 3: 서비스, 4: 접수일, 5: 상태, 6: 메모, 7: 구글문서]
-    name = (cells[0] || rawObj.name || '').trim();
-    phone = (cells[1] || rawObj.phone || '').trim();
-    const cat = (cells[2] || rawObj.category || '').trim();
-    const srv = (cells[3] || rawObj.service || '').trim();
-    category = srv && srv !== '-' ? `${cat} (${srv})` : (cat || '온라인 접수');
-    items = rawObj.items || category;
-    intakeDate = (cells[4] || rawObj.date || '').trim();
-    rawStatus = (cells[5] || rawObj.status || '').trim();
-    note = (cells[6] || rawObj.note || '').trim();
-    docUrl = (cells[7] || rawObj.docUrl || '').trim();
-    slipNo = (rawObj.slipNo || '').trim();
-    paidAmount = rawObj.paidAmount;
-    netAmount = rawObj.netAmount;
-    benefit = (rawObj.benefit || '').trim();
-    deliveryDate = formatCleanDeliveryDate(rawObj.deliveryDate);
-
-    // Check if delivery request is in note (e.g. 11/21 설치희망) if deliveryDate still empty
-    if (!deliveryDate) {
-      const desiredMatch = note.match(/(?:(\d{1,2})[월/](\d{1,2})일?\s*(?:이사|설치|배송)희망|\b(202\d)[-/.](\d{1,2})[-/.](\d{1,2})\s*배송)/);
-      if (desiredMatch) {
-        const year = desiredMatch[3] || new Date().getFullYear();
-        const month = String(desiredMatch[1] || desiredMatch[4]).padStart(2, '0');
-        const day = String(desiredMatch[2] || desiredMatch[5]).padStart(2, '0');
-        deliveryDate = `${year}-${month}-${day}`;
-      }
-    }
-  } else {
-    // Tab 2: [0: 성함, 1: 연락처, 2: 전표번호, 3: 품목, 4: 결제금액, 5: 실체감가, 6: 제휴혜택, 7: 배송희망일, 8: 상태, 9: 메모, 10: 구글문서]
-    name = (cells[0] || rawObj.name || '').trim();
-    phone = (cells[1] || rawObj.phone || '').trim();
-    slipNo = (cells[2] || rawObj.slipNo || '').trim();
-    items = (cells[3] || rawObj.items || rawObj.category || '').trim();
-    category = items || '매장 결제';
-    paidAmount = cells[4] ?? rawObj.paidAmount;
-    netAmount = cells[5] ?? rawObj.netAmount;
-    benefit = (cells[6] || rawObj.benefit || '').trim();
-    deliveryDate = formatCleanDeliveryDate(cells[7] || rawObj.deliveryDate);
-    rawStatus = (cells[8] || rawObj.status || '').trim();
-    note = (cells[9] || rawObj.note || '').trim();
-    docUrl = (cells[10] || rawObj.docUrl || '').trim();
-  }
-
-  // 1. Sanitize & Disentangle fields using smart parser
-  const disentangled = disentangleCustomerFields(name, phone, category, items, note, docUrl, fullText);
-  name = disentangled.name;
-  phone = disentangled.phone;
-  category = disentangled.categoryBadge;
-  items = disentangled.items;
-  note = disentangled.note;
-  docUrl = disentangled.docUrl;
-  const reservationType = disentangled.reservationType;
-
-  // 2. Slip Number handling: If slipNo is explicitly given in rawObj, ALWAYS prioritize and preserve it!
-  if (rawObj && rawObj.id) {
-    // If it's already an existing normalized customer record, strictly honor its slipNo & deliveryDate
-    slipNo = (rawObj.slipNo || '').trim();
-    deliveryDate = formatCleanDeliveryDate(rawObj.deliveryDate || '');
-  } else if (rawObj.slipNo && String(rawObj.slipNo).trim()) {
-    slipNo = String(rawObj.slipNo).trim();
-  } else if (slipNo.length > 35 || slipNo.includes(name) || slipNo.includes('냉장고')) {
-    const slipMatches = Array.from(fullText.matchAll(/\b\d{8}-\d{2,4}\b/g)).map((m) => m[0]);
-    if (slipMatches.length > 0) {
-      slipNo = Array.from(new Set(slipMatches)).join(', ');
-    } else {
-      slipNo = '';
-    }
-  }
-
-  // If slip number exists, set source to 'tab2' (매장 전표) for consistent header badge display
-  if (slipNo) {
-    source = 'tab2';
-  } else if (rawObj && rawObj.source) {
-    source = rawObj.source;
-  }
-
-  // 3. Pipeline Status Determination & SMS Status Check
-  let status = mapRawStatusToPipeline(source, rawStatus);
-  let isSmsSent = (status !== '신규/미발송');
-  let smsSentDate = rawObj.smsSentDate;
-
-  if (rawStatus.includes('발송 완료') || rawStatus.includes('발송완료')) {
-    status = '상담진행중';
-    isSmsSent = true;
-    if (!smsSentDate) {
-      smsSentDate = rawObj.date || new Date().toISOString().slice(0, 16).replace('T', ' ');
-    }
-  }
-
-  // 4. Numeric Amounts parsing
-  let finalPaid: number | undefined = undefined;
-  let finalNet: number | undefined = undefined;
-  if (typeof paidAmount === 'number' && paidAmount > 0) {
-    finalPaid = paidAmount;
-  } else if (typeof paidAmount === 'string') {
-    const cleanNum = parseInt(paidAmount.replace(/[^0-9]/g, ''), 10);
-    if (!isNaN(cleanNum) && cleanNum > 0) finalPaid = cleanNum;
-  }
-
-  if (typeof netAmount === 'number') {
-    finalNet = netAmount;
-  } else if (typeof netAmount === 'string') {
-    if (netAmount.includes('0원')) {
-      finalNet = 0;
-    } else {
-      const cleanNet = parseInt(netAmount.replace(/[^0-9]/g, ''), 10);
-      if (!isNaN(cleanNet)) finalNet = cleanNet;
-    }
-  }
-
-  const finalDeliveryDate = deliveryDate || formatCleanDeliveryDate(rawObj.deliveryDate) || undefined;
-  const dDay = finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null;
-
-  return {
-    id: rawObj.id || `${source}-${idx + 1}`,
-    source,
-    name: name || '고객님',
-    phone,
-    slipNo: slipNo || undefined,
-    category,
-    reservationType,
-    items,
-    paidAmount: finalPaid,
-    netAmount: finalNet,
-    benefit,
-    deliveryDate: finalDeliveryDate,
-    status: normalizePipelineStatus(rawObj.status || status),
-    rawStatus: rawStatus || (source === 'tab1' ? (isSmsSent ? '발송 완료' : '신규(미발송)') : '배송대기'),
-    date: rawObj.date || intakeDate || new Date().toISOString().split('T')[0],
-    note,
-    docUrl: docUrl || undefined,
-    dDay,
-    isSmsSent,
-    smsSentDate,
-    giftItem: rawObj.giftItem || undefined,
-    isGiftDelivered: Boolean(rawObj.isGiftDelivered),
-    quotes: Array.isArray(rawObj.quotes) ? rawObj.quotes : [],
-    logs: Array.isArray(rawObj.logs) ? rawObj.logs : [],
-  };
-}
-
-/**
- * Smart Merge:
- * 1) Key is phone number ('phone').
- * 2) Only INSERTS new incoming customers that do not already exist in local CRM.
- * 3) For existing customers, their status, notes, gifts, and quotes are 100% PRESERVED (Source of Truth).
- */
-export function mergeWithExistingCache(freshList: CustomerItem[], currentCache: CustomerItem[]): CustomerItem[] {
-  const nonDeletedFresh = freshList.filter((f) => !isCustomerDeleted(f));
-  const nonDeletedCache = currentCache.filter((c) => !isCustomerDeleted(c));
-
-  const existingById = new Map<string, CustomerItem>();
-  const existingByPhone = new Map<string, CustomerItem>();
-  const existingBySlip = new Map<string, CustomerItem>();
-
-  nonDeletedCache.forEach((c) => {
-    existingById.set(c.id, c);
-    const cleanPhone = (c.phone || '').replace(/\D/g, '');
-    if (cleanPhone.length >= 7) {
-      existingByPhone.set(cleanPhone.slice(-8), c);
-      existingByPhone.set(cleanPhone, c);
-    }
-    if (c.slipNo && c.slipNo.trim()) {
-      existingBySlip.set(c.slipNo.trim(), c);
-    }
-  });
-
-  const mergedList: CustomerItem[] = [];
-  const processedExistingIds = new Set<string>();
-
-  // 구글 시트에서 읽어온 데이터 처리
-  nonDeletedFresh.forEach((fresh) => {
-    const cleanPhone = (fresh.phone || '').replace(/\D/g, '');
-    const last8 = cleanPhone.length >= 7 ? cleanPhone.slice(-8) : '';
-
-    let existing: CustomerItem | undefined = undefined;
-    if (cleanPhone.length >= 7) {
-      existing = existingByPhone.get(cleanPhone) || (last8 ? existingByPhone.get(last8) : undefined);
-    }
-    if (!existing && fresh.slipNo && fresh.slipNo.trim()) {
-      existing = existingBySlip.get(fresh.slipNo.trim());
-    }
-    if (!existing && fresh.id && existingById.has(fresh.id)) {
-      existing = existingById.get(fresh.id);
-    }
-
-    if (!existing) {
-      // 🌟 로컬에 없는 신규 고객: CRM 목록 최상단에 신규 등록
-      mergedList.push(fresh);
-    } else {
-      // 🛡️ 이미 로컬에 저장되어 관리 중인 고객:
-      // 시트의 기본 속성을 받되, 사용자가 수정한 상태/배송일/금액/메모/견적이력/사은품을 100% 최우선 유지!
-      processedExistingIds.add(existing.id);
-      const preservedCustomer: CustomerItem = {
-        ...fresh,
-        ...existing, // 사용자의 로컬 변경사항이 시트 원본을 덮어씀
-        status: existing.status,
-        rawStatus: existing.rawStatus || fresh.rawStatus,
-        deliveryDate: existing.deliveryDate || fresh.deliveryDate,
-        dDay: existing.deliveryDate ? calculateDDay(existing.deliveryDate) : fresh.dDay,
-        paidAmount: existing.paidAmount !== undefined ? existing.paidAmount : fresh.paidAmount,
-        netAmount: existing.netAmount !== undefined ? existing.netAmount : fresh.netAmount,
-        note: existing.note !== undefined ? existing.note : fresh.note,
-        items: existing.items || fresh.items,
-        quotes: existing.quotes || [],
-        logs: existing.logs || [],
-        giftItem: existing.giftItem || fresh.giftItem,
-        isGiftDelivered: existing.isGiftDelivered ?? fresh.isGiftDelivered,
-        docUrl: existing.docUrl || fresh.docUrl,
-      };
-      mergedList.push(preservedCustomer);
-    }
-  });
-
-  // 시트에는 없고 로컬에만 직접 등록된 수동 고객들도 누락 없이 유지
-  nonDeletedCache.forEach((c) => {
-    if (!processedExistingIds.has(c.id)) {
-      mergedList.push(c);
-    }
-  });
-
-  return deduplicateCustomers(mergedList);
-}
-
-export async function fetchCustomersFromGas(): Promise<{
-  customers: CustomerItem[];
-  fromGas: boolean;
-  message?: string;
-}> {
-  const url = getGasApiUrl();
-  const currentLocal = getCachedCustomers();
-
-  if (!url) {
-    return {
-      customers: currentLocal,
-      fromGas: false,
-      message: '연동된 API URL이 없어 로컬 저장소 데이터를 로드했습니다.',
-    };
-  }
-
-  let data: any = null;
-  const timestamp = Date.now();
-  const cleanUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + timestamp;
-
-  // 1. 브라우저 직통 단순 요청 (CORS Preflight를 유발하는 커스텀 헤더 없이 표준 GET 요청)
-  try {
-    const res = await fetch(cleanUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        Accept: 'application/json',
-      },
-    });
-
-    if (res.ok) {
-      data = await res.json();
-    }
-  } catch (directErr) {
-    console.warn('Direct GAS fetch failed or blocked by CORS, trying backend proxy...', directErr);
-  }
-
-  // 2. 브라우저 직통 통신 실패 시 백엔드 프록시 엔드포인트(/api/gas-fetch)로 100% 안전 폴백
-  if (!data) {
-    try {
-      const proxyUrl = `/api/gas-fetch?url=${encodeURIComponent(url)}&_t=${timestamp}`;
-      const proxyRes = await fetch(proxyUrl, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-        },
-      });
-
-      if (proxyRes.ok) {
-        data = await proxyRes.json();
-      } else {
-        throw new Error(`Proxy HTTP Error: ${proxyRes.status}`);
-      }
-    } catch (proxyErr: any) {
-      console.warn('Backend proxy fetch also failed, using cached data:', proxyErr);
-      return {
-        customers: currentLocal,
-        fromGas: false,
-        message: `구글 시트 연결 지연 (${proxyErr.message || '네트워크'}). 최신 로컬 데이터를 안전하게 표시합니다.`,
-      };
-    }
-  }
-
-  try {
-    let unified: CustomerItem[] = [];
-
-    // Support both { tab1: [...], tab2: [...] } and unified array
-    if (data.tab1 || data.tab2) {
-      const tab1List: any[] = data.tab1 || [];
-      const tab2List: any[] = data.tab2 || [];
-
-      tab1List.forEach((r: any, idx: number) => {
-        unified.push(sanitizeAndEnrichCustomer(r, 'tab1', idx));
-      });
-
-      tab2List.forEach((r: any, idx: number) => {
-        unified.push(sanitizeAndEnrichCustomer(r, 'tab2', idx));
-      });
-    } else if (Array.isArray(data)) {
-      data.forEach((r: any, idx: number) => {
-        unified.push(sanitizeAndEnrichCustomer(r, 'tab2', idx));
-      });
-    } else if (data.customers && Array.isArray(data.customers)) {
-      data.customers.forEach((r: any, idx: number) => {
-        unified.push(sanitizeAndEnrichCustomer(r, 'tab2', idx));
-      });
-    }
-
-    if (unified.length > 0) {
-      const finalUnified = mergeWithExistingCache(unified, currentLocal);
-      saveCachedCustomers(finalUnified);
-      return {
-        customers: finalUnified,
-        fromGas: true,
-        message: `구글 시트 연동 성공! 총 ${finalUnified.length}건의 데이터를 실시간으로 동기화했습니다.`,
-      };
-    } else {
-      throw new Error('데이터 형식이 올바르지 않거나 시트가 비어있습니다.');
-    }
-  } catch (err: any) {
-    console.warn('Data processing error:', err);
-    return {
-      customers: currentLocal,
-      fromGas: false,
-      message: `구글 시트 데이터 분석 오류: ${err.message}`,
-    };
+    console.error('Failed to save customers to localStorage', e);
   }
 }
 
 /**
- * Synchronize SMS completion:
- * 사용자의 구글 시트 원본에 빈 행/시간이 무단으로 추가되는 것을 방지하기 위해
- * 시트에는 오직 신규 고객 불러오기(Read-only)만 수행하며 외부 POST 요청을 일체 전송하지 않습니다.
- */
-export async function syncSheetStatus(
-  _customer: CustomerItem,
-  _statusText: string,
-  _noteText?: string
-): Promise<boolean> {
-  return true;
-}
-
-/**
- * Save / Update a customer's quotation history record
+ * Save or update a QuoteRecord inside a customer's CRM card
  */
 export function saveCustomerQuote(
   customerId: string,
-  quote: import('../types/crm').QuoteRecord,
-  customerFallbackInfo?: { name?: string; phone?: string; date?: string; slipNo?: string; deliveryDate?: string },
+  quote: QuoteRecord,
+  customerInfo?: {
+    name?: string;
+    phone?: string;
+    date?: string;
+    slipNo?: string;
+    deliveryDate?: string;
+  },
   overwriteQuoteId?: string
 ): CustomerItem[] {
-  const current = getCachedCustomers();
-  let found = false;
-  // 고객 실제 휴대폰 번호 추출 (매장 유선전화 031-xxx-xxxx 등이 고객 번호로 들어가지 않도록 엄격 분리)
-  const isStorePhone = (p?: string) => Boolean(p && (p.includes('031-767-1044') || p.includes('031-797-2850') || p.startsWith('031')));
-  const rawCustomerPhone = (
-    (customerFallbackInfo?.phone && !isStorePhone(customerFallbackInfo.phone) ? customerFallbackInfo.phone.trim() : '') ||
-    (quote.rawCalculatorData?.cPhone && !isStorePhone(quote.rawCalculatorData.cPhone) ? quote.rawCalculatorData.cPhone.trim() : '') ||
-    (quote.rawCalculatorData?.customerPhone && !isStorePhone(quote.rawCalculatorData.customerPhone) ? quote.rawCalculatorData.customerPhone.trim() : '') ||
-    (quote.rawCalculatorData?.phone && !isStorePhone(quote.rawCalculatorData.phone) ? quote.rawCalculatorData.phone.trim() : '') ||
-    customerFallbackInfo?.phone?.trim() ||
-    ''
-  );
-  const cleanQPhone = rawCustomerPhone.replace(/\D/g, '');
-  const qName = (quote.rawCalculatorData?.name || customerFallbackInfo?.name || '').trim();
-  const qLast8 = cleanQPhone.length >= 8 ? cleanQPhone.slice(-8) : '';
+  const list = getCachedCustomers();
+  const cleanTargetPhone = (customerInfo?.phone || '').replace(/\D/g, '');
+  const targetName = (customerInfo?.name || '').trim();
 
-  // 사용자가 입력폼에서 전표번호나 배송일자를 지웠을 때(빈 문자열)도 CRM 카드에 명확하게 삭제 반영
-  const hasExplicitSlipNo = customerFallbackInfo?.slipNo !== undefined;
-  const newSlipNo = hasExplicitSlipNo 
-    ? (customerFallbackInfo.slipNo ? customerFallbackInfo.slipNo.trim() : '')
-    : (quote.rawCalculatorData?.slipNo || quote.rawCalculatorData?.no || '').trim();
+  let targetIndex = list.findIndex((c) => c.id === customerId);
 
-  const hasExplicitDeliveryDate = customerFallbackInfo?.deliveryDate !== undefined;
-  const newDeliveryDate = hasExplicitDeliveryDate
-    ? (customerFallbackInfo.deliveryDate ? formatCleanDeliveryDate(customerFallbackInfo.deliveryDate) : '')
-    : formatCleanDeliveryDate(quote.rawCalculatorData?.deliveryDate || '');
-
-  const hasExplicitDate = customerFallbackInfo?.date !== undefined;
-  const newDate = hasExplicitDate
-    ? (customerFallbackInfo.date ? customerFallbackInfo.date.trim() : '')
-    : (quote.rawCalculatorData?.date || '').trim();
-
-  const updated = current.map((c) => {
-    const cleanCPhone = (c.phone || '').replace(/\D/g, '');
-    const cLast8 = cleanCPhone.length >= 8 ? cleanCPhone.slice(-8) : '';
-    // 오버라이트 요청이거나 정확한 customerId 일치 시에만 타겟팅 (새 고객 등록 시 엉뚱한 기존 고객으로 흡수되지 않도록 방지)
-    const isTarget = overwriteQuoteId 
-      ? ((customerId && c.id === customerId) || (qLast8 && cLast8 && qLast8 === cLast8) || (qName && c.name.trim() === qName))
-      : (customerId && c.id === customerId);
-
-    if (isTarget) {
-      found = true;
-      const existingQuotes = c.quotes ? [...c.quotes] : [];
-      let quoteIdx = -1;
-
-      if (overwriteQuoteId && overwriteQuoteId !== 'true') {
-        quoteIdx = existingQuotes.findIndex((q) => q.id === overwriteQuoteId);
-      }
-      if (quoteIdx < 0 && quote.id) {
-        quoteIdx = existingQuotes.findIndex((q) => q.id === quote.id);
-      }
-      if (quoteIdx < 0 && overwriteQuoteId && existingQuotes.length > 0) {
-        quoteIdx = 0;
-      }
-
-      if (quoteIdx >= 0) {
-        // OVERWRITE existing quote in-place
-        quote.id = existingQuotes[quoteIdx].id;
-        existingQuotes[quoteIdx] = quote;
-      } else {
-        // Add new quote
-        existingQuotes.unshift(quote);
-      }
-
-      // 배송일자 처리: 사용자가 폼에서 지워 빈 문자열인 경우 undefined로 깨끗이 삭제
-      const finalDeliveryDate = hasExplicitDeliveryDate
-        ? (newDeliveryDate ? newDeliveryDate : undefined)
-        : (newDeliveryDate || c.deliveryDate || undefined);
-      const finalDDay = finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null;
-
-      // 전표번호 처리: 사용자가 폼에서 지워 빈 문자열인 경우 undefined로 깨끗이 삭제
-      const finalSlipNo = hasExplicitSlipNo
-        ? (newSlipNo ? newSlipNo : undefined)
-        : (newSlipNo || c.slipNo || undefined);
-
-      // 상담일자 처리:
-      const finalDate = hasExplicitDate
-        ? (newDate || c.date)
-        : (newDate || c.date);
-
-      return {
-        ...c,
-        phone: (c.phone && !isStorePhone(c.phone)) ? c.phone : (rawCustomerPhone || c.phone),
-        source: finalSlipNo ? 'tab2' : (c.reservationType ? 'tab1' : c.source),
-        paidAmount: quote.paidAmount > 0 ? quote.paidAmount : c.paidAmount,
-        netAmount: quote.netAmount,
-        items: quote.itemSummary || c.items,
-        quotes: existingQuotes,
-        slipNo: finalSlipNo,
-        date: finalDate,
-        deliveryDate: finalDeliveryDate,
-        dDay: finalDDay,
-      };
-    }
-    return c;
-  });
-
-  // If customer not found in existing list (신규 고객 등록), create a new CRM customer record
-  if (!found) {
-    const fallbackName = qName || customerFallbackInfo?.name || '신규 고객';
-    const finalDeliveryDate = newDeliveryDate || undefined;
-    const newCustomer: CustomerItem = {
-      id: customerId || 'cust-' + Date.now(),
-      source: newSlipNo ? 'tab2' : 'tab1',
-      name: fallbackName,
-      phone: rawCustomerPhone || '연락처 미등록',
-      slipNo: newSlipNo || undefined,
-      category: quote.itemSummary || '가전 견적',
-      items: quote.itemSummary || '가전 견적',
-      paidAmount: quote.paidAmount,
-      netAmount: quote.netAmount,
-      status: '신규/미발송',
-      rawStatus: '신규(미발송)',
-      isSmsSent: false,
-      date: newDate || new Date().toISOString().split('T')[0],
-      deliveryDate: finalDeliveryDate,
-      dDay: finalDeliveryDate ? calculateDDay(finalDeliveryDate) : null,
-      note: quote.internalMemo || quote.customerMemo || '견적 계산기에서 직접 작성 및 저장됨',
-      quotes: [quote],
-      logs: [],
-    };
-    updated.unshift(newCustomer);
+  if (targetIndex === -1 && cleanTargetPhone.length >= 8) {
+    targetIndex = list.findIndex((c) => (c.phone || '').replace(/\D/g, '') === cleanTargetPhone);
+  }
+  if (targetIndex === -1 && targetName && targetName !== '신규 고객' && targetName !== '이름없음') {
+    targetIndex = list.findIndex((c) => c.name === targetName);
   }
 
-  saveCachedCustomers(updated);
-  return updated;
+  const benefitParts: string[] = [];
+  if (quote.lumpCard && quote.lumpCard !== '미정(상담안함)') benefitParts.push(quote.lumpCard);
+  if (quote.lumpDc && quote.lumpDc > 0) benefitParts.push(`할인 ${(quote.lumpDc / 10000).toFixed(0)}만`);
+  if (quote.lumpCash && quote.lumpCash > 0) benefitParts.push(`캐시백 ${(quote.lumpCash / 10000).toFixed(0)}만`);
+  if (quote.subCardCorp && quote.subCardCorp !== 'none') benefitParts.push(`구독카드(${quote.subCardCorp})`);
+
+  if (targetIndex !== -1) {
+    const existing = list[targetIndex];
+    const existingQuotes = Array.isArray(existing.quotes) ? [...existing.quotes] : [];
+
+    if (overwriteQuoteId) {
+      const qIdx = existingQuotes.findIndex((q) => q.id === overwriteQuoteId || q.id === quote.id);
+      if (qIdx !== -1) {
+        existingQuotes[qIdx] = quote;
+      } else {
+        existingQuotes.unshift(quote);
+      }
+    } else {
+      const qIdx = existingQuotes.findIndex((q) => q.id === quote.id);
+      if (qIdx !== -1) {
+        existingQuotes[qIdx] = quote;
+      } else {
+        existingQuotes.unshift(quote);
+      }
+    }
+
+    const updatedDeliveryDate = customerInfo?.deliveryDate || existing.deliveryDate;
+
+    list[targetIndex] = {
+      ...existing,
+      name: targetName && targetName !== '신규 고객' ? targetName : existing.name,
+      phone: customerInfo?.phone || existing.phone,
+      slipNo: customerInfo?.slipNo || existing.slipNo,
+      deliveryDate: updatedDeliveryDate,
+      dDay: calculateDDay(updatedDeliveryDate),
+      items: quote.itemSummary || existing.items,
+      paidAmount: quote.paidAmount,
+      netAmount: quote.netAmount,
+      benefit: benefitParts.length > 0 ? benefitParts.join(' + ') : existing.benefit,
+      note: quote.internalMemo ? quote.internalMemo : existing.note,
+      quotes: existingQuotes,
+    };
+  } else {
+    const newDeliveryDate = customerInfo?.deliveryDate || undefined;
+    const newCustomer: CustomerItem = {
+      id: customerId || 'crm-' + Date.now(),
+      source: customerInfo?.slipNo ? 'tab2' : 'tab1',
+      name: targetName || '신규 고객',
+      phone: customerInfo?.phone || '',
+      slipNo: customerInfo?.slipNo || '',
+      category: quote.itemSummary || '가전 견적 상담',
+      items: quote.itemSummary || '가전 견적 상담',
+      paidAmount: quote.paidAmount,
+      netAmount: quote.netAmount,
+      benefit: benefitParts.join(' + '),
+      deliveryDate: newDeliveryDate,
+      date: customerInfo?.date || formatLocalDate(new Date()),
+      status: '신규/미발송',
+      rawStatus: '신규/미발송',
+      note: quote.internalMemo || '',
+      dDay: calculateDDay(newDeliveryDate),
+      isSmsSent: false,
+      quotes: [quote],
+      logs: [
+        {
+          id: 'log-' + Date.now(),
+          date: formatLocalDateTime(new Date()),
+          type: '견적산출',
+          content: `[견적생성] ${quote.title} (실결제 ${quote.paidAmount.toLocaleString()}원 / 체감가 ${quote.netAmount.toLocaleString()}원)`,
+          author: '담당자',
+        },
+      ],
+    };
+    list.unshift(newCustomer);
+  }
+
+  saveCachedCustomers(list);
+  return list;
 }
 
-/**
- * Delete a customer's quote record
- */
 export function deleteCustomerQuote(customerId: string, quoteId: string): CustomerItem[] {
-  const current = getCachedCustomers();
-  const updated = current.map((c) => {
+  const list = getCachedCustomers().map((c) => {
     if (c.id === customerId) {
       return {
         ...c,
@@ -1087,76 +338,12 @@ export function deleteCustomerQuote(customerId: string, quoteId: string): Custom
     }
     return c;
   });
-  saveCachedCustomers(updated);
-  return updated;
+  saveCachedCustomers(list);
+  return list;
 }
 
-/**
- * Delete a consultation log from a customer
- */
-export function deleteCustomerLog(customerId: string, logId: string): CustomerItem[] {
-  const current = getCachedCustomers();
-  const updated = current.map((c) => {
-    if (c.id === customerId) {
-      return {
-        ...c,
-        logs: (c.logs || []).filter((l) => l.id !== logId),
-      };
-    }
-    return c;
-  });
-  saveCachedCustomers(updated);
-  return updated;
-}
-
-/**
- * Update promised gift item and delivery completion status
- */
-export function updateCustomerGift(
-  customerId: string,
-  giftItem: string,
-  isGiftDelivered: boolean
-): CustomerItem[] {
-  const current = getCachedCustomers();
-  const updated = current.map((c) => {
-    if (c.id === customerId) {
-      return {
-        ...c,
-        giftItem,
-        isGiftDelivered,
-      };
-    }
-    return c;
-  });
-  saveCachedCustomers(updated);
-  return updated;
-}
-
-/**
- * Delete a customer record entirely from CRM
- */
-export function deleteCustomer(customerId: string): CustomerItem[] {
-  const current = getCachedCustomers();
-  const target = current.find((c) => c.id === customerId);
-  if (target) {
-    markCustomerAsDeleted(target);
-  } else {
-    markCustomerAsDeleted({ id: customerId });
-  }
-  const updated = current.filter((c) => c.id !== customerId);
-  saveCachedCustomers(updated);
-  return updated;
-}
-
-/**
- * Add a consultation log / note to a customer
- */
-export function addCustomerLog(
-  customerId: string,
-  log: import('../types/crm').ConsultationLog
-): CustomerItem[] {
-  const current = getCachedCustomers();
-  const updated = current.map((c) => {
+export function addCustomerLog(customerId: string, log: ConsultationLog): CustomerItem[] {
+  const list = getCachedCustomers().map((c) => {
     if (c.id === customerId) {
       return {
         ...c,
@@ -1165,151 +352,118 @@ export function addCustomerLog(
     }
     return c;
   });
-
-  saveCachedCustomers(updated);
-  return updated;
+  saveCachedCustomers(list);
+  return list;
 }
 
-export const GOOGLE_APPS_SCRIPT_SAMPLE_CODE = `/**
- * 롯데하이마트 경기광주점 - 고객 CRM & 배송 파이프라인 Google Apps Script
- * 구글 스프레드시트 -> [확장 프로그램] -> [Apps Script] 에 붙여넣고 [웹 앱으로 배포]하세요.
- * 액세스 권한: '모든 사용자(Anyone)'로 설정 필수
+export function deleteCustomerLog(customerId: string, logId: string): CustomerItem[] {
+  const list = getCachedCustomers().map((c) => {
+    if (c.id === customerId) {
+      return {
+        ...c,
+        logs: (c.logs || []).filter((l) => l.id !== logId),
+      };
+    }
+    return c;
+  });
+  saveCachedCustomers(list);
+  return list;
+}
+
+export function updateCustomerGift(customerId: string, giftItem: string, isGiftDelivered: boolean): CustomerItem[] {
+  const list = getCachedCustomers().map((c) => {
+    if (c.id === customerId) {
+      return {
+        ...c,
+        giftItem: giftItem.trim(),
+        isGiftDelivered,
+      };
+    }
+    return c;
+  });
+  saveCachedCustomers(list);
+  return list;
+}
+
+export function deleteCustomer(customerId: string): CustomerItem[] {
+  const list = getCachedCustomers();
+  const target = list.find((c) => c.id === customerId);
+  if (target) {
+    markCustomerAsDeleted(target);
+  }
+  const remaining = list.filter((c) => c.id !== customerId);
+  saveCachedCustomers(remaining);
+  return remaining;
+}
+
+/**
+ * Full LocalStorage Backup Export (.json)
  */
-
-function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  function formatDate(d) {
-    if (d instanceof Date && !isNaN(d.getTime())) {
-      return Utilities.formatDate(d, "GMT+9", "yyyy-MM-dd");
-    }
-    return String(d || "");
-  }
-
-  // 1. tab1: 온라인 예약/접수 (A:이름, B:연락처, C:카테고리, D:서비스, E:접수일, F:상태, G:메모, H:문서링크)
-  var sheet1 = ss.getSheetByName("tab1") || ss.getSheetByName("온라인예약");
-  var tab1 = [];
-  if (sheet1) {
-    var data1 = sheet1.getDataRange().getValues();
-    for (var i = 1; i < data1.length; i++) {
-      var r = data1[i];
-      if (!r || r.length === 0) continue;
-      var name = String(r[0] || "").trim();
-      var phone = String(r[1] || "").trim();
-      if (!name && !phone) continue;
-
-      tab1.push({
-        id: "tab1_" + (i + 1),
-        rowIndex: i + 1,
-        name: name,
-        phone: phone,
-        category: String(r[2] || ""),
-        service: String(r[3] || ""),
-        date: formatDate(r[4]),
-        status: String(r[5] || ""),
-        note: String(r[6] || ""),
-        docUrl: String(r[7] || "")
-      });
-    }
-  }
-
-  // 2. tab2: 매장결제 및 배송관리 (A:성함, B:연락처, C:전표번호, D:품목, E:결제금액, F:실체감가, G:제휴카드, H:배송일, I:상태, J:메모, K:문서링크)
-  var sheet2 = ss.getSheetByName("tab2") || ss.getSheetByName("배송관리") || (sheet1 ? null : ss.getSheets()[0]);
-  var tab2 = [];
-  if (sheet2) {
-    var data2 = sheet2.getDataRange().getValues();
-    for (var j = 1; j < data2.length; j++) {
-      var r2 = data2[j];
-      if (!r2 || r2.length === 0) continue;
-      var name2 = String(r2[0] || "").trim();
-      var phone2 = String(r2[1] || "").trim();
-      if (!name2 && !phone2) continue;
-
-      tab2.push({
-        id: "tab2_" + (j + 1),
-        rowIndex: j + 1,
-        name: name2,
-        phone: phone2,
-        slipNo: String(r2[2] || ""),
-        items: String(r2[3] || ""),
-        paidAmount: r2[4] || 0,
-        netAmount: r2[5] || 0,
-        benefit: String(r2[6] || ""),
-        deliveryDate: formatDate(r2[7]),
-        status: String(r2[8] || "배송대기"),
-        note: String(r2[9] || ""),
-        docUrl: String(r2[10] || "")
-      });
-    }
-  }
-
-  var result = {
-    status: "success",
-    timestamp: Utilities.formatDate(new Date(), "GMT+9", "yyyy-MM-dd HH:mm:ss"),
-    tab1: tab1,
-    tab2: tab2
-  };
-
-  return ContentService.createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function doPost(e) {
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var data = JSON.parse(e.postData.contents);
-    var action = data.action;
-
-    // 1. 상태 및 문자발송 동기화
-    if (action === "updateStatus" || action === "updateSms") {
-      var sheet1 = ss.getSheetByName("tab1") || ss.getSheetByName("온라인예약");
-      if (sheet1) {
-        var values = sheet1.getDataRange().getValues();
-        var targetRow = -1;
-        var pClean = String(data.phone || "").replace(/\\D/g, "");
-        for (var i = 1; i < values.length; i++) {
-          var rowPhone = String(values[i][1] || "").replace(/\\D/g, "");
-          var rowName = String(values[i][0] || "").trim();
-          if ((pClean && rowPhone && rowPhone.indexOf(pClean) !== -1) || (data.name && rowName === data.name)) {
-            targetRow = i + 1;
-            break;
-          }
-        }
-        if (targetRow > 0) {
-          // F열(6번째 열): 상태
-          sheet1.getRange(targetRow, 6).setValue(data.status || "발송 완료");
-          if (data.note) {
-            var oldNote = String(sheet1.getRange(targetRow, 7).getValue() || "");
-            sheet1.getRange(targetRow, 7).setValue(oldNote ? oldNote + " | " + data.note : data.note);
-          }
-          return ContentService.createTextOutput(JSON.stringify({ status: "success", updatedRow: targetRow }))
-            .setMimeType(ContentService.MimeType.JSON);
-        }
+export function exportFullBackupJson(): string {
+  const payload = {
+    version: '2.0-local-only',
+    exportedAt: new Date().toISOString(),
+    himart_crm_customers: getCachedCustomers(),
+    app_customer_folders: (() => {
+      try {
+        return JSON.parse(localStorage.getItem('app_customer_folders') || '[]');
+      } catch {
+        return [];
       }
+    })(),
+    himart_crm_deleted_records: getDeletedCustomerRecords(),
+    app_hipreed_rates: localStorage.getItem('app_hipreed_rates') || null,
+    app_sub_cards: localStorage.getItem('app_sub_cards') || null,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+/**
+ * Full LocalStorage Backup Restore (.json)
+ */
+export function importFullBackupJson(rawJson: string): { success: boolean; count: number; message: string } {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (!parsed || typeof parsed !== 'object') {
+      return { success: false, count: 0, message: '올바른 백업 JSON 파일 형식이 아닙니다.' };
     }
 
-    return ContentService.createTextOutput(JSON.stringify({ status: "ok" }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
-      .setMimeType(ContentService.MimeType.JSON);
+    let restoredCount = 0;
+
+    if (Array.isArray(parsed.himart_crm_customers)) {
+      saveCachedCustomers(parsed.himart_crm_customers);
+      restoredCount = parsed.himart_crm_customers.length;
+    } else if (Array.isArray(parsed)) {
+      saveCachedCustomers(parsed);
+      restoredCount = parsed.length;
+    }
+
+    if (Array.isArray(parsed.app_customer_folders)) {
+      localStorage.setItem('app_customer_folders', JSON.stringify(parsed.app_customer_folders));
+    }
+
+    if (Array.isArray(parsed.himart_crm_deleted_records)) {
+      localStorage.setItem(STORAGE_KEY_DELETED_RECORDS, JSON.stringify(parsed.himart_crm_deleted_records));
+    }
+
+    if (typeof parsed.app_hipreed_rates === 'string' && parsed.app_hipreed_rates) {
+      localStorage.setItem('app_hipreed_rates', parsed.app_hipreed_rates);
+    }
+
+    if (typeof parsed.app_sub_cards === 'string' && parsed.app_sub_cards) {
+      localStorage.setItem('app_sub_cards', parsed.app_sub_cards);
+    }
+
+    return {
+      success: true,
+      count: restoredCount,
+      message: `백업 파일 복원 완료! 총 ${restoredCount}명의 고객 데이터가 기기에 복구되었습니다.`,
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      count: 0,
+      message: `백업 파일 파싱 오류: ${e?.message || '파일 내용을 확인해주세요.'}`,
+    };
   }
 }
-
-// 🔔 [선택 옵션] 앱이 완전히 꺼져있어도 스마트폰으로 100% 즉시 알림 받기 (구글 시트 자체 트리거)
-// Apps Script 좌측 [트리거 (시계 아이콘)] -> [트리거 추가] -> onNewCustomerAlert 함수 선택 -> [수정 시] 또는 [시간 기반(매일 9시, 13시, 18시)] 등록
-function onNewCustomerAlert(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("tab1") || ss.getSheetByName("온라인예약");
-  if (!sheet) return;
-  var lastRow = sheet.getLastRow();
-  if (lastRow <= 1) return;
-
-  var name = sheet.getRange(lastRow, 1).getValue();
-  var phone = sheet.getRange(lastRow, 2).getValue();
-  var category = sheet.getRange(lastRow, 3).getValue();
-
-  // 담당자 이메일(스마트폰 Gmail 알림)로 즉시 팝업/진동 전송 (필요 시 주석 해제 후 본인 이메일 입력)
-  // MailApp.sendEmail(Session.getActiveUser().getEmail(), "[국지CRM] 신규 고객 접수: " + name + "님", "신규 접수: " + name + " (" + phone + ") - " + category);
-}
-`;

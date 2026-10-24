@@ -97,63 +97,6 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  // Google Apps Script Proxy Endpoint (100% immune to browser CORS / adblocker / network issues)
-  app.get('/api/gas-fetch', async (req, res) => {
-    try {
-      const targetUrl = (req.query.url as string) || process.env.GOOGLE_GAS_URL || 'https://script.google.com/macros/s/AKfycbws7p1ZOc0LC5rg7s--QpzmHh6Tc8AZn7JgDXQKPDg0RWsmuVm0PREqyIJhorTwBu3t/exec';
-      const cleanUrl = targetUrl + (targetUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
-      
-      const upstream = await fetch(cleanUrl, {
-        method: 'GET',
-        redirect: 'follow',
-      });
-
-      if (!upstream.ok) {
-        return res.status(upstream.status).json({ error: `Upstream HTTP error: ${upstream.status}` });
-      }
-
-      const data = await upstream.json();
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-      return res.json(data);
-    } catch (e: any) {
-      console.error('GAS proxy fetch error:', e);
-      return res.status(500).json({ error: e.message || 'Failed to fetch from Google Apps Script' });
-    }
-  });
-
-  // Synchronize status/SMS with Google Apps Script
-  app.post('/api/sync-sheet-status', async (req, res) => {
-    try {
-      const { gasUrl, customerId, name, phone, status, note } = req.body;
-      const targetUrl = gasUrl || process.env.GOOGLE_GAS_URL || 'https://script.google.com/macros/s/AKfycbws7p1ZOc0LC5rg7s--QpzmHh6Tc8AZn7JgDXQKPDg0RWsmuVm0PREqyIJhorTwBu3t/exec';
-      
-      const payload = {
-        action: 'updateStatus',
-        id: customerId,
-        name,
-        phone,
-        status: status || '발송 완료',
-        note: note || '',
-        timestamp: new Date().toLocaleString('ko-KR')
-      };
-
-      // Try sending to Google Apps Script
-      fetch(targetUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        redirect: 'follow',
-      }).catch(err => {
-        console.warn('Background sync to GAS failed (non-critical):', err.message);
-      });
-
-      return res.json({ success: true, message: '상태 동기화 요청이 전송되었습니다.', data: payload });
-    } catch (e: any) {
-      console.error('GAS sync error:', e);
-      return res.status(200).json({ success: false, error: e.message });
-    }
-  });
-
   if (isDev) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

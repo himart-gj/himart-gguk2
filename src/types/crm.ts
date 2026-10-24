@@ -45,7 +45,7 @@ export interface QuoteRecord {
   id: string;
   title: string;
   createdAt: string;
-  mode: 'lump' | 'sub';
+  mode: 'lump' | 'sub' | 'both';
   paidAmount: number;
   netAmount: number;
   itemSummary: string;

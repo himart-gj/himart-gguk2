@@ -1,5 +1,5 @@
 import React from 'react';
-import { Phone, MessageSquare, Calculator, ChevronRight, Gift, Package, Calendar } from 'lucide-react';
+import { Phone, MessageSquare, Calculator, ChevronRight, Gift, Package, Calendar, Check } from 'lucide-react';
 import { CustomerItem, PipelineStatus } from '../types/crm';
 
 interface CompactCustomerCardProps {
@@ -8,6 +8,7 @@ interface CompactCustomerCardProps {
   onOpenQuote: (customer: CustomerItem) => void;
   onOpenDetail: (customer: CustomerItem) => void;
   onUpdateStatus: (id: string, newStatus: PipelineStatus) => void;
+  onToggleGift?: (customer: CustomerItem) => void;
 }
 
 const STATUS_COLOR_MAP: Record<PipelineStatus, { bg: string; text: string; border: string }> = {
@@ -34,6 +35,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   onOpenQuote,
   onOpenDetail,
   onUpdateStatus,
+  onToggleGift,
 }) => {
   const cleanPhone = customer.phone ? customer.phone.replace(/[^0-9]/g, '') : '';
   const statusTheme = STATUS_COLOR_MAP[customer.status] || {
@@ -72,14 +74,14 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
     );
   };
 
-  const hasPendingGift = Boolean(customer.giftItem && !customer.isGiftDelivered);
+  const hasGift = Boolean(customer.giftItem && customer.giftItem.trim());
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all duration-150 flex flex-col justify-between overflow-hidden group">
       <div className="p-3.5 pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-black text-sm text-slate-900 tracking-tight truncate">
                 {customer.name}
               </span>
@@ -87,10 +89,36 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 {customer.status}
               </span>
               {getDDayBadge()}
-              {hasPendingGift && (
-                <span title={`사은품 미지급: ${customer.giftItem}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300">
-                  <Gift className="w-2.5 h-2.5 text-amber-600" /> 사은품
-                </span>
+              {hasGift && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onToggleGift) onToggleGift(customer);
+                  }}
+                  title={
+                    customer.isGiftDelivered
+                      ? `사은품 지급완료 (${customer.giftItem}) - 터치하여 미지급으로 변경`
+                      : `사은품 미지급 (${customer.giftItem}) - 원터치 지급완료 처리`
+                  }
+                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black border transition active:scale-95 cursor-pointer ${
+                    customer.isGiftDelivered
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
+                      : 'bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200 animate-pulse'
+                  }`}
+                >
+                  {customer.isGiftDelivered ? (
+                    <>
+                      <Check className="w-2.5 h-2.5 text-emerald-600" />
+                      <span>사은품완료</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gift className="w-2.5 h-2.5 text-amber-600" />
+                      <span>🎁 사은품</span>
+                    </>
+                  )}
+                </button>
               )}
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap">
@@ -108,7 +136,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
             <select
               value={customer.status}
               onChange={(e) => onUpdateStatus(customer.id, e.target.value as PipelineStatus)}
-              className="text-[11px] font-bold py-1 px-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
+              className="text-[11px] font-bold py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500 cursor-pointer"
               title="상태 빠른 변경"
             >
               {ALL_STATUSES.map((st) => (
@@ -141,12 +169,12 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
         </div>
       </div>
 
-      {/* 하단 4대 액션 버튼: 전화, 문자, 견적서 계산, 상세 */}
+      {/* 하단 4대 액션 버튼: 갤럭시 폴드 엄지 조작 최적화 */}
       <div className="p-2.5 pt-0 bg-white">
         <div className="pt-2 border-t border-slate-100 flex items-center gap-1.5">
           <a
             href={cleanPhone ? `tel:${cleanPhone}` : undefined}
-            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 text-center shrink-0"
+            className="flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-white hover:bg-emerald-50 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 text-center shrink-0"
             title="전화 걸기"
           >
             <Phone className="w-3.5 h-3.5 text-emerald-600" />
@@ -156,7 +184,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
           <button
             type="button"
             onClick={() => onOpenSMS(customer)}
-            className="flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-sky-50 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 text-center shrink-0 cursor-pointer"
+            className="flex items-center justify-center gap-1 py-2 px-2.5 rounded-xl bg-white hover:bg-sky-50 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 text-center shrink-0 cursor-pointer"
             title="문자 발송"
           >
             <MessageSquare className="w-3.5 h-3.5 text-sky-600" />
@@ -166,7 +194,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
           <button
             type="button"
             onClick={() => onOpenQuote(customer)}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-2xs transition active:scale-95 cursor-pointer truncate"
+            className="flex-1 flex items-center justify-center gap-1 py-2 px-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-2xs transition active:scale-95 cursor-pointer truncate"
             title="계산기로 견적 작성/수정"
           >
             <Calculator className="w-3.5 h-3.5 text-white shrink-0" />
@@ -176,7 +204,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
           <button
             type="button"
             onClick={() => onOpenDetail(customer)}
-            className="flex items-center justify-center gap-0.5 py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 cursor-pointer shrink-0"
+            className="flex items-center justify-center gap-0.5 py-2 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition active:scale-95 cursor-pointer shrink-0"
             title="고객 상세 및 이력 전체보기"
           >
             <span>상세</span>

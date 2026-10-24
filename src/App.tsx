@@ -3,32 +3,20 @@ import {
   Search, 
   ArrowUpDown, 
   Plus, 
-  Layers, 
-  RotateCw, 
   Calculator, 
-  ArrowLeft,
-  Truck,
   CheckCircle2,
-  AlertCircle,
-  FileSpreadsheet,
-  Settings,
-  HelpCircle,
-  Sparkles
+  UserPlus
 } from 'lucide-react';
 import { CustomerItem, PipelineStatus, QuoteRecord, ConsultationLog } from './types/crm';
 import { 
-  fetchCustomersFromGas, 
   saveCachedCustomers, 
   getCachedCustomers,
-  getGasApiUrl, 
-  calculateDDay,
   deleteCustomerLog,
   updateCustomerGift,
   deleteCustomer,
   normalizePipelineStatus
 } from './services/gasApi';
 import { 
-  sendNewCustomerAlert, 
   sendScheduledSyncNotification, 
   updatePersistentStatusNotification,
   requestNotificationPermission
@@ -48,7 +36,6 @@ import {
 } from './services/quotationLoader';
 
 export const App: React.FC = () => {
-  // Support opening directly in calculator mode if launched from PWA or previous state
   const [activeTab, setActiveTab] = useState<'crm' | 'calculator'>(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('tab') === 'calculator' || window.location.hash === '#calculator') {
@@ -57,12 +44,11 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem('himart_last_active_tab');
     return (saved === 'calculator' || saved === 'crm') ? saved : 'crm';
   });
-  const [customers, setCustomers] = useState<CustomerItem[]>([]);
-  const [filterStatus, setFilterStatus] = useState<PipelineStatus | '전체'>('전체');
+
+  const [customers, setCustomers] = useState<CustomerItem[]>(() => getCachedCustomers());
+  const [filterStatus, setFilterStatus] = useState<PipelineStatus | '전체' | '긴급'>('전체');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'delivery' | 'latest' | 'price'>('delivery');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isGasConnected, setIsGasConnected] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // Modals
@@ -73,46 +59,13 @@ export const App: React.FC = () => {
   const [isQuotePickerOpen, setIsQuotePickerOpen] = useState(false);
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
 
-  // Initial and Scheduled Data Load
-  const loadData = async (showToast = false) => {
-    setIsRefreshing(true);
-    const prevList = getCachedCustomers();
-    const prevIds = new Set(prevList.map((c) => c.id));
-    const prevPhones = new Set(prevList.map((c) => (c.phone || '').replace(/\D/g, '')).filter(Boolean));
-
-    const result = await fetchCustomersFromGas();
-    setCustomers(result.customers);
-    setIsGasConnected(result.fromGas);
-    setIsRefreshing(false);
-
-    // 신규 고객 유입 감지 (이전에 없던 고객이 새로 들어왔을 때 실시간 알림)
-    if (result.fromGas && prevList.length > 0) {
-      const newArrived = result.customers.filter((c) => {
-        const cleanP = (c.phone || '').replace(/\D/g, '');
-        return !prevIds.has(c.id) && (!cleanP || !prevPhones.has(cleanP));
-      });
-
-      if (newArrived.length > 0) {
-        const first = newArrived[0];
-        const alertMsg = `🔔 신규 고객 [${first.name}]님 외 ${newArrived.length - 1}명이 구글 시트에서 실시간 자동 등록되었습니다!`;
-        setStatusMessage(alertMsg);
-        sendNewCustomerAlert(first.name, first.items || first.category || '가전 상담 접수');
-        setTimeout(() => setStatusMessage(null), 5000);
-      } else if (showToast && result.message) {
-        setStatusMessage(result.message);
-        setTimeout(() => setStatusMessage(null), 4000);
-      }
-    } else if (showToast && result.message) {
-      setStatusMessage(result.message);
-      setTimeout(() => setStatusMessage(null), 4000);
-    }
+  const reloadLocalCustomers = () => {
+    setCustomers(getCachedCustomers());
   };
 
   useEffect(() => {
-    loadData();
-    setIsGasConnected(Boolean(getGasApiUrl()));
+    reloadLocalCustomers();
 
-    // 알림 권한 자동 확인/요청
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
       setTimeout(() => {
         requestNotificationPermission();
@@ -120,58 +73,33 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // 1. 화면 포커스 복귀(스마트폰 켜짐, 다른 앱에서 복귀) 시 자동 백그라운드 동기화
+  // 매일 09시 정시 모닝 브리핑 알림 스케줄러 (로컬 데이터 기반)
   useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        loadData(false);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
-
-  // 2. 3분 주기 자동 폴링 및 매일 09시, 13시, 18시 정시 자동 동기화 & 알림 스케줄러
-  useEffect(() => {
-    const checkScheduledTimes = () => {
+    const checkMorningBriefingTime = () => {
       const now = new Date();
       const hour = now.getHours();
       const minute = now.getMinutes();
       const dateStr = now.toISOString().split('T')[0];
 
-      // 09:00, 13:00, 18:00 정시 감지 (0~4분 사이)
-      const targetHours = [9, 13, 18];
-      if (targetHours.includes(hour) && minute <= 4) {
-        const lockKey = `himart_scheduled_sync_${dateStr}_${hour}`;
+      if (hour === 9 && minute <= 4) {
+        const lockKey = `himart_morning_briefing_${dateStr}_9`;
         if (!localStorage.getItem(lockKey)) {
           localStorage.setItem(lockKey, 'done');
-          loadData(true);
-          const timeLabel = hour === 9 ? '오전 9시' : hour === 13 ? '오후 1시' : '오후 6시';
-          const newCount = customers.filter((c) => normalizePipelineStatus(c.status) === '신규/미발송').length;
-          const todayDelivery = customers.filter((c) => c.dDay === 0).length;
-          sendScheduledSyncNotification(timeLabel, { newCount, deliveryCount: todayDelivery });
-          
-          if (hour === 9) {
+          const currentList = getCachedCustomers();
+          setCustomers(currentList);
+          const newCount = currentList.filter((c) => normalizePipelineStatus(c.status) === '신규/미발송').length;
+          const todayDelivery = currentList.filter((c) => c.dDay === 0).length;
+          sendScheduledSyncNotification('오전 9시', { newCount, deliveryCount: todayDelivery });
+          if (currentList.length > 0) {
             setIsBriefingOpen(true);
           }
         }
       }
     };
 
-    // 3분(180초)마다 시트 자동 백그라운드 갱신
-    const pollingInterval = setInterval(() => {
-      loadData(false);
-      checkScheduledTimes();
-    }, 3 * 60 * 1000);
-
-    // 1분마다 정시 시각 체크
-    const clockInterval = setInterval(checkScheduledTimes, 60 * 1000);
-
-    return () => {
-      clearInterval(pollingInterval);
-      clearInterval(clockInterval);
-    };
-  }, [customers]);
+    const clockInterval = setInterval(checkMorningBriefingTime, 60 * 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
 
   // Sync activeTab with DOM #calculator-container
   useEffect(() => {
@@ -181,7 +109,6 @@ export const App: React.FC = () => {
       if (activeTab === 'calculator') {
         calcContainer.style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'instant' });
-        // Trigger initialization of calculator if empty
         setTimeout(() => {
           if (typeof (window as any).initCalculator === 'function') {
             (window as any).initCalculator();
@@ -192,19 +119,18 @@ export const App: React.FC = () => {
       } else {
         calcContainer.style.display = 'none';
         window.scrollTo({ top: 0, behavior: 'instant' });
-        // CRM 탭으로 돌아왔을 때 항상 최신 캐시 데이터를 동기화
-        setCustomers(getCachedCustomers());
+        reloadLocalCustomers();
       }
     }
   }, [activeTab]);
 
-  // Global bridges so vanilla JS in index.html can interact seamlessly
+  // Global bridges for vanilla JS in index.html
   useEffect(() => {
     (window as any).switchAppTab = (tab: 'crm' | 'calculator') => {
       setActiveTab(tab);
       window.scrollTo({ top: 0, behavior: 'instant' });
       if (tab === 'crm') {
-        setCustomers(getCachedCustomers());
+        reloadLocalCustomers();
       }
     };
     (window as any).openAppSettings = () => {
@@ -214,12 +140,11 @@ export const App: React.FC = () => {
       setIsQuotePickerOpen(true);
     };
     (window as any).refreshCRMCustomers = () => {
-      setCustomers(getCachedCustomers());
+      reloadLocalCustomers();
     };
 
-    // Auto-update React state when quote is auto-saved or manual-saved from calculator
     const handleCrmUpdated = () => {
-      setCustomers(getCachedCustomers());
+      reloadLocalCustomers();
     };
     window.addEventListener('crm-customer-updated', handleCrmUpdated);
     return () => {
@@ -295,9 +220,8 @@ export const App: React.FC = () => {
 
   // Delete consultation log / note
   const handleDeleteLog = (customerId: string, logId: string) => {
-    setCustomers((prev) => {
-      const updated = deleteCustomerLog(customerId, logId);
-      return updated;
+    setCustomers(() => {
+      return deleteCustomerLog(customerId, logId);
     });
     setStatusMessage('상담 메모가 삭제되었습니다.');
     setTimeout(() => setStatusMessage(null), 3000);
@@ -305,25 +229,31 @@ export const App: React.FC = () => {
 
   // Update promised gift item and delivery completion status
   const handleUpdateGift = (customerId: string, giftItem: string, isGiftDelivered: boolean) => {
-    setCustomers((prev) => {
-      const updated = updateCustomerGift(customerId, giftItem, isGiftDelivered);
-      return updated;
+    setCustomers(() => {
+      return updateCustomerGift(customerId, giftItem, isGiftDelivered);
     });
     setStatusMessage(isGiftDelivered ? '🎁 사은품 지급 완료 처리되었습니다.' : '🎁 약속 사은품 정보가 저장되었습니다.');
     setTimeout(() => setStatusMessage(null), 3000);
   };
 
-  // Delete customer card entirely from CRM
+  // One-touch toggle gift delivery from CompactCustomerCard badge
+  const handleToggleGiftBadge = (customer: CustomerItem) => {
+    if (!customer.giftItem) return;
+    const nextDelivered = !customer.isGiftDelivered;
+    handleUpdateGift(customer.id, customer.giftItem, nextDelivered);
+  };
+
+  // Delete customer card (moves to 30-day trash)
   const handleDeleteCustomer = (customerId: string) => {
     const target = customers.find((c) => c.id === customerId);
     const targetName = target ? target.name : '고객';
     deleteCustomer(customerId);
     setCustomers((prev) => prev.filter((c) => c.id !== customerId));
-    setStatusMessage(`[${targetName}] 고객 카드가 CRM에서 완전히 삭제되었습니다.`);
+    setStatusMessage(`[${targetName}] 고객 카드가 휴지통으로 이동되었습니다.`);
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
-  // Mark SMS sent (with optional sent text to record in logs)
+  // Mark SMS sent
   const handleMarkSmsSent = (id: string, sentText?: string) => {
     const timeStr = formatLocalDateTime(new Date());
     setCustomers((prev) => {
@@ -351,8 +281,8 @@ export const App: React.FC = () => {
       saveCachedCustomers(updated);
       return updated;
     });
-    setStatusMessage('문자 발송이 완료되어 상담진행중 상태 및 시트에 동기화되었습니다.');
-    setTimeout(() => setStatusMessage(null), 4000);
+    setStatusMessage('✅ 문자 발송 완료 및 상담진행중 상태로 변경되었습니다.');
+    setTimeout(() => setStatusMessage(null), 3500);
   };
 
   // Load a saved QuoteRecord into the calculator
@@ -361,7 +291,7 @@ export const App: React.FC = () => {
     setTimeout(() => {
       loadQuoteRecordIntoCalculator(quote, customer);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      setStatusMessage(`[${customer.name}] ${quote.title}을 계산기로 완벽하게 복원했습니다.`);
+      setStatusMessage(`[${customer.name}] ${quote.title}을 계산기로 복원했습니다.`);
       setTimeout(() => setStatusMessage(null), 3500);
     }, 100);
   };
@@ -373,11 +303,11 @@ export const App: React.FC = () => {
       saveCachedCustomers(updated);
       return updated;
     });
-    setStatusMessage(`새 고객 [${newCustomer.name}]님이 파이프라인에 등록되었습니다.`);
+    setStatusMessage(`새 고객 [${newCustomer.name}]님이 등록되었습니다.`);
     setTimeout(() => setStatusMessage(null), 3500);
   };
 
-  // Open quotation calculator with AI-powered intelligent extraction
+  // Open quotation calculator with Stage 1 (local) + Stage 2 (AI gemini-3.8-flash)
   const handleOpenQuote = (customer: CustomerItem) => {
     setActiveTab('calculator');
 
@@ -391,9 +321,26 @@ export const App: React.FC = () => {
     }, 100);
   };
 
-  // Calculate status counts (Normalized to prevent count mismatch)
+  // Check if a customer belongs to "🔥 오늘 할 일 (긴급)"
+  const isUrgentCustomer = (c: CustomerItem): boolean => {
+    const st = normalizePipelineStatus(c.status);
+    return (
+      (c.dDay !== null && c.dDay !== undefined && c.dDay >= 0 && c.dDay <= 1) ||
+      st === '신규/미발송' ||
+      st === '물류대기' ||
+      (Boolean(c.giftItem) && !c.isGiftDelivered)
+    );
+  };
+
+  // Calculate urgent items count
+  const urgentCount = useMemo(() => {
+    return customers.filter(isUrgentCustomer).length;
+  }, [customers]);
+
+  // Calculate status counts
   const counts = useMemo(() => {
     const map: Record<string, number> = {
+      긴급: urgentCount,
       전체: customers.length,
       '신규/미발송': 0,
       배송대기: 0,
@@ -410,22 +357,22 @@ export const App: React.FC = () => {
         map['신규/미발송'] += 1;
       }
     });
-    return map as Record<PipelineStatus | '전체', number>;
-  }, [customers]);
+    return map as Record<PipelineStatus | '전체' | '긴급', number>;
+  }, [customers, urgentCount]);
 
   // Filter & Search & Sort
   const filteredCustomers = useMemo(() => {
     return customers
       .filter((c) => {
-        // Tab Filter
-        if (filterStatus !== '전체') {
+        if (filterStatus === '긴급') {
+          if (!isUrgentCustomer(c)) return false;
+        } else if (filterStatus !== '전체') {
           const st = normalizePipelineStatus(c.status);
           if (st !== filterStatus) {
             return false;
           }
         }
 
-        // Search Query
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
           const cleanPhone = (c.phone || '').replace(/[^0-9]/g, '');
@@ -445,12 +392,11 @@ export const App: React.FC = () => {
       })
       .sort((a, b) => {
         if (sortBy === 'delivery') {
-          // 신규 미발송 고객은 배송일자 미지정이더라도 CRM 상단에 최우선 노출
           const getWeight = (c: CustomerItem) => {
             const st = normalizePipelineStatus(c.status);
             if (st === '신규/미발송') return -10;
             if (c.dDay === null || c.dDay === undefined) return 99999;
-            if (c.dDay < 0) return 90000 + Math.abs(c.dDay); // Past delivery dates
+            if (c.dDay < 0) return 90000 + Math.abs(c.dDay);
             return c.dDay;
           };
           const diff = getWeight(a) - getWeight(b);
@@ -462,23 +408,9 @@ export const App: React.FC = () => {
           const priceB = b.paidAmount || 0;
           return priceB - priceA;
         }
-        // latest: by ID or date
         return (b.date || b.id).localeCompare(a.date || a.id);
       });
   }, [customers, filterStatus, searchQuery, sortBy]);
-
-  // Calculate urgent items count (today/tomorrow deliveries, new unsent inquiries, logistics wait, undelivered promised gifts)
-  const urgentCount = useMemo(() => {
-    return customers.filter((c) => {
-      const st = normalizePipelineStatus(c.status);
-      return (
-        (c.dDay !== null && c.dDay >= 0 && c.dDay <= 1) || 
-        (st === '신규/미발송' || (!c.isSmsSent && c.source === 'tab1')) ||
-        (st === '물류대기') ||
-        (Boolean(c.giftItem) && !c.isGiftDelivered)
-      );
-    }).length;
-  }, [customers]);
 
   // Update persistent notification on Android notification bar
   useEffect(() => {
@@ -513,20 +445,17 @@ export const App: React.FC = () => {
         onSwitchTab={(tab) => {
           setActiveTab(tab);
           if (tab === 'crm') {
-            setCustomers(getCachedCustomers());
+            reloadLocalCustomers();
           }
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onRefresh={() => loadData(true)}
         onOpenNewCustomer={() => setIsNewCustomerOpen(true)}
         onOpenQuotePicker={() => setIsQuotePickerOpen(true)}
         onOpenBriefing={() => setIsBriefingOpen(true)}
         urgentCount={urgentCount}
-        isRefreshing={isRefreshing}
-        isGasConnected={isGasConnected}
       />
 
-      {/* Header Height Spacer: Ensures content below never gets hidden behind fixed header */}
+      {/* Header Height Spacer */}
       <div className="h-14 sm:h-16 w-full flex-shrink-0" aria-hidden="true" />
 
       {/* Floating Status Notification Toast */}
@@ -537,26 +466,34 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* CRM Main Content Area (Displayed when activeTab === 'crm') */}
+      {/* CRM Main Content Area */}
       {activeTab === 'crm' && (
-        <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 md:p-6 pt-3 sm:pt-4 space-y-4 sm:space-y-5">
-
-
-          {/* 1. 슬림 업무 요약 바 (시각적 부하 최소화) */}
-          <div className="bg-slate-900 text-white rounded-2xl px-4 py-2.5 shadow-sm border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-2">
+        <main className="flex-1 max-w-7xl w-full mx-auto p-2.5 sm:p-5 md:p-6 pt-3 sm:pt-4 space-y-3.5 sm:space-y-4">
+          {/* 1. 슬림 업무 요약 바 */}
+          <div className="bg-slate-900 text-white rounded-2xl px-3.5 py-2.5 shadow-sm border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5">
               <span className="text-sm">⚡</span>
               <span className="text-xs font-black tracking-tight">오늘의 업무 현황</span>
             </div>
-            <div className="flex items-center gap-2 sm:gap-3 text-xs font-bold">
+            <div className="flex items-center gap-1.5 sm:gap-3 text-xs font-bold flex-wrap">
+              <button 
+                type="button" 
+                onClick={() => setFilterStatus(filterStatus === '긴급' ? '전체' : '긴급')}
+                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
+                  filterStatus === '긴급' ? 'bg-amber-500 text-slate-950 font-black' : 'hover:bg-slate-800 text-amber-400'
+                }`}
+              >
+                <span>🔥 긴급</span>
+                <strong className={filterStatus === '긴급' ? 'text-slate-950' : 'text-white'}>{urgentCount}</strong>
+              </button>
+              <span className="text-slate-700">|</span>
               <button 
                 type="button" 
                 onClick={() => setFilterStatus(filterStatus === '신규/미발송' ? '전체' : '신규/미발송')}
-                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
                   filterStatus === '신규/미발송' ? 'bg-rose-600 text-white' : 'hover:bg-slate-800 text-rose-400'
                 }`}
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
                 <span>신규</span>
                 <strong className="text-white">{counts['신규/미발송'] || 0}</strong>
               </button>
@@ -564,7 +501,7 @@ export const App: React.FC = () => {
               <button 
                 type="button" 
                 onClick={() => setFilterStatus(filterStatus === '상담진행중' ? '전체' : '상담진행중')}
-                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
                   filterStatus === '상담진행중' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 text-indigo-400'
                 }`}
               >
@@ -575,7 +512,7 @@ export const App: React.FC = () => {
               <button 
                 type="button" 
                 onClick={() => setFilterStatus(filterStatus === '배송대기' ? '전체' : '배송대기')}
-                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
                   filterStatus === '배송대기' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 text-blue-400'
                 }`}
               >
@@ -586,7 +523,7 @@ export const App: React.FC = () => {
               <button 
                 type="button" 
                 onClick={() => setFilterStatus(filterStatus === '미구매/고민중' ? '전체' : '미구매/고민중')}
-                className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
                   filterStatus === '미구매/고민중' ? 'bg-sky-600 text-white' : 'hover:bg-slate-800 text-sky-400'
                 }`}
               >
@@ -596,7 +533,7 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. 통합 검색 및 실제 필터 툴바 */}
+          {/* 2. 통합 검색 및 필터 툴바 */}
           <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-2xs space-y-2.5">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
@@ -618,7 +555,7 @@ export const App: React.FC = () => {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 shrink-0">
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 shrink-0">
                 <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
                 <select
                   value={sortBy}
@@ -632,8 +569,25 @@ export const App: React.FC = () => {
               </div>
             </div>
 
-            {/* 가로 칩 형태의 상태 필터 */}
+            {/* 가로 칩 형태의 상태 필터 (맨 앞에 🔥 오늘 할 일 (긴급) 배치) */}
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setFilterStatus(filterStatus === '긴급' ? '전체' : '긴급')}
+                className={`px-3 py-1.5 rounded-xl font-black transition shrink-0 cursor-pointer flex items-center gap-1 border ${
+                  filterStatus === '긴급'
+                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                    : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                }`}
+              >
+                <span>🔥 오늘 할 일 (긴급)</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  filterStatus === '긴급' ? 'bg-white text-rose-600' : 'bg-rose-600 text-white'
+                }`}>
+                  {urgentCount}
+                </span>
+              </button>
+
               {(['전체', '신규/미발송', '상담진행중', '미구매/고민중', '물류대기', '배송대기', '배송완료'] as const).map((st) => (
                 <button
                   key={st}
@@ -656,8 +610,40 @@ export const App: React.FC = () => {
             </div>
           </div>
 
-          {/* 3. Customer Cards Grid (Rendered with CompactCustomerCard) */}
-          {filteredCustomers.length > 0 ? (
+          {/* 3. Customer Cards Grid or Clean Empty State */}
+          {customers.length === 0 ? (
+            <div className="bg-white rounded-3xl p-8 sm:p-12 text-center border border-slate-200/90 shadow-xs space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center mx-auto text-rose-600 shadow-2xs">
+                <UserPlus className="w-7 h-7" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-base sm:text-lg font-black text-slate-900">
+                  등록된 고객 카드가 없습니다
+                </h3>
+                <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+                  첫 신규 고객을 등록하시거나, 견적 계산기에서 견적을 작성하고 <strong>[💾 CRM 저장]</strong>을 누르면 이곳에 자동으로 추가됩니다.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-2 max-w-md mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsNewCustomerOpen(true)}
+                  className="w-full sm:flex-1 py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-black shadow-md shadow-rose-900/15 flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>➕ 첫 신규 고객 등록하기</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('calculator')}
+                  className="w-full sm:flex-1 py-3 px-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-black shadow-md flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer"
+                >
+                  <Calculator className="w-4 h-4 text-indigo-300" />
+                  <span>🧮 견적 계산기 바로 열기</span>
+                </button>
+              </div>
+            </div>
+          ) : filteredCustomers.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredCustomers.map((customer) => (
                 <CompactCustomerCard
@@ -667,6 +653,7 @@ export const App: React.FC = () => {
                   onOpenQuote={handleOpenQuote}
                   onOpenDetail={(c) => setDetailCustomer(c)}
                   onUpdateStatus={handleUpdateStatus}
+                  onToggleGift={handleToggleGiftBadge}
                 />
               ))}
             </div>
@@ -697,7 +684,6 @@ export const App: React.FC = () => {
       )}
 
       {/* Modals */}
-      {/* Customer Full Detail & Management Modal */}
       <CustomerDetailModal
         customer={detailCustomer ? (customers.find((c) => c.id === detailCustomer.id) || detailCustomer) : null}
         isOpen={Boolean(detailCustomer)}
@@ -738,7 +724,7 @@ export const App: React.FC = () => {
         <SettingsModal
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
-          onSaved={() => loadData(true)}
+          onSaved={() => reloadLocalCustomers()}
         />
       )}
 

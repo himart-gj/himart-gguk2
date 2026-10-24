@@ -738,8 +738,8 @@ ${quote.customerMemo ? `■ 추가 안내: ${quote.customerMemo}` : ''}
                           <div className="flex items-start justify-between gap-1">
                             <div>
                               <div className="flex items-center gap-1.5">
-                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${q.mode === 'sub' ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'}`}>
-                                  {q.mode === 'sub' ? '구독' : '일시불'}
+                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${q.mode === 'both' ? 'bg-purple-100 text-purple-800' : q.mode === 'sub' ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'}`}>
+                                  {q.mode === 'both' ? '일반+구독' : q.mode === 'sub' ? '구독' : '일시불'}
                                 </span>
                                 <span className="font-bold text-xs text-slate-900">{q.title}</span>
                               </div>

@@ -17,20 +17,12 @@
 <!-- PWA & App Icons -->
 <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="64x64" href="./favicon.png">
-<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<link rel="icon" type="image/svg+xml" href="./icon.svg?v=4">
+<link rel="icon" type="image/png" sizes="192x192" href="./pwa-192x192.png?v=4">
 <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
-<link rel="manifest" href="./app-manifest.json">
+<link rel="manifest" href="./app-manifest.json?v=4">
+<meta name="application-name" content="국지CRM">
 
-<script>
-  // Tailwind Play CDN 자체의 개발/운영 콘솔 경고 메시지 억제
-  (function() {
-    var _warn = console.warn;
-    console.warn = function() {
-      if (arguments[0] && typeof arguments[0] === 'string' && arguments[0].indexOf('cdn.tailwindcss.com') !== -1) return;
-      _warn.apply(console, arguments);
-    };
-  })();
-</script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script type="module" src="./src/main.tsx"></script>
@@ -116,12 +108,6 @@ input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-i
 details > summary { list-style: none; }
 details > summary::-webkit-details-marker { display: none; }
 </style>
-<link rel="manifest" href="./app-manifest.json?v=4">
-<link rel="icon" type="image/svg+xml" href="./icon.svg?v=4">
-<link rel="apple-touch-icon" href="./icon.svg?v=4">
-<link rel="icon" type="image/png" sizes="192x192" href="./pwa-192x192.png?v=4">
-<meta name="apple-mobile-web-app-title" content="국지CRM">
-<meta name="application-name" content="국지CRM">
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
@@ -166,37 +152,27 @@ details > summary::-webkit-details-marker { display: none; }
 <!-- 견적 계산기 컨테이너 (CRM과 상호전환 지원, 기존 계산기 기능 100% 완전 보존) -->
 <div id="calculator-container" style="display: none;">
 
-<div class="max-w-7xl mx-auto px-2.5 sm:px-4 md:px-6 pt-3 sm:pt-4 pb-24 xl:pb-8" id="capture-area">
+<div class="max-w-7xl mx-auto px-2.5 sm:px-4 md:px-5 pt-2 sm:pt-3 pb-28 md:pb-10" id="capture-area">
 
-<!-- 견적 계산기 상단 핵심 뷰 전환 탭: ✏️ 견적 입력 vs 📄 고객용 견적서 (1~6번) 보기 -->
-<div class="bg-white/95 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl shadow-sm border border-slate-200/90 mb-3 sm:mb-4 flex items-center justify-between gap-1.5 sm:gap-2">
-  <button id="mob-tab-input" type="button" onclick="setMobileView('input', true)" class="flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-xs border border-slate-700 cursor-pointer">
-    <span>✏️ 1. 견적 입력 패널</span>
-  </button>
-  <button id="mob-tab-sheet" type="button" onclick="setMobileView('sheet', true)" class="flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 cursor-pointer">
-    <span>📄 2. 고객용 견적서 보기 (1~6번)</span>
-  </button>
-</div>
-
-<!-- 모바일 뷰 상태 표시용 히든 요소 (CRMHeader와 연동) -->
+<!-- 모바일 뷰 상태 표시용 히든 요소 -->
 <span id="mob-badge-net" class="hidden">0원</span>
 <span id="mob-bottom-net" class="hidden">0원</span>
 
-<div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-6">
-<!-- 왼쪽 입력 패널 -->
-<div class="lg:col-span-5 space-y-4 sm:space-y-6" id="input-panel" oninput="calc()" onchange="calc()">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-3 md:gap-4 lg:gap-6">
+<!-- 왼쪽 입력 패널 (갤럭시 폴드 펼침 시 좌측 45% 고정, 접힘 시 하단 도크로 전환) -->
+<div class="md:col-span-5 space-y-3.5 sm:space-y-4" id="input-panel" oninput="calc()" onchange="calc()">
 
-<!-- 계산기 내부 통합 상단 바 -->
-<div class="bg-slate-900 text-white p-3 rounded-2xl shadow-lg border border-slate-800 flex items-center justify-between gap-2 relative mb-3">
+<!-- 계산기 내부 슬림 통합 바 -->
+<div class="bg-slate-900 text-white p-2.5 sm:p-3 rounded-2xl shadow-md border border-slate-800 flex items-center justify-between gap-2 relative">
   <!-- 좌측: CRM 복귀 & 연결 고객 안내 -->
   <div class="flex items-center gap-2 min-w-0">
     <button type="button" onclick="if(window.switchAppTab) window.switchAppTab('crm');" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-xl text-xs font-bold border border-slate-700 transition active:scale-95 flex items-center gap-1 cursor-pointer" title="CRM 대시보드로 복귀">
-      <span>←</span><span class="hidden sm:inline">CRM</span>
+      <span>←</span><span>CRM</span>
     </button>
     <div class="min-w-0 flex items-center gap-1.5 truncate">
       <span class="text-xs">👤</span>
       <span id="active-customer-banner-name" class="text-xs sm:text-sm font-black truncate text-white">신규 고객</span>
-      <span id="active-customer-status-tag" class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 hidden md:inline">새 견적</span>
+      <span id="active-customer-status-tag" class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 hidden lg:inline">새 견적</span>
     </div>
   </div>
 
@@ -320,13 +296,26 @@ details > summary::-webkit-details-marker { display: none; }
 </div>
 
 <!-- 일반 구매 -->
-<div class="bg-rose-50 p-5 rounded-xl shadow-sm border border-rose-100" id="input-lump-sec">
-<div class="flex justify-between items-center mb-3 border-b border-rose-200 pb-2">
+<div class="bg-rose-50 p-4 sm:p-5 rounded-xl shadow-sm border border-rose-100" id="input-lump-sec">
+<div class="flex justify-between items-center mb-2 border-b border-rose-200 pb-2">
 <h2 class="text-sm font-bold text-rose-800">2. 일반구매 (일시불 결제)</h2>
-<button type="button" onclick="addLumpRow()" class="text-xs bg-white border border-rose-200 text-rose-600 px-2.5 py-1 rounded shadow-sm hover:bg-rose-100">+ 품목추가</button>
+<button type="button" onclick="addLumpRow()" class="text-xs bg-white border border-rose-200 text-rose-600 px-2.5 py-1 rounded-lg font-bold shadow-2xs hover:bg-rose-100 cursor-pointer">+ 품목추가</button>
 </div>
 
-<!-- [수정됨] 품목 타이틀 레이아웃 (Grid 적용 및 우측 여백 확보) -->
+<!-- 원터치 품목 퀵 칩 (Quick Chips) -->
+<div class="flex items-center gap-1 overflow-x-auto no-scrollbar pb-2 mb-2">
+  <button type="button" onclick="quickAddLumpItem('냉장고')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🧊 냉장고</button>
+  <button type="button" onclick="quickAddLumpItem('김치냉장고')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">❄️ 김치냉장고</button>
+  <button type="button" onclick="quickAddLumpItem('세탁건조기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🫧 세탁건조기</button>
+  <button type="button" onclick="quickAddLumpItem('TV')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">📺 TV</button>
+  <button type="button" onclick="quickAddLumpItem('에어컨')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🌬️ 에어컨</button>
+  <button type="button" onclick="quickAddLumpItem('의류관리기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">👕 의류관리기</button>
+  <button type="button" onclick="quickAddLumpItem('식기세척기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🍽️ 식기세척기</button>
+  <button type="button" onclick="quickAddLumpItem('로봇청소기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🧹 로봇청소기</button>
+  <button type="button" onclick="quickAddLumpItem('정수기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">💧 정수기</button>
+</div>
+
+<!-- 품목 타이틀 레이아웃 -->
 <div class="grid grid-cols-12 gap-1 px-1 text-[11px] font-bold text-gray-500 mb-1 text-center pr-6">
 <div class="col-span-3">품목</div><div class="col-span-4">모델명</div><div class="col-span-2">수량</div><div class="col-span-3">금액</div>
 </div>
@@ -382,13 +371,26 @@ details > summary::-webkit-details-marker { display: none; }
 </div>
 
 <!-- 구독 구매 -->
-<div class="bg-blue-50 p-5 rounded-xl shadow-sm border border-blue-100 hidden" id="input-sub-sec">
-<div class="flex justify-between items-center mb-3 border-b border-blue-200 pb-2">
+<div class="bg-blue-50 p-4 sm:p-5 rounded-xl shadow-sm border border-blue-100 hidden" id="input-sub-sec">
+<div class="flex justify-between items-center mb-2 border-b border-blue-200 pb-2">
 <h2 class="text-sm font-bold text-blue-800">3. 구독구매 (월납 가전)</h2>
-<button type="button" onclick="addSubRow()" class="text-xs bg-white border border-blue-200 text-blue-600 px-2.5 py-1 rounded shadow-sm hover:bg-blue-100">+ 품목추가</button>
+<button type="button" onclick="addSubRow()" class="text-xs bg-white border border-blue-200 text-blue-600 px-2.5 py-1 rounded-lg font-bold shadow-2xs hover:bg-blue-100 cursor-pointer">+ 품목추가</button>
 </div>
 
-<!-- [수정됨] 품목 타이틀 레이아웃 (Grid 적용 및 우측 여백 확보) -->
+<!-- 원터치 구독 품목 퀵 칩 (Quick Chips) -->
+<div class="flex items-center gap-1 overflow-x-auto no-scrollbar pb-2 mb-2">
+  <button type="button" onclick="quickAddSubItem('냉장고')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🧊 냉장고</button>
+  <button type="button" onclick="quickAddSubItem('김치냉장고')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">❄️ 김치냉장고</button>
+  <button type="button" onclick="quickAddSubItem('세탁건조기')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🫧 세탁건조기</button>
+  <button type="button" onclick="quickAddSubItem('TV')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">📺 TV</button>
+  <button type="button" onclick="quickAddSubItem('에어컨')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🌬️ 에어컨</button>
+  <button type="button" onclick="quickAddSubItem('의류관리기')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">👕 의류관리기</button>
+  <button type="button" onclick="quickAddSubItem('식기세척기')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🍽️ 식기세척기</button>
+  <button type="button" onclick="quickAddSubItem('로봇청소기')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🧹 로봇청소기</button>
+  <button type="button" onclick="quickAddSubItem('정수기')" class="px-2 py-1 rounded-lg bg-white hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">💧 정수기</button>
+</div>
+
+<!-- 품목 타이틀 레이아웃 -->
 <div class="grid grid-cols-12 gap-1 px-1 text-[11px] font-bold text-gray-500 mb-1 text-center pr-6">
 <div class="col-span-3">품목</div><div class="col-span-4">모델명</div><div class="col-span-3">월구독료</div><div class="col-span-2">기간</div>
 </div>
@@ -444,20 +446,10 @@ details > summary::-webkit-details-marker { display: none; }
 </div>
 </div>
 
-<div class="lg:col-span-7 space-y-4 w-full hidden lg:block" id="sheet-panel">
+<div class="md:col-span-7 space-y-4 w-full hidden md:block" id="sheet-panel">
 
-  <!-- 1024px 미만 화면용 상단 네비게이션: 견적 입력으로 돌아가기 -->
-  <div class="lg:hidden flex items-center justify-between gap-2 p-2 bg-slate-900 text-white rounded-xl shadow-xs mb-3">
-    <button type="button" onclick="setMobileView('input', true)" class="flex-1 py-1.5 px-3 rounded-lg text-xs font-black bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center gap-1 shadow-xs cursor-pointer">
-      <span>✏️ 견적 입력 패널로 돌아가기</span>
-    </button>
-    <button type="button" onclick="openSaveModal()" class="py-1.5 px-3 rounded-lg text-xs font-black bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1 shadow-xs cursor-pointer">
-      <span>💾 CRM 저장</span>
-    </button>
-  </div>
-
-<div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2.5 sm:gap-3">
-<div class="bg-white p-1.5 rounded-xl shadow-sm flex overflow-x-auto no-scrollbar gap-1 border border-gray-200 w-full lg:w-auto">
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-2.5 sm:gap-3">
+<div class="bg-white p-1.5 rounded-xl shadow-sm flex overflow-x-auto no-scrollbar gap-1 border border-gray-200 w-full md:w-auto">
 <button onclick="showSheet('sheet1', this)" class="sheet-btn active py-2 px-3 text-xs font-bold rounded text-gray-600 hover:bg-gray-50 whitespace-nowrap flex-shrink-0">1.일반</button>
 <button onclick="showSheet('sheet2', this)" class="sheet-btn py-2 px-3 text-xs font-bold rounded text-gray-600 hover:bg-gray-50 whitespace-nowrap flex-shrink-0">2.구독</button>
 <button onclick="showSheet('sheet3', this)" class="sheet-btn py-2 px-3 text-xs font-bold rounded text-gray-600 hover:bg-gray-50 whitespace-nowrap flex-shrink-0">3.비교</button>
@@ -466,12 +458,11 @@ details > summary::-webkit-details-marker { display: none; }
 <button onclick="showSheet('sheet6', this)" class="sheet-btn py-2 px-3 text-xs font-bold rounded text-gray-600 hover:bg-gray-50 whitespace-nowrap flex-shrink-0">6.구독제안</button>
 </div>
 
-<div class="flex gap-1.5 sm:gap-2 w-full lg:w-auto flex-wrap">
-<button onclick="if(window.switchAppTab) window.switchAppTab('crm');" class="flex-1 lg:flex-none bg-rose-600 hover:bg-rose-500 text-white font-black py-2 px-2.5 sm:px-3.5 rounded-lg shadow text-xs flex items-center justify-center gap-1 border border-rose-400/40 transition active:scale-95" title="CRM 대시보드로 즉시 복귀">📊 CRM 복귀</button>
-<button onclick="openAIMsgModal()" class="flex-1 lg:flex-none bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-2.5 sm:px-3.5 rounded-lg shadow text-xs flex items-center justify-center gap-1">💬 AI 톡</button>
-<button onclick="saveCurrentSheet('masked')" class="flex-1 lg:flex-none bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-2 sm:px-3 rounded-lg shadow text-xs flex items-center justify-center gap-1">📸 미구매</button>
-<button onclick="saveCurrentSheet('normal')" class="flex-1 lg:flex-none bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-2 sm:px-3 rounded-lg shadow text-xs flex items-center justify-center gap-1">📸 구매</button>
-<!-- 사용하지 않는 '전체 캡처' 버튼 삭제됨 -->
+<div class="flex gap-1.5 sm:gap-2 w-full md:w-auto flex-wrap">
+<button onclick="if(window.switchAppTab) window.switchAppTab('crm');" class="flex-1 md:flex-none bg-rose-600 hover:bg-rose-500 text-white font-black py-2 px-2.5 sm:px-3 rounded-lg shadow text-xs flex items-center justify-center gap-1 border border-rose-400/40 transition active:scale-95" title="CRM 대시보드로 즉시 복귀">📊 CRM 복귀</button>
+<button onclick="openAIMsgModal()" class="flex-1 md:flex-none bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-2.5 sm:px-3 rounded-lg shadow text-xs flex items-center justify-center gap-1">💬 AI 톡</button>
+<button onclick="saveCurrentSheet('masked')" class="flex-1 md:flex-none bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-2 sm:px-3 rounded-lg shadow text-xs flex items-center justify-center gap-1">📸 미구매</button>
+<button onclick="saveCurrentSheet('normal')" class="flex-1 md:flex-none bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 px-2 sm:px-3 rounded-lg shadow text-xs flex items-center justify-center gap-1">📸 구매</button>
 </div>
 </div>
 
@@ -1010,7 +1001,7 @@ function updateCalcHeaderCustomerName() {
 
 function downloadHTML() {
 // 1. 모달 닫기 처리 (저장된 HTML을 열었을 때 모달이 떠있지 않도록)
-const modals = ['admin-settings-modal', 'custom-modal', 'manage-quote-modal', 'save-quote-modal', 'ai-msg-modal', 'import-quote-modal'];
+const modals = ['admin-settings-modal', 'custom-modal', 'manage-quote-modal', 'save-quote-modal', 'ai-msg-modal'];
 modals.forEach(id => {
   const el = document.getElementById(id);
   if (el) { el.classList.add('hidden'); el.classList.remove('flex'); }
@@ -1329,79 +1320,7 @@ window.executeSaveQuotation = function() {
   markSavedStatus();
 };
 
-function syncWithGoogleSheet(action, data) {
-  const sheetUrl = localStorage.getItem("google_sheet_url");
-  if (!sheetUrl || sheetUrl.trim() === "") return;
-  
-  // CORS 이슈 없이 백그라운드 전송
-  fetch(sheetUrl, { 
-    method: "POST", 
-    mode: "no-cors", 
-    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-    body: JSON.stringify({ action: action, data: data }) 
-  }).catch(e => console.error(e));
-}
-
-let pendingImportData = [];
-async function loadFromGoogleSheet() {
-  const sheetUrl = localStorage.getItem("google_sheet_url");
-  if (!sheetUrl || sheetUrl.trim() === "") {
-    return showModal('주소 누락', '설정에서 구글 시트 연동 URL을 먼저 입력해주세요.', true, false);
-  }
-  
-  showModal('동기화 중... 🔄', '구글 시트에서 데이터를 조회하고 있습니다.', false);
-  try {
-    const res = await fetch(sheetUrl);
-    const data = await res.json();
-    closeModal();
-    if (Array.isArray(data) && data.length > 0) {
-      pendingImportData = data;
-      renderImportList(data);
-      document.getElementById('import-quote-modal').classList.remove('hidden');
-      document.getElementById('import-quote-modal').classList.add('flex');
-    } else {
-      showModal('알림', '구글 시트에 불러올 데이터가 없습니다.', true, false);
-    }
-  } catch(err) {
-    closeModal();
-    showModal('동기화 실패 ❌', '구글 시트에서 데이터를 조회할 수 없습니다. 권한(모든 사용자)이나 주소를 확인해주세요.<br><br>' + err.message, true, false);
-  }
-}
-
-function renderImportList(cloudFolders) {
-  const container = document.getElementById('import-list-container');
-  container.innerHTML = cloudFolders.map((f, i) => `
-    <label class="flex items-center p-3 bg-white rounded border border-gray-200 cursor-pointer hover:bg-blue-50 transition">
-      <input type="checkbox" class="import-cb w-4 h-4 text-blue-600 mr-3" value="${i}" checked>
-      <div class="flex-1">
-        <div class="font-bold text-sm text-gray-900">${f.name} <span class="text-xs text-gray-500 font-normal ml-1">(${f.phone})</span></div>
-        <div class="text-[11px] text-blue-600 mt-0.5">포함된 견적: ${f.quotes ? f.quotes.length : 0}개</div>
-      </div>
-    </label>
-  `).join('');
-  
-  document.getElementById('import-confirm-btn').onclick = () => {
-    const selectedIndices = Array.from(document.querySelectorAll('.import-cb:checked')).map(cb => parseInt(cb.value));
-    if (selectedIndices.length === 0) return alert('불러올 항목을 선택해주세요.');
-    
-    const localFolders = getFolders();
-    selectedIndices.forEach(idx => {
-      const cloudFolder = pendingImportData[idx];
-      const existingIdx = localFolders.findIndex(lf => lf.id === cloudFolder.id);
-      if (existingIdx !== -1) {
-        localFolders[existingIdx] = cloudFolder;
-      } else {
-        localFolders.push(cloudFolder);
-      }
-    });
-    
-    saveFolders(localFolders);
-    renderFolders();
-    document.getElementById('import-quote-modal').classList.add('hidden');
-    document.getElementById('import-quote-modal').classList.remove('flex');
-    showModal('불러오기 완료 ✅', '선택한 항목이 기기에 성공적으로 추가(병합)되었습니다.', true, false);
-  };
-} // 3. 폴더(고객) 관리 모달 열기 및 렌더링
+// 3. 폴더(고객) 관리 모달 열기 및 렌더링
 function openManageModal() {
 document.getElementById('folder-search-input').value = '';
 renderFolders();
@@ -1686,11 +1605,43 @@ div.innerHTML = `<input type="text" class="col-span-3 input-box px-1.5 py-1.5 te
 document.getElementById('lump-inputs').appendChild(div); calc();
 }
 
+function quickAddLumpItem(itemName) {
+  const rows = document.querySelectorAll('#lump-inputs .l-name');
+  let filled = false;
+  rows.forEach((input) => {
+    if (!filled && (!input.value || !input.value.trim())) {
+      input.value = itemName;
+      filled = true;
+    }
+  });
+  if (!filled) {
+    addLumpRow(itemName, '', '', 1);
+  }
+  markUnsavedChanges();
+  calc();
+}
+
 // [수정됨] 구독품목 역시 위와 동일한 Grid 방식으로 모바일 화면 깨짐 방지
 function addSubRow(name='', model='', price='', months='60') {
 const div = document.createElement('div'); div.className = 'relative grid grid-cols-12 gap-1 items-center bg-white p-1.5 rounded border pr-6 mb-1.5';
 div.innerHTML = `<input type="text" class="col-span-3 input-box px-1.5 py-1.5 text-xs s-name" placeholder="품목" value="${name}"><input type="text" class="col-span-4 input-box px-1.5 py-1.5 text-xs s-model" placeholder="모델명" value="${model}"><input type="number" class="col-span-3 input-box px-1.5 py-1.5 text-xs s-price" placeholder="금액" value="${price}"><select class="col-span-2 input-box px-0.5 py-1.5 text-[11px] s-months" onchange="calc()"><option value="36" ${months == '36' ? 'selected' : ''}>36개월</option><option value="60" ${months == '60' ? 'selected' : ''}>60개월</option></select><button type="button" onclick="this.parentElement.remove(); calc();" class="absolute right-0 top-0 bottom-0 w-6 flex items-center justify-center text-blue-500 font-bold hover:bg-blue-50 rounded-r">X</button>`;
 document.getElementById('sub-inputs').appendChild(div); calc();
+}
+
+function quickAddSubItem(itemName) {
+  const rows = document.querySelectorAll('#sub-inputs .s-name');
+  let filled = false;
+  rows.forEach((input) => {
+    if (!filled && (!input.value || !input.value.trim())) {
+      input.value = itemName;
+      filled = true;
+    }
+  });
+  if (!filled) {
+    addSubRow(itemName, '', '', '60');
+  }
+  markUnsavedChanges();
+  calc();
 }
 
 function addHpRow(type) {
@@ -2113,51 +2064,43 @@ if (liveSumEl && livePayEl && liveNetEl) {
 
 }
 
-// [모바일 반응형 뷰 자동 전환 스크립트]
+// [갤럭시 폴드8 울트라 반응형 뷰 자동 전환 스크립트: 접힘(<768px) 원핸드 도크 vs 펼침(>=700px/768px) Split-View]
 let currentMobileView = 'input';
 function setMobileView(view, shouldScroll = false) {
     currentMobileView = view;
     const inputPanel = document.getElementById('input-panel');
     const sheetPanel = document.getElementById('sheet-panel');
-    const tabInput = document.getElementById('mob-tab-input');
-    const tabSheet = document.getElementById('mob-tab-sheet');
-    const bottomInputActions = document.getElementById('mob-bottom-input-actions');
-    const bottomSheetActions = document.getElementById('mob-bottom-sheet-actions');
+    const dockToggleBtn = document.getElementById('dock-toggle-view-btn');
 
     if (view === 'input') {
-        if (inputPanel) inputPanel.classList.remove('hidden');
+        if (inputPanel) {
+            inputPanel.classList.remove('hidden');
+            inputPanel.classList.add('md:block');
+        }
         if (sheetPanel) {
             sheetPanel.classList.add('hidden');
-            sheetPanel.classList.add('lg:block');
+            sheetPanel.classList.add('md:block');
         }
-        if (tabInput) {
-            tabInput.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-xs border border-slate-700 cursor-pointer";
+        if (dockToggleBtn) {
+            dockToggleBtn.innerHTML = '<span>📄 견적서 보기</span>';
+            dockToggleBtn.className = "flex-1 py-3 px-3 rounded-xl font-black text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer";
         }
-        if (tabSheet) {
-            tabSheet.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 cursor-pointer";
-        }
-        if (bottomInputActions) bottomInputActions.classList.remove('hidden');
-        if (bottomSheetActions) bottomSheetActions.classList.add('hidden');
         if (shouldScroll) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     } else {
         if (inputPanel) {
             inputPanel.classList.add('hidden');
-            inputPanel.classList.add('lg:block');
+            inputPanel.classList.add('md:block');
         }
         if (sheetPanel) {
             sheetPanel.classList.remove('hidden');
-            sheetPanel.classList.add('lg:block');
+            sheetPanel.classList.add('md:block');
         }
-        if (tabInput) {
-            tabInput.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 cursor-pointer";
+        if (dockToggleBtn) {
+            dockToggleBtn.innerHTML = '<span>✏️ 입력 패널로</span>';
+            dockToggleBtn.className = "flex-1 py-3 px-3 rounded-xl font-black text-xs bg-slate-800 hover:bg-slate-700 text-white border border-slate-600 shadow-sm flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer";
         }
-        if (tabSheet) {
-            tabSheet.className = "flex-1 py-2 sm:py-2.5 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 bg-gradient-to-r from-rose-600 to-rose-500 text-white shadow-xs border border-rose-400/40 cursor-pointer";
-        }
-        if (bottomInputActions) bottomInputActions.classList.add('hidden');
-        if (bottomSheetActions) bottomSheetActions.classList.remove('hidden');
         if (shouldScroll) {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -2165,28 +2108,31 @@ function setMobileView(view, shouldScroll = false) {
 }
 window.setMobileView = setMobileView;
 
-// 모바일 가상 키보드가 열릴 때 window.innerHeight 변경으로 인한 의도치 않은 resize 이벤트 및 스크롤 튐 방지
+function toggleMobileCalcView() {
+    setMobileView(currentMobileView === 'input' ? 'sheet' : 'input', true);
+}
+window.toggleMobileCalcView = toggleMobileCalcView;
+
+// 갤럭시 폴드8 울트라 펼침(>=700px) 감지 및 가상 키보드 스크롤 튐 방지
 let lastWidth = window.innerWidth;
-let lastIsDesktop = window.innerWidth >= 1024;
+let lastIsUnfolded = window.innerWidth >= 700;
 
 window.addEventListener('resize', () => {
-    // 사용자가 입력 필드(input, textarea, select)에 포커스하여 입력 중일 때는 가상키보드 오픈/닫힘으로 인한 뷰 전환이나 스크롤 튐을 전면 차단
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT')) {
         return;
     }
 
     const currentWidth = window.innerWidth;
-    // 가로 폭 변화가 없으면(키보드 열림/닫힘 등으로 높이만 변한 경우) 아무 동작도 하지 않음
     if (currentWidth === lastWidth) return;
     lastWidth = currentWidth;
 
-    const isDesktop = currentWidth >= 1024;
-    if (isDesktop !== lastIsDesktop) {
-        lastIsDesktop = isDesktop;
+    const isUnfolded = currentWidth >= 700;
+    if (isUnfolded !== lastIsUnfolded) {
+        lastIsUnfolded = isUnfolded;
         const inputPanel = document.getElementById('input-panel');
         const sheetPanel = document.getElementById('sheet-panel');
-        if (isDesktop) {
+        if (isUnfolded) {
             if (inputPanel) inputPanel.classList.remove('hidden');
             if (sheetPanel) sheetPanel.classList.remove('hidden');
         } else {
@@ -2271,7 +2217,7 @@ if (data.benefits) {
     if (data.benefits.point_use) document.getElementById('l-pt-use').value = data.benefits.point_use;
     if (data.benefits.extra_cashback) document.getElementById('l-cash').value = data.benefits.extra_cashback;
 }
-calc(); document.getElementById('close-modal-btn').click();
+calc(); closeModal();
 } catch (error) { showModal('오류 발생', error.message, true); }
 fileInput.value = ''; }; fileInput.click(); }
 
@@ -2386,7 +2332,7 @@ showModal('AI 톡 작성 중... ✍️', '고객 맞춤형 스마트 상담 메�
 try {
   const cName = document.getElementById('i-name').value || '고객';
   const cType = document.querySelector('input[name="i-type"]:checked')?.value || '일반';
-  const finalNet = document.getElementById('s1-final')?.innerText || '0 원';
+  const finalNet = document.getElementById('live-net-amount')?.innerText || '0원';
   const card = document.getElementById('l-card')?.value || '미정';
   
   // 수집된 품목 정보
@@ -2420,7 +2366,7 @@ try {
     : `위 내용으로 결제가 완료/확정되었다고 가정하고, 선택해주셔서 감사하다는 인사와 혜택(캐시백 일정 등)을 간략히 요약하여 안내하는 '구매 확정 고객 안내' 메시지를 작성하세요.`;
 
   const apiKey = getApiKey(); if (!apiKey) throw new Error("API 키 오류");
-  const responseText = await callGeminiAPI(prompt, null, null, apiKey);
+  const responseText = await callGeminiAPI(prompt, null, apiKey);
   cachedAIMessages[currentAIMode] = responseText; closeModal(); document.getElementById('ai-msg-content').innerText = responseText;
 } catch(error) { closeModal(); showModal('생성 실패 ❌', error.message, true, false); }
 }
@@ -2446,7 +2392,7 @@ try {
 위 모델명에 대해 고객에게 어필할 수 있는 가장 강력하고 핵심적인 특장점 3가지를 찾아서, 전문적이고 설득력 있는 영업 소구 포인트로 짧게 요약해 주세요. 
 (가독성 좋게 이모지 사용, 짧고 임팩트 있게 작성하되, **, ### 같은 마크다운 특수기호는 절대 쓰지 말고 일반 텍스트로만 깔끔하게 작성할 것)`;
   const apiKey = getApiKey(); if (!apiKey) throw new Error("API 키 오류");
-  const responseText = await callGeminiAPI(prompt, null, null, apiKey);
+  const responseText = await callGeminiAPI(prompt, null, apiKey);
   closeModal();
   showModal(`💡 ${modelCode} 특장점`, `<div class="text-left text-sm whitespace-pre-wrap">${responseText}</div>`, true, false);
 } catch(err) {
@@ -2480,7 +2426,7 @@ ${quotesData}
 3. 짧고 명확하게, 카톡으로 바로 보내거나 구두로 브리핑할 수 있는 톤앤매너로 작성할 것 (이모지 포함).
 4. **, ### 같은 마크다운 특수기호는 절대 쓰지 말고 일반 텍스트로만 깔끔하게 작성할 것.`;
 
-  const responseText = await callGeminiAPI(prompt, null, null, apiKey);
+  const responseText = await callGeminiAPI(prompt, null, apiKey);
   closeModal();
   showModal(`✨ ${f.name} 고객 견적 비교`, `<div class="text-left text-xs whitespace-pre-wrap leading-relaxed">${responseText}</div>`, true, false);
 } catch(err) {
@@ -2488,19 +2434,22 @@ ${quotesData}
 }
 }
 </script>
-<!-- 선택 불러오기 모달 -->
-<div id="import-quote-modal" class="fixed inset-0 bg-black bg-opacity-70 hidden items-center justify-center z-[60] transition-opacity">
-  <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-5 mx-4 flex flex-col max-h-[80vh]">
-    <h3 class="text-lg font-bold text-gray-900 mb-2">☁️ 구글 시트에서 불러오기</h3>
-    <p class="text-xs text-gray-500 mb-4">가져올 고객(폴더)을 선택해주세요. 기기에 있는 기존 고객은 덮어쓰기 됩니다.</p>
-    <div id="import-list-container" class="flex-1 overflow-y-auto border rounded bg-gray-50 p-2 space-y-2 mb-4">
-    </div>
-    <div class="flex gap-2">
-      <button onclick="document.getElementById('import-quote-modal').classList.add('hidden'); document.getElementById('import-quote-modal').classList.remove('flex');" class="w-1/3 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded-lg text-sm transition">취소</button>
-      <button id="import-confirm-btn" class="w-2/3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-sm shadow transition">선택 항목 불러오기</button>
-    </div>
+
+<!-- 갤럭시 폴드8 울트라 커버 화면(접었을 때, md:hidden) 전용 하단 고정 도크 (Sticky Bottom Dock) -->
+<div id="fold-bottom-dock" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/98 backdrop-blur-md border-t border-slate-800 px-3 py-2.5 safe-area-pb shadow-2xl">
+  <div class="flex items-center gap-2 max-w-lg mx-auto">
+    <button id="dock-toggle-view-btn" type="button" onclick="toggleMobileCalcView()" class="flex-1 py-3 px-3 rounded-xl font-black text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer">
+      <span>📄 견적서 보기</span>
+    </button>
+    <button type="button" onclick="openSaveModal()" class="flex-1 py-3 px-3 rounded-xl font-black text-xs bg-rose-600 hover:bg-rose-500 text-white shadow-sm flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer">
+      <span>💾 CRM 저장</span>
+    </button>
+    <button type="button" onclick="openAIMsgModal()" class="py-3 px-3.5 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center justify-center gap-1 transition active:scale-95 cursor-pointer">
+      <span>💬 AI톡</span>
+    </button>
   </div>
 </div>
+
 </div><!-- /calculator-container -->
 </body>
 </html>
