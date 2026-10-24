@@ -31,7 +31,15 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 .hidden { display: none !important; }
 @media (min-width: 700px) {
-  #input-panel, #sheet-panel { display: block !important; }
+  #input-panel { display: block !important; }
+  #sheet-panel {
+    display: block !important;
+    position: sticky;
+    top: 4.5rem; /* 상단 고정 헤더 바로 아래에 착 붙음 */
+    max-height: calc(100vh - 5.5rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   #fold-bottom-dock { display: none !important; }
 }
 body {
@@ -162,7 +170,7 @@ details > summary::-webkit-details-marker { display: none; }
 <span id="mob-badge-net" class="hidden">0원</span>
 <span id="mob-bottom-net" class="hidden">0원</span>
 
-<div class="grid grid-cols-1 min-[700px]:grid-cols-12 gap-3 min-[700px]:gap-4 lg:gap-6">
+<div class="grid grid-cols-1 min-[700px]:grid-cols-12 items-start gap-3 min-[700px]:gap-4 lg:gap-6">
 <!-- 왼쪽 입력 패널 (갤럭시 폴드 펼침 시 좌측 5컬럼 고정, 접힘 시 하단 도크로 전환) -->
 <div class="min-[700px]:col-span-5 space-y-3.5 sm:space-y-4" id="input-panel" oninput="calc()" onchange="calc()">
 
@@ -2301,6 +2309,15 @@ async function runCapture(targetEl, filename) {
 return new Promise((resolve) => {
 showModal('이미지 변환 중... 📸', '기기에 이미지를 바로 저장합니다.<br>잠시만 기다려주세요.', false);
 const origScrollX = window.scrollX; const origScrollY = window.scrollY; window.scrollTo(0, 0);
+const sheetPanel = document.getElementById('sheet-panel');
+const origMaxHeight = sheetPanel ? sheetPanel.style.maxHeight : '';
+const origOverflow = sheetPanel ? sheetPanel.style.overflow : '';
+const origOverflowY = sheetPanel ? sheetPanel.style.overflowY : '';
+if (sheetPanel) {
+  sheetPanel.style.maxHeight = 'none';
+  sheetPanel.style.overflow = 'visible';
+  sheetPanel.style.overflowY = 'visible';
+}
 
 setTimeout(async () => {
 try {
@@ -2310,6 +2327,11 @@ scrollY: 0, windowY: 0, logging: false,
 ignoreElements: (node) => ['custom-modal', 'ai-msg-modal', 'admin-settings-modal', 'save-quote-modal', 'manage-quote-modal'].includes(node.id)
 });
 
+if (sheetPanel) {
+  sheetPanel.style.maxHeight = origMaxHeight;
+  sheetPanel.style.overflow = origOverflow;
+  sheetPanel.style.overflowY = origOverflowY;
+}
 window.scrollTo(origScrollX, origScrollY);
 
 // 즉시 파일 다운로드 처리
@@ -2325,6 +2347,11 @@ closeModal();
 showModal('저장 완료 ✅', `이미지 파일(${filename})이 기기에 다운로드되었습니다.`, true, false);
 resolve();
 } catch(e) {
+if (sheetPanel) {
+  sheetPanel.style.maxHeight = origMaxHeight;
+  sheetPanel.style.overflow = origOverflow;
+  sheetPanel.style.overflowY = origOverflowY;
+}
 window.scrollTo(origScrollX, origScrollY); closeModal(); showModal('저장 실패', '이미지 변환 중 오류가 발생했습니다.', true, false); resolve();
 }
 }, 500);
