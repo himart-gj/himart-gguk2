@@ -1,25 +1,81 @@
 import { CustomerItem, PipelineStatus, QuoteRecord, ConsultationLog, DeletedCustomerRecord } from '../types/crm';
 import { formatLocalDate, formatLocalDateTime } from '../utils/date';
 
-const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers';
-const STORAGE_KEY_CUSTOMERS_LEGACY = 'himart_crm_customers_v6';
+const STORAGE_KEY_CUSTOMERS = 'himart_crm_customers_clean_v2';
 const STORAGE_KEY_DELETED_RECORDS = 'himart_crm_deleted_records';
 const DELETED_RETENTION_DAYS = 30;
 const DELETED_RETENTION_MS = DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const MAX_REASONABLE_AMOUNT = 500_000_000; // 5억 원 초과 비정상 천문학적 숫자 차단
+
+/**
+ * Formats Korean phone numbers to 010-XXXX-XXXX automatically
+ */
+export function formatPhoneNumber(phone?: string): string {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('010')) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7, 11)}`;
+  }
+  if (digits.length === 10) {
+    if (digits.startsWith('02')) {
+      return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6, 10)}`;
+    }
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  }
+  if (digits.length === 9 && digits.startsWith('02')) {
+    return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5, 9)}`;
+  }
+  return phone.trim();
+}
+
+/**
+ * Strips corrupted English Date strings (Wed Sep 30 2026 ... GMT+0900) and raw Google Docs URLs
+ */
+export function cleanCorruptedText(text?: string): string {
+  if (!text) return '';
+  return String(text)
+    .replace(/(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}[^\n,|]*/gi, '')
+    .replace(/GMT[+-]\d{4}\s*\([^)]*\)/gi, '')
+    .replace(/https?:\/\/docs\.google\.com\/[^\s,)"']+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * Sanitizes deliveryDate string and prevents corrupted year values
+ */
+export function sanitizeDeliveryDate(dateStr?: string): string | undefined {
+  if (!dateStr) return undefined;
+  const match = String(dateStr).match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
+  if (match) {
+    const year = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10);
+    const day = parseInt(match[3], 10);
+    if (year < 2020 || year > 2035 || month < 1 || month > 12 || day < 1 || day > 31) {
+      return undefined;
+    }
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+  const parsed = new Date(dateStr);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    if (y >= 2020 && y <= 2035) {
+      return `${y}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+    }
+  }
+  return undefined;
+}
 
 /**
  * Calculates D-Day relative to today's local date (KST).
  * e.g., 0 = Today, 1 = Tomorrow, -1 = Yesterday
+ * Returns null if outside [-365, 365] to prevent corrupted D-161602 badges.
  */
 export function calculateDDay(dateStr?: string): number | null {
-  if (!dateStr) return null;
-  const match = String(dateStr).match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
-  let target: Date;
-  if (match) {
-    target = new Date(parseInt(match[1], 10), parseInt(match[2], 10) - 1, parseInt(match[3], 10));
-  } else {
-    target = new Date(dateStr);
-  }
+  const cleanDate = sanitizeDeliveryDate(dateStr);
+  if (!cleanDate) return null;
+  const parts = cleanDate.split('-');
+  const target = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
   if (isNaN(target.getTime())) return null;
 
   const today = new Date();
@@ -27,7 +83,9 @@ export function calculateDDay(dateStr?: string): number | null {
   target.setHours(0, 0, 0, 0);
 
   const diffTime = target.getTime() - today.getTime();
-  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  if (diffDays < -365 || diffDays > 365) return null;
+  return diffDays;
 }
 
 /**
@@ -162,7 +220,19 @@ export function purgeAllDeletedCustomers(): void {
 }
 
 /**
- * Deduplicate customers by ID while refreshing D-Day
+ * Wipes all customer CRM records, deleted records, and calculator folders on this device
+ */
+export function resetAllDeviceData(): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+  localStorage.removeItem(STORAGE_KEY_CUSTOMERS);
+  localStorage.removeItem('himart_crm_customers');
+  localStorage.removeItem('himart_crm_customers_v6');
+  localStorage.removeItem(STORAGE_KEY_DELETED_RECORDS);
+  localStorage.removeItem('app_customer_folders');
+}
+
+/**
+ * Deduplicate customers by ID while sanitizing corrupted values and refreshing D-Day
  */
 export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
   const seenIds = new Set<string>();
@@ -172,10 +242,26 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
     if (!item || !item.id) continue;
     if (seenIds.has(item.id)) continue;
     seenIds.add(item.id);
+
+    const rawPaid = Number(item.paidAmount || 0);
+    const rawNet = Number(item.netAmount || 0);
+    const safePaid = !isNaN(rawPaid) && Math.abs(rawPaid) <= MAX_REASONABLE_AMOUNT ? rawPaid : 0;
+    const safeNet = !isNaN(rawNet) && Math.abs(rawNet) <= MAX_REASONABLE_AMOUNT ? rawNet : 0;
+    const cleanDeliv = sanitizeDeliveryDate(item.deliveryDate);
+
     result.push({
       ...item,
+      name: cleanCorruptedText(item.name) || '신규 고객',
+      phone: formatPhoneNumber(item.phone),
+      items: cleanCorruptedText(item.items),
+      category: cleanCorruptedText(item.category),
+      benefit: cleanCorruptedText(item.benefit),
+      note: cleanCorruptedText(item.note),
+      paidAmount: safePaid,
+      netAmount: safeNet,
+      deliveryDate: cleanDeliv,
       status: normalizePipelineStatus(item.status, item.source, item.isSmsSent),
-      dDay: calculateDDay(item.deliveryDate),
+      dDay: calculateDDay(cleanDeliv),
     });
   }
 
@@ -183,17 +269,14 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
 }
 
 /**
- * 100% LocalStorage Customer Loader (No sanitize re-parsing to preserve user edits)
+ * 100% LocalStorage Customer Loader (Clean v2 storage key without polluted legacy fallback)
  */
 export function getCachedCustomers(): CustomerItem[] {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
     return [];
   }
   try {
-    let raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
-    if (!raw) {
-      raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS_LEGACY);
-    }
+    const raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {

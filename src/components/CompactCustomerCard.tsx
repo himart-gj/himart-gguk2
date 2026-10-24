@@ -1,6 +1,7 @@
 import React from 'react';
 import { Phone, MessageSquare, Calculator, ChevronRight, Gift, Package, Calendar, Check } from 'lucide-react';
 import { CustomerItem, PipelineStatus } from '../types/crm';
+import { formatPhoneNumber, cleanCorruptedText } from '../services/gasApi';
 
 interface CompactCustomerCardProps {
   customer: CustomerItem;
@@ -38,6 +39,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   onToggleGift,
 }) => {
   const cleanPhone = customer.phone ? customer.phone.replace(/[^0-9]/g, '') : '';
+  const formattedPhone = formatPhoneNumber(customer.phone);
   const statusTheme = STATUS_COLOR_MAP[customer.status] || {
     bg: 'bg-slate-50',
     text: 'text-slate-700',
@@ -45,45 +47,48 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   };
 
   const getDDayBadge = () => {
-    if (customer.dDay === null || customer.dDay === undefined) return null;
+    if (customer.dDay === null || customer.dDay === undefined || customer.dDay < -365 || customer.dDay > 365) return null;
     if (customer.dDay === 0) {
       return (
-        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse shadow-xs">
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse shadow-xs tabular-nums">
           🚨 오늘 배송 (D-0)
         </span>
       );
     }
     if (customer.dDay === 1) {
       return (
-        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs">
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white shadow-xs tabular-nums">
           ⏰ 내일 배송 (D-1)
         </span>
       );
     }
     if (customer.dDay > 1 && customer.dDay <= 7) {
       return (
-        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+        <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 tabular-nums">
           D-{customer.dDay}
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500">
+      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-500 tabular-nums">
         {customer.dDay > 0 ? `D-${customer.dDay}` : `배송경과 (+${Math.abs(customer.dDay)}일)`}
       </span>
     );
   };
 
   const hasGift = Boolean(customer.giftItem && customer.giftItem.trim());
+  const cleanItems = cleanCorruptedText(customer.items || customer.category) || '가전 견적 상담';
+  const safePaid = customer.paidAmount && customer.paidAmount <= 500_000_000 ? customer.paidAmount : 0;
+  const safeNet = customer.netAmount !== undefined && Math.abs(customer.netAmount) <= 500_000_000 ? customer.netAmount : undefined;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all duration-150 flex flex-col justify-between overflow-hidden group">
+    <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-md transition-all duration-150 flex flex-col justify-between overflow-hidden group h-full">
       <div className="p-3.5 pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-black text-sm text-slate-900 tracking-tight truncate">
-                {customer.name}
+                {cleanCorruptedText(customer.name) || '신규 고객'}
               </span>
               <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${statusTheme.bg} ${statusTheme.text} ${statusTheme.border}`}>
                 {customer.status}
@@ -121,10 +126,10 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 </button>
               )}
             </div>
-            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap">
-              <span className="font-mono text-slate-600">{customer.phone || '연락처 없음'}</span>
+            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 flex-wrap tabular-nums">
+              <span className="font-mono text-slate-600">{formattedPhone || '연락처 없음'}</span>
               {customer.deliveryDate && (
-                <span className="text-[11px] text-slate-500 flex items-center gap-0.5">
+                <span className="text-[11px] text-slate-500 flex items-center gap-0.5 tabular-nums">
                   <Calendar className="w-3 h-3 text-slate-400" /> {customer.deliveryDate}
                 </span>
               )}
@@ -146,20 +151,20 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
           </div>
         </div>
 
-        {/* 품목 및 체감가 요약 */}
-        <div className="mt-2 bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between gap-2">
+        {/* 품목 및 체감가 요약 (고정 높이 1줄 말줄임) */}
+        <div className="mt-2 bg-slate-50 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between gap-2 min-h-[52px]">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <Package className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span className="text-xs text-slate-700 font-medium truncate" title={customer.items || customer.category || '가전 견적'}>
-              {customer.items || customer.category || '가전 견적'}
+            <span className="text-xs text-slate-700 font-medium line-clamp-1 truncate" title={cleanItems}>
+              {cleanItems}
             </span>
           </div>
-          <div className="text-right shrink-0">
-            {customer.paidAmount && customer.paidAmount > 0 ? (
+          <div className="text-right shrink-0 tabular-nums">
+            {safePaid > 0 ? (
               <div>
-                <span className="text-xs font-black text-slate-900">{customer.paidAmount.toLocaleString()}원</span>
-                {customer.netAmount !== undefined && customer.netAmount !== customer.paidAmount && (
-                  <div className="text-[10px] text-rose-600 font-bold">체감 {customer.netAmount.toLocaleString()}원</div>
+                <span className="text-xs font-black text-slate-900">{safePaid.toLocaleString()}원</span>
+                {safeNet !== undefined && safeNet !== safePaid && (
+                  <div className="text-[10px] text-rose-600 font-bold">체감 {safeNet.toLocaleString()}원</div>
                 )}
               </div>
             ) : (
@@ -215,3 +220,4 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
     </div>
   );
 };
+

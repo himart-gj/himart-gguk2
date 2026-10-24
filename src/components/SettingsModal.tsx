@@ -21,7 +21,8 @@ import {
   permanentlyDeleteCustomer,
   purgeAllDeletedCustomers,
   exportFullBackupJson,
-  importFullBackupJson
+  importFullBackupJson,
+  resetAllDeviceData
 } from '../services/gasApi';
 import { 
   requestNotificationPermission, 
@@ -46,6 +47,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [deletedCount, setDeletedCount] = useState(() => getDeletedCustomerRecords().length);
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync deleted records on open
@@ -430,6 +432,51 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 ) : (
                   <div className="text-center py-4 text-xs text-slate-400 font-medium border-t border-slate-200/80 pt-3">
                     현재 휴지통에 보관된 고객이 없습니다.
+                  </div>
+                )}
+              </div>
+
+              {/* 4. 기기 전체 데이터 초기화 */}
+              <div className="p-3.5 bg-rose-50/70 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div>
+                  <h4 className="font-black text-rose-900 text-xs sm:text-sm flex items-center gap-1.5">
+                    <span>🧹</span> 기기 전체 데이터 초기화
+                  </h4>
+                  <p className="text-[11px] text-rose-700/80 mt-0.5">
+                    테스트로 입력한 모든 고객 카드, 휴지통, 보관함 폴더 데이터를 깨끗하게 비웁니다.
+                  </p>
+                </div>
+                {!confirmResetAll ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmResetAll(true)}
+                    className="px-3.5 py-2 rounded-xl bg-white hover:bg-rose-100 text-rose-700 border border-rose-300 font-black text-xs transition active:scale-95 cursor-pointer shrink-0"
+                  >
+                    🧹 기기 전체 데이터 초기화
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmResetAll(false)}
+                      className="px-3 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition cursor-pointer"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetAllDeviceData();
+                        setDeletedRecords([]);
+                        setDeletedCount(0);
+                        setConfirmResetAll(false);
+                        showTempNotice('success', '🧹 기기의 모든 고객 및 견적 데이터가 깨끗하게 초기화되었습니다.');
+                        onSaved();
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs shadow-sm transition active:scale-95 cursor-pointer"
+                    >
+                      확인 (전체 삭제)
+                    </button>
                   </div>
                 )}
               </div>

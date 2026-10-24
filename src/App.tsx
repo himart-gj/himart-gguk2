@@ -64,6 +64,9 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.storage && typeof navigator.storage.persist === 'function') {
+      navigator.storage.persist().catch(() => {});
+    }
     reloadLocalCustomers();
 
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
@@ -469,71 +472,7 @@ export const App: React.FC = () => {
       {/* CRM Main Content Area */}
       {activeTab === 'crm' && (
         <main className="flex-1 max-w-7xl w-full mx-auto p-2.5 sm:p-5 md:p-6 pt-3 sm:pt-4 space-y-3.5 sm:space-y-4">
-          {/* 1. 슬림 업무 요약 바 */}
-          <div className="bg-slate-900 text-white rounded-2xl px-3.5 py-2.5 shadow-sm border border-slate-800 flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm">⚡</span>
-              <span className="text-xs font-black tracking-tight">오늘의 업무 현황</span>
-            </div>
-            <div className="flex items-center gap-1.5 sm:gap-3 text-xs font-bold flex-wrap">
-              <button 
-                type="button" 
-                onClick={() => setFilterStatus(filterStatus === '긴급' ? '전체' : '긴급')}
-                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
-                  filterStatus === '긴급' ? 'bg-amber-500 text-slate-950 font-black' : 'hover:bg-slate-800 text-amber-400'
-                }`}
-              >
-                <span>🔥 긴급</span>
-                <strong className={filterStatus === '긴급' ? 'text-slate-950' : 'text-white'}>{urgentCount}</strong>
-              </button>
-              <span className="text-slate-700">|</span>
-              <button 
-                type="button" 
-                onClick={() => setFilterStatus(filterStatus === '신규/미발송' ? '전체' : '신규/미발송')}
-                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
-                  filterStatus === '신규/미발송' ? 'bg-rose-600 text-white' : 'hover:bg-slate-800 text-rose-400'
-                }`}
-              >
-                <span>신규</span>
-                <strong className="text-white">{counts['신규/미발송'] || 0}</strong>
-              </button>
-              <span className="text-slate-700">|</span>
-              <button 
-                type="button" 
-                onClick={() => setFilterStatus(filterStatus === '상담진행중' ? '전체' : '상담진행중')}
-                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
-                  filterStatus === '상담진행중' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800 text-indigo-400'
-                }`}
-              >
-                <span>상담</span>
-                <strong className="text-white">{counts['상담진행중'] || 0}</strong>
-              </button>
-              <span className="text-slate-700">|</span>
-              <button 
-                type="button" 
-                onClick={() => setFilterStatus(filterStatus === '배송대기' ? '전체' : '배송대기')}
-                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
-                  filterStatus === '배송대기' ? 'bg-blue-600 text-white' : 'hover:bg-slate-800 text-blue-400'
-                }`}
-              >
-                <span>배송</span>
-                <strong className="text-white">{counts['배송대기'] || 0}</strong>
-              </button>
-              <span className="text-slate-700">|</span>
-              <button 
-                type="button" 
-                onClick={() => setFilterStatus(filterStatus === '미구매/고민중' ? '전체' : '미구매/고민중')}
-                className={`px-2 py-1 rounded-lg transition flex items-center gap-1 cursor-pointer ${
-                  filterStatus === '미구매/고민중' ? 'bg-sky-600 text-white' : 'hover:bg-slate-800 text-sky-400'
-                }`}
-              >
-                <span>고민</span>
-                <strong className="text-white">{counts['미구매/고민중'] || 0}</strong>
-              </button>
-            </div>
-          </div>
-
-          {/* 2. 통합 검색 및 필터 툴바 */}
+          {/* 통합 검색 및 필터 툴바 */}
           <div className="bg-white rounded-2xl p-3 border border-slate-200/90 shadow-2xs space-y-2.5">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
@@ -581,7 +520,7 @@ export const App: React.FC = () => {
                 }`}
               >
                 <span>🔥 오늘 할 일 (긴급)</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black tabular-nums ${
                   filterStatus === '긴급' ? 'bg-white text-rose-600' : 'bg-rose-600 text-white'
                 }`}>
                   {urgentCount}
@@ -600,7 +539,7 @@ export const App: React.FC = () => {
                   }`}
                 >
                   <span>{st}</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black tabular-nums ${
                     filterStatus === st ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-600'
                   }`}>
                     {counts[st] || 0}

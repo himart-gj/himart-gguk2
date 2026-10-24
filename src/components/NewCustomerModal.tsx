@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, UserPlus, Calendar, Phone, FileText } from 'lucide-react';
 import { CustomerItem, PipelineStatus } from '../types/crm';
-import { calculateDDay } from '../services/gasApi';
+import { calculateDDay, formatPhoneNumber } from '../services/gasApi';
 import { formatLocalDate } from '../utils/date';
 
 interface NewCustomerModalProps {
@@ -49,7 +49,7 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       id: `manual-${Date.now()}`,
       source: slipNo ? 'tab2' : 'tab1',
       name: name.trim(),
-      phone: phone.trim(),
+      phone: formatPhoneNumber(phone),
       slipNo: slipNo.trim(),
       category: items.trim() || '신규 등록 가전',
       items: items.trim(),
@@ -117,9 +117,9 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               <input
                 type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
                 placeholder="010-1234-5678"
-                className="w-full p-2.5 border border-slate-300 rounded-xl focus:outline-rose-500"
+                className="w-full p-2.5 border border-slate-300 rounded-xl focus:outline-rose-500 tabular-nums"
               />
             </div>
           </div>

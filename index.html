@@ -31,16 +31,16 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 .hidden { display: none !important; }
 @media (min-width: 700px) {
-  #input-panel { display: block !important; }
+  #input-panel, #sheet-panel { display: block !important; }
+  #fold-bottom-dock { display: none !important; }
   #sheet-panel {
-    display: block !important;
     position: sticky;
-    top: 4.5rem; /* 상단 고정 헤더 바로 아래에 착 붙음 */
-    max-height: calc(100vh - 5.5rem);
+    top: 4.5rem;
+    max-height: calc(100vh - 5.2rem);
     overflow-y: auto;
     overscroll-behavior: contain;
+    padding-right: 4px;
   }
-  #fold-bottom-dock { display: none !important; }
 }
 body {
 font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
@@ -49,6 +49,7 @@ overscroll-behavior-y: auto;
 -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 input, textarea, select { -webkit-user-select: auto; user-select: auto; }
+input[type="number"], .tabular-nums, .print-table td { font-variant-numeric: tabular-nums; }
 
 /* 모바일 가상키보드 오픈 시 화면 자동 확대 및 스크롤 튐 원천 방지 (16px 폰트 보장) */
 @media screen and (max-width: 768px) {
@@ -65,8 +66,9 @@ input, textarea, select { -webkit-user-select: auto; user-select: auto; }
   background-color: white;
   padding: 14px 10px;
   width: 100%;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+  border: 1px solid #cbd5e1;
+  border-top: 5px solid #0f172a;
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.12);
   border-radius: 12px;
 }
 @media (min-width: 640px) {
@@ -77,8 +79,8 @@ input, textarea, select { -webkit-user-select: auto; user-select: auto; }
 }
 .sheet-view.active { display: block; }
 .sheet-btn.active { background-color: #ef4444; color: white; border-color: #ef4444; }
-.print-table th { background-color: #f8fafc; font-weight: 600; border: 1px solid #cbd5e1; padding: 6px 4px; text-align: center; font-size: 0.72rem; color: #334155; }
-.print-table td { border: 1px solid #cbd5e1; padding: 6px 5px; font-size: 0.72rem; color: #0f172a; }
+.print-table th { background-color: #f8fafc; font-weight: 700; border: 1px solid #cbd5e1; padding: 6px 4px; text-align: center; font-size: 0.72rem; color: #1e293b; }
+.print-table td { border: 1px solid #cbd5e1; padding: 6px 5px; font-size: 0.72rem; color: #0f172a; font-variant-numeric: tabular-nums; }
 @media (min-width: 640px) {
   .print-table th { padding: 9px; font-size: 0.82rem; }
   .print-table td { padding: 8px 9px; font-size: 0.82rem; }
@@ -251,6 +253,24 @@ details > summary::-webkit-details-marker { display: none; }
   </div>
 </div>
 
+<!-- [견적 1안] ↔ [견적 2안] 원터치 멀티 슬롯 스위처 -->
+<div class="bg-white p-2 rounded-2xl shadow-2xs border border-slate-200 space-y-1.5">
+  <div class="grid grid-cols-3 gap-1.5">
+    <button id="slot-btn-1" type="button" onclick="switchQuoteSlot(1)" class="py-2 px-2 rounded-xl text-xs font-black bg-slate-900 text-white shadow-xs transition active:scale-95 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1">
+      <span>📋</span><span>견적 1안 (기본)</span>
+    </button>
+    <button id="slot-btn-2" type="button" onclick="switchQuoteSlot(2)" class="py-2 px-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition active:scale-95 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1">
+      <span>📋</span><span>견적 2안 (비교)</span>
+    </button>
+    <button id="slot-copy-btn" type="button" onclick="copySlot1ToSlot2()" class="py-2 px-2 rounded-xl text-xs font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition active:scale-95 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1">
+      <span>📑</span><span>1안➔2안 복사</span>
+    </button>
+  </div>
+  <div id="slot-copy-toast" class="hidden text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5 text-center">
+    ✨ 1안 내용이 2안으로 복사되었습니다. 변경할 품목만 수정하세요!
+  </div>
+</div>
+
 <!-- 호환성 보존용 히든 컨테이너 (스크립트 에러 방지) -->
 <div id="crm-loaded-banner" class="hidden">
   <span id="crm-loaded-title"></span>
@@ -279,39 +299,39 @@ details > summary::-webkit-details-marker { display: none; }
     </div>
     <div>
       <label class="block text-[11px] font-bold text-blue-700 mb-1">고객 연락처</label>
-      <input type="text" id="i-c-phone" class="input-box border-blue-200 bg-blue-50/50" placeholder="010-0000-0000" oninput="markUnsavedChanges(); calc();">
+      <input type="text" id="i-c-phone" class="input-box border-blue-200 bg-blue-50/50 tabular-nums" placeholder="010-0000-0000" oninput="this.value = formatPhoneDOM(this.value); markUnsavedChanges(); calc();">
     </div>
   </div>
   <!-- 2열: 배송희망일 -->
   <div class="mb-2.5">
     <label class="block text-[11px] font-bold text-rose-700 mb-1">🚚 배송희망일</label>
-    <input type="date" id="i-delivery-date" class="input-box border-rose-200 bg-rose-50/40 font-semibold text-rose-900" oninput="markUnsavedChanges(); calc();">
+    <input type="date" id="i-delivery-date" class="input-box border-rose-200 bg-rose-50/40 font-semibold text-rose-900 tabular-nums" oninput="markUnsavedChanges(); calc();">
   </div>
   <!-- 3열: 보조 정보 (상담일자, 전표번호, 담당자, 매장연락처 - 2열x2줄 고정으로 잘림 원천 방지) -->
   <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
-    <div><label class="block text-[10px] text-slate-400 mb-0.5">상담일자</label><input type="date" id="i-date" class="input-box text-xs bg-slate-50" oninput="markUnsavedChanges(); calc();"></div>
-    <div><label class="block text-[10px] text-slate-400 mb-0.5">전표번호</label><input type="text" id="i-no" class="input-box font-mono text-xs" placeholder="전표번호" oninput="markUnsavedChanges(); calc();"></div>
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">상담일자</label><input type="date" id="i-date" class="input-box text-xs bg-slate-50 tabular-nums" oninput="markUnsavedChanges(); calc();"></div>
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">전표번호</label><input type="text" id="i-no" class="input-box font-mono text-xs tabular-nums" placeholder="전표번호" oninput="markUnsavedChanges(); calc();"></div>
     <div><label class="block text-[10px] text-slate-400 mb-0.5">담당자</label><input type="text" id="i-manager" class="input-box text-xs" placeholder="담당자" oninput="markUnsavedChanges(); calc();"></div>
-    <div><label class="block text-[10px] text-slate-400 mb-0.5">매장연락처</label><input type="text" id="i-phone" class="input-box text-xs" value="031-767-1044" oninput="markUnsavedChanges(); calc();"></div>
+    <div><label class="block text-[10px] text-slate-400 mb-0.5">매장연락처</label><input type="text" id="i-phone" class="input-box text-xs tabular-nums" value="031-767-1044" oninput="markUnsavedChanges(); calc();"></div>
   </div>
 </div>
 
 <!-- 실시간 금액 확인 요약 패널 (상단 1열 최종 체감 혜택가 + 하단 2열 기본합계/실결제, 솔리드 다크톤) -->
-<div class="bg-slate-900 text-white border border-slate-800 p-4 rounded-2xl shadow-md my-3.5 space-y-3">
+<div class="bg-slate-900 text-white border border-slate-800 p-4 rounded-2xl shadow-xl my-3.5 space-y-3">
   <div class="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
     <span class="text-xs text-amber-300 font-extrabold flex items-center gap-1 whitespace-nowrap">
       <span>✨</span> 최종 체감 혜택가
     </span>
-    <span class="text-xl sm:text-2xl font-black text-amber-400 tracking-tight whitespace-nowrap" id="live-net-amount">0원</span>
+    <span class="text-xl sm:text-2xl font-black text-amber-400 tracking-tight whitespace-nowrap tabular-nums" id="live-net-amount">0원</span>
   </div>
   <div class="grid grid-cols-2 gap-3">
     <div class="min-w-0">
       <span class="text-[11px] text-slate-400 font-semibold block whitespace-nowrap mb-0.5">기본 합계 금액</span>
-      <span class="text-sm sm:text-base font-black text-white whitespace-nowrap block truncate" id="live-sum-amount">0원</span>
+      <span class="text-sm sm:text-base font-black text-white whitespace-nowrap block truncate tabular-nums" id="live-sum-amount">0원</span>
     </div>
     <div class="min-w-0 border-l border-slate-800 pl-3">
       <span class="text-[11px] text-rose-300 font-bold block whitespace-nowrap mb-0.5">고객 결제 금액 (실결제)</span>
-      <span class="text-sm sm:text-base font-black text-rose-400 whitespace-nowrap block truncate" id="live-pay-amount">0원</span>
+      <span class="text-sm sm:text-base font-black text-rose-400 whitespace-nowrap block truncate tabular-nums" id="live-pay-amount">0원</span>
     </div>
   </div>
 </div>
@@ -330,7 +350,7 @@ details > summary::-webkit-details-marker { display: none; }
 </div>
 
 <!-- 원터치 품목 퀵 칩 (Quick Chips) -->
-<div class="flex items-center gap-1 overflow-x-auto no-scrollbar pb-2 mb-2">
+<div class="flex items-center gap-1 overflow-x-auto no-scrollbar pb-1.5 mb-1.5">
   <button type="button" onclick="quickAddLumpItem('냉장고')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🧊 냉장고</button>
   <button type="button" onclick="quickAddLumpItem('김치냉장고')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">❄️ 김치냉장고</button>
   <button type="button" onclick="quickAddLumpItem('세탁건조기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🫧 세탁건조기</button>
@@ -340,6 +360,18 @@ details > summary::-webkit-details-marker { display: none; }
   <button type="button" onclick="quickAddLumpItem('식기세척기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🍽️ 식기세척기</button>
   <button type="button" onclick="quickAddLumpItem('로봇청소기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">🧹 로봇청소기</button>
   <button type="button" onclick="quickAddLumpItem('정수기')" class="px-2 py-1 rounded-lg bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 text-[11px] font-bold whitespace-nowrap shrink-0 shadow-2xs active:scale-95 transition cursor-pointer">💧 정수기</button>
+</div>
+
+<!-- 원터치 금액 플러스 바 (0 개수 오타 방지 및 초고속 입력) -->
+<div class="flex items-center justify-between gap-1 bg-white/90 border border-rose-200/80 rounded-xl p-1.5 mb-2.5 shadow-2xs">
+  <span class="text-[10px] font-extrabold text-rose-700 px-1 whitespace-nowrap shrink-0" id="focused-amount-label">💰 금액퀵</span>
+  <div class="flex items-center gap-1 flex-1 justify-end flex-wrap">
+    <button type="button" onclick="addQuickAmount(1000000)" class="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold whitespace-nowrap active:scale-95 transition cursor-pointer tabular-nums">+100만</button>
+    <button type="button" onclick="addQuickAmount(500000)" class="px-2 py-1 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-[11px] font-extrabold whitespace-nowrap active:scale-95 transition cursor-pointer tabular-nums">+50만</button>
+    <button type="button" onclick="addQuickAmount(100000)" class="px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300 text-[11px] font-extrabold whitespace-nowrap active:scale-95 transition cursor-pointer tabular-nums">+10만</button>
+    <button type="button" onclick="addQuickAmount(10000)" class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-extrabold whitespace-nowrap active:scale-95 transition cursor-pointer tabular-nums">+1만</button>
+    <button type="button" onclick="addQuickAmount(0, true)" class="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-300 text-[10px] font-bold whitespace-nowrap active:scale-95 transition cursor-pointer">0원 초기화</button>
+  </div>
 </div>
 
 <!-- 품목 타이틀 레이아웃 -->
@@ -360,10 +392,34 @@ details > summary::-webkit-details-marker { display: none; }
 <option value="일반 신용/체크">일반 신용/체크카드</option>
 </select>
 </div>
-<div class="flex justify-between items-center"><span class="font-medium">(-) 즉시 할인액</span><input type="number" id="l-dc" class="input-box w-32" placeholder="0"></div>
-<div class="flex justify-between items-center"><span class="font-medium">총 적립포인트</span><input type="number" id="l-pt-tot" class="input-box w-32" placeholder="0"></div>
-<div class="flex justify-between items-center"><span class="font-medium text-rose-600">(-) 포인트 즉시 사용</span><input type="number" id="l-pt-use" class="input-box w-32" placeholder="0"></div>
-<div class="flex justify-between items-center"><span class="font-medium">배송 익월 추가 캐시백</span><input type="number" id="l-cash" class="input-box w-32" placeholder="0"></div>
+<div class="flex justify-between items-center gap-2">
+  <span class="font-medium">(-) 즉시 할인액</span>
+  <div class="flex flex-col items-end">
+    <input type="number" id="l-dc" class="input-box w-36 text-right tabular-nums" placeholder="0" onfocus="setFocusedAmountInput(this, '즉시할인')">
+    <span id="kr-l-dc" class="text-[10px] font-bold text-rose-600 tabular-nums mt-0.5 hidden"></span>
+  </div>
+</div>
+<div class="flex justify-between items-center gap-2">
+  <span class="font-medium">총 적립포인트</span>
+  <div class="flex flex-col items-end">
+    <input type="number" id="l-pt-tot" class="input-box w-36 text-right tabular-nums" placeholder="0" onfocus="setFocusedAmountInput(this, '적립포인트')">
+    <span id="kr-l-pt-tot" class="text-[10px] font-bold text-rose-600 tabular-nums mt-0.5 hidden"></span>
+  </div>
+</div>
+<div class="flex justify-between items-center gap-2">
+  <span class="font-medium text-rose-600">(-) 포인트 즉시 사용</span>
+  <div class="flex flex-col items-end">
+    <input type="number" id="l-pt-use" class="input-box w-36 text-right tabular-nums" placeholder="0" onfocus="setFocusedAmountInput(this, '포인트사용')">
+    <span id="kr-l-pt-use" class="text-[10px] font-bold text-rose-600 tabular-nums mt-0.5 hidden"></span>
+  </div>
+</div>
+<div class="flex justify-between items-center gap-2">
+  <span class="font-medium">배송 익월 추가 캐시백</span>
+  <div class="flex flex-col items-end">
+    <input type="number" id="l-cash" class="input-box w-36 text-right tabular-nums" placeholder="0" onfocus="setFocusedAmountInput(this, '추가캐시백')">
+    <span id="kr-l-cash" class="text-[10px] font-bold text-rose-600 tabular-nums mt-0.5 hidden"></span>
+  </div>
+</div>
 
 <!-- 추가 혜택 아코디언 -->
 <details id="details-lump-benefit" class="border border-rose-200 rounded-xl bg-white/70 overflow-hidden text-xs mt-2.5">
@@ -439,7 +495,13 @@ details > summary::-webkit-details-marker { display: none; }
 </select>
 </div>
 </div>
-<div class="flex justify-between items-center"><span class="font-medium">배송 익월 추가 캐시백</span><input type="number" id="s-cash" class="input-box w-32" placeholder="0"></div>
+<div class="flex justify-between items-center gap-2">
+  <span class="font-medium">배송 익월 추가 캐시백</span>
+  <div class="flex flex-col items-end">
+    <input type="number" id="s-cash" class="input-box w-36 text-right tabular-nums" placeholder="0" onfocus="setFocusedAmountInput(this, '구독캐시백')">
+    <span id="kr-s-cash" class="text-[10px] font-bold text-blue-600 tabular-nums mt-0.5 hidden"></span>
+  </div>
+</div>
 
 <div class="pt-3 mt-2 border-t border-blue-200">
 <div class="flex justify-between items-center mb-2">
@@ -495,8 +557,9 @@ details > summary::-webkit-details-marker { display: none; }
 
 <!-- 시트 1: 일반 -->
 <div id="sheet1" class="sheet-view active">
-<div class="text-center mb-5 border-b-2 border-gray-800 pb-3">
-<h1 class="text-2xl font-extrabold text-gray-900">프리미엄 맞춤형 견적서 (일반)</h1>
+<div class="text-center mb-5 border-b-2 border-slate-900 pb-3">
+  <div class="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 text-[10px] font-extrabold tracking-wide mb-1">『롯데하이마트 경기광주점 프리미엄 공식 견적서』</div>
+  <h1 class="text-2xl font-extrabold text-gray-900 tracking-tight">프리미엄 맞춤형 견적서 (일반)</h1>
 </div>
 <div class="overflow-x-auto">
 <table class="w-full print-table mb-4">
@@ -542,8 +605,9 @@ details > summary::-webkit-details-marker { display: none; }
 
 <!-- 시트 2: 구독 -->
 <div id="sheet2" class="sheet-view">
-<div class="text-center mb-5 border-b-2 border-gray-800 pb-3">
-<h1 class="text-2xl font-extrabold text-gray-900">프리미엄 맞춤형 구독 견적서</h1>
+<div class="text-center mb-5 border-b-2 border-slate-900 pb-3">
+  <div class="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 text-[10px] font-extrabold tracking-wide mb-1">『롯데하이마트 경기광주점 프리미엄 공식 견적서』</div>
+  <h1 class="text-2xl font-extrabold text-gray-900 tracking-tight">프리미엄 맞춤형 구독 견적서</h1>
 </div>
 <div class="overflow-x-auto">
 <table class="w-full print-table mb-4">
@@ -575,7 +639,7 @@ details > summary::-webkit-details-marker { display: none; }
 <tr id="s2-tot-hp-row" class="hidden"><td class="bg-gray-50 text-gray-800">(-) 하이프리드 총 혜택액</td><td class="text-right text-blue-600" id="s2-tot-hp">0 원</td></tr>
 <tr id="s2-auto-cash-row" class="hidden"><td class="bg-gray-50 text-gray-800">(-) 결제금액별 캐시백 (삼성/신한 등)</td><td class="text-right text-blue-600" id="s2-auto-cash">0 원</td></tr>
 <tr id="s2-extra-cash-row" class="hidden"><td class="bg-gray-50 text-gray-800">(-) 추가 캐시백 (배송익월말)</td><td class="text-right text-blue-600" id="s2-extra-cash">0 원</td></tr>
-<tr class="border-t-2 border-gray-400"><td class="bg-gray-100 font-extrabold text-gray-900">★ 고객 약정만기 총 체감 순비용</td><td class="text-right font-extrabold text-xl text-rose-700" id="s2-final-total">0 원</td></tr>
+<tr class="border-t-2 border-rose-500 bg-rose-50"><td class="font-extrabold text-gray-900">★ 고객 약정만기 총 체감 순비용</td><td class="text-right font-extrabold text-xl text-rose-700 tabular-nums" id="s2-final-total">0 원</td></tr>
 </table>
 </div>
 
@@ -592,8 +656,9 @@ details > summary::-webkit-details-marker { display: none; }
 
 <!-- 시트 3: 비교 -->
 <div id="sheet3" class="sheet-view">
-<div class="text-center mb-5 border-b-2 border-gray-800 pb-3">
-<h1 class="text-2xl font-extrabold text-gray-900">일반 vs 구독 종합 비교 견적</h1>
+<div class="text-center mb-5 border-b-2 border-slate-900 pb-3">
+  <div class="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 text-[10px] font-extrabold tracking-wide mb-1">『롯데하이마트 경기광주점 프리미엄 공식 견적서』</div>
+  <h1 class="text-2xl font-extrabold text-gray-900 tracking-tight">일반 vs 구독 종합 비교 견적</h1>
 </div>
 <div class="overflow-x-auto">
 <table class="w-full print-table mb-4">
@@ -603,7 +668,7 @@ details > summary::-webkit-details-marker { display: none; }
 <tr id="s3-hp-row"><td class="text-gray-800">(-) 하이프리드 지원 혜택</td><td class="text-right text-rose-600" id="s3-hp-lump">0 원</td><td class="text-right text-rose-600" id="s3-hp-sub">0 원</td></tr>
 <tr><td class="text-gray-800" id="s3-card-label">(-) 제휴카드 혜택</td><td class="text-right text-gray-400">-</td><td class="text-right text-blue-600" id="s3-card">0 원</td></tr>
 <tr><td class="text-gray-800">(-) 캐시백/할인 (즉시+자동+추가)</td><td class="text-right text-rose-600" id="s3-cash-lump">0 원</td><td class="text-right text-rose-600" id="s3-cash-sub">0 원</td></tr>
-<tr class="bg-gray-100 border-t-2 border-gray-400"><td class="font-extrabold text-gray-900">★ 고객 체감 순비용</td><td class="text-right font-extrabold text-2xl text-rose-700" id="s3-net-lump">0 원</td><td class="text-right font-extrabold text-2xl text-blue-700" id="s3-net-sub">0 원</td></tr>
+<tr class="bg-rose-50/70 border-t-2 border-slate-800"><td class="font-extrabold text-gray-900">★ 고객 체감 순비용</td><td class="text-right font-extrabold text-2xl text-rose-700 tabular-nums" id="s3-net-lump">0 원</td><td class="text-right font-extrabold text-2xl text-blue-700 tabular-nums" id="s3-net-sub">0 원</td></tr>
 </tbody>
 </table>
 </div>
@@ -620,7 +685,9 @@ details > summary::-webkit-details-marker { display: none; }
 
 <!-- 시트 4: 동시 (일반 + 구독 혼합 맞춤형 견적서) -->
 <div id="sheet4" class="sheet-view">
-<div class="text-center mb-4 border-b-2 border-gray-800 pb-3">
+<div class="text-center mb-4 border-b-2 border-slate-900 pb-3">
+  <div class="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 text-[10px] font-extrabold tracking-wide mb-1">『롯데하이마트 경기광주점 프리미엄 공식 견적서』</div>
+  <br>
   <span class="text-xs bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded">일반 일시불 + 월납 구독 결합 패키지</span>
   <h1 class="text-2xl font-extrabold text-gray-900 mt-1">프리미엄 맞춤형 견적서 (일반+구독 혼합)</h1>
   <p class="text-xs text-gray-500 mt-0.5">핵심 대형가전(일시불 특가)과 생활·위생가전(월납 케어)을 최적의 조건으로 조합한 견적입니다.</p>
@@ -710,7 +777,9 @@ details > summary::-webkit-details-marker { display: none; }
 
 <!-- 시트 5: 일반제안 -->
 <div id="sheet5" class="sheet-view">
-<div class="text-center mb-4 border-b-2 border-gray-800 pb-2">
+<div class="text-center mb-4 border-b-2 border-slate-900 pb-2">
+<div class="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 text-[10px] font-extrabold tracking-wide mb-1">『롯데하이마트 경기광주점 프리미엄 공식 견적서』</div>
+<br>
 <span class="text-xs bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded">롯데하이마트 전용 결합상품 (웅진프리드라이프)</span>
 <h1 class="text-2xl font-extrabold text-gray-900 mt-1 mb-1">하이프리드 토탈 라이프케어 제안서</h1>
 <p class="text-xs text-gray-600">가전제품 구입 시 <b>최대 300만원 지원</b> + <b>부담없는 월 납입금</b> 혜택</p>
@@ -778,7 +847,9 @@ details > summary::-webkit-details-marker { display: none; }
 
 <!-- 시트 6: 구독제안 -->
 <div id="sheet6" class="sheet-view">
-<div class="text-center mb-4 border-b-2 border-gray-800 pb-2">
+<div class="text-center mb-4 border-b-2 border-slate-900 pb-2">
+<div class="inline-block px-2.5 py-0.5 rounded-full bg-slate-900 text-amber-300 text-[10px] font-extrabold tracking-wide mb-1">『롯데하이마트 경기광주점 프리미엄 공식 견적서』</div>
+<br>
 <span class="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded">가전구독 전용 결합상품 (웅진프리드라이프)</span>
 <h1 class="text-2xl font-extrabold text-gray-900 mt-1 mb-1">하이프리드 매월 페이백 제안서</h1>
 <p class="text-xs text-gray-600">월 구독료의 부담을 확 낮춰드리는 <b>가전구독 전용 캐시백</b> 혜택</p>
@@ -1627,22 +1698,36 @@ div.innerHTML = `
 document.getElementById('lump-benefit-container').appendChild(div);
 }
 function addLumpRow(name='', model='', price='', qty=1) {
-const div = document.createElement('div'); div.className = 'relative grid grid-cols-12 gap-1 items-center bg-white p-1.5 rounded border pr-6 mb-1.5';
-div.innerHTML = `<input type="text" class="col-span-3 input-box px-1.5 py-1.5 text-xs l-name" placeholder="품목" value="${name}"><div class="col-span-4 flex gap-0.5"><input type="text" class="input-box px-1 py-1.5 text-xs l-model w-full" placeholder="모델명" value="${model}"><button type="button" onclick="summarizeModel(this.previousElementSibling.value, this.parentElement.previousElementSibling.value)" class="bg-indigo-100 text-indigo-700 px-1 text-[10px] rounded flex-shrink-0" title="스펙 요약">💡</button></div><input type="number" class="col-span-2 input-box px-1.5 py-1.5 text-xs l-qty" placeholder="수량" value="${qty}"><input type="number" class="col-span-3 input-box px-1.5 py-1.5 text-xs l-price" placeholder="금액" value="${price}"><button type="button" onclick="this.parentElement.remove(); calc();" class="absolute right-0 top-0 bottom-0 w-6 flex items-center justify-center text-rose-500 font-bold hover:bg-rose-50 rounded-r">X</button>`;
-document.getElementById('lump-inputs').appendChild(div); calc();
+const div = document.createElement('div'); div.className = 'relative grid grid-cols-12 gap-1 items-start bg-white p-1.5 rounded border pr-6 mb-1.5';
+div.innerHTML = `<input type="text" class="col-span-3 input-box px-1.5 py-1.5 text-xs l-name" placeholder="품목" value="${name}"><div class="col-span-4 flex gap-0.5"><input type="text" class="input-box px-1 py-1.5 text-xs l-model w-full" placeholder="모델명" value="${model}"><button type="button" onclick="summarizeModel(this.previousElementSibling.value, this.parentElement.previousElementSibling.value)" class="bg-indigo-100 text-indigo-700 px-1 text-[10px] rounded flex-shrink-0" title="스펙 요약">💡</button></div><input type="number" class="col-span-2 input-box px-1.5 py-1.5 text-xs l-qty text-center tabular-nums" placeholder="수량" value="${qty}"><div class="col-span-3 flex flex-col items-end"><input type="number" class="input-box px-1.5 py-1.5 text-xs l-price text-right tabular-nums" placeholder="금액" value="${price}" onfocus="setFocusedAmountInput(this, '품목금액')"><span class="l-price-kr text-[10px] font-bold text-rose-600 tabular-nums mt-0.5 hidden"></span></div><button type="button" onclick="this.parentElement.remove(); calc();" class="absolute right-0 top-0 bottom-0 w-6 flex items-center justify-center text-rose-500 font-bold hover:bg-rose-50 rounded-r">X</button>`;
+document.getElementById('lump-inputs').appendChild(div);
+const priceInput = div.querySelector('.l-price');
+if (priceInput) window.lastFocusedAmountInput = priceInput;
+calc();
 }
 
 function quickAddLumpItem(itemName) {
   const rows = document.querySelectorAll('#lump-inputs .l-name');
   let filled = false;
-  rows.forEach((input) => {
+  rows.forEach((input, idx) => {
     if (!filled && (!input.value || !input.value.trim())) {
       input.value = itemName;
+      const priceInputs = document.querySelectorAll('#lump-inputs .l-price');
+      if (priceInputs[idx]) {
+        setFocusedAmountInput(priceInputs[idx], itemName);
+        priceInputs[idx].focus();
+      }
       filled = true;
     }
   });
   if (!filled) {
     addLumpRow(itemName, '', '', 1);
+    const priceInputs = document.querySelectorAll('#lump-inputs .l-price');
+    const lastPrice = priceInputs[priceInputs.length - 1];
+    if (lastPrice) {
+      setFocusedAmountInput(lastPrice, itemName);
+      lastPrice.focus();
+    }
   }
   markUnsavedChanges();
   calc();
@@ -1650,8 +1735,8 @@ function quickAddLumpItem(itemName) {
 
 // [수정됨] 구독품목 역시 위와 동일한 Grid 방식으로 모바일 화면 깨짐 방지
 function addSubRow(name='', model='', price='', months='60') {
-const div = document.createElement('div'); div.className = 'relative grid grid-cols-12 gap-1 items-center bg-white p-1.5 rounded border pr-6 mb-1.5';
-div.innerHTML = `<input type="text" class="col-span-3 input-box px-1.5 py-1.5 text-xs s-name" placeholder="품목" value="${name}"><input type="text" class="col-span-4 input-box px-1.5 py-1.5 text-xs s-model" placeholder="모델명" value="${model}"><input type="number" class="col-span-3 input-box px-1.5 py-1.5 text-xs s-price" placeholder="금액" value="${price}"><select class="col-span-2 input-box px-0.5 py-1.5 text-[11px] s-months" onchange="calc()"><option value="36" ${months == '36' ? 'selected' : ''}>36개월</option><option value="60" ${months == '60' ? 'selected' : ''}>60개월</option></select><button type="button" onclick="this.parentElement.remove(); calc();" class="absolute right-0 top-0 bottom-0 w-6 flex items-center justify-center text-blue-500 font-bold hover:bg-blue-50 rounded-r">X</button>`;
+const div = document.createElement('div'); div.className = 'relative grid grid-cols-12 gap-1 items-start bg-white p-1.5 rounded border pr-6 mb-1.5';
+div.innerHTML = `<input type="text" class="col-span-3 input-box px-1.5 py-1.5 text-xs s-name" placeholder="품목" value="${name}"><input type="text" class="col-span-4 input-box px-1.5 py-1.5 text-xs s-model" placeholder="모델명" value="${model}"><div class="col-span-3 flex flex-col items-end"><input type="number" class="input-box px-1.5 py-1.5 text-xs s-price text-right tabular-nums" placeholder="금액" value="${price}" onfocus="setFocusedAmountInput(this, '월구독료')"><span class="s-price-kr text-[10px] font-bold text-blue-600 tabular-nums mt-0.5 hidden"></span></div><select class="col-span-2 input-box px-0.5 py-1.5 text-[11px] s-months" onchange="calc()"><option value="36" ${months == '36' ? 'selected' : ''}>36개월</option><option value="60" ${months == '60' ? 'selected' : ''}>60개월</option></select><button type="button" onclick="this.parentElement.remove(); calc();" class="absolute right-0 top-0 bottom-0 w-6 flex items-center justify-center text-blue-500 font-bold hover:bg-blue-50 rounded-r">X</button>`;
 document.getElementById('sub-inputs').appendChild(div); calc();
 }
 
@@ -1709,6 +1794,128 @@ if (document.readyState === 'loading') {
 }
 window.addEventListener('load', initCalculator);
 
+// === 스마트 한글 금액 단위 헬퍼 & 원터치 플러스 바 & [견적 1안/2안] 멀티 슬롯 ===
+window.lastFocusedAmountInput = null;
+window.quoteSlotData = { slot1: null, slot2: null };
+window.activeQuoteSlot = 1;
+
+function formatPhoneDOM(raw) {
+  if (!raw) return '';
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('010')) {
+    return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7, 11);
+  }
+  if (digits.length === 10) {
+    if (digits.startsWith('02')) return digits.slice(0, 2) + '-' + digits.slice(2, 6) + '-' + digits.slice(6, 10);
+    return digits.slice(0, 3) + '-' + digits.slice(3, 6) + '-' + digits.slice(6, 10);
+  }
+  return raw;
+}
+window.formatPhoneDOM = formatPhoneDOM;
+
+function formatKoreanCurrency(num) {
+  const n = Math.floor(Math.abs(Number(num) || 0));
+  if (n <= 0) return '';
+  const eok = Math.floor(n / 100000000);
+  const man = Math.floor((n % 100000000) / 10000);
+  const rest = n % 10000;
+  const parts = [];
+  if (eok > 0) parts.push(new Intl.NumberFormat('ko-KR').format(eok) + '억');
+  if (man > 0) parts.push(new Intl.NumberFormat('ko-KR').format(man) + '만');
+  if (rest > 0) parts.push(new Intl.NumberFormat('ko-KR').format(rest));
+  return parts.join(' ') + '원';
+}
+window.formatKoreanCurrency = formatKoreanCurrency;
+
+function setFocusedAmountInput(el, labelText) {
+  if (!el) return;
+  window.lastFocusedAmountInput = el;
+  const lbl = document.getElementById('focused-amount-label');
+  if (lbl && labelText) {
+    lbl.innerText = '🎯 ' + labelText;
+  }
+}
+window.setFocusedAmountInput = setFocusedAmountInput;
+
+function addQuickAmount(delta, isReset = false) {
+  let target = window.lastFocusedAmountInput;
+  if (!target || !document.body.contains(target)) {
+    const prices = document.querySelectorAll('#lump-inputs .l-price');
+    target = prices[prices.length - 1] || document.getElementById('l-dc');
+  }
+  if (!target) return;
+  if (isReset) {
+    target.value = '';
+  } else {
+    const current = parseInt(target.value, 10) || 0;
+    target.value = String(Math.max(0, current + delta));
+  }
+  markUnsavedChanges();
+  calc();
+}
+window.addQuickAmount = addQuickAmount;
+
+function updateSlotButtonsUI(slotNum) {
+  const btn1 = document.getElementById('slot-btn-1');
+  const btn2 = document.getElementById('slot-btn-2');
+  const activeCls = "py-2 px-2 rounded-xl text-xs font-black bg-slate-900 text-white shadow-xs transition active:scale-95 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1";
+  const inactiveCls = "py-2 px-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition active:scale-95 cursor-pointer whitespace-nowrap flex items-center justify-center gap-1";
+  if (btn1) btn1.className = slotNum === 1 ? activeCls : inactiveCls;
+  if (btn2) btn2.className = slotNum === 2 ? activeCls : inactiveCls;
+}
+
+function switchQuoteSlot(targetSlot) {
+  if (window.activeQuoteSlot === targetSlot) return;
+  const currentData = gatherQuotationData();
+  window.quoteSlotData['slot' + window.activeQuoteSlot] = JSON.parse(JSON.stringify(currentData));
+  window.activeQuoteSlot = targetSlot;
+  updateSlotButtonsUI(targetSlot);
+
+  const savedTarget = window.quoteSlotData['slot' + targetSlot];
+  if (savedTarget) {
+    applyQuotationData(savedTarget);
+  } else {
+    // 처음 2안으로 넘어갈 때 고객 기본정보는 유지하고 품목만 새로 시작
+    const baseData = {
+      type: currentData.type,
+      mode: currentData.mode,
+      name: currentData.name,
+      cPhone: currentData.cPhone,
+      phone: currentData.storePhone || '031-767-1044',
+      manager: currentData.manager,
+      date: currentData.date,
+      no: currentData.no,
+      deliveryDate: currentData.deliveryDate,
+      lumpItems: [],
+      subItems: [],
+      lumpCard: currentData.lumpCard,
+      subCardCorp: currentData.subCardCorp,
+      subCardTier: currentData.subCardTier
+    };
+    applyQuotationData(baseData);
+  }
+}
+window.switchQuoteSlot = switchQuoteSlot;
+
+function copySlot1ToSlot2() {
+  if (window.activeQuoteSlot === 1) {
+    window.quoteSlotData.slot1 = JSON.parse(JSON.stringify(gatherQuotationData()));
+  } else if (!window.quoteSlotData.slot1) {
+    window.quoteSlotData.slot1 = JSON.parse(JSON.stringify(gatherQuotationData()));
+  }
+  window.quoteSlotData.slot2 = JSON.parse(JSON.stringify(window.quoteSlotData.slot1));
+  window.activeQuoteSlot = 2;
+  updateSlotButtonsUI(2);
+  applyQuotationData(window.quoteSlotData.slot2);
+
+  const toast = document.getElementById('slot-copy-toast');
+  if (toast) {
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 3500);
+  }
+}
+window.copySlot1ToSlot2 = copySlot1ToSlot2;
+
 function calc() {
 const typeText = document.querySelector('input[name="i-type"]:checked')?.value || "일반";
 const cName = document.getElementById('i-name').value ? `[${typeText}] ${document.getElementById('i-name').value} 고객님` : `[${typeText}] 고객님`;
@@ -1727,13 +1934,28 @@ const lCardText = document.getElementById('l-card')?.value; setTxt('s1-card', lC
 
 let lSum = 0; let s1Tbody = '';
 document.querySelectorAll('.l-name').forEach((el, i) => {
-const n = el.value || '-'; const m = document.querySelectorAll('.l-model')[i].value || '-'; const qty = parseInt(document.querySelectorAll('.l-qty')[i].value) || 1; const p = parseInt(document.querySelectorAll('.l-price')[i].value) || 0;
+const n = el.value || '-'; const m = document.querySelectorAll('.l-model')[i].value || '-'; const qty = parseInt(document.querySelectorAll('.l-qty')[i].value) || 1; const priceEl = document.querySelectorAll('.l-price')[i]; const p = parseInt(priceEl?.value) || 0;
+const krBadge = priceEl?.parentElement?.querySelector('.l-price-kr');
+if (krBadge) {
+  const krTxt = formatKoreanCurrency(p * qty);
+  if (krTxt) { krBadge.innerText = qty > 1 ? `${formatKoreanCurrency(p)} (합 ${krTxt})` : krTxt; krBadge.classList.remove('hidden'); }
+  else { krBadge.innerText = ''; krBadge.classList.add('hidden'); }
+}
 lSum += p * qty;
-if(n !== '-' || p > 0) s1Tbody += `<tr><td>${n}</td><td class="model-cell">${m}</td><td class="text-center">${qty}</td><td class="text-right">${format(p * qty)} 원</td></tr>`;
+if(n !== '-' || p > 0) s1Tbody += `<tr><td>${n}</td><td class="model-cell">${m}</td><td class="text-center tabular-nums">${qty}</td><td class="text-right tabular-nums">${format(p * qty)} 원</td></tr>`;
 });
 document.getElementById('s1-tbody').innerHTML = s1Tbody;
 
 const lDc = getVal('l-dc'); const lPtUse = getVal('l-pt-use'); const lPtTot = getVal('l-pt-tot');
+[['l-dc', 'kr-l-dc'], ['l-pt-tot', 'kr-l-pt-tot'], ['l-pt-use', 'kr-l-pt-use'], ['l-cash', 'kr-l-cash'], ['s-cash', 'kr-s-cash']].forEach(([inputId, badgeId]) => {
+  const val = getVal(inputId);
+  const badgeEl = document.getElementById(badgeId);
+  if (badgeEl) {
+    const kr = formatKoreanCurrency(val);
+    if (kr) { badgeEl.innerText = kr; badgeEl.classList.remove('hidden'); }
+    else { badgeEl.innerText = ''; badgeEl.classList.add('hidden'); }
+  }
+});
 let lHpVal = 0; let lHpMonth = 0; let lHpCnt = 0;
 document.querySelectorAll('.hp-lump-row').forEach(row => {
 const v = row.querySelector('.hp-val').value; const c = parseInt(row.querySelector('.hp-cnt').value);
@@ -1771,25 +1993,25 @@ if(HIPREED[v]) { lHpVal += HIPREED[v].lump * c; lHpMonth += HIPREED[v].monthly *
     window.currentSumLump = lSum;
     
     // Sheet 1 - Pay Table
-    let s1PayRows = `<tr><td class="bg-gray-50 font-bold w-2/3">총 행사가 합계</td><td class="text-right font-bold text-gray-900">${format(lSum)} 원</td></tr>`;
-    if(lDc > 0) s1PayRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 기본 즉시 할인액</td><td class="text-right text-rose-600">- ${format(lDc)} 원</td></tr>`;
+    let s1PayRows = `<tr><td class="bg-gray-50 font-bold w-2/3">총 행사가 합계</td><td class="text-right font-bold text-gray-900 tabular-nums">${format(lSum)} 원</td></tr>`;
+    if(lDc > 0) s1PayRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 기본 즉시 할인액</td><td class="text-right text-rose-600 tabular-nums">- ${format(lDc)} 원</td></tr>`;
     benefitRows.filter(b=>b.type==='dc').forEach(b => {
-        s1PayRows += `<tr><td class="bg-gray-50 text-gray-800">(-) [추가할인] ${b.desc}</td><td class="text-right text-rose-600">- ${format(b.val)} 원</td></tr>`;
+        s1PayRows += `<tr><td class="bg-gray-50 text-gray-800">(-) [추가할인] ${b.desc}</td><td class="text-right text-rose-600 tabular-nums">- ${format(b.val)} 원</td></tr>`;
     });
-    if(lPtUse > 0) s1PayRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 포인트 즉시 사용</td><td class="text-right text-rose-600">- ${format(lPtUse)} 원</td></tr>`;
-    if(lHpVal > 0) s1PayRows += `<tr><td class="bg-gray-50 font-bold text-rose-700">(-) 하이프리드 결합 지원금</td><td class="text-right text-rose-600 font-bold">- ${format(lHpVal)} 원</td></tr>`;
-    s1PayRows += `<tr><td class="bg-gray-200 font-extrabold text-gray-900">최종 결제 금액 (실결제 기준)</td><td class="text-right font-extrabold text-base text-gray-900">${format(lPay)} 원</td></tr>`;
+    if(lPtUse > 0) s1PayRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 포인트 즉시 사용</td><td class="text-right text-rose-600 tabular-nums">- ${format(lPtUse)} 원</td></tr>`;
+    if(lHpVal > 0) s1PayRows += `<tr><td class="bg-gray-50 font-bold text-rose-700">(-) 하이프리드 결합 지원금</td><td class="text-right text-rose-600 font-bold tabular-nums">- ${format(lHpVal)} 원</td></tr>`;
+    s1PayRows += `<tr><td class="bg-gray-200 font-extrabold text-gray-900">최종 결제 금액 (실결제 기준)</td><td class="text-right font-extrabold text-base text-gray-900 tabular-nums">${format(lPay)} 원</td></tr>`;
     
     document.getElementById('s1-pay-tbody').innerHTML = s1PayRows;
 
     // Sheet 1 - Cash Table
     let s1CashRows = '';
-    if(lAutoCash > 0) s1CashRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 결제금액별 자동 캐시백</td><td class="text-right text-blue-600">- ${format(lAutoCash)} 원</td></tr>`;
-    if(getVal('l-cash') > 0) s1CashRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 기본 추가 캐시백</td><td class="text-right text-blue-600">- ${format(getVal('l-cash'))} 원</td></tr>`;
+    if(lAutoCash > 0) s1CashRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 결제금액별 자동 캐시백</td><td class="text-right text-blue-600 tabular-nums">- ${format(lAutoCash)} 원</td></tr>`;
+    if(getVal('l-cash') > 0) s1CashRows += `<tr><td class="bg-gray-50 text-gray-800">(-) 기본 추가 캐시백</td><td class="text-right text-blue-600 tabular-nums">- ${format(getVal('l-cash'))} 원</td></tr>`;
     benefitRows.filter(b=>b.type==='etc').forEach(b => {
-        s1CashRows += `<tr><td class="bg-gray-50 text-gray-800">(-) [추가혜택] ${b.desc}</td><td class="text-right text-blue-600">- ${format(b.val)} 원</td></tr>`;
+        s1CashRows += `<tr><td class="bg-gray-50 text-gray-800">(-) [추가혜택] ${b.desc}</td><td class="text-right text-blue-600 tabular-nums">- ${format(b.val)} 원</td></tr>`;
     });
-    s1CashRows += `<tr class="border-t-2 border-gray-400"><td class="bg-gray-100 font-extrabold text-gray-900">★ 고객 체감 순비용</td><td class="text-right font-extrabold text-xl text-rose-700">${format(lNet)} 원</td></tr>`;
+    s1CashRows += `<tr class="border-t-2 border-rose-500 bg-rose-50"><td class="font-extrabold text-gray-900">★ 고객 체감 순비용</td><td class="text-right font-extrabold text-xl text-rose-700 tabular-nums">${format(lNet)} 원</td></tr>`;
     
     document.getElementById('s1-cash-tbody').innerHTML = s1CashRows;
 
@@ -1811,9 +2033,15 @@ const lhpMonthView = document.getElementById('lump-hp-month'); if(lhpMonthView) 
 
 let sMonthSum = 0; let sMonth36 = 0; let sMonth60 = 0; let sContract = 0; let s2Tbody = ''; let has60Month = false;
 document.querySelectorAll('.s-name').forEach((el, i) => {
-const n = el.value || '-'; const m = document.querySelectorAll('.s-model')[i].value || '-'; const p = parseInt(document.querySelectorAll('.s-price')[i].value) || 0; const mo = parseInt(document.querySelectorAll('.s-months')[i].value) || 60;
+const n = el.value || '-'; const m = document.querySelectorAll('.s-model')[i].value || '-'; const sPriceEl = document.querySelectorAll('.s-price')[i]; const p = parseInt(sPriceEl?.value) || 0; const mo = parseInt(document.querySelectorAll('.s-months')[i].value) || 60;
+const sKrBadge = sPriceEl?.parentElement?.querySelector('.s-price-kr');
+if (sKrBadge) {
+  const sKrTxt = formatKoreanCurrency(p);
+  if (sKrTxt) { sKrBadge.innerText = '월 ' + sKrTxt; sKrBadge.classList.remove('hidden'); }
+  else { sKrBadge.innerText = ''; sKrBadge.classList.add('hidden'); }
+}
 sMonthSum += p; if (mo === 36) sMonth36 += p; if (mo === 60) { sMonth60 += p; has60Month = true; } sContract += p * mo;
-if(n !== '-' || p > 0) s2Tbody += `<tr><td>${n}</td><td class="model-cell">${m}</td><td class="text-center">${mo}개월</td><td class="text-right">${format(p)} 원</td><td class="text-right">${format(p*mo)} 원</td></tr>`;
+if(n !== '-' || p > 0) s2Tbody += `<tr><td>${n}</td><td class="model-cell">${m}</td><td class="text-center tabular-nums">${mo}개월</td><td class="text-right tabular-nums">${format(p)} 원</td><td class="text-right tabular-nums">${format(p*mo)} 원</td></tr>`;
 });
 document.getElementById('s2-tbody').innerHTML = s2Tbody;
 
@@ -2240,16 +2468,13 @@ const fileInfos = await Promise.all(files.map(async f => ({
 const responseText = await callGeminiAPI(prompt, fileInfos, apiKey);
 const data = JSON.parse(responseText.replace(/```json|```/g, '').trim());
 document.getElementById('lump-inputs').innerHTML = '';
-let html = '';
-data.items.forEach(item => { html += `
-<div class="flex gap-1 mb-1 items-center l-row">
-<input type="text" class="input-box w-[25%] text-[10px] font-bold l-name" value="${item.name}">
-<input type="text" class="input-box w-[35%] text-[10px] l-model" value="${item.model}">
-<input type="number" class="input-box w-[15%] text-xs text-center l-qty" value="${item.qty}">
-<input type="number" class="input-box w-[25%] text-xs text-right l-price" value="${item.price}">
-<button type="button" onclick="this.parentElement.remove(); calc();" class="bg-gray-200 text-gray-500 px-2 py-1 rounded text-xs hover:bg-gray-300">X</button>
-</div>`; });
-document.getElementById('lump-inputs').innerHTML = html;
+if (Array.isArray(data.items) && data.items.length > 0) {
+  data.items.forEach(item => {
+    addLumpRow(item.name || '', item.model || '', item.price || '', item.qty || 1);
+  });
+} else {
+  addLumpRow();
+}
 if (data.benefits) {
     if (data.benefits.instant_dc) document.getElementById('l-dc').value = data.benefits.instant_dc;
     if (data.benefits.point_tot) document.getElementById('l-pt-tot').value = data.benefits.point_tot;
@@ -2275,6 +2500,9 @@ function resetQuotation() {
 }
 
 function executeResetQuotation() {
+  window.quoteSlotData = { slot1: null, slot2: null };
+  window.activeQuoteSlot = 1;
+  if (typeof updateSlotButtonsUI === 'function') updateSlotButtonsUI(1);
   document.querySelector('input[name="i-type"][value="일반"]').checked = true;
   ['i-name', 'i-c-phone', 'i-manager', 'i-no', 'i-delivery-date', 'l-dc', 'l-pt-tot', 'l-pt-use', 'l-cash', 's-cash', 'i-memo-customer', 'i-memo'].forEach(id => { 
     const el = document.getElementById(id); 
@@ -2304,29 +2532,46 @@ const corp = document.getElementById('s-card-corp').value; const tierSelect = do
 if (SUB_CARDS[corp] && SUB_CARDS[corp].tiers) SUB_CARDS[corp].tiers.forEach(t => { const opt = document.createElement('option'); opt.value = t.v; opt.text = t.t; tierSelect.appendChild(opt); });
 }
 
-// [수정됨] 전체 캡처 강제 늘림 코드를 삭제하고, 왜곡 없이 보이는 화면 그대로 캡처하도록 간소화
+// [고해상도 공식 비율 캡처] 폴드를 접든 펼치든 항상 780px 공식 견적서 비율로 선명하게 캡처 후 원복
 async function runCapture(targetEl, filename) {
 return new Promise((resolve) => {
-showModal('이미지 변환 중... 📸', '기기에 이미지를 바로 저장합니다.<br>잠시만 기다려주세요.', false);
+showModal('이미지 변환 중... 📸', '기기에 고해상도 공식 견적서 이미지를 저장합니다.<br>잠시만 기다려주세요.', false);
 const origScrollX = window.scrollX; const origScrollY = window.scrollY; window.scrollTo(0, 0);
 const sheetPanel = document.getElementById('sheet-panel');
 const origMaxHeight = sheetPanel ? sheetPanel.style.maxHeight : '';
 const origOverflow = sheetPanel ? sheetPanel.style.overflow : '';
 const origOverflowY = sheetPanel ? sheetPanel.style.overflowY : '';
+const origTargetWidth = targetEl ? targetEl.style.width : '';
+const origTargetMinWidth = targetEl ? targetEl.style.minWidth : '';
+const origTargetMaxWidth = targetEl ? targetEl.style.maxWidth : '';
+const origTargetPadding = targetEl ? targetEl.style.padding : '';
+
 if (sheetPanel) {
   sheetPanel.style.maxHeight = 'none';
   sheetPanel.style.overflow = 'visible';
   sheetPanel.style.overflowY = 'visible';
 }
+if (targetEl) {
+  targetEl.style.width = '780px';
+  targetEl.style.minWidth = '780px';
+  targetEl.style.maxWidth = '780px';
+  targetEl.style.padding = '36px';
+}
 
 setTimeout(async () => {
 try {
 const canvas = await html2canvas(targetEl, {
-scale: 2, backgroundColor: "#ffffff", useCORS: true, allowTaint: false,
+scale: 2, windowWidth: 1024, backgroundColor: "#ffffff", useCORS: true, allowTaint: false,
 scrollY: 0, windowY: 0, logging: false,
 ignoreElements: (node) => ['custom-modal', 'ai-msg-modal', 'admin-settings-modal', 'save-quote-modal', 'manage-quote-modal'].includes(node.id)
 });
 
+if (targetEl) {
+  targetEl.style.width = origTargetWidth;
+  targetEl.style.minWidth = origTargetMinWidth;
+  targetEl.style.maxWidth = origTargetMaxWidth;
+  targetEl.style.padding = origTargetPadding;
+}
 if (sheetPanel) {
   sheetPanel.style.maxHeight = origMaxHeight;
   sheetPanel.style.overflow = origOverflow;
@@ -2344,9 +2589,15 @@ a.click();
 document.body.removeChild(a);
 
 closeModal();
-showModal('저장 완료 ✅', `이미지 파일(${filename})이 기기에 다운로드되었습니다.`, true, false);
+showModal('저장 완료 ✅', `공식 비율 견적서 이미지(${filename})가 기기에 다운로드되었습니다.`, true, false);
 resolve();
 } catch(e) {
+if (targetEl) {
+  targetEl.style.width = origTargetWidth;
+  targetEl.style.minWidth = origTargetMinWidth;
+  targetEl.style.maxWidth = origTargetMaxWidth;
+  targetEl.style.padding = origTargetPadding;
+}
 if (sheetPanel) {
   sheetPanel.style.maxHeight = origMaxHeight;
   sheetPanel.style.overflow = origOverflow;
