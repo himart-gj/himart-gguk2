@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppStep,
   extractGeneralPlanData,
@@ -121,6 +121,10 @@ export function App() {
 
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState(null as string | null);
+  const [subScanNotice, setSubScanNotice] = useState<string | null>(null);
+  const subScanNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   const [isParsingGeneral, setIsParsingGeneral] = useState(false);
   const [parseGeneralError, setParseGeneralError] = useState(
@@ -489,6 +493,13 @@ export function App() {
           'AS연장보험 + 가전수리올케어';
 
         setCurrentState((prev) => {
+          const existingValidItems = prev.items.filter(
+            (it) =>
+              (it.category || '').trim() !== '' ||
+              (it.modelName || '').trim() !== '' ||
+              (Number(it.monthlyFee) || 0) > 0
+          );
+
           const mappedItems =
             extractedItems.length > 0
               ? extractedItems.map((it: any, idx: number) => {
@@ -499,8 +510,10 @@ export function App() {
                       ? 60
                       : detectedPeriod;
                   return {
-                    id: `ai-${Date.now()}-${idx}`,
-                    category: it.category || `구독 가전 ${idx + 1}`,
+                    id: `ai-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+                    category:
+                      it.category ||
+                      `구독 가전 ${existingValidItems.length + idx + 1}`,
                     modelName:
                       it.modelName || it.modelCode || data.urlModelCode || '',
                     modelCode:
@@ -523,9 +536,32 @@ export function App() {
                     cardName: it.cardName || rawCardName,
                   };
                 })
-              : prev.items;
+              : [];
 
-          const repPeriod: SubscriptionPeriod = mappedItems.every(
+          const nextItems =
+            mappedItems.length === 0
+              ? prev.items
+              : existingValidItems.length === 0
+              ? mappedItems
+              : [...existingValidItems, ...mappedItems];
+
+          if (mappedItems.length > 0) {
+            const firstAdded = mappedItems[0];
+            const addedLabel = firstAdded.modelName
+              ? `${firstAdded.category} (${firstAdded.modelName})`
+              : firstAdded.category;
+            if (subScanNoticeTimerRef.current) {
+              clearTimeout(subScanNoticeTimerRef.current);
+            }
+            setSubScanNotice(
+              `✓ [${addedLabel}] 품목이 구독 목록에 추가되었습니다! (현재 총 ${nextItems.length}품목)`
+            );
+            subScanNoticeTimerRef.current = setTimeout(() => {
+              setSubScanNotice(null);
+            }, 3000);
+          }
+
+          const repPeriod: SubscriptionPeriod = nextItems.every(
             (it) => (it.period || 60) === 36
           )
             ? 36
@@ -533,7 +569,7 @@ export function App() {
 
           return {
             ...prev,
-            items: mappedItems,
+            items: nextItems,
             subscriptionPeriod: repPeriod,
             careService: firstItem.careService || prev.careService,
             warrantyType: resolvedWarrantyType,
@@ -672,6 +708,7 @@ export function App() {
           onParseImage={handleParseImage}
           isParsing={isParsing}
           parseError={parseError}
+          subScanNotice={subScanNotice}
           onParseGeneralImage={handleParseGeneralImage}
           isParsingGeneral={isParsingGeneral}
           parseGeneralError={parseGeneralError}

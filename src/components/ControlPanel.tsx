@@ -53,6 +53,7 @@ interface ControlPanelProps {
   onParseImage: (file: File) => Promise<void>;
   isParsing: boolean;
   parseError: string | null;
+  subScanNotice?: string | null;
   onParseGeneralImage?: (file: File) => Promise<void>;
   isParsingGeneral?: boolean;
   parseGeneralError?: string | null;
@@ -69,6 +70,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onParseImage,
   isParsing,
   parseError,
+  subScanNotice = null,
   onParseGeneralImage,
   isParsingGeneral = false,
   parseGeneralError = null,
@@ -255,6 +257,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     });
   };
 
+  const handleResetGeneralItems = () => {
+    onChange((prev) => ({
+      ...prev,
+      generalItems: [
+        {
+          id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          category: '',
+          modelName: '',
+          quantity: 1,
+          unitPrice: 0,
+        },
+      ],
+    }));
+  };
+
   // 추가 혜택 추가 / 수정 / 삭제
   const handleAddExtraBenefit = () => {
     const newBenefit: GeneralExtraBenefitItem = {
@@ -397,6 +414,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         subscriptionPeriod: repPeriod,
       };
     });
+  };
+
+  const handleResetSubItems = () => {
+    onChange((prev) => ({
+      ...prev,
+      items: [
+        {
+          id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          category: '',
+          modelName: '',
+          monthlyFee: 0,
+          period: 60,
+          careService: SUB_CARE_OPTIONS[0],
+          warrantyType: '5년 무상 A/S 기본 포함',
+        },
+      ],
+      subscriptionPeriod: 60,
+      warrantyYears: 5,
+    }));
   };
 
   const handleUpdateSubItem = (id: string, patch: Partial<SubscriptionItem>) => {
@@ -723,6 +759,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> 품목 추가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetGeneralItems}
+                    title="품목 목록 초기화"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-extrabold text-xs transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" /> 초기화
                   </button>
                 </div>
               </div>
@@ -1259,6 +1303,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   </>
                 )}
               </button>
+              {subScanNotice && (
+                <p className="mt-1.5 text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 px-3 text-center">
+                  {subScanNotice}
+                </p>
+              )}
               {parseError && (
                 <p className="mt-1.5 text-xs font-bold text-red-600 text-center">
                   {parseError}
@@ -1279,6 +1328,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> 품목 추가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetSubItems}
+                    title="구독 품목 목록 초기화"
+                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-extrabold text-xs transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" /> 초기화
                   </button>
                 </div>
               </div>
