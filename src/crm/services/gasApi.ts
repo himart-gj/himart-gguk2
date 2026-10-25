@@ -1,24 +1,7 @@
 import { CustomerItem, CustomerStatus, QuoteRecord } from '../types/crm';
-import { INITIAL_CUSTOMERS } from '../data/mockData';
 import { getNowDateTimeStr } from '../utils/date';
 
-const DEFAULT_GAS_URL =
-  'https://script.google.com/macros/s/AKfycbzbd3L6eB-3_z8xSw-wch23yBe6zEesf-2yVVf7c-gE080BzH-G8d7cV8z2iH2s5t13/exec';
-
-const STORAGE_KEY_URL = 'gookji_crm_gas_url';
 const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
-
-export function getGasUrl(): string {
-  return localStorage.getItem(STORAGE_KEY_URL) || DEFAULT_GAS_URL;
-}
-
-export function setGasUrl(url: string): void {
-  if (!url.trim()) {
-    localStorage.removeItem(STORAGE_KEY_URL);
-  } else {
-    localStorage.setItem(STORAGE_KEY_URL, url.trim());
-  }
-}
 
 function normalizePhoneKey(phone: string): string {
   return String(phone || '').replace(/\D/g, '');
@@ -103,7 +86,7 @@ export function getCachedCustomers(): CustomerItem[] {
   } catch (e) {
     console.error('Failed to read local customer cache', e);
   }
-  return INITIAL_CUSTOMERS;
+  return [];
 }
 
 export function setCachedCustomers(customers: CustomerItem[]): CustomerItem[] {
@@ -116,78 +99,11 @@ export function setCachedCustomers(customers: CustomerItem[]): CustomerItem[] {
   return deduped;
 }
 
-function normalizeStatus(raw: string): CustomerStatus {
-  const valid: CustomerStatus[] = [
-    '신규/미발송',
-    '발송완료',
-    '상담진행중',
-    '미구매/고민중',
-    '계약완료',
-    '취소/보류',
-  ];
-  const trimmed = (raw || '').trim() as CustomerStatus;
-  return valid.includes(trimmed) ? trimmed : '신규/미발송';
-}
-
 export async function fetchCustomersFromGas(): Promise<{
   customers: CustomerItem[];
   fromCloud: boolean;
 }> {
-  const url = getGasUrl();
-  const localCache = getCachedCustomers();
-
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(url, {
-      method: 'GET',
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    const rows: any[] = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.data)
-      ? data.data
-      : Array.isArray(data?.customers)
-      ? data.customers
-      : [];
-
-    if (rows.length > 0) {
-      const cloudMapped: CustomerItem[] = rows.map((r, idx) => ({
-        id: String(r.id || r.ID || `row-${idx + 1}`),
-        regDate: String(r.regDate || r['등록일시'] || r.date || '2025-05-15 10:00'),
-        name: String(r.name || r['고객명'] || '이름없음'),
-        phone: String(r.phone || r['연락처'] || ''),
-        items: String(r.items || r['관심품목'] || r['상담품목'] || ''),
-        paidAmount: Number(r.paidAmount ?? r['결제금액'] ?? 0) || 0,
-        netAmount: Number(r.netAmount ?? r['체감가'] ?? 0) || 0,
-        expectedBenefit: String(r.expectedBenefit || r['예상혜택'] || ''),
-        deliveryDate: String(r.deliveryDate || r['배송희망일'] || ''),
-        status: normalizeStatus(r.status || r['상태']),
-        memo: String(r.memo || r['상담메모'] || ''),
-        orderNo: String(r.orderNo || r['전표번호'] || ''),
-        giftItems: String(r.giftItems || r['사은품'] || ''),
-        giftSent: Boolean(r.giftSent ?? r['사은품지급'] ?? false),
-        logisticsConfirmed: Boolean(
-          r.logisticsConfirmed ?? r['물류확정'] ?? false
-        ),
-        followUpDate: String(r.followUpDate || r['재연락예정일'] || ''),
-        quotes: Array.isArray(r.quotes) ? r.quotes : [],
-      }));
-
-      const combined = deduplicateCustomers([...localCache, ...cloudMapped]);
-      setCachedCustomers(combined);
-      return { customers: combined, fromCloud: true };
-    }
-  } catch (err) {
-    console.warn('GAS Cloud fetch fallback to local cache:', err);
-  }
-
-  return { customers: localCache, fromCloud: false };
+  return { customers: getCachedCustomers(), fromCloud: false };
 }
 
 export async function saveCustomerQuote(payload: {
@@ -335,26 +251,8 @@ export async function saveCustomerQuote(payload: {
 }
 
 export async function syncCustomerToGas(
-  action: 'create' | 'update' | 'delete' | 'upsertCustomer',
-  customer: Partial<CustomerItem> & { id: string }
+  _action: 'create' | 'update' | 'delete' | 'upsertCustomer',
+  _customer: Partial<CustomerItem> & { id: string }
 ): Promise<boolean> {
-  const url = getGasUrl();
-  try {
-    await fetch(url, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify({
-        action,
-        customer,
-        timestamp: new Date().toISOString(),
-      }),
-    });
-    return true;
-  } catch (err) {
-    console.warn('GAS sync warning (saved locally):', err);
-    return false;
-  }
+  return true;
 }
