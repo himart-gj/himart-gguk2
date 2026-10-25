@@ -14,6 +14,7 @@ import {
   GeneralHiPreedKey,
   GeneralPurchaseItem,
   getGeneralPlan1And2Summaries,
+  getSubscriptionPeriodSummary,
   HI_PLUS_PLANS,
   HiPlusKey,
   MAX_GENERAL_HIPREED_ACCOUNTS,
@@ -345,37 +346,75 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   };
 
   const handleAddSubItem = () => {
-    const newItem: SubscriptionItem = {
-      id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      category: '',
-      modelName: '',
-      monthlyFee: 0,
-      careService: SUB_CARE_OPTIONS[0],
-      warrantyType: state.warrantyType || 'AS연장보험 + 가전수리올케어',
-    };
-    onChange((prev) => ({
-      ...prev,
-      items: [...prev.items, newItem],
-    }));
+    onChange((prev) => {
+      const lastItem = prev.items[prev.items.length - 1];
+      const defaultPeriod: SubscriptionPeriod =
+        lastItem?.period === 36
+          ? 36
+          : lastItem?.period === 60
+          ? 60
+          : prev.subscriptionPeriod === 36
+          ? 36
+          : 60;
+      const newItem: SubscriptionItem = {
+        id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        category: '',
+        modelName: '',
+        monthlyFee: 0,
+        period: defaultPeriod,
+        careService: SUB_CARE_OPTIONS[0],
+        warrantyType:
+          defaultPeriod === 36
+            ? '3년 무상 A/S 기본 포함'
+            : '5년 무상 A/S 기본 포함',
+      };
+      const nextItems = [...prev.items, newItem];
+      const repPeriod: SubscriptionPeriod = nextItems.every(
+        (it) => (it.period || 60) === 36
+      )
+        ? 36
+        : 60;
+      return {
+        ...prev,
+        items: nextItems,
+        subscriptionPeriod: repPeriod,
+      };
+    });
   };
 
   const handleRemoveSubItem = (id: string) => {
     onChange((prev) => {
       if (prev.items.length <= 1) return prev;
+      const nextItems = prev.items.filter((it) => it.id !== id);
+      const repPeriod: SubscriptionPeriod = nextItems.every(
+        (it) => (it.period || 60) === 36
+      )
+        ? 36
+        : 60;
       return {
         ...prev,
-        items: prev.items.filter((it) => it.id !== id),
+        items: nextItems,
+        subscriptionPeriod: repPeriod,
       };
     });
   };
 
   const handleUpdateSubItem = (id: string, patch: Partial<SubscriptionItem>) => {
-    onChange((prev) => ({
-      ...prev,
-      items: prev.items.map((it) =>
+    onChange((prev) => {
+      const nextItems = prev.items.map((it) =>
         it.id === id ? { ...it, ...patch } : it
-      ),
-    }));
+      );
+      const repPeriod: SubscriptionPeriod = nextItems.every(
+        (it) => (it.period || 60) === 36
+      )
+        ? 36
+        : 60;
+      return {
+        ...prev,
+        items: nextItems,
+        subscriptionPeriod: repPeriod,
+      };
+    });
   };
 
   const handleAdjustHiPlus = (key: HiPlusKey, delta: number) => {
@@ -413,15 +452,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const currentCardTier = currentCard?.tiers.find(
     (t) => t.id === state.selectedCardTierId
   );
-  const hiSummary = calculateHiPlusSummary(
-    state.hiPlusCounts,
+  const subPeriodInfo = getSubscriptionPeriodSummary(
+    state.items,
     state.subscriptionPeriod
   );
+  const representativePeriod = subPeriodInfo.representativePeriod;
+  const periodLabel = subPeriodInfo.periodLabel;
+  const totalBaseMonthly = subPeriodInfo.totalBaseMonthly;
+  const totalPrincipal = subPeriodInfo.totalPrincipal;
 
-  const totalBaseMonthly = state.items.reduce(
-    (sum, item) => sum + (Number(item.monthlyFee) || 0),
-    0
+  const hiSummary = calculateHiPlusSummary(
+    state.hiPlusCounts,
+    representativePeriod
   );
+
   const cardDiscount = currentCardTier?.monthlyDiscount || 0;
   const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
   const rawFinalMonthly = totalBaseMonthly - cardDiscount - hiPlusMonthly;
@@ -1222,34 +1266,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               )}
             </div>
 
-            {/* 1. 구독 품목 및 월요금 + 품목별 개별 케어서비스 */}
+            {/* 1. 구독 품목 및 월요금 + 품목별 개별 개월수/케어서비스 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs sm:text-sm font-black text-slate-900">
                   1. 구독 품목 및 월요금 ({state.activeGeneralPlan}안)
                 </label>
                 <div className="flex items-center gap-1.5">
-                  <div className="inline-flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
-                    {([36, 60] as SubscriptionPeriod[]).map((period) => (
-                      <button
-                        key={period}
-                        type="button"
-                        onClick={() =>
-                          onChange((prev) => ({
-                            ...prev,
-                            subscriptionPeriod: period,
-                          }))
-                        }
-                        className={`px-2.5 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                          state.subscriptionPeriod === period
-                            ? 'bg-rose-600 text-white shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        {period}개월
-                      </button>
-                    ))}
-                  </div>
                   <button
                     type="button"
                     onClick={handleAddSubItem}
@@ -1260,146 +1283,183 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
               </div>
 
-              {/* 품목 행 + 품목별 개별 케어서비스 선택/입력 줄 */}
-              <div className="max-h-[230px] overflow-y-auto space-y-2 pr-1">
-                {state.items.map((item, index) => (
-                  <div
-                    key={item.id}
-                    className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1.5"
-                  >
-                    <div className="grid grid-cols-12 gap-1.5 items-center">
-                      <input
-                        type="text"
-                        value={item.category}
-                        onChange={(e) =>
-                          handleUpdateSubItem(item.id, {
-                            category: e.target.value,
-                          })
-                        }
-                        placeholder={`품목명 ${index + 1}`}
-                        className="col-span-4 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
-                      />
-                      <input
-                        type="text"
-                        value={item.modelName}
-                        onChange={(e) =>
-                          handleUpdateSubItem(item.id, {
-                            modelName: e.target.value,
-                            modelCode: e.target.value,
-                          })
-                        }
-                        placeholder="모델코드(예:FG24GN)"
-                        className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
-                      />
-                      <div className="col-span-4 relative">
+              {/* 품목 행 + 품목별 개별 [36개월 | 60개월] 토글 & 케어서비스 선택/입력 줄 */}
+              <div className="max-h-[260px] overflow-y-auto space-y-2 pr-1">
+                {state.items.map((item, index) => {
+                  const itemPeriod: SubscriptionPeriod =
+                    item.period === 36
+                      ? 36
+                      : item.period === 60
+                      ? 60
+                      : state.subscriptionPeriod === 36
+                      ? 36
+                      : 60;
+                  const itemWarrantyBadge =
+                    itemPeriod === 36 ? '3년 무상 A/S' : '5년 무상 A/S';
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1.5"
+                    >
+                      <div className="grid grid-cols-12 gap-1.5 items-center">
                         <input
-                          type="number"
-                          step={1000}
-                          value={item.monthlyFee || ''}
+                          type="text"
+                          value={item.category}
                           onChange={(e) =>
                             handleUpdateSubItem(item.id, {
-                              monthlyFee: Math.max(0, Number(e.target.value)),
+                              category: e.target.value,
                             })
                           }
-                          placeholder="월 납부요금(원)"
-                          className="w-full pl-2 pr-6 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-900 text-right focus:border-blue-600 focus:outline-none"
+                          placeholder={`품목명 ${index + 1}`}
+                          className="col-span-3 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
                         />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
-                          원
-                        </span>
-                      </div>
-                      <div className="col-span-1 flex justify-center">
-                        {state.items.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveSubItem(item.id)}
-                            className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 아래쪽 줄: 품목별 개별 케어서비스 선택/입력 + 우측 보장서비스 배지 */}
-                    <div className="grid grid-cols-12 gap-1.5 items-center pt-0.5">
-                      <select
-                        value={
-                          SUB_CARE_OPTIONS.includes(item.careService)
-                            ? item.careService
-                            : 'custom'
-                        }
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val !== 'custom') {
+                        <input
+                          type="text"
+                          value={item.modelName}
+                          onChange={(e) =>
                             handleUpdateSubItem(item.id, {
-                              careService: val,
-                              careType: val,
-                            });
+                              modelName: e.target.value,
+                              modelCode: e.target.value,
+                            })
                           }
-                        }}
-                        className="col-span-4 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-extrabold text-slate-700 focus:border-blue-600 focus:outline-none"
-                      >
-                        {SUB_CARE_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                        <option value="custom">직접 입력 / AI추출</option>
-                      </select>
-
-                      <input
-                        type="text"
-                        value={item.careService || ''}
-                        onChange={(e) =>
-                          handleUpdateSubItem(item.id, {
-                            careService: e.target.value,
-                            careType: e.target.value,
-                          })
-                        }
-                        placeholder="케어서비스 (예: 안심케어_1)"
-                        className="col-span-5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
-                      />
-
-                      <div className="col-span-3 flex justify-end">
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-[10px] font-extrabold text-rose-700 truncate max-w-full"
-                          title={
-                            item.warrantyType ||
-                            state.warrantyType ||
-                            '5년 무상 A/S 기본 포함'
-                          }
-                        >
-                          🛡️{' '}
-                          {item.warrantyType ||
-                            state.warrantyType ||
-                            '5년 무상 A/S 기본 포함'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {item.contractAmount && item.contractAmount > 0 ? (
-                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 px-1 pt-0.5">
-                        <span>
-                          계약/결제금액:{' '}
-                          <strong className="text-slate-800">
-                            {item.contractAmount.toLocaleString()}원
-                          </strong>
-                        </span>
-                        {item.cardName && (
-                          <span className="text-blue-600 font-extrabold">
-                            전산 인식 카드: {item.cardName}
+                          placeholder="모델코드"
+                          className="col-span-2 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                        />
+                        {/* 품목별 개별 [36개월 | 60개월] 선택 토글 */}
+                        <div className="col-span-3 flex justify-center">
+                          <div className="inline-flex w-full bg-white p-0.5 rounded-lg border border-slate-200">
+                            {([36, 60] as SubscriptionPeriod[]).map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateSubItem(item.id, {
+                                    period: p,
+                                    warrantyType:
+                                      p === 36
+                                        ? '3년 무상 A/S 기본 포함'
+                                        : '5년 무상 A/S 기본 포함',
+                                  })
+                                }
+                                className={`flex-1 py-1 rounded-md font-extrabold text-[10px] sm:text-[11px] transition cursor-pointer whitespace-nowrap ${
+                                  itemPeriod === p
+                                    ? 'bg-rose-600 text-white shadow-2xs'
+                                    : 'text-slate-500 hover:text-slate-900'
+                                }`}
+                              >
+                                {p}개월
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="col-span-3 relative">
+                          <input
+                            type="number"
+                            step={1000}
+                            value={item.monthlyFee || ''}
+                            onChange={(e) =>
+                              handleUpdateSubItem(item.id, {
+                                monthlyFee: Math.max(0, Number(e.target.value)),
+                              })
+                            }
+                            placeholder="월 납부요금"
+                            className="w-full pl-2 pr-5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-900 text-right focus:border-blue-600 focus:outline-none"
+                          />
+                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                            원
                           </span>
-                        )}
+                        </div>
+                        <div className="col-span-1 flex justify-center">
+                          {state.items.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveSubItem(item.id)}
+                              className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    ) : null}
-                  </div>
-                ))}
+
+                      {/* 아래쪽 줄: 품목별 개별 케어서비스 선택/입력 + 우측 품목별 개월수 & 보장서비스 배지 */}
+                      <div className="grid grid-cols-12 gap-1.5 items-center pt-0.5">
+                        <select
+                          value={
+                            SUB_CARE_OPTIONS.includes(item.careService)
+                              ? item.careService
+                              : 'custom'
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val !== 'custom') {
+                              handleUpdateSubItem(item.id, {
+                                careService: val,
+                                careType: val,
+                              });
+                            }
+                          }}
+                          className="col-span-4 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-extrabold text-slate-700 focus:border-blue-600 focus:outline-none"
+                        >
+                          {SUB_CARE_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                          <option value="custom">직접 입력 / AI추출</option>
+                        </select>
+
+                        <input
+                          type="text"
+                          value={item.careService || ''}
+                          onChange={(e) =>
+                            handleUpdateSubItem(item.id, {
+                              careService: e.target.value,
+                              careType: e.target.value,
+                            })
+                          }
+                          placeholder="케어서비스 (예: 안심케어_1)"
+                          className="col-span-4 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                        />
+
+                        <div className="col-span-4 flex items-center justify-end gap-1">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-200/80 text-[10px] font-black text-slate-700 shrink-0">
+                            {itemPeriod}개월
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200 text-[10px] font-extrabold text-rose-700 truncate"
+                            title={`${itemPeriod}개월 구독 · ${itemWarrantyBadge} 기본 보장`}
+                          >
+                            🛡️ {itemWarrantyBadge}
+                          </span>
+                        </div>
+                      </div>
+
+                      {item.contractAmount && item.contractAmount > 0 ? (
+                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 px-1 pt-0.5">
+                          <span>
+                            계약/결제금액:{' '}
+                            <strong className="text-slate-800">
+                              {item.contractAmount.toLocaleString()}원
+                            </strong>
+                          </span>
+                          {item.cardName && (
+                            <span className="text-blue-600 font-extrabold">
+                              전산 인식 카드: {item.cardName}
+                            </span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
                 <span className="text-rose-600 font-extrabold">
-                  ✓ {state.warrantyType || '전 품목 5년 무상 A/S 기본 보장'}
+                  ✓ 구독기간: {periodLabel} (원금 합계{' '}
+                  {totalPrincipal.toLocaleString()}원)
                 </span>
                 <span className="text-slate-800 font-extrabold">
                   총 월 구독료 합계: {totalBaseMonthly.toLocaleString()}원
@@ -1508,7 +1568,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   const active = count > 0;
                   const canAdd = hiSummary.totalAccounts < MAX_HI_PLUS_ACCOUNTS;
                   const monthlyUnitSupport =
-                    state.subscriptionPeriod === 36
+                    representativePeriod === 36
                       ? plan.monthlySupport36
                       : plan.monthlySupport60;
 
@@ -1571,7 +1631,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div>
                   <div className="text-[11px] font-black text-rose-700">
                     실시간 예상 최종 월 체감가 ({state.activeGeneralPlan}안 ·{' '}
-                    {state.subscriptionPeriod}개월)
+                    {periodLabel})
                   </div>
                   <div className="text-[11px] text-slate-600 font-semibold">
                     기본 {totalBaseMonthly.toLocaleString()}원 - 카드{' '}

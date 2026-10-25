@@ -261,7 +261,17 @@ export function extractGeneralPlanData(
       ...(source.generalHiPreedCounts || {}),
     },
 
-    items: (source.items || []).map((it) => ({ ...it })),
+    items: (source.items || []).map((it) => ({
+      ...it,
+      period:
+        it.period === 36
+          ? 36
+          : it.period === 60
+          ? 60
+          : source.subscriptionPeriod === 36
+          ? 36
+          : 60,
+    })),
     subscriptionPeriod: source.subscriptionPeriod === 36 ? 36 : 60,
     careService: source.careService || SUB_CARE_OPTIONS[0],
     warrantyType: source.warrantyType || 'AS연장보험 + 가전수리올케어',
@@ -315,6 +325,14 @@ export function cloneGeneralPlanData(
       id: `${idPrefix}-sub-${Date.now()}-${idx}-${Math.random()
         .toString(36)
         .slice(2, 6)}`,
+      period:
+        it.period === 36
+          ? 36
+          : it.period === 60
+          ? 60
+          : source.subscriptionPeriod === 36
+          ? 36
+          : 60,
     })),
     subscriptionPeriod: source.subscriptionPeriod === 36 ? 36 : 60,
     careService: source.careService || SUB_CARE_OPTIONS[0],
@@ -497,6 +515,56 @@ export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
   };
 }
 
+export function getSubscriptionPeriodSummary(
+  items: SubscriptionItem[],
+  fallbackPeriod: SubscriptionPeriod = 60
+) {
+  const safeFallback: SubscriptionPeriod = fallbackPeriod === 36 ? 36 : 60;
+  const list = items || [];
+
+  const itemPeriods: SubscriptionPeriod[] =
+    list.length > 0
+      ? list.map((it) =>
+          it.period === 36 ? 36 : it.period === 60 ? 60 : safeFallback
+        )
+      : [safeFallback];
+
+  const all36 = itemPeriods.every((p) => p === 36);
+  const all60 = itemPeriods.every((p) => p === 60);
+  const isMixedPeriod = !all36 && !all60;
+
+  const periodLabel = all36
+    ? '36개월'
+    : all60
+    ? '60개월'
+    : '36·60개월 맞춤';
+
+  // 대표 개월수: 60개월 품목이 하나라도 있으면 60, 전부 36개월이면 36
+  const representativePeriod: SubscriptionPeriod = all36 ? 36 : 60;
+
+  const totalBaseMonthly = list.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.monthlyFee) || 0),
+    0
+  );
+
+  // 각 구독 품목의 개별 원금 = (Number(item.monthlyFee) || 0) * (item.period || 60)
+  const totalPrincipal = list.reduce((sum, item) => {
+    const itemPeriod: SubscriptionPeriod =
+      item.period === 36 ? 36 : item.period === 60 ? 60 : safeFallback;
+    return sum + Math.max(0, Number(item.monthlyFee) || 0) * itemPeriod;
+  }, 0);
+
+  return {
+    representativePeriod,
+    periodLabel,
+    isMixedPeriod,
+    all36,
+    all60,
+    totalBaseMonthly,
+    totalPrincipal,
+  };
+}
+
 export function calculateSubscriptionSummary(planData: GeneralPlanData) {
   const items = planData.items || [];
   const validItems = items.filter(
@@ -507,23 +575,29 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
   );
   const displayItems = validItems.length > 0 ? validItems : items;
 
+  const fallbackPeriod: SubscriptionPeriod =
+    planData.subscriptionPeriod === 36 ? 36 : 60;
+  const periodInfo = getSubscriptionPeriodSummary(items, fallbackPeriod);
+  const period: SubscriptionPeriod = periodInfo.representativePeriod;
+  const representativePeriod: SubscriptionPeriod =
+    periodInfo.representativePeriod;
+  const periodLabel = periodInfo.periodLabel;
+  const isMixedPeriod = periodInfo.isMixedPeriod;
+
   const validSubNames = items
     .map((it) => {
       const cat = (it.category || '').trim();
       const mod = (it.modelName || '').trim();
       if (!cat && !mod) return '';
-      return mod ? `${cat || '구독가전'}(${mod})` : cat;
+      const itemPeriod =
+        it.period === 36 ? 36 : it.period === 60 ? 60 : fallbackPeriod;
+      if (cat && mod) return `${cat}(${mod}·${itemPeriod}M)`;
+      return `${cat || mod}(${itemPeriod}M)`;
     })
     .filter(Boolean);
 
-  const period: SubscriptionPeriod =
-    planData.subscriptionPeriod === 36 ? 36 : 60;
-
-  const totalBaseMonthly = items.reduce(
-    (sum, item) => sum + Math.max(0, Number(item.monthlyFee) || 0),
-    0
-  );
-  const totalPrincipal = totalBaseMonthly * period;
+  const totalBaseMonthly = periodInfo.totalBaseMonthly;
+  const totalPrincipal = periodInfo.totalPrincipal;
 
   const currentCard = AFFILIATE_CARDS.find(
     (c) => c.id === planData.selectedCardId
@@ -535,13 +609,14 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
 
   const hiSummary = calculateHiPlusSummary(
     planData.hiPlusCounts || { hi72: 0, hi90: 0, hi108: 0 },
-    period
+    representativePeriod
   );
   const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
 
   const finalMonthlyFee = totalBaseMonthly - cardDiscount - hiPlusMonthly;
-  const finalTotalFee = finalMonthlyFee * period;
-  const totalSubBenefit = (cardDiscount + hiPlusMonthly) * period;
+  const totalSubBenefit =
+    (cardDiscount + hiPlusMonthly) * representativePeriod;
+  const finalTotalFee = totalPrincipal - totalSubBenefit;
 
   const hasSubData =
     totalBaseMonthly > 0 ||
@@ -554,7 +629,10 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
     displayItems,
     validSubNames,
     period,
-    subscriptionPeriod: period,
+    representativePeriod,
+    periodLabel,
+    isMixedPeriod,
+    subscriptionPeriod: representativePeriod,
     totalBaseMonthly,
     totalPrincipal,
     currentCard,
@@ -637,6 +715,7 @@ export interface SubscriptionItem {
   modelName: string;
   modelCode?: string;
   monthlyFee: number;
+  period?: SubscriptionPeriod;
   careService: string;
   careType?: string;
   warrantyType?: string;

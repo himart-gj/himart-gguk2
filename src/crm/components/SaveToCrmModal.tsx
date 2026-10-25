@@ -185,8 +185,8 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
   if (state.quoteMode === 'subscription') {
     const itemsSummary =
       primarySubSummary.validSubNames.length > 0
-        ? `[${primarySubSummary.period}개월 구독] ${primarySubSummary.validSubNames.join(', ')}`
-        : `[${primarySubSummary.period}개월 구독] 맞춤 구독 패키지`;
+        ? `[${primarySubSummary.periodLabel} 구독] ${primarySubSummary.validSubNames.join(', ')}`
+        : `[${primarySubSummary.periodLabel} 구독] 맞춤 구독 패키지`;
 
     const benefitParts: string[] = [];
     if (primarySubSummary.cardDiscount > 0 && primarySubSummary.currentCard) {
@@ -208,8 +208,8 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     if (hasSecondPlan && plan2SubSummary.totalBaseMonthly > 0) {
       const p2SubNames =
         plan2SubSummary.validSubNames.length > 0
-          ? `[${plan2SubSummary.period}개월 구독] ${plan2SubSummary.validSubNames.join(', ')}`
-          : `[${plan2SubSummary.period}개월 구독] 맞춤 구독 2안`;
+          ? `[${plan2SubSummary.periodLabel} 구독] ${plan2SubSummary.validSubNames.join(', ')}`
+          : `[${plan2SubSummary.periodLabel} 구독] 맞춤 구독 2안`;
       const p2SubBenefits: string[] = [];
       if (plan2SubSummary.cardDiscount > 0 && plan2SubSummary.currentCard) {
         p2SubBenefits.push(
@@ -232,9 +232,9 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         netAmount: plan2SubSummary.finalMonthlyFee,
         benefit:
           p2SubBenefits.join(' + ') ||
-          `${plan2SubSummary.period}개월 총 체감가 ${formatCurrency(
+          `${plan2SubSummary.periodLabel} 총 체감가 ${formatCurrency(
             plan2SubSummary.finalTotalFee
-          )}원`,
+          )}원 (원금 ${formatCurrency(plan2SubSummary.totalPrincipal)}원)`,
       };
     }
 
@@ -244,8 +244,10 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       netAmount: primarySubSummary.finalMonthlyFee,
       expectedBenefit:
         benefitParts.join(' + ') ||
-        `${primarySubSummary.period}개월 무상 A/S 및 방문케어`,
-      defaultQuoteTitle: `[구독 ${primarySubSummary.period}M] ${
+        `${primarySubSummary.periodLabel} 무상 A/S 및 방문케어 (원금 ${formatCurrency(
+          primarySubSummary.totalPrincipal
+        )}원)`,
+      defaultQuoteTitle: `[구독 ${primarySubSummary.periodLabel}] ${
         primarySubSummary.validSubNames.join(', ').slice(0, 18) || '맞춤 구독'
       }`,
       plan2Summary,
@@ -264,8 +266,8 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
   const p1SubLabel =
     primarySubSummary.validSubNames.length > 0
       ? primarySubSummary.validSubNames.join(', ')
-      : '구독가전';
-  const itemsSummary = `일반 1안(${p1GenLabel}) + 구독 ${primarySubSummary.period}M(${p1SubLabel})`;
+      : `구독가전(${primarySubSummary.periodLabel})`;
+  const itemsSummary = `일반 1안(${p1GenLabel}) + 구독 1안(${p1SubLabel})`;
 
   const primaryPaidAmount =
     primaryGenSummary.sum > 0
@@ -278,13 +280,15 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
 
   const expectedBenefit = `일반 1안 실결제 ${formatCurrency(
     primaryGenSummary.payPrice
-  )}원(체감 ${formatCurrency(primaryGenSummary.rawNet)}원) + 구독 ${
-    primarySubSummary.period
-  }M 월 기본 ${formatCurrency(
+  )}원(체감 ${formatCurrency(primaryGenSummary.rawNet)}원) + 구독(${
+    primarySubSummary.periodLabel
+  }) 월 기본 ${formatCurrency(
     primarySubSummary.totalBaseMonthly
   )}원(월 체감 ${formatCurrency(
     primarySubSummary.finalMonthlyFee
-  )}원 / 총 체감 ${formatCurrency(primarySubSummary.finalTotalFee)}원)`;
+  )}원 / 총 체감 ${formatCurrency(
+    primarySubSummary.finalTotalFee
+  )}원 · 원금 ${formatCurrency(primarySubSummary.totalPrincipal)}원)`;
 
   let plan2Summary: QuotePlan2Summary | undefined;
   if (
@@ -296,10 +300,10 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     const p2SubLabel =
       plan2SubSummary.validSubNames.length > 0
         ? plan2SubSummary.validSubNames.join(', ')
-        : '구독가전';
+        : `구독가전(${plan2SubSummary.periodLabel})`;
 
     plan2Summary = {
-      itemSummary: `일반 2안(${p2GenLabel}) + 구독 ${plan2SubSummary.period}M(${p2SubLabel})`,
+      itemSummary: `일반 2안(${p2GenLabel}) + 구독 2안(${p2SubLabel})`,
       paidAmount:
         plan2GenSummary.sum > 0
           ? plan2GenSummary.payPrice
@@ -310,13 +314,15 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
           : plan2SubSummary.finalMonthlyFee,
       benefit: `일반 2안 실결제 ${formatCurrency(
         plan2GenSummary.payPrice
-      )}원(체감 ${formatCurrency(plan2GenSummary.rawNet)}원) + 구독 ${
-        plan2SubSummary.period
-      }M 월 기본 ${formatCurrency(
+      )}원(체감 ${formatCurrency(plan2GenSummary.rawNet)}원) + 구독(${
+        plan2SubSummary.periodLabel
+      }) 월 기본 ${formatCurrency(
         plan2SubSummary.totalBaseMonthly
       )}원(월 체감 ${formatCurrency(
         plan2SubSummary.finalMonthlyFee
-      )}원 / 총 체감 ${formatCurrency(plan2SubSummary.finalTotalFee)}원)`,
+      )}원 / 총 체감 ${formatCurrency(
+        plan2SubSummary.finalTotalFee
+      )}원 · 원금 ${formatCurrency(plan2SubSummary.totalPrincipal)}원)`,
     };
   }
 
@@ -549,8 +555,9 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 <FolderKanban className="w-3 h-3" />
                 {state.quoteMode === 'general' && '일반구매 견적'}
                 {state.quoteMode === 'subscription' &&
-                  `구독구매 견적 (${extracted.primarySubSummary.period}개월)`}
-                {state.quoteMode === 'hybrid' && '일반+구독 혼합견적'}
+                  `구독구매 견적 (${extracted.primarySubSummary.periodLabel})`}
+                {state.quoteMode === 'hybrid' &&
+                  `일반+구독 혼합견적 (${extracted.primarySubSummary.periodLabel})`}
               </span>
 
               {extracted.plan2Summary && (
@@ -573,7 +580,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                     체감 {formatCurrency(extracted.primaryGenSummary.rawNet)}원
                   </span>
                   <span className="font-extrabold text-rose-600">
-                    🔄 [1안 구독 {extracted.primarySubSummary.period}M] 월 기본{' '}
+                    🔄 [1안 구독 {extracted.primarySubSummary.periodLabel}] 월 기본{' '}
                     {formatCurrency(
                       extracted.primarySubSummary.totalBaseMonthly
                     )}

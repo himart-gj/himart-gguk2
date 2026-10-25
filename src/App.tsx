@@ -59,6 +59,7 @@ const createEmptyGeneralPlanData = (
       category: '',
       modelName: '',
       monthlyFee: 0,
+      period: 60,
       careService: SUB_CARE_OPTIONS[0],
     },
   ],
@@ -302,6 +303,7 @@ export function App() {
           category: summaryStr || '맞춤 구독 가전',
           modelName: '',
           monthlyFee: paidNum,
+          period: 60 as SubscriptionPeriod,
           careService: SUB_CARE_OPTIONS[0],
         };
         nextSub.items = [firstSubItem];
@@ -472,7 +474,11 @@ export function App() {
         const firstItem = extractedItems[0] || ({} as any);
 
         const detectedPeriod: SubscriptionPeriod =
-          Number(firstItem.period) === 36 ? 36 : 60;
+          Number(firstItem.period) === 36
+            ? 36
+            : Number((data as any).period) === 36
+            ? 36
+            : 60;
 
         const rawCardName = data.cardName || firstItem.cardName || '';
         const mappedCard = mapSubscriptionAffiliateCard(rawCardName);
@@ -485,31 +491,53 @@ export function App() {
         setCurrentState((prev) => {
           const mappedItems =
             extractedItems.length > 0
-              ? extractedItems.map((it: any, idx: number) => ({
-                  id: `ai-${Date.now()}-${idx}`,
-                  category: it.category || `구독 가전 ${idx + 1}`,
-                  modelName: it.modelName || it.modelCode || data.urlModelCode || '',
-                  modelCode: it.modelCode || it.modelName || data.urlModelCode || '',
-                  monthlyFee:
-                    Number(it.monthlyFee) > 0 ? Number(it.monthlyFee) : 0,
-                  contractAmount:
-                    Number(it.contractAmount) > 0
-                      ? Number(it.contractAmount)
-                      : Number(data.contractAmount) || 0,
-                  careService: it.careService || SUB_CARE_OPTIONS[0],
-                  careType: it.careType || it.careService || SUB_CARE_OPTIONS[0],
-                  warrantyType: it.warrantyType || resolvedWarrantyType,
-                  cardName: it.cardName || rawCardName,
-                }))
+              ? extractedItems.map((it: any, idx: number) => {
+                  const itemPeriod: SubscriptionPeriod =
+                    Number(it.period) === 36
+                      ? 36
+                      : Number(it.period) === 60
+                      ? 60
+                      : detectedPeriod;
+                  return {
+                    id: `ai-${Date.now()}-${idx}`,
+                    category: it.category || `구독 가전 ${idx + 1}`,
+                    modelName:
+                      it.modelName || it.modelCode || data.urlModelCode || '',
+                    modelCode:
+                      it.modelCode || it.modelName || data.urlModelCode || '',
+                    monthlyFee:
+                      Number(it.monthlyFee) > 0 ? Number(it.monthlyFee) : 0,
+                    period: itemPeriod,
+                    contractAmount:
+                      Number(it.contractAmount) > 0
+                        ? Number(it.contractAmount)
+                        : Number(data.contractAmount) || 0,
+                    careService: it.careService || SUB_CARE_OPTIONS[0],
+                    careType:
+                      it.careType || it.careService || SUB_CARE_OPTIONS[0],
+                    warrantyType:
+                      it.warrantyType ||
+                      (itemPeriod === 36
+                        ? '3년 무상 A/S 기본 포함'
+                        : resolvedWarrantyType),
+                    cardName: it.cardName || rawCardName,
+                  };
+                })
               : prev.items;
+
+          const repPeriod: SubscriptionPeriod = mappedItems.every(
+            (it) => (it.period || 60) === 36
+          )
+            ? 36
+            : 60;
 
           return {
             ...prev,
             items: mappedItems,
-            subscriptionPeriod: detectedPeriod,
+            subscriptionPeriod: repPeriod,
             careService: firstItem.careService || prev.careService,
             warrantyType: resolvedWarrantyType,
-            warrantyYears: data.warrantyYears || 5,
+            warrantyYears: repPeriod === 36 ? 3 : 5,
             allCare: data.allCare ?? true,
             selectedCardId:
               mappedCard.cardId !== 'none'

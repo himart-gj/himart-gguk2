@@ -4,8 +4,10 @@ import {
   calculateGeneralHiPreedSummary,
   calculateGeneralPurchaseSummary,
   calculateHiPlusSummary,
+  calculateSubscriptionSummary,
   getGeneralPlan1And2Summaries,
   ProposalState,
+  SubscriptionPeriod,
   switchGeneralPlanInState,
 } from '../types/proposal';
 import {
@@ -136,30 +138,24 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     state.generalHiPreedCounts
   );
 
-  const currentCard = AFFILIATE_CARDS.find(
-    (c) => c.id === state.selectedCardId
-  );
-  const currentCardTier = currentCard?.tiers.find(
-    (t) => t.id === state.selectedCardTierId
-  );
-  const hiSummary = calculateHiPlusSummary(
-    state.hiPlusCounts,
-    state.subscriptionPeriod
-  );
+  const subSummary = calculateSubscriptionSummary(state);
+  const representativePeriod = subSummary.representativePeriod;
+  const periodLabel = subSummary.periodLabel;
+  const isMixedPeriod = subSummary.isMixedPeriod;
 
-  const totalBaseMonthly = state.items.reduce(
-    (sum, item) => sum + (Number(item.monthlyFee) || 0),
-    0
-  );
-  const totalPrincipal = totalBaseMonthly * state.subscriptionPeriod;
+  const currentCard = subSummary.currentCard;
+  const currentCardTier = subSummary.currentCardTier;
+  const hiSummary = subSummary.hiSummary;
 
-  const cardMonthlyDiscount = currentCardTier?.monthlyDiscount || 0;
-  const hiPlusMonthlySupport = hiSummary.monthlyHiPlusSupport;
+  const totalBaseMonthly = subSummary.totalBaseMonthly;
+  const totalPrincipal = subSummary.totalPrincipal;
+
+  const cardMonthlyDiscount = subSummary.cardDiscount;
+  const hiPlusMonthlySupport = subSummary.hiPlusMonthly;
 
   // 마이너스 금액 허용 (0원 강제 고정 금지)
-  const finalMonthlyFee =
-    totalBaseMonthly - cardMonthlyDiscount - hiPlusMonthlySupport;
-  const finalTotal60Fee = finalMonthlyFee * state.subscriptionPeriod;
+  const finalMonthlyFee = subSummary.finalMonthlyFee;
+  const finalTotal60Fee = subSummary.finalTotalFee;
 
   // 안내서 표시용: 프리드 선택이 0건이면 대표 1구좌 기준으로 안내 수치 표시
   const guideGeneralSummary =
@@ -177,7 +173,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       ? hiSummary
       : calculateHiPlusSummary(
           { hi72: 0, hi90: 0, hi108: 1 },
-          state.subscriptionPeriod
+          representativePeriod
         );
 
   const isGuideTab =
@@ -294,10 +290,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     .filter(Boolean);
   const subHeaderTitle =
     validSubNames.length === 0
-      ? `맞춤 가전 구독 제안서 (${state.subscriptionPeriod}개월 구독)`
+      ? `맞춤 가전 구독 제안서 (${periodLabel} 구독)`
       : validSubNames.length === 1
-      ? `${validSubNames[0]} 구독 제안서 (${state.subscriptionPeriod}개월 구독)`
-      : `${validSubNames[0]} 외 ${validSubNames.length - 1}건 구독 제안서 (${state.subscriptionPeriod}개월 구독)`;
+      ? `${validSubNames[0]} 구독 제안서 (${periodLabel} 구독)`
+      : `${validSubNames[0]} 외 ${validSubNames.length - 1}건 구독 제안서 (${periodLabel} 구독)`;
 
   // 일반구매 1단계 즉시할인 세부 내역 한 줄 표기
   const step1DiscountDetails: string[] = [];
@@ -355,8 +351,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
   // 혼합 모드 통합 총 할인/지원 혜택 합계
   const hybridTotalDiscountAndSupport =
-    generalSummary.totalDiscountAndBenefit +
-    (cardMonthlyDiscount + hiPlusMonthlySupport) * state.subscriptionPeriod;
+    generalSummary.totalDiscountAndBenefit + subSummary.totalSubBenefit;
 
   // 혼합 모드 일반구매 최종 혜택가 + 구독구매 총 체감가 합계
   const hybridCombinedNetTotal = generalSummary.rawNet + finalTotal60Fee;
@@ -927,12 +922,16 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     <div className="text-right">
                       <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-white">
                         <ShieldCheck className="w-4 h-4 text-rose-400" />
-                        품목별 맞춤 케어 · 5년 무상 A/S 보장
+                        {isMixedPeriod
+                          ? '품목별 맞춤 케어 · 3년/5년 무상 A/S 보장'
+                          : representativePeriod === 36
+                          ? '품목별 맞춤 케어 · 3년 무상 A/S 보장'
+                          : '품목별 맞춤 케어 · 5년 무상 A/S 보장'}
                       </span>
                     </div>
                   </div>
 
-                  {/* 품목 및 총 월 구독료 합계 영역 (품목 아래쪽에 개별 케어서비스 작게 표시) */}
+                  {/* 품목 및 총 월 구독료 합계 영역 (품목 아래쪽에 개별 케어서비스 및 3년/5년 무상 A/S 표시) */}
                   {state.items.length >= 2 ? (
                     <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-2.5">
                       <div className="flex items-center justify-between px-1">
@@ -940,43 +939,64 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           구독 가전 내역 (총 {state.items.length}개 품목)
                         </span>
                         <span className="text-xs font-bold text-slate-500">
-                          품목별 월 구독료 ({state.subscriptionPeriod}개월)
+                          품목별 월 구독료 ({periodLabel})
                         </span>
                       </div>
                       <div className="space-y-1.5">
-                        {state.items.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200"
-                          >
-                            <div>
-                              <div className="flex items-center gap-2.5">
-                                <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] font-black flex items-center justify-center">
-                                  {idx + 1}
-                                </span>
-                                <span className="text-sm font-black text-slate-900">
-                                  {item.category || `구독 가전 ${idx + 1}`}
-                                </span>
-                                {item.modelName && (
-                                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                    {item.modelName}
+                        {state.items.map((item, idx) => {
+                          const itemPeriod: SubscriptionPeriod =
+                            item.period === 36
+                              ? 36
+                              : item.period === 60
+                              ? 60
+                              : state.subscriptionPeriod === 36
+                              ? 36
+                              : 60;
+                          const itemWarrantyText =
+                            itemPeriod === 36
+                              ? '3년 무상 A/S 보장'
+                              : '5년 무상 A/S 보장';
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-slate-200"
+                            >
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] font-black flex items-center justify-center">
+                                    {idx + 1}
                                   </span>
-                                )}
+                                  <span className="text-sm font-black text-slate-900">
+                                    {item.category || `구독 가전 ${idx + 1}`}
+                                  </span>
+                                  {item.modelName && (
+                                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                                      {item.modelName}
+                                    </span>
+                                  )}
+                                  <span className="text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                                    [{itemPeriod}개월 구독]
+                                  </span>
+                                </div>
+                                <div className="text-xs font-bold text-slate-500 mt-1 pl-7">
+                                  🛡️ {item.careService || '전문가 방문케어'} ·{' '}
+                                  {itemWarrantyText}
+                                </div>
                               </div>
-                              <div className="text-xs font-bold text-slate-500 mt-1 pl-7">
-                                🛡️ {item.careService || '전문가 방문케어'} · 5년 무상
-                                A/S 보장
-                              </div>
+                              <span className="text-base font-black text-slate-900 shrink-0">
+                                월 {(Number(item.monthlyFee) || 0).toLocaleString()}
+                                원{' '}
+                                <span className="text-xs font-extrabold text-rose-600">
+                                  ({itemPeriod}개월)
+                                </span>
+                              </span>
                             </div>
-                            <span className="text-base font-black text-slate-900">
-                              월 {(Number(item.monthlyFee) || 0).toLocaleString()}원
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="bg-slate-900 text-white rounded-xl px-5 py-3.5 flex items-center justify-between">
                         <span className="text-base font-black text-slate-200">
-                          총 월 구독료 합계 ({state.subscriptionPeriod}개월 구독)
+                          총 월 구독료 합계 ({periodLabel} 구독)
                         </span>
                         <span className="text-2xl font-black text-white tracking-tight">
                           월 {totalBaseMonthly.toLocaleString()}원
@@ -984,41 +1004,64 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="bg-slate-50 rounded-2xl border-2 border-slate-200 px-6 py-4 flex items-center justify-between">
-                      <div className="flex items-center gap-3.5">
-                        <div className="w-11 h-11 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
-                          <RefreshCw className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-extrabold text-rose-600">
-                            구독 품목 및 총 월 구독료 합계 ({state.subscriptionPeriod}
-                            개월 구독)
+                    (() => {
+                      const singleItem = state.items[0];
+                      const singlePeriod: SubscriptionPeriod =
+                        singleItem?.period === 36
+                          ? 36
+                          : singleItem?.period === 60
+                          ? 60
+                          : state.subscriptionPeriod === 36
+                          ? 36
+                          : 60;
+                      const singleWarrantyText =
+                        singlePeriod === 36
+                          ? '3년 무상 A/S 보장'
+                          : '5년 무상 A/S 보장';
+                      return (
+                        <div className="bg-slate-50 rounded-2xl border-2 border-slate-200 px-6 py-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3.5">
+                            <div className="w-11 h-11 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0">
+                              <RefreshCw className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="text-xs font-extrabold text-rose-600">
+                                구독 품목 및 총 월 구독료 합계 ({singlePeriod}개월
+                                구독)
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                <span className="text-xl font-black text-slate-900">
+                                  {singleItem?.category || '맞춤 구독 가전'}
+                                </span>
+                                {singleItem?.modelName && (
+                                  <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
+                                    {singleItem.modelName}
+                                  </span>
+                                )}
+                                <span className="text-xs font-black text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                                  [{singlePeriod}개월 구독]
+                                </span>
+                              </div>
+                              <div className="text-xs font-bold text-slate-500 mt-1">
+                                🛡️ {singleItem?.careService || '전문가 방문케어'}{' '}
+                                · {singleWarrantyText}
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xl font-black text-slate-900">
-                              {state.items[0]?.category || '맞춤 구독 가전'}
-                            </span>
-                            {state.items[0]?.modelName && (
-                              <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
-                                {state.items[0].modelName}
+                          <div className="text-right shrink-0">
+                            <div className="text-xs font-bold text-slate-500">
+                              총 월 구독료 합계
+                            </div>
+                            <div className="text-2xl font-black text-slate-900 tracking-tight">
+                              월 {totalBaseMonthly.toLocaleString()}원{' '}
+                              <span className="text-sm font-extrabold text-rose-600">
+                                ({singlePeriod}개월)
                               </span>
-                            )}
-                          </div>
-                          <div className="text-xs font-bold text-slate-500 mt-1">
-                            🛡️ {state.items[0]?.careService || '전문가 방문케어'} ·
-                            5년 무상 A/S 보장
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold text-slate-500">
-                          총 월 구독료 합계
-                        </div>
-                        <div className="text-2xl font-black text-slate-900 tracking-tight">
-                          월 {totalBaseMonthly.toLocaleString()}원
-                        </div>
-                      </div>
-                    </div>
+                      );
+                    })()
                   )}
 
                   {/* 차감 내역 (선택한 항목만 깔끔한 고정 높이 배너로 표시) */}
@@ -1036,7 +1079,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                               </div>
                               <div className="text-xs font-bold text-blue-700">
                                 {currentCardTier.minSpendLabel} ·{' '}
-                                {state.subscriptionPeriod}개월간 매월 할인
+                                {representativePeriod}개월간 매월 할인
                               </div>
                             </div>
                           </div>
@@ -1057,7 +1100,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                 (-) 구독프리드 (Hi구독 플러스) 월 지원금
                               </div>
                               <div className="text-xs font-bold text-indigo-700">
-                                {state.subscriptionPeriod}개월간 매월 캐시백 지원
+                                {representativePeriod}개월간 매월 캐시백 지원
                               </div>
                             </div>
                           </div>
@@ -1077,7 +1120,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       </div>
                     )}
                     <div className="text-sm font-black text-rose-600 pt-1">
-                      🎯 최종 월 체감가 ({state.subscriptionPeriod}개월 구독)
+                      🎯 최종 월 체감가 ({periodLabel} 구독)
                     </div>
                     <div className="text-5xl font-black text-rose-600 tracking-tight py-1">
                       월 {finalMonthlyFee.toLocaleString()}원
@@ -1097,7 +1140,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                   {/* 최하단 요약 리본 바 */}
                   <div className="bg-slate-900 text-white rounded-2xl px-6 py-4 flex items-center justify-between">
                     <span className="text-base font-black text-slate-200">
-                      최종 {state.subscriptionPeriod}개월 체감가 합계
+                      최종 {periodLabel} 체감가 합계
                     </span>
                     <div className="flex items-baseline gap-2.5">
                       <span className="text-2xl font-black text-white">
@@ -1143,7 +1186,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                         일반: {state.generalCardType}
                       </span>
                       <span className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-rose-300">
-                        구독: {state.subscriptionPeriod}개월
+                        구독: {periodLabel}
                       </span>
                     </div>
                   </div>
@@ -1293,36 +1336,59 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                         <span className="text-sm font-black text-rose-600 flex items-center gap-1.5">
                           <RefreshCw className="w-4 h-4" />
-                          파트 B. 구독구매 ({state.subscriptionPeriod}개월)
+                          파트 B. 구독구매 ({periodLabel})
                         </span>
                         <span className="text-xs font-bold text-slate-500">
                           {state.items.length}개 품목
                         </span>
                       </div>
 
-                      {/* 품목 및 총 월 구독료 합계 (품목별 케어서비스 표시) */}
+                      {/* 품목 및 총 월 구독료 합계 (품목별 개월수 배지 + 케어서비스 + 3년/5년 무상 A/S 표시) */}
                       {state.items.length >= 2 ? (
                         <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
-                          {state.items.map((it, idx) => (
-                            <div
-                              key={it.id}
-                              className="flex items-center justify-between text-xs"
-                            >
-                              <div>
-                                <div className="font-bold text-slate-800">
-                                  {idx + 1}. {it.category || `구독가전 ${idx + 1}`}
-                                  {it.modelName ? ` (${it.modelName})` : ''}
+                          {state.items.map((it, idx) => {
+                            const itemPeriod: SubscriptionPeriod =
+                              it.period === 36
+                                ? 36
+                                : it.period === 60
+                                ? 60
+                                : state.subscriptionPeriod === 36
+                                ? 36
+                                : 60;
+                            const itemWarrantyText =
+                              itemPeriod === 36
+                                ? '3년 무상 A/S 보장'
+                                : '5년 무상 A/S 보장';
+                            return (
+                              <div
+                                key={it.id}
+                                className="flex items-center justify-between text-xs gap-2"
+                              >
+                                <div>
+                                  <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                                    <span>
+                                      {idx + 1}. {it.category || `구독가전 ${idx + 1}`}
+                                      {it.modelName ? ` (${it.modelName})` : ''}
+                                    </span>
+                                    <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-md">
+                                      [{itemPeriod}개월 구독]
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-slate-500">
+                                    🛡️ {it.careService || '전문가 방문케어'} ·{' '}
+                                    {itemWarrantyText}
+                                  </div>
                                 </div>
-                                <div className="text-[11px] font-semibold text-slate-500">
-                                  🛡️ {it.careService || '전문가 방문케어'} · 5년 무상
-                                  A/S 보장
-                                </div>
+                                <span className="font-black text-slate-900 shrink-0">
+                                  월 {(Number(it.monthlyFee) || 0).toLocaleString()}
+                                  원{' '}
+                                  <span className="text-[11px] font-extrabold text-rose-600">
+                                    ({itemPeriod}개월)
+                                  </span>
+                                </span>
                               </div>
-                              <span className="font-black text-slate-900">
-                                월 {(Number(it.monthlyFee) || 0).toLocaleString()}원
-                              </span>
-                            </div>
-                          ))}
+                            );
+                          })}
                           <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
                             <span className="text-xs font-black text-slate-700">
                               총 월 구독료 합계
@@ -1333,31 +1399,57 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           </div>
                         </div>
                       ) : (
-                        <div className="bg-white rounded-xl border border-slate-200 p-3 flex items-center justify-between">
-                          <div>
-                            <div className="text-[10px] font-extrabold text-rose-600">
-                              구독 품목
+                        (() => {
+                          const singleItem = state.items[0];
+                          const singlePeriod: SubscriptionPeriod =
+                            singleItem?.period === 36
+                              ? 36
+                              : singleItem?.period === 60
+                              ? 60
+                              : state.subscriptionPeriod === 36
+                              ? 36
+                              : 60;
+                          const singleWarrantyText =
+                            singlePeriod === 36
+                              ? '3년 무상 A/S 보장'
+                              : '5년 무상 A/S 보장';
+                          return (
+                            <div className="bg-white rounded-xl border border-slate-200 p-3 flex items-center justify-between gap-2">
+                              <div>
+                                <div className="text-[10px] font-extrabold text-rose-600">
+                                  구독 품목
+                                </div>
+                                <div className="text-sm font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
+                                  <span>
+                                    {singleItem?.category || '구독 가전'}
+                                    {singleItem?.modelName
+                                      ? ` (${singleItem.modelName})`
+                                      : ''}
+                                  </span>
+                                  <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md">
+                                    [{singlePeriod}개월 구독]
+                                  </span>
+                                </div>
+                                <div className="text-xs font-semibold text-slate-500 mt-0.5">
+                                  🛡️{' '}
+                                  {singleItem?.careService || '전문가 방문케어'} ·{' '}
+                                  {singleWarrantyText}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <div className="text-[10px] font-bold text-slate-500">
+                                  총 월 구독료 합계
+                                </div>
+                                <div className="text-base font-black text-slate-900">
+                                  월 {totalBaseMonthly.toLocaleString()}원{' '}
+                                  <span className="text-xs font-extrabold text-rose-600">
+                                    ({singlePeriod}개월)
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm font-black text-slate-900">
-                              {state.items[0]?.category || '구독 가전'}
-                              {state.items[0]?.modelName
-                                ? ` (${state.items[0].modelName})`
-                                : ''}
-                            </div>
-                            <div className="text-xs font-semibold text-slate-500 mt-0.5">
-                              🛡️ {state.items[0]?.careService || '전문가 방문케어'}{' '}
-                              · 5년 무상 A/S 보장
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-[10px] font-bold text-slate-500">
-                              총 월 구독료 합계
-                            </div>
-                            <div className="text-base font-black text-slate-900">
-                              월 {totalBaseMonthly.toLocaleString()}원
-                            </div>
-                          </div>
-                        </div>
+                          );
+                        })()
                       )}
 
                       {/* 차감 내역 */}
@@ -1399,7 +1491,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           </div>
                         )}
                         <div className="text-xs font-black text-rose-600 pt-0.5">
-                          🎯 최종 월 체감가
+                          🎯 최종 월 체감가 ({periodLabel})
                         </div>
                         <div className="text-2xl font-black text-rose-600">
                           월 {finalMonthlyFee.toLocaleString()}원
@@ -1409,7 +1501,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       {/* 최하단 요약 리본 바 */}
                       <div className="bg-slate-900 text-white rounded-xl px-4 py-2.5 flex items-center justify-between text-xs">
                         <span className="font-extrabold text-slate-300">
-                          최종 {state.subscriptionPeriod}개월 체감가
+                          최종 {periodLabel} 체감가
                         </span>
                         <span className="font-black text-white">
                           {finalTotal60Fee.toLocaleString()}원{' '}
@@ -1426,7 +1518,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     <div className="space-y-1">
                       <div className="text-sm font-black text-slate-100">
                         일반구매 최종 혜택가 ({generalSummary.rawNet.toLocaleString()}
-                        원) + 구독구매 {state.subscriptionPeriod}개월 총 체감가 (
+                        원) + 구독구매 {periodLabel} 총 체감가 (
                         {finalTotal60Fee.toLocaleString()}원 / 월{' '}
                         {finalMonthlyFee.toLocaleString()}원)
                       </div>
@@ -1511,7 +1603,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       </div>
                       <div className="text-[11px] font-bold text-slate-600 mt-1">
                         월 -{guideHiSummary.monthlyHiPlusSupport.toLocaleString()}원 ×{' '}
-                        {state.subscriptionPeriod}개월 지원
+                        {representativePeriod}개월 지원
                       </div>
                     </div>
 
@@ -1625,7 +1717,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       <p className="text-xs font-semibold text-slate-700 leading-relaxed">
                         가전 구독 기간(
                         <strong className="text-slate-900">
-                          {state.subscriptionPeriod}개월
+                          {representativePeriod}개월
                         </strong>
                         ) 동안 매월{' '}
                         <strong className="text-rose-600 font-black">
