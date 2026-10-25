@@ -144,19 +144,22 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   const [apiKey, setApiKey] = useState('');
   const [aiModel, setAiModel] = useState('gemini-flash-latest');
 
-  // Load API key and model from local storage on mount
+  // Load API key and model from local storage on mount (1~4번 메뉴 공통 키 'gemini_api_key' 공유)
   React.useEffect(() => {
-    const storedKey = localStorage.getItem('geminiApiKey');
+    const storedKey =
+      localStorage.getItem('gemini_api_key') ||
+      localStorage.getItem('geminiApiKey') ||
+      '';
     if (storedKey) setApiKey(storedKey);
     const storedModel = localStorage.getItem('geminiAiModel');
     if (storedModel) setAiModel(storedModel);
   }, []);
 
   const handleSaveSettings = () => {
-    localStorage.setItem('geminiApiKey', apiKey);
+    localStorage.setItem('gemini_api_key', apiKey.trim());
+    localStorage.setItem('geminiApiKey', apiKey.trim());
     localStorage.setItem('geminiAiModel', aiModel);
     setIsSettingsModalOpen(false);
-    alert('설정이 저장되었습니다.');
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

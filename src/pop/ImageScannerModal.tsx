@@ -83,7 +83,7 @@ export default function ImageScannerModal({
     return () => window.removeEventListener('paste', handlePaste);
   }, [isOpen]);
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setError('이미지 파일(JPG, PNG, WebP)만 업로드할 수 있습니다.');
       return;
@@ -93,14 +93,22 @@ export default function ImageScannerModal({
     setExtractedData(null);
     setIsSuccessAdded(false);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      setImagePreview(result);
-      setImageMime(file.type || 'image/jpeg');
-      analyzeImage(result, file.type || 'image/jpeg');
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { compressImageFile } = await import('../utils/aiImageParser');
+      const compressed = await compressImageFile(file, 1920, 0.85);
+      setImagePreview(compressed.dataUrl);
+      setImageMime(compressed.mimeType);
+      analyzeImage(compressed.dataUrl, compressed.mimeType);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setImagePreview(result);
+        setImageMime(file.type || 'image/jpeg');
+        analyzeImage(result, file.type || 'image/jpeg');
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const analyzeImage = async (base64Data: string, mimeType: string) => {
@@ -108,25 +116,90 @@ export default function ImageScannerModal({
     setError(null);
 
     try {
-      const res = await fetch('/api/ai/parse-pop-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          image: base64Data,
-          mimeType,
-          apiKey: apiKey || undefined,
-          model: model || undefined,
-        }),
-      });
+      const {
+        compressImageFile,
+        getEffectiveGeminiApiKey,
+        getStoredGeminiApiKey,
+        inferCategoryFromModelCode,
+        normalizeModelCode,
+      } = await import('../utils/aiImageParser');
+      const compressed = await compressImageFile(base64Data, 1920, 0.85);
+      const effectiveKey = apiKey || getStoredGeminiApiKey();
 
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || '견적서 사진을 분석하지 못했습니다.');
+      try {
+        const res = await fetch('/api/ai/parse-pop-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            image: compressed.dataUrl,
+            mimeType: compressed.mimeType,
+            apiKey: effectiveKey || undefined,
+            model: model || undefined,
+          }),
+        });
+
+        const json = await res.json();
+        if (res.ok && json.success && json.data) {
+          setExtractedData(json.data);
+          return;
+        }
+      } catch (serverErr) {
+        console.warn('서버 POP 이미지 분석 실패, 프론트엔드 직접 호출로 전환:', serverErr);
       }
 
-      setExtractedData(json.data);
+      // 프론트엔드 직접 호출 Fallback
+      const { GoogleGenAI, Type } = await import('@google/genai');
+      const finalKey = getEffectiveGeminiApiKey(effectiveKey);
+      if (!finalKey) {
+        throw new Error('Gemini API 키가 설정되지 않았습니다. 상단 설정에서 API 키를 입력해주세요.');
+      }
+
+      const ai = new GoogleGenAI({ apiKey: finalKey });
+      const prompt = `당신은 가전제품 구독/렌탈 견적서 및 하이마트 세일즈툴(맞춤 구독 견적 계산기) 화면 이미지 분석 전문가입니다.
+사용자가 업로드한 화면 캡처 또는 사진에서 다음 구독 POP 제작에 필요한 핵심 정보들을 정확하게 추출하세요.
+- 본문에 모델명이 안 보이면 화면 최상단 브라우저 주소창 URL 파라미터(예: productId=FG24GN.AKOR2)에서 모델코드를 반드시 추출할 것!
+- 하단 노란색 글씨 '월 납부요금'(예: 약 58,653원 -> 58653)을 monthlyFee로 추출할 것!`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: {
+          parts: [
+            { inlineData: { mimeType: compressed.mimeType, data: compressed.base64 } },
+            { text: prompt },
+          ],
+        },
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              category: { type: Type.STRING },
+              modelName: { type: Type.STRING },
+              productName: { type: Type.STRING },
+              monthlyFee: { type: Type.INTEGER },
+              period: { type: Type.INTEGER },
+              downPayment: { type: Type.INTEGER },
+              careServiceText: { type: Type.STRING },
+              careServiceCycle: { type: Type.STRING },
+              careServiceCount: { type: Type.STRING },
+              careServiceDetail: { type: Type.STRING },
+              isAllCare: { type: Type.BOOLEAN },
+            },
+            required: ['category', 'modelName', 'monthlyFee', 'period'],
+          },
+        },
+      });
+
+      if (!response.text) {
+        throw new Error('견적서 사진을 분석하지 못했습니다.');
+      }
+      const parsedData = JSON.parse(response.text);
+      const cleanModel = normalizeModelCode(parsedData.modelName || '');
+      parsedData.modelName = cleanModel || parsedData.modelName || '';
+      parsedData.category = inferCategoryFromModelCode(cleanModel, parsedData.category);
+      setExtractedData(parsedData);
     } catch (err: any) {
       console.error(err);
       setError(err.message || '사진 분석 중 오류가 발생했습니다. 다시 시도해주세요.');

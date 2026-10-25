@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppStep,
+  extractGeneralPlanData,
   GeneralPlanData,
   ProposalState,
   QuoteMode,
@@ -15,6 +16,12 @@ import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
 import { isUrgentCustomer } from './crm/utils/date';
+import {
+  mapGeneralCardName,
+  mapSubscriptionAffiliateCard,
+  parseGeneralImageWithFallback,
+  parseSubscriptionImageWithFallback,
+} from './utils/aiImageParser';
 import { CreditCard, Layers, Printer, RefreshCw, Users } from 'lucide-react';
 
 const createEmptyGeneralPlanData = (
@@ -72,6 +79,7 @@ const createInitialState = (mode: QuoteMode): ProposalState => {
     ],
     subscriptionPeriod: 60,
     careService: SUB_CARE_OPTIONS[0],
+    warrantyType: 'AS연장보험 + 가전수리올케어',
     warrantyYears: 5,
     allCare: true,
     selectedCardId: 'none',
@@ -113,6 +121,11 @@ export function App() {
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState(null as string | null);
 
+  const [isParsingGeneral, setIsParsingGeneral] = useState(false);
+  const [parseGeneralError, setParseGeneralError] = useState(
+    null as string | null
+  );
+
   // 메인 홈 화면 진입 시 최신 CRM 캐시 동기화
   useEffect(() => {
     if (step === 'home') {
@@ -151,6 +164,7 @@ export function App() {
   const handleEnterMode = (mode: QuoteMode) => {
     setActiveMode(mode);
     setParseError(null);
+    setParseGeneralError(null);
     setStep('input');
   };
 
@@ -193,6 +207,7 @@ export function App() {
         }
         setActiveMode(targetMode);
         setParseError(null);
+        setParseGeneralError(null);
         setStep('input');
         return;
       }
@@ -235,6 +250,7 @@ export function App() {
 
       setActiveMode(targetMode);
       setParseError(null);
+      setParseGeneralError(null);
       setStep('input');
     },
     []
@@ -267,47 +283,131 @@ export function App() {
     [applyRestoredProposalState]
   );
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        const base64 = result.split(',')[1] || result;
-        resolve(base64);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
+  // [1번 사진 대응] 일반구매(general) 및 혼합견적(hybrid) 일반전산 사진 자동입력
+  const handleParseGeneralImage = useCallback(
+    async (file: File) => {
+      setIsParsingGeneral(true);
+      setParseGeneralError(null);
 
+      try {
+        const result = await parseGeneralImageWithFallback(file);
+        const extractedItems = Array.isArray(result.items) ? result.items : [];
+
+        if (extractedItems.length === 0) {
+          throw new Error(
+            '일반 구매 본품 품목을 찾지 못했습니다. 사진을 다시 확인해 주세요.'
+          );
+        }
+
+        const instantDiscount = Math.max(0, Number(result.instantDiscount) || 0);
+        const lpointTotal = Math.max(0, Number(result.lpointTotal) || 0);
+        const tierCashback = Math.max(0, Number(result.tierCashback) || 0);
+        let extraCashback = Math.max(0, Number(result.extraCashback) || 0);
+        const finalBenefitPrice = Math.max(
+          0,
+          Number(result.finalBenefitPrice) || 0
+        );
+
+        const mappedItems = extractedItems.map((it, idx) => {
+          const qty = Math.max(1, Number(it.quantity ?? it.qty) || 1);
+          const unitPrice = Math.max(0, Number(it.unitPrice ?? it.price) || 0);
+          return {
+            id: `gen-ai-${Date.now()}-${idx}`,
+            category: it.category || it.name || `품목 ${idx + 1}`,
+            name: it.name || it.category || `품목 ${idx + 1}`,
+            code: it.code || it.modelName || '',
+            modelName: it.modelName || it.code || '',
+            qty,
+            quantity: qty,
+            price: unitPrice * qty,
+            unitPrice,
+            discount1: idx === 0 ? instantDiscount : 0,
+            discount2: idx === 0 ? lpointTotal : 0,
+            cashback: idx === 0 ? tierCashback : 0,
+          };
+        });
+
+        const sumOfItems = mappedItems.reduce(
+          (acc, it) => acc + it.unitPrice * it.quantity,
+          0
+        );
+
+        // 우측 하단 빨간색 '최종 혜택가'(finalBenefitPrice)와 정확히 일치하도록 차액 검증
+        if (finalBenefitPrice > 0 && sumOfItems > finalBenefitPrice) {
+          const currentCalculatedNet =
+            sumOfItems -
+            instantDiscount -
+            lpointTotal -
+            tierCashback -
+            extraCashback;
+          if (currentCalculatedNet > finalBenefitPrice) {
+            extraCashback += currentCalculatedNet - finalBenefitPrice;
+          }
+        }
+
+        const detectedCardType = mapGeneralCardName(
+          result.cardName,
+          tierCashback > 0
+        );
+
+        setCurrentState((prev) => {
+          const updatedPlanFields = {
+            generalItems: mappedItems,
+            generalCardType: detectedCardType,
+            instantDiscount,
+            earnedPoints: lpointTotal,
+            pointUsed: 0,
+            autoTierCashback: false,
+            manualTierCashback: tierCashback,
+            extraCashback,
+          };
+
+          const nextState: ProposalState = {
+            ...prev,
+            ...updatedPlanFields,
+          };
+
+          const snapshot = extractGeneralPlanData(nextState);
+          if (nextState.activeGeneralPlan === 2) {
+            nextState.generalPlan2 = snapshot;
+          } else {
+            nextState.generalPlan1 = snapshot;
+          }
+
+          return nextState;
+        });
+      } catch (err: any) {
+        setParseGeneralError(
+          err?.message || '일반전산 이미지 분석 중 오류가 발생했습니다.'
+        );
+      } finally {
+        setIsParsingGeneral(false);
+      }
+    },
+    [setCurrentState]
+  );
+
+  // [2번 사진 대응] 구독구매(subscription) 및 혼합견적(hybrid) 맞춤 구독 견적 계산기 사진 자동입력
   const handleParseImage = useCallback(
     async (file: File) => {
       setIsParsing(true);
       setParseError(null);
 
       try {
-        const base64 = await fileToBase64(file);
-        const response = await fetch('/api/ai/parse-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mimeType: file.type || 'image/png',
-          }),
-        }),
-          json = await response.json();
-        if (!response.ok || (!json.success && !json.items)) {
-          throw new Error(json.error || '전산 화면 인식에 실패했습니다.');
-        }
-
-        const data = json.data || json;
+        const data = await parseSubscriptionImageWithFallback(file);
         const extractedItems = Array.isArray(data.items) ? data.items : [];
-        const firstItem = extractedItems[0] || {};
+        const firstItem = extractedItems[0] || ({} as any);
 
         const detectedPeriod: SubscriptionPeriod =
-          firstItem.subscriptionPeriod === 36 || firstItem.period === 36
-            ? 36
-            : 60;
+          Number(firstItem.period) === 36 ? 36 : 60;
+
+        const rawCardName = data.cardName || firstItem.cardName || '';
+        const mappedCard = mapSubscriptionAffiliateCard(rawCardName);
+
+        const resolvedWarrantyType =
+          data.warrantyType ||
+          firstItem.warrantyType ||
+          'AS연장보험 + 가전수리올케어';
 
         setCurrentState((prev) => {
           const mappedItems =
@@ -315,10 +415,18 @@ export function App() {
               ? extractedItems.map((it: any, idx: number) => ({
                   id: `ai-${Date.now()}-${idx}`,
                   category: it.category || `구독 가전 ${idx + 1}`,
-                  modelName: it.modelName || '',
+                  modelName: it.modelName || it.modelCode || data.urlModelCode || '',
+                  modelCode: it.modelCode || it.modelName || data.urlModelCode || '',
                   monthlyFee:
                     Number(it.monthlyFee) > 0 ? Number(it.monthlyFee) : 0,
+                  contractAmount:
+                    Number(it.contractAmount) > 0
+                      ? Number(it.contractAmount)
+                      : Number(data.contractAmount) || 0,
                   careService: it.careService || SUB_CARE_OPTIONS[0],
+                  careType: it.careType || it.careService || SUB_CARE_OPTIONS[0],
+                  warrantyType: it.warrantyType || resolvedWarrantyType,
+                  cardName: it.cardName || rawCardName,
                 }))
               : prev.items;
 
@@ -327,8 +435,17 @@ export function App() {
             items: mappedItems,
             subscriptionPeriod: detectedPeriod,
             careService: firstItem.careService || prev.careService,
-            warrantyYears: 5,
-            allCare: true,
+            warrantyType: resolvedWarrantyType,
+            warrantyYears: data.warrantyYears || 5,
+            allCare: data.allCare ?? true,
+            selectedCardId:
+              mappedCard.cardId !== 'none'
+                ? mappedCard.cardId
+                : prev.selectedCardId,
+            selectedCardTierId:
+              mappedCard.cardId !== 'none'
+                ? mappedCard.tierId
+                : prev.selectedCardTierId,
           };
         });
       } catch (err: any) {
@@ -339,31 +456,6 @@ export function App() {
     },
     [setCurrentState]
   );
-
-  // 전역 클립보드 붙여넣기 (Ctrl+V) - step === 'input'일 때만 동작
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      if (step !== 'input') return;
-      if (activeMode === 'general') return;
-      const clipboardItems = e.clipboardData?.items;
-      if (!clipboardItems) return;
-
-      for (let i = 0; i < clipboardItems.length; i++) {
-        const item = clipboardItems[i];
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            handleParseImage(file);
-            break;
-          }
-        }
-      }
-    };
-
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [handleParseImage, step, activeMode]);
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col">
@@ -479,6 +571,9 @@ export function App() {
           onParseImage={handleParseImage}
           isParsing={isParsing}
           parseError={parseError}
+          onParseGeneralImage={handleParseGeneralImage}
+          isParsingGeneral={isParsingGeneral}
+          parseGeneralError={parseGeneralError}
           onShowProposal={() => setStep('proposal')}
           onBackToHome={() => setStep('home')}
           activeCustomer={activeCustomer}

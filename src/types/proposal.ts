@@ -9,6 +9,13 @@ export interface GeneralPurchaseItem {
   modelName: string;
   quantity: number;
   unitPrice: number; // 단가(행사가)
+  name?: string;
+  code?: string;
+  qty?: number;
+  price?: number;
+  discount1?: number; // 기타할인1 (즉시할인 합계)
+  discount2?: number; // 기타할인2 (L.Point 합계)
+  cashback?: number; // 캐시백 (금액대 캐시백)
 }
 
 export type GeneralExtraBenefitType = 'discount' | 'etc';
@@ -472,8 +479,13 @@ export interface SubscriptionItem {
   id: string;
   category: string;
   modelName: string;
+  modelCode?: string;
   monthlyFee: number;
   careService: string;
+  careType?: string;
+  warrantyType?: string;
+  cardName?: string;
+  contractAmount?: number;
 }
 
 export type AffiliateCardId = 'woori' | 'lotte' | 'samsung' | 'shinhan' | 'none';
@@ -538,6 +550,7 @@ export interface ProposalState {
   items: SubscriptionItem[];
   subscriptionPeriod: SubscriptionPeriod;
   careService: string;
+  warrantyType?: string;
   warrantyYears: 3 | 5;
   allCare: boolean;
   selectedCardId: AffiliateCardId;

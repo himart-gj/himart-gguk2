@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AFFILIATE_CARDS,
   AffiliateCardId,
@@ -25,11 +25,16 @@ import {
   switchGeneralPlanInState,
 } from '../types/proposal';
 import {
+  getStoredGeminiApiKey,
+  setStoredGeminiApiKey,
+} from '../utils/aiImageParser';
+import {
   ArrowLeft,
   Camera,
   Check,
   Copy,
   CreditCard,
+  KeyRound,
   Loader2,
   Minus,
   Plus,
@@ -47,6 +52,9 @@ interface ControlPanelProps {
   onParseImage: (file: File) => Promise<void>;
   isParsing: boolean;
   parseError: string | null;
+  onParseGeneralImage?: (file: File) => Promise<void>;
+  isParsingGeneral?: boolean;
+  parseGeneralError?: string | null;
   onShowProposal: () => void;
   onBackToHome: () => void;
   activeCustomer?: { id: string; name: string; phone?: string } | null;
@@ -60,6 +68,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onParseImage,
   isParsing,
   parseError,
+  onParseGeneralImage,
+  isParsingGeneral = false,
+  parseGeneralError = null,
   onShowProposal,
   onBackToHome,
   activeCustomer,
@@ -67,12 +78,81 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onOpenSaveToCrm,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const generalFileInputRef = useRef<HTMLInputElement>(null);
   const [copiedNotice, setCopiedNotice] = useState(false);
+
+  // 혼합견적 모드에서 Ctrl+V 시 어느 영역에 붙여넣을지 포커스 추적
+  const [lastFocusedSection, setLastFocusedSection] = useState<
+    'general' | 'subscription'
+  >(state.quoteMode === 'general' ? 'general' : 'subscription');
+
+  // AI 키 설정 모달 상태
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(() => getStoredGeminiApiKey());
+  const [apiKeySavedToast, setApiKeySavedToast] = useState(false);
 
   const showGeneral =
     state.quoteMode === 'general' || state.quoteMode === 'hybrid';
   const showSubscription =
     state.quoteMode === 'subscription' || state.quoteMode === 'hybrid';
+
+  useEffect(() => {
+    if (state.quoteMode === 'general') {
+      setLastFocusedSection('general');
+    } else if (state.quoteMode === 'subscription') {
+      setLastFocusedSection('subscription');
+    }
+  }, [state.quoteMode]);
+
+  // 클립보드 붙여넣기 (Ctrl+V) 감지 - 일반구매 및 구독구매 모두 지원
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (isApiKeyModalOpen) return;
+      const clipboardItems = e.clipboardData?.items;
+      if (!clipboardItems) return;
+
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            if (state.quoteMode === 'general') {
+              onParseGeneralImage?.(file);
+            } else if (state.quoteMode === 'subscription') {
+              onParseImage(file);
+            } else {
+              // 혼합견적(hybrid) 모드: 마지막으로 클릭/포커스한 카드 기준 실행
+              if (lastFocusedSection === 'general' && onParseGeneralImage) {
+                onParseGeneralImage(file);
+              } else {
+                onParseImage(file);
+              }
+            }
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [
+    isApiKeyModalOpen,
+    lastFocusedSection,
+    onParseGeneralImage,
+    onParseImage,
+    state.quoteMode,
+  ]);
+
+  const handleSaveApiKey = () => {
+    setStoredGeminiApiKey(apiKeyInput);
+    setApiKeySavedToast(true);
+    setTimeout(() => {
+      setApiKeySavedToast(false);
+      setIsApiKeyModalOpen(false);
+    }, 800);
+  };
 
   // ==================== 일반구매 핸들러 ====================
   const generalSummary = calculateGeneralPurchaseSummary(state);
@@ -91,6 +171,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     onChange((prev) => copyPlan1ToPlan2InState(prev));
     setCopiedNotice(true);
     setTimeout(() => setCopiedNotice(false), 2000);
+  };
+
+  const handleGeneralFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (file && onParseGeneralImage) {
+      await onParseGeneralImage(file);
+      e.target.value = '';
+    }
   };
 
   const handleAddGeneralCategory = (categoryName: string) => {
@@ -254,6 +344,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       modelName: '',
       monthlyFee: 0,
       careService: SUB_CARE_OPTIONS[0],
+      warrantyType: state.warrantyType || 'AS연장보험 + 가전수리올케어',
     };
     onChange((prev) => ({
       ...prev,
@@ -328,9 +419,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
   const rawFinalMonthly = totalBaseMonthly - cardDiscount - hiPlusMonthly;
 
+  const hasCustomApiKey = Boolean(getStoredGeminiApiKey());
+
   return (
     <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col items-center justify-center p-3 sm:p-5">
-      {/* 상단 메뉴 복귀 버튼 & 현재 고객 뱃지 & CRM 고객 저장 버튼 */}
+      {/* 상단 메뉴 복귀 버튼 & 현재 고객 뱃지 & AI 키 설정 & CRM 고객 저장 버튼 */}
       <div
         className={`w-full ${
           state.quoteMode === 'hybrid' ? 'max-w-6xl' : 'max-w-xl'
@@ -364,12 +457,29 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs font-black text-slate-600">
             {state.quoteMode === 'general' && '일반구매 견적서'}
             {state.quoteMode === 'subscription' && '구독구매 견적서'}
             {state.quoteMode === 'hybrid' && '일반+구독 혼합견적서'}
           </span>
+
+          <button
+            type="button"
+            onClick={() => {
+              setApiKeyInput(getStoredGeminiApiKey());
+              setIsApiKeyModalOpen(true);
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border shadow-xs transition cursor-pointer ${
+              hasCustomApiKey
+                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
+                : 'bg-white hover:bg-slate-200 text-slate-700 border-slate-200'
+            }`}
+            title="Gemini AI API Key 설정 (1~4번 전 메뉴 공통 적용)"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            🔑 AI 키 설정
+          </button>
 
           {onOpenSaveToCrm && (
             <button
@@ -394,7 +504,45 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       >
         {/* ==================== 일반구매 입력 카드 ==================== */}
         {showGeneral && (
-          <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4">
+          <div
+            onClick={() => setLastFocusedSection('general')}
+            onMouseEnter={() => setLastFocusedSection('general')}
+            className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4"
+          >
+            {/* 일반전산 사진 자동입력 (숨김 input + 상단 배너 버튼) */}
+            <div>
+              <input
+                ref={generalFileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleGeneralFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => generalFileInputRef.current?.click()}
+                disabled={isParsingGeneral}
+                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60"
+              >
+                {isParsingGeneral ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>일반전산 화면 AI 자동 판독 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4 text-white" />
+                    <span>📸 일반전산 사진 자동입력 (클릭 또는 Ctrl+V)</span>
+                  </>
+                )}
+              </button>
+              {parseGeneralError && (
+                <p className="mt-1.5 text-xs font-bold text-red-600 text-center">
+                  {parseGeneralError}
+                </p>
+              )}
+            </div>
+
             {/* 최상단: [견적 1안] / [견적 2안] 탭 & [📋 1안 내용 ➔ 2안 복사] 버튼 */}
             <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
               <div className="inline-flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
@@ -446,18 +594,29 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
             {/* 1. 구매 품목 및 행사가 */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                   <ShoppingBag className="w-4 h-4 text-blue-600" />
                   1. 일반구매 품목 및 행사가 ({state.activeGeneralPlan}안)
                 </label>
-                <button
-                  type="button"
-                  onClick={handleAddEmptyGeneralItem}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> 품목 추가
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => generalFileInputRef.current?.click()}
+                    disabled={isParsingGeneral}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    📸 일반전산 사진 자동입력
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddEmptyGeneralItem}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 품목 추가
+                  </button>
+                </div>
               </div>
 
               {/* 빠른 품목명 버튼 */}
@@ -474,7 +633,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 ))}
               </div>
 
-              <div className="max-h-[148px] overflow-y-auto space-y-1.5 pr-1">
+              <div className="max-h-[168px] overflow-y-auto space-y-1.5 pr-1">
                 {state.generalItems.map((item, idx) => (
                   <div
                     key={item.id}
@@ -486,6 +645,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       onChange={(e) =>
                         handleUpdateGeneralItem(item.id, {
                           category: e.target.value,
+                          name: e.target.value,
                         })
                       }
                       placeholder={`품목명 ${idx + 1}`}
@@ -497,9 +657,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       onChange={(e) =>
                         handleUpdateGeneralItem(item.id, {
                           modelName: e.target.value,
+                          code: e.target.value,
                         })
                       }
-                      placeholder="모델명(선택)"
+                      placeholder="상품코드/모델명"
                       className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
                     />
                     <div className="col-span-2 relative">
@@ -508,11 +669,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         min={1}
                         max={99}
                         value={item.quantity || 1}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const q = Math.max(1, Number(e.target.value) || 1);
                           handleUpdateGeneralItem(item.id, {
-                            quantity: Math.max(1, Number(e.target.value) || 1),
-                          })
-                        }
+                            quantity: q,
+                            qty: q,
+                          });
+                        }}
                         className="w-full pl-2 pr-5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-extrabold text-center text-slate-800 focus:border-blue-600 focus:outline-none"
                       />
                       <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
@@ -524,11 +687,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         type="number"
                         step={10000}
                         value={item.unitPrice || ''}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const p = Math.max(0, Number(e.target.value));
                           handleUpdateGeneralItem(item.id, {
-                            unitPrice: Math.max(0, Number(e.target.value)),
-                          })
-                        }
+                            unitPrice: p,
+                            price: p,
+                          });
+                        }}
                         placeholder="행사가(원)"
                         className="w-full pl-2 pr-5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-900 text-right focus:border-blue-600 focus:outline-none"
                       />
@@ -596,18 +761,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
                   <label className="text-[10px] font-extrabold text-slate-600 block mb-1">
-                    (-) 즉시할인액 (원)
+                    (-) 즉시할인 합계 / 기타할인1 (원)
                   </label>
                   <input
                     type="number"
                     step={10000}
                     value={state.instantDiscount || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
                       onChange((prev) => ({
                         ...prev,
-                        instantDiscount: Math.max(0, Number(e.target.value)),
-                      }))
-                    }
+                        instantDiscount: val,
+                        generalItems: prev.generalItems.map((it, idx) =>
+                          idx === 0 ? { ...it, discount1: val } : it
+                        ),
+                      }));
+                    }}
                     placeholder="0"
                     className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:outline-none"
                   />
@@ -615,18 +784,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
                 <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
                   <label className="text-[10px] font-extrabold text-slate-600 block mb-1">
-                    총 적립포인트 (원)
+                    L.Point 합계 / 기타할인2 (원)
                   </label>
                   <input
                     type="number"
                     step={10000}
                     value={state.earnedPoints || ''}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
                       onChange((prev) => ({
                         ...prev,
-                        earnedPoints: Math.max(0, Number(e.target.value)),
-                      }))
-                    }
+                        earnedPoints: val,
+                        generalItems: prev.generalItems.map((it, idx) =>
+                          idx === 0 ? { ...it, discount2: val } : it
+                        ),
+                      }));
+                    }}
                     placeholder="0"
                     className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:outline-none"
                   />
@@ -659,7 +832,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <div className="col-span-2 sm:col-span-2 bg-blue-50/70 p-2 rounded-xl border border-blue-200">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[10px] font-extrabold text-blue-950">
-                      (-) 금액대별 자동 캐시백 (원){' '}
+                      (-) 금액대별 캐시백 (원){' '}
                       <span className="text-[9px] font-bold text-blue-600">
                         *실결제가({generalSummary.payPrice.toLocaleString()}원) 기준
                       </span>
@@ -691,15 +864,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       type="number"
                       step={10000}
                       value={state.manualTierCashback || ''}
-                      onChange={(e) =>
+                      onChange={(e) => {
+                        const val = Math.max(0, Number(e.target.value));
                         onChange((prev) => ({
                           ...prev,
-                          manualTierCashback: Math.max(
-                            0,
-                            Number(e.target.value)
+                          manualTierCashback: val,
+                          generalItems: prev.generalItems.map((it, idx) =>
+                            idx === 0 ? { ...it, cashback: val } : it
                           ),
-                        }))
-                      }
+                        }));
+                      }}
                       placeholder="수동 입력"
                       className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-slate-900 focus:outline-none"
                     />
@@ -919,7 +1093,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     </span>
                   </div>
                   <span className="px-2 py-0.5 rounded-md bg-white/15 font-black text-emerald-300">
-                    차액: {planNetDiff > 0 ? `+${planNetDiff.toLocaleString()}` : planNetDiff.toLocaleString()}원
+                    차액:{' '}
+                    {planNetDiff > 0
+                      ? `+${planNetDiff.toLocaleString()}`
+                      : planNetDiff.toLocaleString()}
+                    원
                   </span>
                 </div>
               )}
@@ -941,7 +1119,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
         {/* ==================== 구독구매 입력 카드 ==================== */}
         {showSubscription && (
-          <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4">
+          <div
+            onClick={() => setLastFocusedSection('subscription')}
+            onMouseEnter={() => setLastFocusedSection('subscription')}
+            className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4"
+          >
             {/* 맨 위: 전산 구독 화면 사진 올리기 (Ctrl+V) */}
             <div>
               <input
@@ -955,17 +1137,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isParsing}
-                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60"
+                className="w-full py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60"
               >
                 {isParsing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>전산 화면 AI 자동 분석 중...</span>
+                    <span>전산 구독 화면 AI 자동 판독 중...</span>
                   </>
                 ) : (
                   <>
                     <Camera className="w-4 h-4 text-white" />
-                    <span>📸 전산 구독 화면 사진 올리기 (Ctrl+V)</span>
+                    <span>📸 전산 구독 화면 사진 올리기 (클릭 또는 Ctrl+V)</span>
                   </>
                 )}
               </button>
@@ -976,7 +1158,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               )}
             </div>
 
-            {/* 1. 구독 품목 및 월요금 + 품목별 개별 케어서비스 (5년 무상 A/S 고정) */}
+            {/* 1. 구독 품목 및 월요금 + 품목별 개별 케어서비스 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs sm:text-sm font-black text-slate-900">
@@ -1015,7 +1197,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
 
               {/* 품목 행 + 품목별 개별 케어서비스 선택/입력 줄 */}
-              <div className="max-h-[210px] overflow-y-auto space-y-2 pr-1">
+              <div className="max-h-[230px] overflow-y-auto space-y-2 pr-1">
                 {state.items.map((item, index) => (
                   <div
                     key={item.id}
@@ -1039,9 +1221,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         onChange={(e) =>
                           handleUpdateSubItem(item.id, {
                             modelName: e.target.value,
+                            modelCode: e.target.value,
                           })
                         }
-                        placeholder="모델명(선택)"
+                        placeholder="모델코드(예:FG24GN)"
                         className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
                       />
                       <div className="col-span-4 relative">
@@ -1054,7 +1237,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                               monthlyFee: Math.max(0, Number(e.target.value)),
                             })
                           }
-                          placeholder="월 구독료(원)"
+                          placeholder="월 납부요금(원)"
                           className="w-full pl-2 pr-6 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-900 text-right focus:border-blue-600 focus:outline-none"
                         />
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
@@ -1074,7 +1257,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       </div>
                     </div>
 
-                    {/* 아래쪽 줄: 품목별 개별 케어서비스 선택/입력 + 우측 5년 무상 A/S 기본 포함 배지 */}
+                    {/* 아래쪽 줄: 품목별 개별 케어서비스 선택/입력 + 우측 보장서비스 배지 */}
                     <div className="grid grid-cols-12 gap-1.5 items-center pt-0.5">
                       <select
                         value={
@@ -1085,7 +1268,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         onChange={(e) => {
                           const val = e.target.value;
                           if (val !== 'custom') {
-                            handleUpdateSubItem(item.id, { careService: val });
+                            handleUpdateSubItem(item.id, {
+                              careService: val,
+                              careType: val,
+                            });
                           }
                         }}
                         className="col-span-4 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-extrabold text-slate-700 focus:border-blue-600 focus:outline-none"
@@ -1095,7 +1281,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             {opt}
                           </option>
                         ))}
-                        <option value="custom">직접 입력</option>
+                        <option value="custom">직접 입력 / AI추출</option>
                       </select>
 
                       <input
@@ -1104,25 +1290,52 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         onChange={(e) =>
                           handleUpdateSubItem(item.id, {
                             careService: e.target.value,
+                            careType: e.target.value,
                           })
                         }
-                        placeholder="케어서비스 내용 직접 입력"
+                        placeholder="케어서비스 (예: 안심케어_1)"
                         className="col-span-5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
                       />
 
                       <div className="col-span-3 flex justify-end">
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-[10px] font-extrabold text-rose-700 whitespace-nowrap">
-                          🛡️ 5년 무상 A/S 기본 포함
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-[10px] font-extrabold text-rose-700 truncate max-w-full"
+                          title={
+                            item.warrantyType ||
+                            state.warrantyType ||
+                            '5년 무상 A/S 기본 포함'
+                          }
+                        >
+                          🛡️{' '}
+                          {item.warrantyType ||
+                            state.warrantyType ||
+                            '5년 무상 A/S 기본 포함'}
                         </span>
                       </div>
                     </div>
+
+                    {item.contractAmount && item.contractAmount > 0 ? (
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 px-1 pt-0.5">
+                        <span>
+                          계약/결제금액:{' '}
+                          <strong className="text-slate-800">
+                            {item.contractAmount.toLocaleString()}원
+                          </strong>
+                        </span>
+                        {item.cardName && (
+                          <span className="text-blue-600 font-extrabold">
+                            전산 인식 카드: {item.cardName}
+                          </span>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
 
               <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
                 <span className="text-rose-600 font-extrabold">
-                  ✓ 전 품목 5년 무상 A/S 기본 보장
+                  ✓ {state.warrantyType || '전 품목 5년 무상 A/S 기본 보장'}
                 </span>
                 <span className="text-slate-800 font-extrabold">
                   총 월 구독료 합계: {totalBaseMonthly.toLocaleString()}원
@@ -1333,6 +1546,88 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <Check className="w-5 h-5" />
             확인 (일반+구독 혼합 제안서 보기) ➔
           </button>
+        </div>
+      )}
+
+      {/* ==================== 🔑 AI 키 설정 모달 ==================== */}
+      {isApiKeyModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    🔑 Gemini AI 키 설정
+                  </h3>
+                  <p className="text-[11px] font-bold text-slate-500">
+                    1~4번 모든 견적기 및 POP 출력기에서 공통으로 사용됩니다
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsApiKeyModalOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-xs font-extrabold text-slate-700">
+                Gemini API Key 입력
+              </label>
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="AIzaSy... (미입력 시 기본 환경변수 키 자동 사용)"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono font-bold text-slate-900 focus:border-blue-600 focus:outline-none"
+              />
+              <p className="text-[11px] font-semibold text-slate-500 leading-relaxed">
+                • 입력한 키는 내 기기 브라우저(localStorage:{' '}
+                <code className="text-blue-600 font-bold">gemini_api_key</code>
+                )에 안전하게 저장됩니다.
+                <br />• 비워두면 시스템 기본 GEMINI_API_KEY가 자동으로 연결됩니다.
+              </p>
+            </div>
+
+            {apiKeySavedToast && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-black text-center">
+                ✓ AI 키가 저장되었습니다! (전 메뉴 공통 적용 완료)
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setApiKeyInput('');
+                  setStoredGeminiApiKey('');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-extrabold transition cursor-pointer"
+              >
+                초기화
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsApiKeyModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-extrabold transition cursor-pointer"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveApiKey}
+                className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md transition cursor-pointer"
+              >
+                저장하기
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
