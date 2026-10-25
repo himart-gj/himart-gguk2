@@ -169,6 +169,65 @@ export function App() {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState<boolean>(false);
 
+  // 스마트폰 뒤로가기 버튼(popstate) 연동
+  const isPopStateNavigationRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    // 최초 진입 시 루트 히스토리 상태 고정 및 앱 강제종료 방지용 버퍼 추가
+    window.history.replaceState({ appStep: 'home', activeMode: 'subscription' }, '');
+    window.history.pushState({ appStep: 'home', activeMode: 'subscription' }, '');
+
+    const handlePopState = (e: PopStateEvent) => {
+      // 열려 있는 모달이 있으면 모달부터 닫기
+      if (isSaveToCrmOpen) {
+        setIsSaveToCrmOpen(false);
+        window.history.pushState({ appStep: step, activeMode }, '');
+        return;
+      }
+      if (isInstallGuideOpen) {
+        setIsInstallGuideOpen(false);
+        window.history.pushState({ appStep: step, activeMode }, '');
+        return;
+      }
+
+      const state = e.state;
+      if (state && state.appStep) {
+        isPopStateNavigationRef.current = true;
+        if (state.activeMode) {
+          setActiveMode(state.activeMode);
+        }
+        setStep(state.appStep);
+      } else {
+        // 루트까지 뒤로 간 경우 앱이 꺼지지 않도록 홈 화면 유지 및 히스토리 복구
+        isPopStateNavigationRef.current = true;
+        setStep('home');
+        window.history.pushState({ appStep: 'home', activeMode }, '');
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isSaveToCrmOpen, isInstallGuideOpen, step, activeMode]);
+
+  useEffect(() => {
+    if (isPopStateNavigationRef.current) {
+      isPopStateNavigationRef.current = false;
+      return;
+    }
+    const currentHist = window.history.state;
+    if (!currentHist || currentHist.appStep !== step || currentHist.activeMode !== activeMode) {
+      window.history.pushState(
+        {
+          appStep: step,
+          activeMode,
+          careFolder: null,
+          careSection: null,
+        },
+        ''
+      );
+    }
+  }, [step, activeMode]);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();

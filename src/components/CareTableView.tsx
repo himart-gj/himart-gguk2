@@ -57,6 +57,45 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // 폴더 단계 이동 시 브라우저 히스토리에 기록하여 휴대폰 뒤로가기 버튼으로 이전 폴더 이동 지원
+  const navigateCareFolder = (
+    nextFolder: CareFolderKey | null,
+    nextSection: string | null,
+    nextCategory = 'ALL'
+  ) => {
+    setSelectedFolder(nextFolder);
+    setSelectedSection(nextSection);
+    setSelectedCategory(nextCategory);
+    setSearchQuery('');
+    window.history.pushState(
+      {
+        appStep: 'care-table',
+        careFolder: nextFolder,
+        careSection: nextSection,
+      },
+      ''
+    );
+  };
+
+  useEffect(() => {
+    const handleCarePopState = (e: PopStateEvent) => {
+      if (isSyncModalOpen) {
+        setIsSyncModalOpen(false);
+        return;
+      }
+      const st = e.state;
+      if (st && st.appStep === 'care-table') {
+        setSelectedFolder(st.careFolder ?? null);
+        setSelectedSection(st.careSection ?? null);
+        setSelectedCategory('ALL');
+        setSearchQuery('');
+      }
+    };
+
+    window.addEventListener('popstate', handleCarePopState);
+    return () => window.removeEventListener('popstate', handleCarePopState);
+  }, [isSyncModalOpen]);
+
   const showToast = (msg: string) => {
     setNotice(msg);
     setTimeout(() => {
@@ -360,12 +399,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                 <div className="flex items-center gap-1.5 text-xs sm:text-sm font-black flex-wrap">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedFolder(null);
-                      setSelectedSection(null);
-                      setSelectedCategory('ALL');
-                      setSearchQuery('');
-                    }}
+                    onClick={() => navigateCareFolder(null, null, 'ALL')}
                     className={`px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer ${
                       !selectedFolder
                         ? 'bg-slate-900 text-white'
@@ -381,11 +415,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                       <ChevronRight className="w-4 h-4 text-slate-400" />
                       <button
                         type="button"
-                        onClick={() => {
-                          setSelectedSection(null);
-                          setSelectedCategory('ALL');
-                          setSearchQuery('');
-                        }}
+                        onClick={() => navigateCareFolder(selectedFolder, null, 'ALL')}
                         className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
                           selectedFolder && !selectedSection
                             ? 'bg-orange-600 text-white'
@@ -413,11 +443,8 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                     onClick={() => {
                       if (searchQuery) {
                         setSearchQuery('');
-                      } else if (selectedSection) {
-                        setSelectedSection(null);
-                        setSelectedCategory('ALL');
                       } else {
-                        setSelectedFolder(null);
+                        window.history.back();
                       }
                     }}
                     className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black flex items-center gap-1 cursor-pointer"
@@ -462,11 +489,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                     <button
                       key={folder.key}
                       type="button"
-                      onClick={() => {
-                        setSelectedFolder(folder.key);
-                        setSelectedSection(null);
-                        setSelectedCategory('ALL');
-                      }}
+                      onClick={() => navigateCareFolder(folder.key, null, 'ALL')}
                       className="p-5 rounded-3xl bg-white hover:bg-orange-50/50 border-2 border-slate-200 hover:border-orange-500 shadow-xs hover:shadow-md transition-all text-left flex items-start justify-between gap-3 group cursor-pointer"
                     >
                       <div className="flex items-start gap-3.5 min-w-0">
@@ -517,10 +540,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                     <button
                       key={secInfo.section}
                       type="button"
-                      onClick={() => {
-                        setSelectedSection(secInfo.section);
-                        setSelectedCategory('ALL');
-                      }}
+                      onClick={() => navigateCareFolder(selectedFolder, secInfo.section, 'ALL')}
                       className="p-4 rounded-2xl bg-white hover:bg-orange-50/60 border-2 border-slate-200 hover:border-orange-500 text-left transition flex flex-col justify-between gap-2 shadow-2xs group cursor-pointer"
                     >
                       <div className="flex items-start justify-between gap-2">
