@@ -64,7 +64,7 @@ const createEmptyGeneralPlanData = (
   instantDiscount: 0,
   earnedPoints: 0,
   pointUsed: 0,
-  autoTierCashback: false,
+  autoTierCashback: true,
   manualTierCashback: 0,
   extraCashback: 0,
   extraBenefits: [],
@@ -943,160 +943,166 @@ export function App() {
         </div>
       </header>
 
-      {/* ==================== STEP 0: 심플 메인 메뉴 선택 화면 ==================== */}
+      {/* ==================== STEP 0: 심플 메인 메뉴 선택 화면 (좌 1~4 / 우 5~8 2열 배치) ==================== */}
       {step === 'home' && (
-        <main className="flex-1 w-full flex items-center justify-center p-3.5 sm:p-6">
-          <div className="w-full max-w-md sm:max-w-lg lg:max-w-xl space-y-3 sm:space-y-3.5">
-            <button
-              type="button"
-              onClick={() => handleEnterMode('general')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition shrink-0">
-                  <CreditCard className="w-5 h-5 sm:w-6 sm:h-6" />
-                </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  1. 일반구매 견적서
-                </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleEnterMode('subscription')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition shrink-0">
-                  <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6" />
-                </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  2. 구독구매 견적서
-                </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleEnterMode('hybrid')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition shrink-0">
-                  <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
-                </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  3. 일반+구독 혼합견적서
-                </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStep('pop-printer')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition shrink-0">
-                  <Printer className="w-5 h-5 sm:w-6 sm:h-6" />
-                </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  4. 구독 POP 자동 출력기
-                </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setStep('crm')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-amber-500 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-500 flex items-center justify-center transition shrink-0">
-                  <Users className="w-5 h-5 sm:w-6 sm:h-6" />
-                </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  5. 통합 고객관리 시스템
-                </span>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {urgentCount >= 1 && (
-                  <span className="px-2.5 py-1 rounded-full bg-rose-600 text-white text-xs font-black animate-pulse shadow-xs">
-                    🔥 긴급 {urgentCount}건
+        <main className="flex-1 w-full flex items-center justify-center p-3 sm:p-6">
+          <div className="w-full max-w-3xl grid grid-cols-2 gap-2.5 sm:gap-4">
+            {/* 왼쪽 열: 1 ~ 4번 */}
+            <div className="flex flex-col gap-2.5 sm:gap-3.5">
+              <button
+                type="button"
+                onClick={() => handleEnterMode('general')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition shrink-0">
+                    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    1. 일반구매 견적
                   </span>
-                )}
-                <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
+                </div>
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
                   ➔
                 </span>
-              </div>
-            </button>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setStep('himobile')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-purple-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-purple-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-purple-600 group-hover:bg-white text-white group-hover:text-purple-600 flex items-center justify-center transition shrink-0">
-                  <Smartphone className="w-5 h-5 sm:w-6 sm:h-6" />
+              <button
+                type="button"
+                onClick={() => handleEnterMode('subscription')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition shrink-0">
+                    <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    2. 구독구매 견적
+                  </span>
                 </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  6. 하이모바일 알뜰요금제 (즉시 개통)
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                  ➔
                 </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setStep('insurance')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
-                  <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
+              <button
+                type="button"
+                onClick={() => handleEnterMode('hybrid')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition shrink-0">
+                    <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    3. 일반+구독 혼합
+                  </span>
                 </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  7. 보험상품 청구안내 (고객 전달용)
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                  ➔
                 </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setStep('care-table')}
-              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-cyan-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-cyan-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-            >
-              <div className="flex items-center gap-3.5 sm:gap-4">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-cyan-600 group-hover:bg-white text-white group-hover:text-cyan-600 flex items-center justify-center transition shrink-0">
-                  <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6" />
+              <button
+                type="button"
+                onClick={() => setStep('pop-printer')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition shrink-0">
+                    <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    4. 구독 POP 출력
+                  </span>
                 </div>
-                <span className="text-lg sm:text-xl font-black tracking-tight">
-                  8. 안심케어 · 가전이사 조견표
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                  ➔
                 </span>
-              </div>
-              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
-                ➔
-              </span>
-            </button>
+              </button>
+            </div>
+
+            {/* 오른쪽 열: 5 ~ 8번 */}
+            <div className="flex flex-col gap-2.5 sm:gap-3.5">
+              <button
+                type="button"
+                onClick={() => setStep('crm')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-amber-500 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer relative"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-500 flex items-center justify-center transition shrink-0">
+                    <Users className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    5. 통합 고객관리
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                  {urgentCount >= 1 && (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] sm:text-xs font-black animate-pulse shadow-xs">
+                      🔥{urgentCount}
+                    </span>
+                  )}
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white">
+                    ➔
+                  </span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('himobile')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-purple-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-purple-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-purple-600 group-hover:bg-white text-white group-hover:text-purple-600 flex items-center justify-center transition shrink-0">
+                    <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    6. 알뜰폰 개통
+                  </span>
+                </div>
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                  ➔
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('insurance')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
+                    <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    7. 보험 청구안내
+                  </span>
+                </div>
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                  ➔
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStep('care-table')}
+                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-cyan-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-cyan-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              >
+                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-cyan-600 group-hover:bg-white text-white group-hover:text-cyan-600 flex items-center justify-center transition shrink-0">
+                    <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                    8. 안심케어 조견표
+                  </span>
+                </div>
+                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                  ➔
+                </span>
+              </button>
+            </div>
           </div>
         </main>
       )}

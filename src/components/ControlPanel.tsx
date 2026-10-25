@@ -896,6 +896,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         onChange((prev) => ({
                           ...prev,
                           generalCardType: cardOpt,
+                          autoTierCashback: true,
                         }))
                       }
                       className={`py-1.5 px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
@@ -987,16 +988,28 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     <span className="text-[10px] font-extrabold text-blue-950">
                       (-) 금액대별 캐시백 (원){' '}
                       <span className="text-[9px] font-bold text-blue-600">
-                        *실결제가({generalSummary.payPrice.toLocaleString()}원) 기준
+                        *실결제가({generalSummary.payPrice.toLocaleString()}원) 기준{' '}
+                        {state.generalCardType === '미정'
+                          ? '(카드 선택 시 자동입력)'
+                          : '(자동 적용됨)'}
                       </span>
                     </span>
                   </div>
                   <input
                     type="number"
                     step={10000}
-                    value={state.manualTierCashback || ''}
+                    value={generalSummary.tierCashback || ''}
                     onChange={(e) => {
-                      const val = Math.max(0, Number(e.target.value));
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        onChange((prev) => ({
+                          ...prev,
+                          autoTierCashback: false,
+                          manualTierCashback: 0,
+                        }));
+                        return;
+                      }
+                      const val = Math.max(0, Number(raw));
                       onChange((prev) => ({
                         ...prev,
                         autoTierCashback: false,
@@ -1006,8 +1019,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         ),
                       }));
                     }}
-                    placeholder="금액대별 캐시백 직접 입력"
-                    className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-slate-900 focus:outline-none"
+                    placeholder={
+                      state.generalCardType === '미정'
+                        ? '위에서 카드를 선택하면 자동 계산됩니다'
+                        : '0'
+                    }
+                    className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-blue-700 focus:outline-none"
                   />
                 </div>
 

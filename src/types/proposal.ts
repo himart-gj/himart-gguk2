@@ -457,8 +457,11 @@ export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
     sum - totalStep1InstantDiscount - hiFreedSupport
   );
 
-  // 금액대별 캐시백 (직접 입력/전산 스캔값 기준)
-  const tierCashback = Math.max(0, Number(state.manualTierCashback) || 0);
+  // 금액대별 캐시백: 카드 선택 시('미정'이 아닐 때) 실결제가(payPrice) 기준으로 자동 계산 (수동 수정 시 수동값 반영)
+  const tierCashback =
+    state.autoTierCashback !== false
+      ? calculateAutoTierCashback(payPrice, state.generalCardType)
+      : Math.max(0, Number(state.manualTierCashback) || 0);
 
   // 배송익월 추가 캐시백
   const extraCashback = Math.max(0, Number(state.extraCashback) || 0);
