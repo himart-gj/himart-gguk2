@@ -502,13 +502,13 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             >
               {state.quoteMode === 'subscription'
                 ? `구독 1안${
-                    plan1SubSummary.totalMonthlyFee > 0
+                    plan1SubSummary.totalBaseMonthly > 0
                       ? ` (월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()}원)`
                       : ''
                   }`
                 : state.quoteMode === 'hybrid'
                   ? `1안${
-                      plan1Summary.sum > 0 || plan1SubSummary.totalMonthlyFee > 0
+                      plan1Summary.sum > 0 || plan1SubSummary.totalBaseMonthly > 0
                         ? ` (일반 ${plan1Summary.rawNet.toLocaleString()} / 월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()})`
                         : ''
                     }`
@@ -529,13 +529,13 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             >
               {state.quoteMode === 'subscription'
                 ? `구독 2안${
-                    plan2SubSummary.totalMonthlyFee > 0
+                    plan2SubSummary.totalBaseMonthly > 0
                       ? ` (월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()}원)`
                       : ''
                   }`
                 : state.quoteMode === 'hybrid'
                   ? `2안${
-                      plan2Summary.sum > 0 || plan2SubSummary.totalMonthlyFee > 0
+                      plan2Summary.sum > 0 || plan2SubSummary.totalBaseMonthly > 0
                         ? ` (일반 ${plan2Summary.rawNet.toLocaleString()} / 월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()})`
                         : ''
                     }`

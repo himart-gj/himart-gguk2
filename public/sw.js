@@ -27,7 +27,7 @@ self.addEventListener('push', (event) => {
   let data = {
     title: '🔔 국지CRM 알림',
     body: '오늘 배송 일정 및 신규 고객 알림을 확인하세요.',
-    url: '/',
+    url: './',
   };
 
   if (event.data) {
@@ -44,7 +44,7 @@ self.addEventListener('push', (event) => {
     badge: './icon.svg',
     vibrate: [200, 100, 200, 100, 200],
     data: {
-      url: data.url || '/',
+      url: data.url || './',
     },
   };
 
@@ -57,7 +57,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const targetUrl = (event.notification.data && event.notification.data.url) || './';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {

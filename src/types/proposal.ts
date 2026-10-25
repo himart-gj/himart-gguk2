@@ -634,6 +634,7 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
     isMixedPeriod,
     subscriptionPeriod: representativePeriod,
     totalBaseMonthly,
+    totalMonthlyFee: totalBaseMonthly,
     totalPrincipal,
     currentCard,
     currentCardTier,

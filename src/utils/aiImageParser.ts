@@ -30,7 +30,10 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
   if (explicitKey && explicitKey.trim()) return explicitKey.trim();
   const stored = getStoredGeminiApiKey();
   if (stored) return stored;
-  const envKey = (process.env.GEMINI_API_KEY as string) || '';
+  const envKey =
+    typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY
+      ? String(process.env.GEMINI_API_KEY)
+      : '';
   return envKey.trim();
 }
 
