@@ -269,6 +269,20 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           unitPrice: 0,
         },
       ],
+      generalCardType: '미정',
+      instantDiscount: 0,
+      earnedPoints: 0,
+      pointUsed: 0,
+      autoTierCashback: true,
+      manualTierCashback: 0,
+      extraCashback: 0,
+      extraBenefits: [],
+      generalHiPreedCounts: {
+        hf75: 0,
+        hf150: 0,
+        hf225: 0,
+        hf300: 0,
+      },
     }));
   };
 
@@ -428,7 +442,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         },
       ],
       subscriptionPeriod: 60,
+      careService: SUB_CARE_OPTIONS[0],
+      warrantyType: 'AS연장보험 + 가전수리올케어',
       warrantyYears: 5,
+      allCare: true,
+      selectedCardId: 'none',
+      selectedCardTierId: '',
+      hiPlusCounts: {
+        hi72: 0,
+        hi90: 0,
+        hi108: 0,
+      },
     }));
   };
 
