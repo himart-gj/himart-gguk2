@@ -1,0 +1,711 @@
+export type QuoteMode = 'general' | 'subscription' | 'hybrid';
+export type AppStep = 'home' | 'input' | 'proposal' | 'pop-printer' | 'crm';
+export type SubscriptionPeriod = 36 | 60;
+
+// ==================== 일반구매(일시불) 타입 ====================
+export interface GeneralPurchaseItem {
+  id: string;
+  category: string;
+  modelName: string;
+  quantity: number;
+  unitPrice: number; // 단가(행사가)
+}
+
+export type GeneralExtraBenefitType = 'discount' | 'etc';
+
+export interface GeneralExtraBenefitItem {
+  id: string;
+  type: GeneralExtraBenefitType; // 'discount' = 즉시할인성 추가혜택, 'etc' = 캐시백/사은품 등 실결제 이후 추가혜택
+  description: string;
+  amount: number;
+}
+
+export type GeneralCardType =
+  | '롯데 제휴카드'
+  | '삼성 제휴카드'
+  | '신한 제휴카드'
+  | '우리 제휴카드'
+  | '일반카드'
+  | '미정';
+
+export const GENERAL_CARD_OPTIONS: GeneralCardType[] = [
+  '롯데 제휴카드',
+  '삼성 제휴카드',
+  '신한 제휴카드',
+  '우리 제휴카드',
+  '일반카드',
+  '미정',
+];
+
+export const GENERAL_CATEGORY_PRESETS = [
+  '냉장고',
+  '김치냉장고',
+  '세탁건조기',
+  'TV',
+  '에어컨',
+  '시스템에어컨',
+  '식기세척기',
+  '청소기',
+];
+
+export type GeneralHiPreedKey = 'hf75' | 'hf150' | 'hf225' | 'hf300';
+
+export interface GeneralHiPreedCounts {
+  hf75: number;
+  hf150: number;
+  hf225: number;
+  hf300: number;
+}
+
+export interface GeneralHiPreedPlanSpec {
+  id: GeneralHiPreedKey;
+  name: string;
+  buttonLabel: string;
+  planCode: string; // '75' | '150' | '225' | '300'
+  supportAmount: number; // 750,000 | 1,500,000 | 2,250,000 | 3,000,000
+  monthlyInstallment35: number; // 23,473 | 46,946 | 70,419 | 93,892 (35개월 할부 매월 상쇄액)
+  installmentMonths: number; // 35
+  monthlyDeposit: number; // 33,000 | 66,000 | 99,000 | 132,000
+  depositMonths: number; // 150 (1~150회차)
+  maturityRefund: number; // 4,950,000 | 9,900,000 | 14,850,000 | 19,800,000
+}
+
+export const MAX_GENERAL_HIPREED_ACCOUNTS = 6;
+
+export const GENERAL_HIPREED_PLANS: GeneralHiPreedPlanSpec[] = [
+  {
+    id: 'hf75',
+    name: '하이프리드 75',
+    buttonLabel: '하이프리드 75',
+    planCode: '75',
+    supportAmount: 750000,
+    monthlyInstallment35: 23473,
+    installmentMonths: 35,
+    monthlyDeposit: 33000,
+    depositMonths: 150,
+    maturityRefund: 4950000,
+  },
+  {
+    id: 'hf150',
+    name: '하이프리드 150',
+    buttonLabel: '하이프리드 150',
+    planCode: '150',
+    supportAmount: 1500000,
+    monthlyInstallment35: 46946,
+    installmentMonths: 35,
+    monthlyDeposit: 66000,
+    depositMonths: 150,
+    maturityRefund: 9900000,
+  },
+  {
+    id: 'hf225',
+    name: '하이프리드 225',
+    buttonLabel: '하이프리드 225',
+    planCode: '225',
+    supportAmount: 2250000,
+    monthlyInstallment35: 70419,
+    installmentMonths: 35,
+    monthlyDeposit: 99000,
+    depositMonths: 150,
+    maturityRefund: 14850000,
+  },
+  {
+    id: 'hf300',
+    name: '하이프리드 300',
+    buttonLabel: '하이프리드 300',
+    planCode: '300',
+    supportAmount: 3000000,
+    monthlyInstallment35: 93892,
+    installmentMonths: 35,
+    monthlyDeposit: 132000,
+    depositMonths: 150,
+    maturityRefund: 19800000,
+  },
+];
+
+export function calculateGeneralHiPreedSummary(counts: GeneralHiPreedCounts) {
+  const totalAccounts =
+    (counts.hf75 || 0) +
+    (counts.hf150 || 0) +
+    (counts.hf225 || 0) +
+    (counts.hf300 || 0);
+
+  let totalSupport = 0;
+  let monthlyInstallment35 = 0;
+  let totalMonthlyDeposit = 0;
+  let totalMaturityRefund = 0;
+
+  const comboParts: string[] = [];
+  const activePlans: (GeneralHiPreedPlanSpec & {
+    count: number;
+    subSupportAmount: number;
+    subMonthlyInstallment35: number;
+    subMonthlyDeposit: number;
+    subMaturityRefund: number;
+  })[] = [];
+
+  GENERAL_HIPREED_PLANS.forEach((plan) => {
+    const count = counts[plan.id] || 0;
+    if (count > 0) {
+      const subSupportAmount = plan.supportAmount * count;
+      const subMonthlyInstallment35 = plan.monthlyInstallment35 * count;
+      const subMonthlyDeposit = plan.monthlyDeposit * count;
+      const subMaturityRefund = plan.maturityRefund * count;
+
+      totalSupport += subSupportAmount;
+      monthlyInstallment35 += subMonthlyInstallment35;
+      totalMonthlyDeposit += subMonthlyDeposit;
+      totalMaturityRefund += subMaturityRefund;
+
+      comboParts.push(`${plan.name} × ${count}건`);
+      activePlans.push({
+        ...plan,
+        count,
+        subSupportAmount,
+        subMonthlyInstallment35,
+        subMonthlyDeposit,
+        subMaturityRefund,
+      });
+    }
+  });
+
+  const comboLabel = comboParts.join(' + ');
+
+  return {
+    totalAccounts,
+    totalSupport,
+    monthlyInstallment35,
+    totalMonthlyDeposit,
+    totalMaturityRefund,
+    comboParts,
+    comboLabel,
+    activePlans,
+  };
+}
+
+/**
+ * 실제 카드 결제가(payPrice) 기준 금액대별 자동 캐시백 계산
+ * 2,000만원 이상: 1,000,000원
+ * 1,500만원 이상: 750,000원
+ * 1,200만원 이상: 600,000원
+ * 1,000만원 이상: 500,000원
+ * 700만원 이상: 350,000원
+ * 500만원 이상: 250,000원
+ * 300만원 이상: 150,000원
+ * 300만원 미만 또는 카드 '미정': 0원
+ */
+export function calculateAutoTierCashback(
+  payPrice: number,
+  cardType: GeneralCardType
+): number {
+  if (cardType === '미정') return 0;
+  if (payPrice >= 20000000) return 1000000;
+  if (payPrice >= 15000000) return 750000;
+  if (payPrice >= 12000000) return 600000;
+  if (payPrice >= 10000000) return 500000;
+  if (payPrice >= 7000000) return 350000;
+  if (payPrice >= 5000000) return 250000;
+  if (payPrice >= 3000000) return 150000;
+  return 0;
+}
+
+export interface GeneralPlanData {
+  generalItems: GeneralPurchaseItem[];
+  generalCardType: GeneralCardType;
+  instantDiscount: number;
+  earnedPoints: number;
+  pointUsed: number;
+  autoTierCashback: boolean;
+  manualTierCashback: number;
+  extraCashback: number;
+  extraBenefits: GeneralExtraBenefitItem[];
+  generalHiPreedCounts: GeneralHiPreedCounts;
+}
+
+export function extractGeneralPlanData(
+  source: GeneralPlanData
+): GeneralPlanData {
+  return {
+    generalItems: source.generalItems.map((it) => ({ ...it })),
+    generalCardType: source.generalCardType,
+    instantDiscount: source.instantDiscount,
+    earnedPoints: source.earnedPoints,
+    pointUsed: source.pointUsed,
+    autoTierCashback: source.autoTierCashback,
+    manualTierCashback: source.manualTierCashback,
+    extraCashback: source.extraCashback,
+    extraBenefits: (source.extraBenefits || []).map((b) => ({ ...b })),
+    generalHiPreedCounts: { ...source.generalHiPreedCounts },
+  };
+}
+
+export function cloneGeneralPlanData(
+  source: GeneralPlanData,
+  idPrefix = 'plan2'
+): GeneralPlanData {
+  return {
+    generalItems: source.generalItems.map((it, idx) => ({
+      ...it,
+      id: `${idPrefix}-item-${Date.now()}-${idx}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}`,
+    })),
+    generalCardType: source.generalCardType,
+    instantDiscount: source.instantDiscount,
+    earnedPoints: source.earnedPoints,
+    pointUsed: source.pointUsed,
+    autoTierCashback: source.autoTierCashback,
+    manualTierCashback: source.manualTierCashback,
+    extraCashback: source.extraCashback,
+    extraBenefits: (source.extraBenefits || []).map((b, idx) => ({
+      ...b,
+      id: `${idPrefix}-ext-${Date.now()}-${idx}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}`,
+    })),
+    generalHiPreedCounts: { ...source.generalHiPreedCounts },
+  };
+}
+
+export function switchGeneralPlanInState(
+  prev: ProposalState,
+  targetPlan: 1 | 2
+): ProposalState {
+  if (prev.activeGeneralPlan === targetPlan) return prev;
+
+  const currentSnapshot = extractGeneralPlanData(prev);
+  if (targetPlan === 2) {
+    // 1안 -> 2안으로 전환: 현재 값을 generalPlan1에 저장하고 generalPlan2를 활성 필드로 로드
+    const nextActive = extractGeneralPlanData(prev.generalPlan2);
+    return {
+      ...prev,
+      activeGeneralPlan: 2,
+      generalPlan1: currentSnapshot,
+      ...nextActive,
+    };
+  } else {
+    // 2안 -> 1안으로 전환: 현재 값을 generalPlan2에 저장하고 generalPlan1을 활성 필드로 로드
+    const nextActive = extractGeneralPlanData(prev.generalPlan1);
+    return {
+      ...prev,
+      activeGeneralPlan: 1,
+      generalPlan2: currentSnapshot,
+      ...nextActive,
+    };
+  }
+}
+
+export function copyPlan1ToPlan2InState(prev: ProposalState): ProposalState {
+  const plan1Source =
+    prev.activeGeneralPlan === 1
+      ? extractGeneralPlanData(prev)
+      : extractGeneralPlanData(prev.generalPlan1);
+
+  const clonedForPlan2 = cloneGeneralPlanData(plan1Source, 'plan2');
+
+  return {
+    ...prev,
+    activeGeneralPlan: 2,
+    generalPlan1: plan1Source,
+    generalPlan2: extractGeneralPlanData(clonedForPlan2),
+    ...clonedForPlan2,
+  };
+}
+
+export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
+  const validItems = state.generalItems.filter(
+    (it) => it.category.trim() !== '' || it.unitPrice > 0
+  );
+  const displayItems =
+    validItems.length > 0 ? validItems : state.generalItems;
+
+  // 총 행사가 합계
+  const sum = displayItems.reduce(
+    (acc, it) =>
+      acc +
+      Math.max(0, Number(it.unitPrice) || 0) *
+        Math.max(1, Number(it.quantity) || 1),
+    0
+  );
+
+  const instantDiscount = Math.max(0, Number(state.instantDiscount) || 0);
+  const earnedPoints = Math.max(0, Number(state.earnedPoints) || 0);
+  const pointUsed = Math.max(0, Number(state.pointUsed) || 0);
+  const remainingPoints = Math.max(0, earnedPoints - pointUsed);
+
+  // 추가 혜택 분리 ('discount' = 즉시할인성 추가혜택, 'etc' = 기타 캐시백/사은품 등 추가혜택)
+  const extraBenefits = state.extraBenefits || [];
+  const extraDiscountItems = extraBenefits.filter(
+    (b) =>
+      b.type === 'discount' &&
+      (Number(b.amount) > 0 || b.description.trim() !== '')
+  );
+  const extraEtcItems = extraBenefits.filter(
+    (b) =>
+      b.type === 'etc' && (Number(b.amount) > 0 || b.description.trim() !== '')
+  );
+
+  const extraDiscountSum = extraDiscountItems.reduce(
+    (acc, b) => acc + Math.max(0, Number(b.amount) || 0),
+    0
+  );
+  const extraEtcSum = extraEtcItems.reduce(
+    (acc, b) => acc + Math.max(0, Number(b.amount) || 0),
+    0
+  );
+
+  // 1단계 차감: 즉시할인 혜택 합계 = 기본 즉시할인 + 추가혜택 중 '즉시할인' + 포인트 즉시사용액
+  const totalStep1InstantDiscount =
+    instantDiscount + extraDiscountSum + pointUsed;
+
+  const freedSummary = calculateGeneralHiPreedSummary(
+    state.generalHiPreedCounts
+  );
+  const hiFreedAccounts = freedSummary.totalAccounts;
+  const hiFreedSupport = freedSummary.totalSupport;
+  const hiFreedMonthlyInstallment35 = freedSummary.monthlyInstallment35;
+  const hiFreedMonthlyDeposit = freedSummary.totalMonthlyDeposit;
+  const hiFreedMaturityRefund = freedSummary.totalMaturityRefund;
+
+  // 고객 실 결제부담금 (실결제가: payPrice)
+  const payPrice = Math.max(
+    0,
+    sum - totalStep1InstantDiscount - hiFreedSupport
+  );
+
+  // 금액대별 자동 캐시백 (payPrice 기준)
+  const tierCashback = state.autoTierCashback
+    ? calculateAutoTierCashback(payPrice, state.generalCardType)
+    : Math.max(0, Number(state.manualTierCashback) || 0);
+
+  // 배송익월 추가 캐시백
+  const extraCashback = Math.max(0, Number(state.extraCashback) || 0);
+
+  // 2단계 차감 1: 캐시백 혜택 합계 (금액대별 캐시백 + 배송익월 추가 캐시백)
+  const totalStep2Cashback = tierCashback + extraCashback;
+
+  // 2단계 차감 2: 추가 혜택 합계 (즉시할인 외 기타 추가혜택 + 잔여 적립포인트)
+  const totalStep2ExtraBenefit = extraEtcSum + remainingPoints;
+
+  // 최종 혜택가 (체감 구매가: rawNet)
+  const rawNet =
+    sum -
+    totalStep1InstantDiscount -
+    hiFreedSupport -
+    totalStep2Cashback -
+    totalStep2ExtraBenefit;
+
+  const totalDiscountAndBenefit =
+    totalStep1InstantDiscount +
+    hiFreedSupport +
+    totalStep2Cashback +
+    totalStep2ExtraBenefit;
+
+  return {
+    displayItems,
+    sum,
+    instantDiscount,
+    earnedPoints,
+    pointUsed,
+    remainingPoints,
+    extraDiscountItems,
+    extraEtcItems,
+    extraDiscountSum,
+    extraEtcSum,
+    totalStep1InstantDiscount,
+    hiFreedAccounts,
+    hiFreedSupport,
+    hiFreedMonthlyInstallment35,
+    hiFreedMonthlyDeposit,
+    hiFreedMaturityRefund,
+    comboLabel: freedSummary.comboLabel,
+    comboParts: freedSummary.comboParts,
+    activeFreedPlans: freedSummary.activePlans,
+    payPrice,
+    tierCashback,
+    extraCashback,
+    totalStep2Cashback,
+    totalStep2ExtraBenefit,
+    rawNet,
+    totalDiscountAndBenefit,
+  };
+}
+
+export function getGeneralPlan1And2Summaries(state: ProposalState) {
+  const plan1Data =
+    state.activeGeneralPlan === 1
+      ? extractGeneralPlanData(state)
+      : state.generalPlan1;
+  const plan2Data =
+    state.activeGeneralPlan === 2
+      ? extractGeneralPlanData(state)
+      : state.generalPlan2;
+
+  const plan1Summary = calculateGeneralPurchaseSummary(plan1Data);
+  const plan2Summary = calculateGeneralPurchaseSummary(plan2Data);
+
+  const hasPlan1Data =
+    plan1Summary.sum > 0 ||
+    plan1Data.generalItems.some((it) => it.category.trim() !== '');
+  const hasPlan2Data =
+    plan2Summary.sum > 0 ||
+    plan2Data.generalItems.some((it) => it.category.trim() !== '');
+
+  return {
+    plan1Data,
+    plan2Data,
+    plan1Summary,
+    plan2Summary,
+    hasPlan1Data,
+    hasPlan2Data,
+  };
+}
+
+// ==================== 구독구매 타입 ====================
+export const SUB_CARE_OPTIONS = [
+  '방문케어 (전문가 점검·교체)',
+  '셀프케어 (필터·소모품 정기배송)',
+  '케어없음 (자가관리)',
+];
+
+export interface SubscriptionItem {
+  id: string;
+  category: string;
+  modelName: string;
+  monthlyFee: number;
+  careService: string;
+}
+
+export type AffiliateCardId = 'woori' | 'lotte' | 'samsung' | 'shinhan' | 'none';
+
+export interface CardTier {
+  id: string;
+  minSpendLabel: string;
+  minSpendShort: string;
+  monthlyDiscount: number;
+}
+
+export interface AffiliateCardSpec {
+  id: AffiliateCardId;
+  name: string;
+  shortName: string;
+  benefitType: '청구할인' | '캐시백' | '미적용';
+  tiers: CardTier[];
+}
+
+export type HiPlusKey = 'hi72' | 'hi90' | 'hi108';
+
+export interface HiPlusCounts {
+  hi72: number;
+  hi90: number;
+  hi108: number;
+}
+
+export interface HiPlusPlanSpec {
+  id: HiPlusKey;
+  name: string;
+  buttonLabel: string;
+  planCode: string; // '72' | '90' | '108'
+  totalSupport: number; // 720,000 | 900,000 | 1,080,000
+  monthlySupport36: number; // 20,000 | 25,000 | 30,000
+  monthlySupport60: number; // 12,000 | 15,000 | 18,000
+  monthlyDeposit1to90: number; // 40,000 | 50,000 | 60,000
+  depositMonths: number; // 90 (1~90회차 납입)
+  deferMonths: number; // 30 (91~120회차 월 0원 거치)
+  maturityRefund: number; // 3,600,000 | 4,500,000 | 5,400,000 (120회 만기 100% 환급 원금)
+}
+
+export interface ProposalState {
+  quoteMode: QuoteMode;
+
+  // 일반구매(일시불) 현재 활성 안 상태 (1안 또는 2안)
+  activeGeneralPlan: 1 | 2;
+  generalPlan1: GeneralPlanData;
+  generalPlan2: GeneralPlanData;
+
+  generalItems: GeneralPurchaseItem[];
+  generalCardType: GeneralCardType;
+  instantDiscount: number;
+  earnedPoints: number;
+  pointUsed: number;
+  autoTierCashback: boolean;
+  manualTierCashback: number;
+  extraCashback: number;
+  extraBenefits: GeneralExtraBenefitItem[];
+  generalHiPreedCounts: GeneralHiPreedCounts;
+
+  // 구독구매 상태
+  items: SubscriptionItem[];
+  subscriptionPeriod: SubscriptionPeriod;
+  careService: string;
+  warrantyYears: 3 | 5;
+  allCare: boolean;
+  selectedCardId: AffiliateCardId;
+  selectedCardTierId: string;
+  hiPlusCounts: HiPlusCounts;
+}
+
+export const MAX_HI_PLUS_ACCOUNTS = 8;
+
+export const AFFILIATE_CARDS: AffiliateCardSpec[] = [
+  {
+    id: 'woori',
+    name: '우리제휴카드',
+    shortName: '우리카드',
+    benefitType: '청구할인',
+    tiers: [
+      { id: 'woori-30', minSpendLabel: '전월 실적 30만원 이상', minSpendShort: '30만원', monthlyDiscount: 18000 },
+      { id: 'woori-70', minSpendLabel: '전월 실적 70만원 이상', minSpendShort: '70만원', monthlyDiscount: 20000 },
+      { id: 'woori-120', minSpendLabel: '전월 실적 120만원 이상', minSpendShort: '120만원', monthlyDiscount: 22000 },
+    ],
+  },
+  {
+    id: 'lotte',
+    name: '롯데제휴카드',
+    shortName: '롯데카드',
+    benefitType: '캐시백',
+    tiers: [
+      { id: 'lotte-30', minSpendLabel: '전월 실적 30만원 이상', minSpendShort: '30만원', monthlyDiscount: 16000 },
+      { id: 'lotte-70', minSpendLabel: '전월 실적 70만원 이상', minSpendShort: '70만원', monthlyDiscount: 19000 },
+      { id: 'lotte-150', minSpendLabel: '전월 실적 150만원 이상', minSpendShort: '150만원', monthlyDiscount: 21000 },
+    ],
+  },
+  {
+    id: 'samsung',
+    name: '삼성제휴카드',
+    shortName: '삼성카드',
+    benefitType: '청구할인',
+    tiers: [
+      { id: 'samsung-30', minSpendLabel: '전월 실적 30만원 이상', minSpendShort: '30만원', monthlyDiscount: 13000 },
+      { id: 'samsung-70', minSpendLabel: '전월 실적 70만원 이상', minSpendShort: '70만원', monthlyDiscount: 17000 },
+      { id: 'samsung-150', minSpendLabel: '전월 실적 150만원 이상', minSpendShort: '150만원', monthlyDiscount: 20000 },
+    ],
+  },
+  {
+    id: 'shinhan',
+    name: '신한제휴카드',
+    shortName: '신한카드',
+    benefitType: '캐시백',
+    tiers: [
+      { id: 'shinhan-50', minSpendLabel: '전월 실적 50만원 이상', minSpendShort: '50만원', monthlyDiscount: 10000 },
+      { id: 'shinhan-100', minSpendLabel: '전월 실적 100만원 이상', minSpendShort: '100만원', monthlyDiscount: 20000 },
+      { id: 'shinhan-200', minSpendLabel: '전월 실적 200만원 이상', minSpendShort: '200만원', monthlyDiscount: 30000 },
+    ],
+  },
+];
+
+export const HI_PLUS_PLANS: HiPlusPlanSpec[] = [
+  {
+    id: 'hi72',
+    name: 'Hi구독 플러스 72',
+    buttonLabel: '플러스 72',
+    planCode: '72',
+    totalSupport: 720000,
+    monthlySupport36: 20000,
+    monthlySupport60: 12000,
+    monthlyDeposit1to90: 40000,
+    depositMonths: 90,
+    deferMonths: 30,
+    maturityRefund: 3600000,
+  },
+  {
+    id: 'hi90',
+    name: 'Hi구독 플러스 90',
+    buttonLabel: '플러스 90',
+    planCode: '90',
+    totalSupport: 900000,
+    monthlySupport36: 25000,
+    monthlySupport60: 15000,
+    monthlyDeposit1to90: 50000,
+    depositMonths: 90,
+    deferMonths: 30,
+    maturityRefund: 4500000,
+  },
+  {
+    id: 'hi108',
+    name: 'Hi구독 플러스 108',
+    buttonLabel: '플러스 108',
+    planCode: '108',
+    totalSupport: 1080000,
+    monthlySupport36: 30000,
+    monthlySupport60: 18000,
+    monthlyDeposit1to90: 60000,
+    depositMonths: 90,
+    deferMonths: 30,
+    maturityRefund: 5400000,
+  },
+];
+
+export function calculateHiPlusSummary(
+  counts: HiPlusCounts,
+  period: SubscriptionPeriod
+) {
+  const totalAccounts = counts.hi72 + counts.hi90 + counts.hi108;
+
+  const monthlyHiPlusSupport = HI_PLUS_PLANS.reduce((sum, plan) => {
+    const count = counts[plan.id] || 0;
+    const unitMonthly =
+      period === 36 ? plan.monthlySupport36 : plan.monthlySupport60;
+    return sum + count * unitMonthly;
+  }, 0);
+
+  const totalHiPlusSupport = HI_PLUS_PLANS.reduce((sum, plan) => {
+    const count = counts[plan.id] || 0;
+    return sum + count * plan.totalSupport;
+  }, 0);
+
+  const totalMonthlyDeposit = HI_PLUS_PLANS.reduce((sum, plan) => {
+    const count = counts[plan.id] || 0;
+    return sum + count * plan.monthlyDeposit1to90;
+  }, 0);
+
+  const totalMaturityRefund = HI_PLUS_PLANS.reduce((sum, plan) => {
+    const count = counts[plan.id] || 0;
+    return sum + count * plan.maturityRefund;
+  }, 0);
+
+  const comboParts: string[] = [];
+  const activePlans: {
+    plan: HiPlusPlanSpec;
+    count: number;
+    monthlySupport: number;
+    totalSupport: number;
+  }[] = [];
+
+  HI_PLUS_PLANS.forEach((plan) => {
+    const count = counts[plan.id] || 0;
+    if (count > 0) {
+      const unitMonthly =
+        period === 36 ? plan.monthlySupport36 : plan.monthlySupport60;
+      comboParts.push(`웅진프리드라이프 ${plan.name} × ${count}구좌`);
+      activePlans.push({
+        plan,
+        count,
+        monthlySupport: unitMonthly,
+        totalSupport: plan.totalSupport * count,
+      });
+    }
+  });
+
+  const comboLabel = comboParts.join(' + ');
+
+  return {
+    totalAccounts,
+    monthlyHiPlusSupport,
+    totalHiPlusSupport,
+    totalMonthlyDeposit,
+    totalMaturityRefund,
+    comboLabel,
+    comboParts,
+    activePlans,
+  };
+}
+
+export function hasThreeYearKeywordInText(text: string): boolean {
+  const normalized = text.replace(/\s+/g, '');
+  return (
+    normalized.includes('3년') ||
+    normalized.includes('안심케어3') ||
+    normalized.includes('정기케어3')
+  );
+}

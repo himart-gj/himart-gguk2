@@ -1,1 +1,77 @@
 @import "tailwindcss";
+
+@layer base {
+  html,
+  body {
+    min-height: 100dvh;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: "Pretendard Variable", Pretendard, "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    color: #0f172a;
+    background-color: #f1f5f9;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 5mm;
+}
+
+@media print {
+  html,
+  body {
+    width: 100% !important;
+    min-height: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-page {
+    transform: scale(0.94) !important;
+    transform-origin: center center !important;
+  }
+
+  .print-stage {
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  .sheet-scale-wrapper {
+    width: 920px !important;
+    height: auto !important;
+    margin: 0 auto !important;
+  }
+
+  .print-sheet {
+    width: 920px !important;
+    height: auto !important;
+    transform: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+    page-break-inside: avoid !important;
+  }
+}

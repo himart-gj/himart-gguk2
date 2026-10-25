@@ -1,0 +1,1340 @@
+import React, { useRef, useState } from 'react';
+import {
+  AFFILIATE_CARDS,
+  AffiliateCardId,
+  calculateGeneralHiPreedSummary,
+  calculateGeneralPurchaseSummary,
+  calculateHiPlusSummary,
+  copyPlan1ToPlan2InState,
+  GENERAL_CARD_OPTIONS,
+  GENERAL_CATEGORY_PRESETS,
+  GENERAL_HIPREED_PLANS,
+  GeneralExtraBenefitItem,
+  GeneralExtraBenefitType,
+  GeneralHiPreedKey,
+  GeneralPurchaseItem,
+  getGeneralPlan1And2Summaries,
+  HI_PLUS_PLANS,
+  HiPlusKey,
+  MAX_GENERAL_HIPREED_ACCOUNTS,
+  MAX_HI_PLUS_ACCOUNTS,
+  ProposalState,
+  SUB_CARE_OPTIONS,
+  SubscriptionItem,
+  SubscriptionPeriod,
+  switchGeneralPlanInState,
+} from '../types/proposal';
+import {
+  ArrowLeft,
+  Camera,
+  Check,
+  Copy,
+  CreditCard,
+  Loader2,
+  Minus,
+  Plus,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  ShoppingBag,
+  User,
+  X,
+} from 'lucide-react';
+
+interface ControlPanelProps {
+  state: ProposalState;
+  onChange: React.Dispatch<React.SetStateAction<ProposalState>>;
+  onParseImage: (file: File) => Promise<void>;
+  isParsing: boolean;
+  parseError: string | null;
+  onShowProposal: () => void;
+  onBackToHome: () => void;
+  activeCustomer?: { id: string; name: string; phone?: string } | null;
+  onClearActiveCustomer?: () => void;
+  onOpenSaveToCrm?: () => void;
+}
+
+export const ControlPanel: React.FC<ControlPanelProps> = ({
+  state,
+  onChange,
+  onParseImage,
+  isParsing,
+  parseError,
+  onShowProposal,
+  onBackToHome,
+  activeCustomer,
+  onClearActiveCustomer,
+  onOpenSaveToCrm,
+}) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [copiedNotice, setCopiedNotice] = useState(false);
+
+  const showGeneral =
+    state.quoteMode === 'general' || state.quoteMode === 'hybrid';
+  const showSubscription =
+    state.quoteMode === 'subscription' || state.quoteMode === 'hybrid';
+
+  // ==================== 일반구매 핸들러 ====================
+  const generalSummary = calculateGeneralPurchaseSummary(state);
+  const generalHiPreedSummary = calculateGeneralHiPreedSummary(
+    state.generalHiPreedCounts
+  );
+  const { plan1Summary, plan2Summary } = getGeneralPlan1And2Summaries(state);
+  const bothPlansHavePrice = plan1Summary.sum > 0 && plan2Summary.sum > 0;
+  const planNetDiff = plan2Summary.rawNet - plan1Summary.rawNet;
+
+  const handleSelectGeneralPlan = (targetPlan: 1 | 2) => {
+    onChange((prev) => switchGeneralPlanInState(prev, targetPlan));
+  };
+
+  const handleCopyPlan1ToPlan2 = () => {
+    onChange((prev) => copyPlan1ToPlan2InState(prev));
+    setCopiedNotice(true);
+    setTimeout(() => setCopiedNotice(false), 2000);
+  };
+
+  const handleAddGeneralCategory = (categoryName: string) => {
+    onChange((prev) => {
+      const emptyIdx = prev.generalItems.findIndex(
+        (it) =>
+          it.category.trim() === '' && (!it.unitPrice || it.unitPrice === 0)
+      );
+      if (emptyIdx !== -1) {
+        return {
+          ...prev,
+          generalItems: prev.generalItems.map((it, idx) =>
+            idx === emptyIdx ? { ...it, category: categoryName } : it
+          ),
+        };
+      }
+      const newItem: GeneralPurchaseItem = {
+        id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        category: categoryName,
+        modelName: '',
+        quantity: 1,
+        unitPrice: 0,
+      };
+      return {
+        ...prev,
+        generalItems: [...prev.generalItems, newItem],
+      };
+    });
+  };
+
+  const handleAddEmptyGeneralItem = () => {
+    const newItem: GeneralPurchaseItem = {
+      id: `gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      category: '',
+      modelName: '',
+      quantity: 1,
+      unitPrice: 0,
+    };
+    onChange((prev) => ({
+      ...prev,
+      generalItems: [...prev.generalItems, newItem],
+    }));
+  };
+
+  const handleUpdateGeneralItem = (
+    id: string,
+    patch: Partial<GeneralPurchaseItem>
+  ) => {
+    onChange((prev) => ({
+      ...prev,
+      generalItems: prev.generalItems.map((it) =>
+        it.id === id ? { ...it, ...patch } : it
+      ),
+    }));
+  };
+
+  const handleRemoveGeneralItem = (id: string) => {
+    onChange((prev) => {
+      if (prev.generalItems.length <= 1) return prev;
+      return {
+        ...prev,
+        generalItems: prev.generalItems.filter((it) => it.id !== id),
+      };
+    });
+  };
+
+  // 추가 혜택 추가 / 수정 / 삭제
+  const handleAddExtraBenefit = () => {
+    const newBenefit: GeneralExtraBenefitItem = {
+      id: `ext-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      type: 'etc',
+      description: '',
+      amount: 0,
+    };
+    onChange((prev) => ({
+      ...prev,
+      extraBenefits: [...(prev.extraBenefits || []), newBenefit],
+    }));
+  };
+
+  const handleUpdateExtraBenefit = (
+    id: string,
+    patch: Partial<GeneralExtraBenefitItem>
+  ) => {
+    onChange((prev) => ({
+      ...prev,
+      extraBenefits: (prev.extraBenefits || []).map((b) =>
+        b.id === id ? { ...b, ...patch } : b
+      ),
+    }));
+  };
+
+  const handleRemoveExtraBenefit = (id: string) => {
+    onChange((prev) => ({
+      ...prev,
+      extraBenefits: (prev.extraBenefits || []).filter((b) => b.id !== id),
+    }));
+  };
+
+  const handleAdjustGeneralHiPreed = (
+    key: GeneralHiPreedKey,
+    delta: number
+  ) => {
+    onChange((prev) => {
+      const counts = prev.generalHiPreedCounts;
+      const currentTotal =
+        (counts.hf75 || 0) +
+        (counts.hf150 || 0) +
+        (counts.hf225 || 0) +
+        (counts.hf300 || 0);
+      const currentVal = counts[key] || 0;
+      const nextVal = currentVal + delta;
+
+      if (nextVal < 0) return prev;
+      if (delta > 0 && currentTotal >= MAX_GENERAL_HIPREED_ACCOUNTS) return prev;
+
+      return {
+        ...prev,
+        generalHiPreedCounts: {
+          ...counts,
+          [key]: nextVal,
+        },
+      };
+    });
+  };
+
+  const handleResetGeneralHiPreed = () => {
+    onChange((prev) => ({
+      ...prev,
+      generalHiPreedCounts: {
+        hf75: 0,
+        hf150: 0,
+        hf225: 0,
+        hf300: 0,
+      },
+    }));
+  };
+
+  // ==================== 구독구매 핸들러 ====================
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await onParseImage(file);
+      e.target.value = '';
+    }
+  };
+
+  const handleCardSelect = (cardId: AffiliateCardId) => {
+    const cardSpec = AFFILIATE_CARDS.find((c) => c.id === cardId);
+    onChange((prev) => ({
+      ...prev,
+      selectedCardId: cardId,
+      selectedCardTierId: cardSpec?.tiers[0]?.id || '',
+    }));
+  };
+
+  const handleAddSubItem = () => {
+    const newItem: SubscriptionItem = {
+      id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      category: '',
+      modelName: '',
+      monthlyFee: 0,
+      careService: SUB_CARE_OPTIONS[0],
+    };
+    onChange((prev) => ({
+      ...prev,
+      items: [...prev.items, newItem],
+    }));
+  };
+
+  const handleRemoveSubItem = (id: string) => {
+    onChange((prev) => {
+      if (prev.items.length <= 1) return prev;
+      return {
+        ...prev,
+        items: prev.items.filter((it) => it.id !== id),
+      };
+    });
+  };
+
+  const handleUpdateSubItem = (id: string, patch: Partial<SubscriptionItem>) => {
+    onChange((prev) => ({
+      ...prev,
+      items: prev.items.map((it) =>
+        it.id === id ? { ...it, ...patch } : it
+      ),
+    }));
+  };
+
+  const handleAdjustHiPlus = (key: HiPlusKey, delta: number) => {
+    onChange((prev) => {
+      const currentTotal =
+        prev.hiPlusCounts.hi72 +
+        prev.hiPlusCounts.hi90 +
+        prev.hiPlusCounts.hi108;
+      const currentVal = prev.hiPlusCounts[key];
+      const nextVal = currentVal + delta;
+
+      if (nextVal < 0) return prev;
+      if (delta > 0 && currentTotal >= MAX_HI_PLUS_ACCOUNTS) return prev;
+
+      return {
+        ...prev,
+        hiPlusCounts: {
+          ...prev.hiPlusCounts,
+          [key]: nextVal,
+        },
+      };
+    });
+  };
+
+  const handleResetHiPlus = () => {
+    onChange((prev) => ({
+      ...prev,
+      hiPlusCounts: { hi72: 0, hi90: 0, hi108: 0 },
+    }));
+  };
+
+  const currentCard = AFFILIATE_CARDS.find(
+    (c) => c.id === state.selectedCardId
+  );
+  const currentCardTier = currentCard?.tiers.find(
+    (t) => t.id === state.selectedCardTierId
+  );
+  const hiSummary = calculateHiPlusSummary(
+    state.hiPlusCounts,
+    state.subscriptionPeriod
+  );
+
+  const totalBaseMonthly = state.items.reduce(
+    (sum, item) => sum + (Number(item.monthlyFee) || 0),
+    0
+  );
+  const cardDiscount = currentCardTier?.monthlyDiscount || 0;
+  const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
+  const rawFinalMonthly = totalBaseMonthly - cardDiscount - hiPlusMonthly;
+
+  return (
+    <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col items-center justify-center p-3 sm:p-5">
+      {/* 상단 메뉴 복귀 버튼 & 현재 고객 뱃지 & CRM 고객 저장 버튼 */}
+      <div
+        className={`w-full ${
+          state.quoteMode === 'hybrid' ? 'max-w-6xl' : 'max-w-xl'
+        } mb-2.5 flex flex-wrap items-center justify-between gap-2`}
+      >
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={onBackToHome}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-200 text-slate-700 text-xs font-extrabold border border-slate-200 shadow-xs transition cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            처음 메뉴로
+          </button>
+
+          {activeCustomer && (
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-100 text-amber-950 border border-amber-300 text-xs font-black shadow-2xs">
+              <User className="w-3.5 h-3.5 text-amber-700" />
+              <span>현재 [{activeCustomer.name} 고객님] 견적 작업 중</span>
+              {onClearActiveCustomer && (
+                <button
+                  type="button"
+                  onClick={onClearActiveCustomer}
+                  className="ml-0.5 px-1.5 py-0.5 rounded-md bg-amber-200/80 hover:bg-amber-300 text-amber-950 text-[10px] font-black transition cursor-pointer"
+                  title="연결된 고객 해제"
+                >
+                  ✕ 해제
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black text-slate-600">
+            {state.quoteMode === 'general' && '일반구매 견적서'}
+            {state.quoteMode === 'subscription' && '구독구매 견적서'}
+            {state.quoteMode === 'hybrid' && '일반+구독 혼합견적서'}
+          </span>
+
+          {onOpenSaveToCrm && (
+            <button
+              type="button"
+              onClick={onOpenSaveToCrm}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-xs transition cursor-pointer"
+            >
+              <Save className="w-3.5 h-3.5" />
+              💾 CRM 고객 저장
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 입력 컨테이너 */}
+      <div
+        className={
+          state.quoteMode === 'hybrid'
+            ? 'w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
+            : 'w-full max-w-xl'
+        }
+      >
+        {/* ==================== 일반구매 입력 카드 ==================== */}
+        {showGeneral && (
+          <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4">
+            {/* 최상단: [견적 1안] / [견적 2안] 탭 & [📋 1안 내용 ➔ 2안 복사] 버튼 */}
+            <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleSelectGeneralPlan(1)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                    state.activeGeneralPlan === 1
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  견적 1안
+                  {plan1Summary.sum > 0 && (
+                    <span className="ml-1 text-[10px] opacity-90">
+                      ({(plan1Summary.rawNet / 10000).toFixed(0)}만)
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectGeneralPlan(2)}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                    state.activeGeneralPlan === 2
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  견적 2안
+                  {plan2Summary.sum > 0 && (
+                    <span className="ml-1 text-[10px] opacity-90">
+                      ({(plan2Summary.rawNet / 10000).toFixed(0)}만)
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCopyPlan1ToPlan2}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-extrabold text-xs shadow-2xs transition cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                {copiedNotice
+                  ? '✓ 2안으로 복사 완료!'
+                  : '📋 1안 내용 ➔ 2안 복사'}
+              </button>
+            </div>
+
+            {/* 1. 구매 품목 및 행사가 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                  <ShoppingBag className="w-4 h-4 text-blue-600" />
+                  1. 일반구매 품목 및 행사가 ({state.activeGeneralPlan}안)
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddEmptyGeneralItem}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 품목 추가
+                </button>
+              </div>
+
+              {/* 빠른 품목명 버튼 */}
+              <div className="flex flex-wrap gap-1">
+                {GENERAL_CATEGORY_PRESETS.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleAddGeneralCategory(cat)}
+                    className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-700 font-extrabold text-[11px] border border-slate-200 transition cursor-pointer"
+                  >
+                    +{cat}
+                  </button>
+                ))}
+              </div>
+
+              <div className="max-h-[148px] overflow-y-auto space-y-1.5 pr-1">
+                {state.generalItems.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className="grid grid-cols-12 gap-1.5 items-center bg-slate-50 p-1.5 rounded-xl border border-slate-200"
+                  >
+                    <input
+                      type="text"
+                      value={item.category}
+                      onChange={(e) =>
+                        handleUpdateGeneralItem(item.id, {
+                          category: e.target.value,
+                        })
+                      }
+                      placeholder={`품목명 ${idx + 1}`}
+                      className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
+                    />
+                    <input
+                      type="text"
+                      value={item.modelName}
+                      onChange={(e) =>
+                        handleUpdateGeneralItem(item.id, {
+                          modelName: e.target.value,
+                        })
+                      }
+                      placeholder="모델명(선택)"
+                      className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                    />
+                    <div className="col-span-2 relative">
+                      <input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={item.quantity || 1}
+                        onChange={(e) =>
+                          handleUpdateGeneralItem(item.id, {
+                            quantity: Math.max(1, Number(e.target.value) || 1),
+                          })
+                        }
+                        className="w-full pl-2 pr-5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-extrabold text-center text-slate-800 focus:border-blue-600 focus:outline-none"
+                      />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                        개
+                      </span>
+                    </div>
+                    <div className="col-span-3 relative">
+                      <input
+                        type="number"
+                        step={10000}
+                        value={item.unitPrice || ''}
+                        onChange={(e) =>
+                          handleUpdateGeneralItem(item.id, {
+                            unitPrice: Math.max(0, Number(e.target.value)),
+                          })
+                        }
+                        placeholder="행사가(원)"
+                        className="w-full pl-2 pr-5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-900 text-right focus:border-blue-600 focus:outline-none"
+                      />
+                      <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                        원
+                      </span>
+                    </div>
+                    <div className="col-span-1 flex justify-center">
+                      {state.generalItems.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveGeneralItem(item.id)}
+                          className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. 결제 카드 및 할인/포인트/캐시백 + 추가 혜택 */}
+            <div className="space-y-2.5 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <label className="text-xs sm:text-sm font-black text-slate-900 block">
+                  2. 결제 카드 및 할인 · 포인트 · 캐시백
+                </label>
+                <button
+                  type="button"
+                  onClick={handleAddExtraBenefit}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-extrabold text-xs transition cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> 추가 혜택 추가
+                </button>
+              </div>
+
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                {GENERAL_CARD_OPTIONS.map((cardOpt) => {
+                  const active = state.generalCardType === cardOpt;
+                  return (
+                    <button
+                      key={cardOpt}
+                      type="button"
+                      onClick={() =>
+                        onChange((prev) => ({
+                          ...prev,
+                          generalCardType: cardOpt,
+                        }))
+                      }
+                      className={`py-1.5 px-1.5 rounded-xl font-extrabold text-[11px] border transition cursor-pointer ${
+                        active
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cardOpt.replace(' 제휴카드', '카드')}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 할인/혜택 입력칸 5개 */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  <label className="text-[10px] font-extrabold text-slate-600 block mb-1">
+                    (-) 즉시할인액 (원)
+                  </label>
+                  <input
+                    type="number"
+                    step={10000}
+                    value={state.instantDiscount || ''}
+                    onChange={(e) =>
+                      onChange((prev) => ({
+                        ...prev,
+                        instantDiscount: Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="0"
+                    className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  <label className="text-[10px] font-extrabold text-slate-600 block mb-1">
+                    총 적립포인트 (원)
+                  </label>
+                  <input
+                    type="number"
+                    step={10000}
+                    value={state.earnedPoints || ''}
+                    onChange={(e) =>
+                      onChange((prev) => ({
+                        ...prev,
+                        earnedPoints: Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="0"
+                    className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-extrabold text-slate-600">
+                      (-) 포인트 즉시사용
+                    </label>
+                    <span className="text-[9px] font-bold text-blue-600">
+                      잔여 {generalSummary.remainingPoints.toLocaleString()}P
+                    </span>
+                  </div>
+                  <input
+                    type="number"
+                    step={10000}
+                    value={state.pointUsed || ''}
+                    onChange={(e) =>
+                      onChange((prev) => ({
+                        ...prev,
+                        pointUsed: Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="0"
+                    className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                <div className="col-span-2 sm:col-span-2 bg-blue-50/70 p-2 rounded-xl border border-blue-200">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-extrabold text-blue-950">
+                      (-) 금액대별 자동 캐시백 (원){' '}
+                      <span className="text-[9px] font-bold text-blue-600">
+                        *실결제가({generalSummary.payPrice.toLocaleString()}원) 기준
+                      </span>
+                    </span>
+                    <label className="inline-flex items-center gap-1 text-[10px] font-extrabold text-blue-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={state.autoTierCashback}
+                        onChange={(e) =>
+                          onChange((prev) => ({
+                            ...prev,
+                            autoTierCashback: e.target.checked,
+                            manualTierCashback: e.target.checked
+                              ? prev.manualTierCashback
+                              : generalSummary.tierCashback,
+                          }))
+                        }
+                        className="rounded text-blue-600"
+                      />
+                      [자동]
+                    </label>
+                  </div>
+                  {state.autoTierCashback ? (
+                    <div className="px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-xs font-black text-right text-blue-700">
+                      {generalSummary.tierCashback.toLocaleString()}원
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      step={10000}
+                      value={state.manualTierCashback || ''}
+                      onChange={(e) =>
+                        onChange((prev) => ({
+                          ...prev,
+                          manualTierCashback: Math.max(
+                            0,
+                            Number(e.target.value)
+                          ),
+                        }))
+                      }
+                      placeholder="수동 입력"
+                      className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-slate-900 focus:outline-none"
+                    />
+                  )}
+                </div>
+
+                <div className="col-span-2 sm:col-span-1 bg-slate-50 p-2 rounded-xl border border-slate-200">
+                  <label className="text-[10px] font-extrabold text-slate-600 block mb-1">
+                    (-) 배송익월 추가 캐시백
+                  </label>
+                  <input
+                    type="number"
+                    step={10000}
+                    value={state.extraCashback || ''}
+                    onChange={(e) =>
+                      onChange((prev) => ({
+                        ...prev,
+                        extraCashback: Math.max(0, Number(e.target.value)),
+                      }))
+                    }
+                    placeholder="0"
+                    className="w-full px-2 py-1 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 동적 추가 혜택 리스트 */}
+              {(state.extraBenefits || []).length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  {(state.extraBenefits || []).map((benefit) => (
+                    <div
+                      key={benefit.id}
+                      className="grid grid-cols-12 gap-1.5 items-center bg-blue-50/50 p-1.5 rounded-xl border border-blue-200"
+                    >
+                      <select
+                        value={benefit.type}
+                        onChange={(e) =>
+                          handleUpdateExtraBenefit(benefit.id, {
+                            type: e.target.value as GeneralExtraBenefitType,
+                          })
+                        }
+                        className="col-span-4 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-extrabold text-slate-800 focus:border-blue-600 focus:outline-none"
+                      >
+                        <option value="discount">즉시할인</option>
+                        <option value="etc">기타혜택(캐시백 등)</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={benefit.description}
+                        onChange={(e) =>
+                          handleUpdateExtraBenefit(benefit.id, {
+                            description: e.target.value,
+                          })
+                        }
+                        placeholder="혜택 내용(예: 다품목할인, 상품권)"
+                        className="col-span-4 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
+                      />
+                      <div className="col-span-3 relative">
+                        <input
+                          type="number"
+                          step={10000}
+                          value={benefit.amount || ''}
+                          onChange={(e) =>
+                            handleUpdateExtraBenefit(benefit.id, {
+                              amount: Math.max(0, Number(e.target.value)),
+                            })
+                          }
+                          placeholder="금액(원)"
+                          className="w-full pl-2 pr-5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-right text-slate-900 focus:border-blue-600 focus:outline-none"
+                        />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                          원
+                        </span>
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveExtraBenefit(benefit.id)}
+                          className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 3. 하이프리드 75 / 150 / 225 / 300 선택 */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  3. 하이프리드 (웅진프리드라이프)
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    총 {generalHiPreedSummary.totalAccounts}건 / 최대 6건 (-
+                    {generalHiPreedSummary.totalSupport.toLocaleString()}원)
+                  </span>
+                  {generalHiPreedSummary.totalAccounts > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetGeneralHiPreed}
+                      className="text-[11px] font-extrabold text-slate-600 hover:text-red-600 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-red-50 transition cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" /> 미적용(초기화)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {GENERAL_HIPREED_PLANS.map((plan) => {
+                  const count = state.generalHiPreedCounts[plan.id] || 0;
+                  const active = count > 0;
+                  const canAdd =
+                    generalHiPreedSummary.totalAccounts <
+                    MAX_GENERAL_HIPREED_ACCOUNTS;
+
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`p-2.5 rounded-2xl border-2 flex flex-col justify-between transition ${
+                        active
+                          ? 'bg-blue-50/70 border-blue-600 shadow-xs'
+                          : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="text-center mb-2">
+                        <div
+                          className={`text-xs font-black ${
+                            active ? 'text-blue-700' : 'text-slate-800'
+                          }`}
+                        >
+                          {plan.buttonLabel}
+                        </div>
+                        <div className="text-[11px] font-extrabold text-rose-600 mt-0.5">
+                          -{(plan.supportAmount / 10000).toLocaleString()}만원 지원
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-50 rounded-xl p-1 border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleAdjustGeneralHiPreed(plan.id, -1)
+                          }
+                          disabled={count === 0}
+                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span
+                          className={`text-xs font-black ${
+                            active ? 'text-blue-700' : 'text-slate-700'
+                          }`}
+                        >
+                          {count}개
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustGeneralHiPreed(plan.id, 1)}
+                          disabled={!canAdd}
+                          className="w-6 h-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 일반구매 하단 실시간 요약 & [1안 vs 2안] 비교 박스 (단독 일반 & 혼합견적 모두 표시) */}
+            <div className="bg-blue-50/70 border-2 border-blue-200 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black text-blue-800">
+                  실시간 일반구매 ({state.activeGeneralPlan}안) 요약
+                </span>
+                <span className="text-[11px] font-bold text-slate-600">
+                  총 합계 {generalSummary.sum.toLocaleString()}원
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-white rounded-xl px-3 py-2 border border-blue-200 flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold text-slate-600">
+                    💳 실 결제부담금
+                  </span>
+                  <span className="text-sm font-black text-blue-700">
+                    {generalSummary.payPrice.toLocaleString()}원
+                  </span>
+                </div>
+                <div className="bg-rose-50/80 rounded-xl px-3 py-2 border border-rose-300 flex items-center justify-between">
+                  <span className="text-[11px] font-extrabold text-rose-700">
+                    🎯 최종 혜택가
+                  </span>
+                  <span className="text-base font-black text-rose-600">
+                    {generalSummary.rawNet.toLocaleString()}원
+                  </span>
+                </div>
+              </div>
+
+              {/* 1안과 2안 모두 금액이 입력된 경우 비교 배지 표시 */}
+              {bothPlansHavePrice && (
+                <div className="bg-slate-900 text-white rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                  <div className="font-bold">
+                    <span className="text-blue-300 font-black">
+                      [1안 최종 혜택가: {plan1Summary.rawNet.toLocaleString()}원]
+                    </span>{' '}
+                    vs{' '}
+                    <span className="text-amber-300 font-black">
+                      [2안 최종 혜택가: {plan2Summary.rawNet.toLocaleString()}원]
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-white/15 font-black text-emerald-300">
+                    차액: {planNetDiff > 0 ? `+${planNetDiff.toLocaleString()}` : planNetDiff.toLocaleString()}원
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* 단독 일반구매 모드일 때 확인 버튼 */}
+            {state.quoteMode === 'general' && (
+              <button
+                type="button"
+                onClick={onShowProposal}
+                className="w-full py-4 px-6 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-black text-base shadow-lg shadow-blue-600/25 flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <Check className="w-5 h-5" />
+                확인 (고객 맞춤 제안서 보기) ➔
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ==================== 구독구매 입력 카드 ==================== */}
+        {showSubscription && (
+          <div className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4">
+            {/* 맨 위: 전산 구독 화면 사진 올리기 (Ctrl+V) */}
+            <div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isParsing}
+                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60"
+              >
+                {isParsing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>전산 화면 AI 자동 분석 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <Camera className="w-4 h-4 text-white" />
+                    <span>📸 전산 구독 화면 사진 올리기 (Ctrl+V)</span>
+                  </>
+                )}
+              </button>
+              {parseError && (
+                <p className="mt-1.5 text-xs font-bold text-red-600 text-center">
+                  {parseError}
+                </p>
+              )}
+            </div>
+
+            {/* 1. 구독 품목 및 월요금 + 품목별 개별 케어서비스 (5년 무상 A/S 고정) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs sm:text-sm font-black text-slate-900">
+                  1. 구독 품목 및 월요금
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <div className="inline-flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                    {([36, 60] as SubscriptionPeriod[]).map((period) => (
+                      <button
+                        key={period}
+                        type="button"
+                        onClick={() =>
+                          onChange((prev) => ({
+                            ...prev,
+                            subscriptionPeriod: period,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                          state.subscriptionPeriod === period
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {period}개월
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddSubItem}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 품목 추가
+                  </button>
+                </div>
+              </div>
+
+              {/* 품목 행 + 품목별 개별 케어서비스 선택/입력 줄 */}
+              <div className="max-h-[210px] overflow-y-auto space-y-2 pr-1">
+                {state.items.map((item, index) => (
+                  <div
+                    key={item.id}
+                    className="bg-slate-50 p-2 rounded-xl border border-slate-200 space-y-1.5"
+                  >
+                    <div className="grid grid-cols-12 gap-1.5 items-center">
+                      <input
+                        type="text"
+                        value={item.category}
+                        onChange={(e) =>
+                          handleUpdateSubItem(item.id, {
+                            category: e.target.value,
+                          })
+                        }
+                        placeholder={`품목명 ${index + 1}`}
+                        className="col-span-4 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={item.modelName}
+                        onChange={(e) =>
+                          handleUpdateSubItem(item.id, {
+                            modelName: e.target.value,
+                          })
+                        }
+                        placeholder="모델명(선택)"
+                        className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                      />
+                      <div className="col-span-4 relative">
+                        <input
+                          type="number"
+                          step={1000}
+                          value={item.monthlyFee || ''}
+                          onChange={(e) =>
+                            handleUpdateSubItem(item.id, {
+                              monthlyFee: Math.max(0, Number(e.target.value)),
+                            })
+                          }
+                          placeholder="월 구독료(원)"
+                          className="w-full pl-2 pr-6 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-black text-slate-900 text-right focus:border-blue-600 focus:outline-none"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+                          원
+                        </span>
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        {state.items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSubItem(item.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 아래쪽 줄: 품목별 개별 케어서비스 선택/입력 + 우측 5년 무상 A/S 기본 포함 배지 */}
+                    <div className="grid grid-cols-12 gap-1.5 items-center pt-0.5">
+                      <select
+                        value={
+                          SUB_CARE_OPTIONS.includes(item.careService)
+                            ? item.careService
+                            : 'custom'
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val !== 'custom') {
+                            handleUpdateSubItem(item.id, { careService: val });
+                          }
+                        }}
+                        className="col-span-4 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-extrabold text-slate-700 focus:border-blue-600 focus:outline-none"
+                      >
+                        {SUB_CARE_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                        <option value="custom">직접 입력</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        value={item.careService || ''}
+                        onChange={(e) =>
+                          handleUpdateSubItem(item.id, {
+                            careService: e.target.value,
+                          })
+                        }
+                        placeholder="케어서비스 내용 직접 입력"
+                        className="col-span-5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                      />
+
+                      <div className="col-span-3 flex justify-end">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 border border-rose-200 text-[10px] font-extrabold text-rose-700 whitespace-nowrap">
+                          🛡️ 5년 무상 A/S 기본 포함
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
+                <span className="text-rose-600 font-extrabold">
+                  ✓ 전 품목 5년 무상 A/S 기본 보장
+                </span>
+                <span className="text-slate-800 font-extrabold">
+                  총 월 구독료 합계: {totalBaseMonthly.toLocaleString()}원
+                </span>
+              </div>
+            </div>
+
+            {/* 2. 제휴카드 및 월 사용금액 구간 */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-blue-600" />
+                2. 제휴카드 및 월 사용금액 구간
+              </label>
+
+              <div className="grid grid-cols-5 gap-1.5">
+                {AFFILIATE_CARDS.map((card) => {
+                  const selected = state.selectedCardId === card.id;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => handleCardSelect(card.id)}
+                      className={`py-2 px-1 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                        selected
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {card.shortName}
+                    </button>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => handleCardSelect('none')}
+                  className={`py-2 px-1 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                    state.selectedCardId === 'none'
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  미적용
+                </button>
+              </div>
+
+              {currentCard && (
+                <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+                  {currentCard.tiers.map((tier) => {
+                    const active = state.selectedCardTierId === tier.id;
+                    return (
+                      <button
+                        key={tier.id}
+                        type="button"
+                        onClick={() =>
+                          onChange((prev) => ({
+                            ...prev,
+                            selectedCardTierId: tier.id,
+                          }))
+                        }
+                        className={`py-2 px-2 rounded-xl border text-center transition cursor-pointer ${
+                          active
+                            ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-600/15'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="text-[11px] font-extrabold text-slate-600">
+                          {tier.minSpendShort}
+                        </div>
+                        <div className="text-xs font-black text-blue-600">
+                          -{tier.monthlyDiscount.toLocaleString()}원
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* 3. 구독프리드 (Hi구독 플러스) */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-600" />
+                  3. 구독프리드 (Hi구독 플러스)
+                </label>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    총 {hiSummary.totalAccounts}구좌 / 최대 8구좌 (월 -
+                    {hiSummary.monthlyHiPlusSupport.toLocaleString()}원)
+                  </span>
+                  {hiSummary.totalAccounts > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleResetHiPlus}
+                      className="text-[11px] font-extrabold text-slate-600 hover:text-red-600 inline-flex items-center gap-0.5 px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-red-50 transition cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" /> 미적용(초기화)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {HI_PLUS_PLANS.map((plan) => {
+                  const count = state.hiPlusCounts[plan.id] || 0;
+                  const active = count > 0;
+                  const canAdd = hiSummary.totalAccounts < MAX_HI_PLUS_ACCOUNTS;
+                  const monthlyUnitSupport =
+                    state.subscriptionPeriod === 36
+                      ? plan.monthlySupport36
+                      : plan.monthlySupport60;
+
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`p-3 rounded-2xl border-2 flex flex-col justify-between transition ${
+                        active
+                          ? 'bg-blue-50/70 border-blue-600 shadow-xs'
+                          : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="text-center mb-2">
+                        <div
+                          className={`text-xs sm:text-sm font-black ${
+                            active ? 'text-blue-700' : 'text-slate-800'
+                          }`}
+                        >
+                          {plan.buttonLabel}
+                        </div>
+                        <div className="text-[11px] font-extrabold text-rose-600 mt-0.5">
+                          월 -{monthlyUnitSupport.toLocaleString()}원 지원
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-slate-50 rounded-xl p-1 border border-slate-200">
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustHiPlus(plan.id, -1)}
+                          disabled={count === 0}
+                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span
+                          className={`text-xs font-black ${
+                            active ? 'text-blue-700' : 'text-slate-700'
+                          }`}
+                        >
+                          {count}개
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleAdjustHiPlus(plan.id, 1)}
+                          disabled={!canAdd}
+                          className="w-6 h-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 구독구매 실시간 최종 월 체감가 미니 요약 바 (단독 구독 & 혼합 모두 표시) */}
+            <div className="bg-rose-50/70 border-2 border-rose-200 rounded-2xl px-4 py-2.5 flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-bold text-rose-700">
+                  실시간 예상 최종 월 체감가 ({state.subscriptionPeriod}개월)
+                </div>
+                <div className="text-[11px] text-slate-600 font-semibold">
+                  기본 {totalBaseMonthly.toLocaleString()}원 - 카드{' '}
+                  {cardDiscount.toLocaleString()}원 - 프리드{' '}
+                  {hiPlusMonthly.toLocaleString()}원
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg sm:text-xl font-black text-rose-600">
+                  월 {rawFinalMonthly.toLocaleString()}원
+                </div>
+              </div>
+            </div>
+
+            {/* 단독 구독구매 모드일 때 확인 버튼 */}
+            {state.quoteMode === 'subscription' && (
+              <button
+                type="button"
+                onClick={onShowProposal}
+                className="w-full py-4 px-6 rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white font-black text-base shadow-lg shadow-rose-600/25 flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <Check className="w-5 h-5" />
+                확인 (고객 맞춤 제안서 보기) ➔
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 혼합견적 모드일 때 하단 통합 확인 버튼 */}
+      {state.quoteMode === 'hybrid' && (
+        <div className="w-full max-w-6xl mt-4">
+          <button
+            type="button"
+            onClick={onShowProposal}
+            className="w-full py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-black text-base shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 transition cursor-pointer"
+          >
+            <Check className="w-5 h-5" />
+            확인 (일반+구독 혼합 제안서 보기) ➔
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
