@@ -703,39 +703,14 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             onMouseEnter={() => setLastFocusedSection('general')}
             className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4"
           >
-            {/* 일반전산 사진 자동입력 (숨김 input + 상단 배너 버튼) */}
-            <div>
-              <input
-                ref={generalFileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleGeneralFileChange}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => generalFileInputRef.current?.click()}
-                disabled={isParsingGeneral}
-                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60"
-              >
-                {isParsingGeneral ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>일반전산 화면 AI 자동 판독 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-4 h-4 text-white" />
-                    <span>📸 일반전산 사진 자동입력 (클릭 또는 Ctrl+V)</span>
-                  </>
-                )}
-              </button>
-              {parseGeneralError && (
-                <p className="mt-1.5 text-xs font-bold text-red-600 text-center">
-                  {parseGeneralError}
-                </p>
-              )}
-            </div>
+            {/* 숨김 파일 input */}
+            <input
+              ref={generalFileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleGeneralFileChange}
+              className="hidden"
+            />
 
             {/* 1. 구매 품목 및 행사가 */}
             <div className="space-y-2">
@@ -744,15 +719,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   <ShoppingBag className="w-4 h-4 text-blue-600" />
                   1. 일반구매 품목 및 행사가 ({state.activeGeneralPlan}안)
                 </label>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <button
                     type="button"
                     onClick={() => generalFileInputRef.current?.click()}
                     disabled={isParsingGeneral}
+                    title="클릭하거나 화면에서 Ctrl+V로 전산 캡처 붙여넣기"
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs transition cursor-pointer disabled:opacity-50"
                   >
-                    <Camera className="w-3.5 h-3.5" />
-                    📸 일반전산 사진 자동입력
+                    {isParsingGeneral ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>AI 판독 중...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>📸 일반전산 사진 자동입력</span>
+                      </>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -771,6 +756,11 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   </button>
                 </div>
               </div>
+              {parseGeneralError && (
+                <p className="text-xs font-bold text-red-600 text-center">
+                  {parseGeneralError}
+                </p>
+              )}
 
               {/* 빠른 품목명 버튼 */}
               <div className="flex flex-wrap gap-1">
@@ -1272,56 +1262,45 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             onMouseEnter={() => setLastFocusedSection('subscription')}
             className="w-full bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 space-y-4"
           >
-            {/* 맨 위: 전산 구독 화면 사진 올리기 (Ctrl+V) */}
-            <div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isParsing}
-                className="w-full py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition cursor-pointer disabled:opacity-60"
-              >
-                {isParsing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-white" />
-                    <span>전산 구독 화면 AI 자동 판독 중...</span>
-                  </>
-                ) : (
-                  <>
-                    <Camera className="w-4 h-4 text-white" />
-                    <span>📸 전산 구독 화면 사진 올리기 (클릭 또는 Ctrl+V)</span>
-                  </>
-                )}
-              </button>
-              {subScanNotice && (
-                <p className="mt-1.5 text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 px-3 text-center">
-                  {subScanNotice}
-                </p>
-              )}
-              {parseError && (
-                <p className="mt-1.5 text-xs font-bold text-red-600 text-center">
-                  {parseError}
-                </p>
-              )}
-            </div>
+            {/* 숨김 파일 input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
 
             {/* 1. 구독 품목 및 월요금 + 품목별 개별 개월수/케어서비스 */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <label className="text-xs sm:text-sm font-black text-slate-900">
                   1. 구독 품목 및 월요금 ({state.activeGeneralPlan}안)
                 </label>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isParsing}
+                    title="클릭하거나 화면에서 Ctrl+V로 구독 전산 캡처 붙여넣기"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isParsing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>AI 판독 중...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>📸 구독전산 사진 자동입력</span>
+                      </>
+                    )}
+                  </button>
                   <button
                     type="button"
                     onClick={handleAddSubItem}
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" /> 품목 추가
                   </button>
@@ -1329,12 +1308,22 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     type="button"
                     onClick={handleResetSubItems}
                     title="구독 품목 목록 초기화"
-                    className="inline-flex items-center gap-1 px-2 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-extrabold text-xs transition cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-extrabold text-xs transition cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" /> 초기화
                   </button>
                 </div>
               </div>
+              {subScanNotice && (
+                <p className="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl py-1.5 px-3 text-center">
+                  {subScanNotice}
+                </p>
+              )}
+              {parseError && (
+                <p className="text-xs font-bold text-red-600 text-center">
+                  {parseError}
+                </p>
+              )}
 
               {/* 품목 행 + 품목별 개별 [36개월 | 60개월] 토글 & 케어서비스 선택/입력 줄 */}
               <div className="max-h-[300px] sm:max-h-[260px] overflow-y-auto space-y-2 pr-1">
