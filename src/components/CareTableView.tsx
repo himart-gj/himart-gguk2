@@ -57,7 +57,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 폴더 단계 이동 시 브라우저 히스토리에 기록하여 휴대폰 뒤로가기 버튼으로 이전 폴더 이동 지원
+  // 폴더 단계 이동 헬퍼 (하위 폴더로 들어갈 때 히스토리 가드 추가)
   const navigateCareFolder = (
     nextFolder: CareFolderKey | null,
     nextSection: string | null,
@@ -67,34 +67,65 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
     setSelectedSection(nextSection);
     setSelectedCategory(nextCategory);
     setSearchQuery('');
-    window.history.pushState(
-      {
-        appStep: 'care-table',
-        careFolder: nextFolder,
-        careSection: nextSection,
-      },
-      ''
-    );
+    window.history.pushState({ appGuard: true }, '');
+  };
+
+  // 조견표 내부에서 한 단계씩 뒤로 가는 공통 함수 (화면 버튼 & 휴대폰 뒤로가기 버튼 공용)
+  const careStateRef = useRef({
+    isSyncModalOpen,
+    searchQuery,
+    selectedCategory,
+    selectedSection,
+    selectedFolder,
+  });
+
+  useEffect(() => {
+    careStateRef.current = {
+      isSyncModalOpen,
+      searchQuery,
+      selectedCategory,
+      selectedSection,
+      selectedFolder,
+    };
+  }, [isSyncModalOpen, searchQuery, selectedCategory, selectedSection, selectedFolder]);
+
+  const stepBackInsideCareTable = (): boolean => {
+    const cur = careStateRef.current;
+    if (cur.isSyncModalOpen) {
+      setIsSyncModalOpen(false);
+      return true;
+    }
+    if (cur.searchQuery.trim() !== '') {
+      setSearchQuery('');
+      return true;
+    }
+    if (cur.selectedCategory !== 'ALL') {
+      setSelectedCategory('ALL');
+      return true;
+    }
+    if (cur.selectedSection !== null) {
+      // 3단계(코드·금액 표) ➔ 2단계(하위 폴더 목록)로 이동
+      setSelectedSection(null);
+      setSelectedCategory('ALL');
+      return true;
+    }
+    if (cur.selectedFolder !== null) {
+      // 2단계(하위 폴더 목록) ➔ 1단계(6대 상위 폴더 목록)로 이동
+      setSelectedFolder(null);
+      setSelectedSection(null);
+      setSelectedCategory('ALL');
+      return true;
+    }
+    // 이미 1단계(6대 상위 폴더 목록)이면 false를 반환하여 App.tsx가 메인 홈으로 이동하게 함
+    return false;
   };
 
   useEffect(() => {
-    const handleCarePopState = (e: PopStateEvent) => {
-      if (isSyncModalOpen) {
-        setIsSyncModalOpen(false);
-        return;
-      }
-      const st = e.state;
-      if (st && st.appStep === 'care-table') {
-        setSelectedFolder(st.careFolder ?? null);
-        setSelectedSection(st.careSection ?? null);
-        setSelectedCategory('ALL');
-        setSearchQuery('');
-      }
+    (window as any).__subViewBackHandler = stepBackInsideCareTable;
+    return () => {
+      (window as any).__subViewBackHandler = undefined;
     };
-
-    window.addEventListener('popstate', handleCarePopState);
-    return () => window.removeEventListener('popstate', handleCarePopState);
-  }, [isSyncModalOpen]);
+  }, []);
 
   const showToast = (msg: string) => {
     setNotice(msg);
@@ -440,13 +471,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                 {(selectedFolder || selectedSection || searchQuery) && (
                   <button
                     type="button"
-                    onClick={() => {
-                      if (searchQuery) {
-                        setSearchQuery('');
-                      } else {
-                        window.history.back();
-                      }
-                    }}
+                    onClick={() => stepBackInsideCareTable()}
                     className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black flex items-center gap-1 cursor-pointer"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />

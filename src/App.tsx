@@ -169,64 +169,73 @@ export function App() {
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState<boolean>(false);
 
-  // 스마트폰 뒤로가기 버튼(popstate) 연동
-  const isPopStateNavigationRef = useRef<boolean>(false);
+  // 최신 화면 및 모달 상태를 참조하기 위한 Ref
+  const latestAppStateRef = useRef({
+    step,
+    isSaveToCrmOpen,
+    isInstallGuideOpen,
+  });
 
   useEffect(() => {
-    // 최초 진입 시 루트 히스토리 상태 고정 및 앱 강제종료 방지용 버퍼 추가
-    window.history.replaceState({ appStep: 'home', activeMode: 'subscription' }, '');
-    window.history.pushState({ appStep: 'home', activeMode: 'subscription' }, '');
+    latestAppStateRef.current = {
+      step,
+      isSaveToCrmOpen,
+      isInstallGuideOpen,
+    };
+  }, [step, isSaveToCrmOpen, isInstallGuideOpen]);
 
-    const handlePopState = (e: PopStateEvent) => {
-      // 열려 있는 모달이 있으면 모달부터 닫기
-      if (isSaveToCrmOpen) {
+  // 단계나 메뉴가 바뀔 때마다 히스토리 가드 엔트리 1개 추가
+  useEffect(() => {
+    window.history.pushState({ appGuard: true }, '');
+  }, [step, activeMode]);
+
+  // 최초 1회만 등록되는 스마트폰 물리/제스처 뒤로가기 인터셉터
+  useEffect(() => {
+    window.history.replaceState({ appGuard: true }, '');
+    window.history.pushState({ appGuard: true }, '');
+
+    const handlePopState = () => {
+      // 앱이 절대 종료되지 않도록 즉시 가드 히스토리 재주입
+      window.history.pushState({ appGuard: true }, '');
+
+      const current = latestAppStateRef.current;
+
+      // 1순위: 열려 있는 모달 닫기
+      if (current.isSaveToCrmOpen) {
         setIsSaveToCrmOpen(false);
-        window.history.pushState({ appStep: step, activeMode }, '');
         return;
       }
-      if (isInstallGuideOpen) {
+      if (current.isInstallGuideOpen) {
         setIsInstallGuideOpen(false);
-        window.history.pushState({ appStep: step, activeMode }, '');
         return;
       }
 
-      const state = e.state;
-      if (state && state.appStep) {
-        isPopStateNavigationRef.current = true;
-        if (state.activeMode) {
-          setActiveMode(state.activeMode);
+      // 2순위: 현재 화면(예: 8.안심케어 조견표) 내부의 하위 폴더/단계 뒤로가기가 있으면 먼저 실행
+      const subBackHandler = (window as any).__subViewBackHandler as
+        | (() => boolean)
+        | undefined;
+      if (typeof subBackHandler === 'function') {
+        const handledBySubView = subBackHandler();
+        if (handledBySubView) {
+          return; // 하위 폴더에서 한 단계 뒤로 이동 완료했으므로 메인으로 나가지 않음!
         }
-        setStep(state.appStep);
-      } else {
-        // 루트까지 뒤로 간 경우 앱이 꺼지지 않도록 홈 화면 유지 및 히스토리 복구
-        isPopStateNavigationRef.current = true;
+      }
+
+      // 3순위: 제안서 미리보기('proposal') 화면이면 조건 입력('input') 화면으로 이동
+      if (current.step === 'proposal') {
+        setStep('input');
+        return;
+      }
+
+      // 4순위: 그 외 메뉴 화면이면 메인 홈('home')으로 이동
+      if (current.step !== 'home') {
         setStep('home');
-        window.history.pushState({ appStep: 'home', activeMode }, '');
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isSaveToCrmOpen, isInstallGuideOpen, step, activeMode]);
-
-  useEffect(() => {
-    if (isPopStateNavigationRef.current) {
-      isPopStateNavigationRef.current = false;
-      return;
-    }
-    const currentHist = window.history.state;
-    if (!currentHist || currentHist.appStep !== step || currentHist.activeMode !== activeMode) {
-      window.history.pushState(
-        {
-          appStep: step,
-          activeMode,
-          careFolder: null,
-          careSection: null,
-        },
-        ''
-      );
-    }
-  }, [step, activeMode]);
+  }, []);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
