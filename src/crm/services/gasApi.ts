@@ -250,6 +250,23 @@ export async function saveCustomerQuote(payload: {
   };
 }
 
+export async function fetchCustomers(): Promise<CustomerItem[]> {
+  return getCachedCustomers();
+}
+
+export async function saveCustomerToSheet(
+  customer: CustomerItem
+): Promise<boolean> {
+  const list = getCachedCustomers();
+  const idx = list.findIndex((c) => c.id === customer.id);
+  const next =
+    idx >= 0
+      ? list.map((c, i) => (i === idx ? customer : c))
+      : [customer, ...list];
+  setCachedCustomers(next);
+  return true;
+}
+
 export async function syncCustomerToGas(
   _action: 'create' | 'update' | 'delete' | 'upsertCustomer',
   _customer: Partial<CustomerItem> & { id: string }

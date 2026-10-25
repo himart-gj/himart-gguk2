@@ -379,51 +379,49 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const hybridCombinedNetTotal = generalSummary.rawNet + finalTotal60Fee;
 
   return (
-    <div className="h-[100dvh] w-full overflow-hidden flex flex-col bg-slate-200 select-none">
-      {/* ==================== 상단 고정 액션바 (스마트폰 2줄 자동정렬, 폴드/PC 52px 1줄, 인쇄 시 숨김) ==================== */}
-      <header className="no-print min-h-[52px] sm:h-[52px] py-1.5 sm:py-0 shrink-0 w-full bg-slate-900 border-b border-slate-800 px-2 sm:px-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 z-20 shadow-md">
-        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap sm:flex-nowrap">
+    <div className="min-h-[calc(100dvh-44px)] w-full flex flex-col bg-slate-200 select-none">
+      {/* ==================== 상단 고정 액션바 (스크롤 시 최상단 바 바로 아래 2단 고정, 폴드 와이드 1줄 100% 수납) ==================== */}
+      <header className="no-print sticky top-[44px] z-30 min-h-[44px] py-1 shrink-0 w-full bg-slate-900/95 backdrop-blur-xs border-b border-slate-800 px-2 sm:px-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-1 shadow-md">
+        <div className="flex items-center gap-1 flex-wrap sm:flex-nowrap min-w-0">
           <button
             type="button"
             onClick={onBackToInput}
-            className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] sm:text-xs border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            조건 다시 입력하기
+            <ArrowLeft className="w-3 h-3" />
+            <span>조건 수정</span>
           </button>
 
           {/* 탭 전환 버튼: 모드별 제안서 및 안내서 분리 */}
-          <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 shrink-0">
+          <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 shrink-0">
             <button
               type="button"
               onClick={() => setActiveTab('proposal')}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'proposal'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              <FileText className="w-3.5 h-3.5" />
-              {state.quoteMode === 'hybrid'
-                ? '1. 맞춤 혼합 제안서'
-                : '1. 맞춤 제안서'}
+              <FileText className="w-3 h-3" />
+              <span>1.제안서</span>
             </button>
 
             {state.quoteMode === 'general' && (
               <button
                 type="button"
                 onClick={() => setActiveTab('guide-general')}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                   activeTab === 'guide-general'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <BookOpen className="w-3.5 h-3.5" />
-                2. 하이프리드 별도 안내서
+                <BookOpen className="w-3 h-3" />
+                <span>2.하이프리드</span>
                 {generalHiPreedSummary.totalAccounts > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">
-                    {generalHiPreedSummary.totalAccounts}건
+                  <span className="px-1 py-0.2 rounded-full bg-white/20 text-[10px]">
+                    {generalHiPreedSummary.totalAccounts}
                   </span>
                 )}
               </button>
@@ -433,17 +431,17 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('guide-sub')}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                   activeTab === 'guide-sub'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <BookOpen className="w-3.5 h-3.5" />
-                2. 구독프리드 별도 안내서
+                <BookOpen className="w-3 h-3" />
+                <span>2.구독프리드</span>
                 {hiSummary.totalAccounts > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">
-                    {hiSummary.totalAccounts}구좌
+                  <span className="px-1 py-0.2 rounded-full bg-white/20 text-[10px]">
+                    {hiSummary.totalAccounts}
                   </span>
                 )}
               </button>
@@ -454,127 +452,103 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('guide-general')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                     activeTab === 'guide-general'
                       ? 'bg-amber-500 text-slate-950 shadow-xs'
                       : 'text-slate-300 hover:text-white'
                   }`}
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  2. 일반 하이프리드 안내서
-                  {generalHiPreedSummary.totalAccounts > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-slate-900/20 text-[10px]">
-                      {generalHiPreedSummary.totalAccounts}건
-                    </span>
-                  )}
+                  <BookOpen className="w-3 h-3" />
+                  <span>2.하이프리드</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('guide-sub')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                     activeTab === 'guide-sub'
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'text-slate-300 hover:text-white'
                   }`}
                 >
-                  <BookOpen className="w-3.5 h-3.5" />
-                  3. 구독프리드 안내서
-                  {hiSummary.totalAccounts > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">
-                      {hiSummary.totalAccounts}구좌
-                    </span>
-                  )}
+                  <BookOpen className="w-3 h-3" />
+                  <span>3.구독프리드</span>
                 </button>
               </>
             )}
           </div>
 
-          {/* 통합 [1안] / [2안] 즉시 전환 스위치 (일반 · 구독 · 혼합 전 모드에서 표시) */}
-          <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 shrink-0">
+          {/* 통합 [1안] / [2안] 즉시 전환 스위치 */}
+          <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 shrink-0">
             <button
               type="button"
               onClick={() => handleSwitchGeneralPlan(1)}
-              className={`px-2 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+              className={`px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                 activePlan === 1
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              {state.quoteMode === 'subscription'
-                ? `구독 1안${
-                    plan1SubSummary.totalBaseMonthly > 0
-                      ? ` (월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()}원)`
-                      : ''
-                  }`
-                : state.quoteMode === 'hybrid'
-                  ? `1안${
-                      plan1Summary.sum > 0 || plan1SubSummary.totalBaseMonthly > 0
-                        ? ` (일반 ${plan1Summary.rawNet.toLocaleString()} / 월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()})`
-                        : ''
-                    }`
-                  : `1안${
-                      plan1Summary.sum > 0
-                        ? ` (${plan1Summary.rawNet.toLocaleString()}원)`
-                        : ''
-                    }`}
+              1안
+              <span className="hidden lg:inline">
+                {state.quoteMode === 'subscription'
+                  ? plan1SubSummary.totalBaseMonthly > 0
+                    ? ` (월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()}원)`
+                    : ''
+                  : plan1Summary.sum > 0
+                    ? ` (${plan1Summary.rawNet.toLocaleString()}원)`
+                    : ''}
+              </span>
             </button>
             <button
               type="button"
               onClick={() => handleSwitchGeneralPlan(2)}
-              className={`px-2 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+              className={`px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                 activePlan === 2
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              {state.quoteMode === 'subscription'
-                ? `구독 2안${
-                    plan2SubSummary.totalBaseMonthly > 0
-                      ? ` (월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()}원)`
-                      : ''
-                  }`
-                : state.quoteMode === 'hybrid'
-                  ? `2안${
-                      plan2Summary.sum > 0 || plan2SubSummary.totalBaseMonthly > 0
-                        ? ` (일반 ${plan2Summary.rawNet.toLocaleString()} / 월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()})`
-                        : ''
-                    }`
-                  : `2안${
-                      plan2Summary.sum > 0
-                        ? ` (${plan2Summary.rawNet.toLocaleString()}원)`
-                        : ''
-                    }`}
+              2안
+              <span className="hidden lg:inline">
+                {state.quoteMode === 'subscription'
+                  ? plan2SubSummary.totalBaseMonthly > 0
+                    ? ` (월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()}원)`
+                    : ''
+                  : plan2Summary.sum > 0
+                    ? ` (${plan2Summary.rawNet.toLocaleString()}원)`
+                    : ''}
+              </span>
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto sm:ml-0">
+        <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
           {onOpenSaveToCrm && (
             <button
               type="button"
               onClick={onOpenSaveToCrm}
-              className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
             >
-              <Save className="w-3.5 h-3.5" />
-              💾 CRM 고객 저장
+              <Save className="w-3 h-3" />
+              <span>고객저장</span>
             </button>
           )}
           <button
             type="button"
             onClick={handleDownloadPng}
             disabled={isExporting}
-            className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
-            <Download className="w-3.5 h-3.5" />
-            {isExporting ? '저장 중...' : '이미지 저장'}
+            <Download className="w-3 h-3" />
+            <span>{isExporting ? '저장중..' : '이미지'}</span>
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
           >
-            <Printer className="w-3.5 h-3.5" />
-            인쇄 / PDF
+            <Printer className="w-3 h-3" />
+            <span>인쇄/PDF</span>
           </button>
         </div>
       </header>
@@ -582,7 +556,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       {/* ==================== 중앙 2D Auto-Fit 뷰포트 ==================== */}
       <div
         ref={viewportRef}
-        className="print-stage flex-1 min-h-0 w-full flex items-start sm:items-center justify-center overflow-y-auto sm:overflow-hidden overflow-x-hidden p-2 sm:p-3"
+        className="print-stage flex-1 min-h-0 w-full flex items-start sm:items-center justify-center overflow-x-hidden p-2 sm:p-3"
       >
         <div
           style={{
