@@ -23,7 +23,24 @@ import {
   parseSubscriptionImageWithFallback,
   sanitizeFiveYearWarrantyText,
 } from './utils/aiImageParser';
-import { CreditCard, Layers, Printer, RefreshCw, Users } from 'lucide-react';
+import {
+  CreditCard,
+  Download,
+  Home,
+  Layers,
+  Maximize2,
+  Minimize2,
+  Printer,
+  RefreshCw,
+  Smartphone,
+  Users,
+  X,
+} from 'lucide-react';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+}
 
 const createEmptyGeneralPlanData = (
   mode: QuoteMode,
@@ -131,6 +148,89 @@ export function App() {
   const [parseGeneralError, setParseGeneralError] = useState(
     null as string | null
   );
+
+  // PWA 설치 프롬프트 및 전체화면 상태
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      window.matchMedia('(display-mode: fullscreen)').matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone ===
+        true
+    );
+  });
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isInstallGuideOpen, setIsInstallGuideOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsStandalone(true);
+      setIsInstallGuideOpen(false);
+    };
+
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+
+    const mediaQuery = window.matchMedia('(display-mode: standalone)');
+    const handleDisplayModeChange = (e: MediaQueryListEvent) => {
+      if (e.matches) {
+        setIsStandalone(true);
+      }
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    mediaQuery.addEventListener?.('change', handleDisplayModeChange);
+
+    return () => {
+      window.removeEventListener(
+        'beforeinstallprompt',
+        handleBeforeInstallPrompt
+      );
+      window.removeEventListener('appinstalled', handleAppInstalled);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      mediaQuery.removeEventListener?.('change', handleDisplayModeChange);
+    };
+  }, []);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else if (document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // iOS Safari 등 Fullscreen API 미지원 환경에서는 설치 안내 모달 표시
+      setIsInstallGuideOpen(true);
+    }
+  }, []);
+
+  const handleInstallAppClick = useCallback(async () => {
+    if (deferredPrompt) {
+      try {
+        await deferredPrompt.prompt();
+        const choiceResult = await deferredPrompt.userChoice;
+        if (choiceResult.outcome === 'accepted') {
+          setDeferredPrompt(null);
+        }
+      } catch {
+        setIsInstallGuideOpen(true);
+      }
+    } else {
+      setIsInstallGuideOpen(true);
+    }
+  }, [deferredPrompt]);
 
   // 메인 홈 화면 진입 시 최신 CRM 캐시 동기화
   useEffect(() => {
@@ -601,9 +701,139 @@ export function App() {
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col">
+      {/* ==================== 상단 다크 글로벌 네비게이션 & 전체화면/앱설치 바 ==================== */}
+      <header className="w-full bg-slate-900 text-white border-b border-slate-800 px-3 py-2 flex items-center justify-between gap-2 sticky top-0 z-40 no-print">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setStep('home')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
+              step === 'home'
+                ? 'bg-slate-700 text-white'
+                : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Home className="w-3.5 h-3.5" />
+            <span>홈</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleEnterMode('general')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              (step === 'input' || step === 'proposal') &&
+              activeMode === 'general'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>1.일반견적</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleEnterMode('subscription')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              (step === 'input' || step === 'proposal') &&
+              activeMode === 'subscription'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>2.구독견적</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleEnterMode('hybrid')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              (step === 'input' || step === 'proposal') &&
+              activeMode === 'hybrid'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>3.혼합견적</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStep('pop-printer')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              step === 'pop-printer'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>4.POP출력</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setStep('crm')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              step === 'crm'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>5.고객관리</span>
+            {urgentCount >= 1 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black leading-none">
+                {urgentCount}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* 우측: 전체화면 토글 & PWA 앱 설치 버튼 */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleToggleFullscreen}
+            title="주소창 숨김 전체화면 전환"
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 border transition cursor-pointer ${
+              isFullscreen
+                ? 'bg-emerald-600 border-emerald-500 text-white'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+            }`}
+          >
+            {isFullscreen ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">전체화면 해제</span>
+                <span className="sm:hidden">축소</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5" />
+                <span>⛶ 전체화면</span>
+              </>
+            )}
+          </button>
+
+          {!isStandalone && (
+            <button
+              type="button"
+              onClick={handleInstallAppClick}
+              title="홈 화면에 앱으로 설치하여 주소창 없이 실행"
+              className="px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-500 shadow-xs transition cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>📲 앱 설치</span>
+            </button>
+          )}
+        </div>
+      </header>
+
       {/* ==================== STEP 0: 심플 메인 메뉴 선택 화면 ==================== */}
       {step === 'home' && (
-        <main className="min-h-[100dvh] w-full flex items-center justify-center p-4">
+        <main className="flex-1 w-full flex items-center justify-center p-4">
           <div className="w-full max-w-md space-y-3">
             <button
               type="button"
@@ -762,6 +992,82 @@ export function App() {
           setCrmCustomers(getCachedCustomers());
         }}
       />
+
+      {/* ==================== PWA 앱 설치 / 주소창 숨김 안내 모달 ==================== */}
+      {isInstallGuideOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 no-print"
+          onClick={() => setIsInstallGuideOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center">
+                  <Smartphone className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black tracking-tight">
+                    📲 주소창 없는 전용 앱(PWA) 설치 안내
+                  </h3>
+                  <p className="text-xs text-slate-300 font-medium">
+                    홈 화면에 추가하면 주소창 없이 100% 전체화면으로 실행됩니다
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInstallGuideOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-sm text-slate-700">
+              <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200 space-y-1.5">
+                <div className="font-black text-blue-950 flex items-center gap-1.5">
+                  <span>🤖 안드로이드 스마트폰 / 갤럭시탭 / 매장 PC (크롬·엣지)</span>
+                </div>
+                <p className="text-xs text-blue-900 leading-relaxed font-medium">
+                  1) 브라우저 우측 상단 메뉴 <strong>[⋮]</strong> 또는 주소창 우측의{' '}
+                  <strong>[앱 설치 / 모니터 아이콘]</strong>을 누릅니다.
+                  <br />
+                  2) <strong>[앱 설치]</strong> 또는 <strong>[홈 화면에 추가]</strong>를
+                  선택하면 바탕화면에 <strong>국지통합앱</strong> 아이콘이 생성됩니다.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 space-y-1.5">
+                <div className="font-black text-slate-900 flex items-center gap-1.5">
+                  <span>🍎 아이폰 / 아이패드 (Safari 브라우저)</span>
+                </div>
+                <p className="text-xs text-slate-700 leading-relaxed font-medium">
+                  1) Safari 하단(아이패드는 상단)의{' '}
+                  <strong>[공유 버튼 (네모 위 화살표 ↑)]</strong>을 터치합니다.
+                  <br />
+                  2) 메뉴를 내려 <strong>[홈 화면에 추가 (+)]</strong>를 누르고 우측 상단{' '}
+                  <strong>[추가]</strong>를 터치합니다.
+                  <br />
+                  3) 홈 화면에 생성된 아이콘으로 실행하면 상·하단 주소창이 100% 사라집니다!
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsInstallGuideOpen(false)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black transition cursor-pointer"
+                >
+                  확인했습니다
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
