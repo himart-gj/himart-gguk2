@@ -381,8 +381,8 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   return (
     <div className="min-h-[calc(100dvh-44px)] w-full flex flex-col bg-slate-200 select-none">
       {/* ==================== 상단 고정 액션바 (스크롤 시 최상단 바 바로 아래 2단 고정, 폴드 와이드 1줄 100% 수납) ==================== */}
-      <header className="no-print sticky top-[44px] z-30 min-h-[44px] py-1 shrink-0 w-full bg-slate-900/95 backdrop-blur-xs border-b border-slate-800 px-2 sm:px-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-1 shadow-md">
-        <div className="flex items-center gap-1 flex-wrap sm:flex-nowrap min-w-0">
+      <header className="no-print sticky top-[44px] z-30 min-h-[44px] py-1.5 shrink-0 w-full bg-slate-900/95 backdrop-blur-xs border-b border-slate-800 px-2 sm:px-3 flex flex-wrap items-center justify-between gap-1 sm:gap-1.5 shadow-md">
+        <div className="flex items-center gap-1 flex-wrap">
           <button
             type="button"
             onClick={onBackToInput}
@@ -392,7 +392,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             <span>조건 수정</span>
           </button>
 
-          {/* 탭 전환 버튼: 모드별 제안서 및 안내서 분리 */}
+          {/* 탭 전환 버튼 */}
           <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 shrink-0">
             <button
               type="button"
@@ -404,7 +404,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
               }`}
             >
               <FileText className="w-3 h-3" />
-              <span>1.제안서</span>
+              <span>{state.quoteMode === 'hybrid' ? '1.혼합제안서' : '1.제안서'}</span>
             </button>
 
             {state.quoteMode === 'general' && (
@@ -418,10 +418,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 }`}
               >
                 <BookOpen className="w-3 h-3" />
-                <span>2.하이프리드</span>
+                <span>2.하이프리드 안내</span>
                 {generalHiPreedSummary.totalAccounts > 0 && (
                   <span className="px-1 py-0.2 rounded-full bg-white/20 text-[10px]">
-                    {generalHiPreedSummary.totalAccounts}
+                    {generalHiPreedSummary.totalAccounts}건
                   </span>
                 )}
               </button>
@@ -438,10 +438,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 }`}
               >
                 <BookOpen className="w-3 h-3" />
-                <span>2.구독프리드</span>
+                <span>2.구독프리드 안내</span>
                 {hiSummary.totalAccounts > 0 && (
                   <span className="px-1 py-0.2 rounded-full bg-white/20 text-[10px]">
-                    {hiSummary.totalAccounts}
+                    {hiSummary.totalAccounts}구좌
                   </span>
                 )}
               </button>
@@ -452,7 +452,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('guide-general')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
+                  className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                     activeTab === 'guide-general'
                       ? 'bg-amber-500 text-slate-950 shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -460,11 +460,16 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 >
                   <BookOpen className="w-3 h-3" />
                   <span>2.하이프리드</span>
+                  {generalHiPreedSummary.totalAccounts > 0 && (
+                    <span className="px-1 py-0.2 rounded-full bg-slate-900/20 text-[10px]">
+                      {generalHiPreedSummary.totalAccounts}
+                    </span>
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveTab('guide-sub')}
-                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
+                  className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-md font-extrabold text-[11px] transition cursor-pointer whitespace-nowrap ${
                     activeTab === 'guide-sub'
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -472,6 +477,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 >
                   <BookOpen className="w-3 h-3" />
                   <span>3.구독프리드</span>
+                  {hiSummary.totalAccounts > 0 && (
+                    <span className="px-1 py-0.2 rounded-full bg-white/20 text-[10px]">
+                      {hiSummary.totalAccounts}
+                    </span>
+                  )}
                 </button>
               </>
             )}
@@ -488,16 +498,19 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              1안
-              <span className="hidden lg:inline">
-                {state.quoteMode === 'subscription'
-                  ? plan1SubSummary.totalBaseMonthly > 0
-                    ? ` (월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()}원)`
-                    : ''
-                  : plan1Summary.sum > 0
-                    ? ` (${plan1Summary.rawNet.toLocaleString()}원)`
-                    : ''}
-              </span>
+              {state.quoteMode === 'subscription'
+                ? `1안${
+                    plan1SubSummary.totalBaseMonthly > 0
+                      ? `(월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()})`
+                      : ''
+                  }`
+                : state.quoteMode === 'hybrid'
+                  ? '1안'
+                  : `1안${
+                      plan1Summary.sum > 0
+                        ? `(${plan1Summary.rawNet.toLocaleString()})`
+                        : ''
+                    }`}
             </button>
             <button
               type="button"
@@ -508,16 +521,19 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                   : 'text-slate-300 hover:text-white'
               }`}
             >
-              2안
-              <span className="hidden lg:inline">
-                {state.quoteMode === 'subscription'
-                  ? plan2SubSummary.totalBaseMonthly > 0
-                    ? ` (월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()}원)`
-                    : ''
-                  : plan2Summary.sum > 0
-                    ? ` (${plan2Summary.rawNet.toLocaleString()}원)`
-                    : ''}
-              </span>
+              {state.quoteMode === 'subscription'
+                ? `2안${
+                    plan2SubSummary.totalBaseMonthly > 0
+                      ? `(월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()})`
+                      : ''
+                  }`
+                : state.quoteMode === 'hybrid'
+                  ? '2안'
+                  : `2안${
+                      plan2Summary.sum > 0
+                        ? `(${plan2Summary.rawNet.toLocaleString()})`
+                        : ''
+                    }`}
             </button>
           </div>
         </div>
@@ -540,7 +556,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
             <Download className="w-3 h-3" />
-            <span>{isExporting ? '저장중..' : '이미지'}</span>
+            <span>{isExporting ? '저장중' : '이미지'}</span>
           </button>
           <button
             type="button"
@@ -548,7 +564,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
           >
             <Printer className="w-3 h-3" />
-            <span>인쇄/PDF</span>
+            <span>인쇄</span>
           </button>
         </div>
       </header>
