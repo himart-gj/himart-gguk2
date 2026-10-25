@@ -97,6 +97,19 @@ function getFolderTitle(key: CareFolderKey): string {
   return CARE_FOLDERS.find((f) => f.key === key)?.title || key;
 }
 
+function sheetToA1Rows(ws: XLSX.WorkSheet): any[][] {
+  if (!ws || !ws['!ref']) return [];
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  // 시트가 B1 등 A1이 아닌 셀부터 시작하더라도 무조건 A1(0행, 0열) 기준으로 열 인덱스를 고정
+  range.s.r = 0;
+  range.s.c = 0;
+  return XLSX.utils.sheet_to_json<any[]>(ws, {
+    header: 1,
+    defval: '',
+    range: XLSX.utils.encode_range(range),
+  });
+}
+
 export function parseCareExcelBuffer(
   buffer: ArrayBuffer,
   fileName = '안심케어_조견표.xlsx'
@@ -108,7 +121,7 @@ export function parseCareExcelBuffer(
   // 1) 시트1: 안심케어 리스트
   const sheet1Name = wb.SheetNames.find((n) => n.includes('안심케어')) || wb.SheetNames[0];
   if (sheet1Name && wb.Sheets[sheet1Name]) {
-    const rows1 = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[sheet1Name], { header: 1, defval: '' });
+    const rows1 = sheetToA1Rows(wb.Sheets[sheet1Name]);
 
     for (let r = 0; r < Math.min(rows1.length, 6); r++) {
       const rowText = (rows1[r] || []).map(cleanCell).find((c) => c.includes('조견표'));
@@ -385,7 +398,7 @@ export function parseCareExcelBuffer(
   // 2) 시트2: 가전이사 리스트
   const sheet2Name = wb.SheetNames.find((n) => n.includes('가전이사')) || wb.SheetNames[1];
   if (sheet2Name && wb.Sheets[sheet2Name]) {
-    const rows2 = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[sheet2Name], { header: 1, defval: '' });
+    const rows2 = sheetToA1Rows(wb.Sheets[sheet2Name]);
 
     // --- Sheet 2 Block A (Cols 1..5: TV 가전이사 & 가전이사 거리코드) ---
     let sec2A = 'TV 가전이사';
