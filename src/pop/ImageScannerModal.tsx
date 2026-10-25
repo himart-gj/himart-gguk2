@@ -142,7 +142,18 @@ export default function ImageScannerModal({
 
         const json = await res.json();
         if (res.ok && json.success && json.data) {
-          setExtractedData(json.data);
+          const sanitized = {
+            ...json.data,
+            careServiceText: (json.data.careServiceText || '').replace(
+              /3년\s*(무상|A\/?S)/gi,
+              '5년 $1'
+            ),
+            careServiceDetail: (json.data.careServiceDetail || '').replace(
+              /3년\s*(무상|A\/?S)/gi,
+              '5년 $1'
+            ),
+          };
+          setExtractedData(sanitized);
           return;
         }
       } catch (serverErr) {
@@ -159,6 +170,7 @@ export default function ImageScannerModal({
       const ai = new GoogleGenAI({ apiKey: finalKey });
       const prompt = `당신은 가전제품 구독/렌탈 견적서 및 하이마트 세일즈툴(맞춤 구독 견적 계산기) 화면 이미지 분석 전문가입니다.
 사용자가 업로드한 화면 캡처 또는 사진에서 다음 구독 POP 제작에 필요한 핵심 정보들을 정확하게 추출하세요.
+롯데하이마트 가전 구독의 무상 A/S 기간은 구독 개월수(36개월/60개월)와 상관없이 무조건 5년(5년 무상 A/S)입니다. 화면에서 36개월 버튼이 선택되어 있더라도 절대 '3년 무상 A/S'로 해석하거나 작성하지 마세요.
 - 본문에 모델명이 안 보이면 화면 최상단 브라우저 주소창 URL 파라미터(예: productId=FG24GN.AKOR2)에서 모델코드를 반드시 추출할 것!
 - 하단 노란색 글씨 '월 납부요금'(예: 약 58,653원 -> 58653)을 monthlyFee로 추출할 것!`;
 
@@ -199,6 +211,14 @@ export default function ImageScannerModal({
       const cleanModel = normalizeModelCode(parsedData.modelName || '');
       parsedData.modelName = cleanModel || parsedData.modelName || '';
       parsedData.category = inferCategoryFromModelCode(cleanModel, parsedData.category);
+      parsedData.careServiceText = (parsedData.careServiceText || '').replace(
+        /3년\s*(무상|A\/?S)/gi,
+        '5년 $1'
+      );
+      parsedData.careServiceDetail = (parsedData.careServiceDetail || '').replace(
+        /3년\s*(무상|A\/?S)/gi,
+        '5년 $1'
+      );
       setExtractedData(parsedData);
     } catch (err: any) {
       console.error(err);
@@ -228,10 +248,16 @@ export default function ImageScannerModal({
       monthlyFee: Math.floor(extractedData.monthlyFee),
       period: extractedData.period || 36,
       downPayment: extractedData.downPayment || 0,
-      careServiceText: extractedData.careServiceText || '',
+      careServiceText: (extractedData.careServiceText || '').replace(
+        /3년\s*(무상|A\/?S)/gi,
+        '5년 $1'
+      ),
       careServiceCycle: extractedData.careServiceCycle || '',
       careServiceCount: extractedData.careServiceCount || '',
-      careServiceDetail: extractedData.careServiceDetail || '',
+      careServiceDetail: (extractedData.careServiceDetail || '').replace(
+        /3년\s*(무상|A\/?S)/gi,
+        '5년 $1'
+      ),
       imageUrl: '',
       changeStatus: 'new',
       isAllCare: !!extractedData.isAllCare,

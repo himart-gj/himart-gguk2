@@ -275,7 +275,7 @@ export function extractGeneralPlanData(
     subscriptionPeriod: source.subscriptionPeriod === 36 ? 36 : 60,
     careService: source.careService || SUB_CARE_OPTIONS[0],
     warrantyType: source.warrantyType || 'AS연장보험 + 가전수리올케어',
-    warrantyYears: source.warrantyYears === 3 ? 3 : 5,
+    warrantyYears: 5,
     allCare: source.allCare ?? true,
     selectedCardId: source.selectedCardId || 'none',
     selectedCardTierId: source.selectedCardTierId || '',
@@ -337,7 +337,7 @@ export function cloneGeneralPlanData(
     subscriptionPeriod: source.subscriptionPeriod === 36 ? 36 : 60,
     careService: source.careService || SUB_CARE_OPTIONS[0],
     warrantyType: source.warrantyType || 'AS연장보험 + 가전수리올케어',
-    warrantyYears: source.warrantyYears === 3 ? 3 : 5,
+    warrantyYears: 5,
     allCare: source.allCare ?? true,
     selectedCardId: source.selectedCardId || 'none',
     selectedCardTierId: source.selectedCardTierId || '',
@@ -949,11 +949,6 @@ export function calculateHiPlusSummary(
   };
 }
 
-export function hasThreeYearKeywordInText(text: string): boolean {
-  const normalized = text.replace(/\s+/g, '');
-  return (
-    normalized.includes('3년') ||
-    normalized.includes('안심케어3') ||
-    normalized.includes('정기케어3')
-  );
+export function hasThreeYearKeywordInText(_text: string): boolean {
+  return false;
 }

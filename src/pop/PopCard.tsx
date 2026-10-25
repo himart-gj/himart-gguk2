@@ -43,10 +43,14 @@ export default function PopCard({ product, cardBenefit, onToggleAllCare }: PopCa
   const calculatedDownPayment = product.monthlyFee * product.period;
   const totalBenefitPrice = perceivedPrice * product.period;
 
-  // 3년/5년 AS 자동 판단 로직 초강화 (엑셀의 모든 셀 내용을 공백 없이 검사)
-  const allText = (product.rawRowText || Object.values(product).join(' ')).replace(/\s+/g, '');
-  const is3Years = allText.includes('3년') || allText.includes('안심케어3') || allText.includes('정기케어3');
-  const warrantyYears = is3Years ? '3' : '5';
+  // 롯데하이마트 구독 가전의 무상 A/S 보증기간은 구독 개월수(36/60개월)와 무관하게 무조건 5년 무상 A/S 고정
+  const warrantyYears = '5';
+  const cleanCareServiceText = product.careServiceText
+    ? product.careServiceText.replace(/3년\s*(무상|A\/?S)/gi, '5년 $1')
+    : '';
+  const cleanCareServiceDetail = product.careServiceDetail
+    ? product.careServiceDetail.replace(/3년\s*(무상|A\/?S)/gi, '5년 $1')
+    : '';
 
   return (
     <div ref={containerRef} className="w-full flex justify-center print:w-full print:h-full">
@@ -192,11 +196,11 @@ export default function PopCard({ product, cardBenefit, onToggleAllCare }: PopCa
           <div className="bg-slate-800 text-white text-center py-1.5 font-bold">구독 케어 서비스</div>
           <div className="p-2 flex-1 flex flex-col justify-start gap-1">
             {/* 명칭, 주기, 횟수 등을 가독성 있게 구조화 */}
-            {(product.careServiceText || product.careServiceCycle || product.careServiceCount || product.careServiceBenefit) && (
+            {(cleanCareServiceText || product.careServiceCycle || product.careServiceCount || product.careServiceBenefit) && (
               <div className="border-b border-slate-200 pb-1.5">
-                {product.careServiceText && (
+                {cleanCareServiceText && (
                   <div className="font-bold text-slate-800 break-words leading-tight mb-1">
-                    {product.careServiceText}
+                    {cleanCareServiceText}
                   </div>
                 )}
                 {(product.careServiceCycle || product.careServiceCount || product.careServiceBenefit) && (
@@ -222,11 +226,11 @@ export default function PopCard({ product, cardBenefit, onToggleAllCare }: PopCa
             )}
             
             {/* 상세 내용 (데미지 케어 1년, 소모품 배송 등) */}
-            {(product.careServiceDetail || (!product.careServiceText && !product.careServiceCycle && !product.careServiceCount && !product.careServiceBenefit && !product.careServiceDetail)) && (
+            {(cleanCareServiceDetail || (!cleanCareServiceText && !product.careServiceCycle && !product.careServiceCount && !product.careServiceBenefit && !cleanCareServiceDetail)) && (
               <div className="flex flex-col mt-0.5">
                 <span className="text-slate-500 mb-0.5 text-[9px]">서비스 내용</span>
                 <span className="font-bold text-blue-700 break-words leading-tight text-[10px]">
-                  {product.careServiceDetail || '해당없음'}
+                  {cleanCareServiceDetail || '해당없음'}
                 </span>
               </div>
             )}

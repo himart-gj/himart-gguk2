@@ -21,6 +21,7 @@ import {
   mapSubscriptionAffiliateCard,
   parseGeneralImageWithFallback,
   parseSubscriptionImageWithFallback,
+  sanitizeFiveYearWarrantyText,
 } from './utils/aiImageParser';
 import { CreditCard, Layers, Printer, RefreshCw, Users } from 'lucide-react';
 
@@ -238,10 +239,7 @@ export function App() {
             parsed.generalPlan1?.warrantyType ||
             parsed.warrantyType ||
             base.generalPlan1.warrantyType,
-          warrantyYears:
-            parsed.generalPlan1?.warrantyYears ||
-            parsed.warrantyYears ||
-            base.generalPlan1.warrantyYears,
+          warrantyYears: 5,
           allCare:
             parsed.generalPlan1?.allCare ??
             parsed.allCare ??
@@ -487,10 +485,11 @@ export function App() {
         const rawCardName = data.cardName || firstItem.cardName || '';
         const mappedCard = mapSubscriptionAffiliateCard(rawCardName);
 
-        const resolvedWarrantyType =
+        const resolvedWarrantyType = sanitizeFiveYearWarrantyText(
           data.warrantyType ||
-          firstItem.warrantyType ||
-          'AS연장보험 + 가전수리올케어';
+            firstItem.warrantyType ||
+            'AS연장보험 + 가전수리올케어'
+        );
 
         setCurrentState((prev) => {
           const existingValidItems = prev.items.filter(
@@ -509,6 +508,15 @@ export function App() {
                       : Number(it.period) === 60
                       ? 60
                       : detectedPeriod;
+                  const cleanCareService = sanitizeFiveYearWarrantyText(
+                    it.careService || SUB_CARE_OPTIONS[0]
+                  );
+                  const cleanCareType = sanitizeFiveYearWarrantyText(
+                    it.careType || it.careService || SUB_CARE_OPTIONS[0]
+                  );
+                  const cleanWarrantyType = sanitizeFiveYearWarrantyText(
+                    it.warrantyType || resolvedWarrantyType || '5년 무상 A/S 기본 포함'
+                  );
                   return {
                     id: `ai-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
                     category:
@@ -525,14 +533,9 @@ export function App() {
                       Number(it.contractAmount) > 0
                         ? Number(it.contractAmount)
                         : Number(data.contractAmount) || 0,
-                    careService: it.careService || SUB_CARE_OPTIONS[0],
-                    careType:
-                      it.careType || it.careService || SUB_CARE_OPTIONS[0],
-                    warrantyType:
-                      it.warrantyType ||
-                      (itemPeriod === 36
-                        ? '3년 무상 A/S 기본 포함'
-                        : resolvedWarrantyType),
+                    careService: cleanCareService,
+                    careType: cleanCareType,
+                    warrantyType: cleanWarrantyType,
                     cardName: it.cardName || rawCardName,
                   };
                 })
@@ -571,9 +574,11 @@ export function App() {
             ...prev,
             items: nextItems,
             subscriptionPeriod: repPeriod,
-            careService: firstItem.careService || prev.careService,
+            careService: sanitizeFiveYearWarrantyText(
+              firstItem.careService || prev.careService
+            ),
             warrantyType: resolvedWarrantyType,
-            warrantyYears: repPeriod === 36 ? 3 : 5,
+            warrantyYears: 5,
             allCare: data.allCare ?? true,
             selectedCardId:
               mappedCard.cardId !== 'none'

@@ -380,10 +380,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         monthlyFee: 0,
         period: defaultPeriod,
         careService: SUB_CARE_OPTIONS[0],
-        warrantyType:
-          defaultPeriod === 36
-            ? '3년 무상 A/S 기본 포함'
-            : '5년 무상 A/S 기본 포함',
+        warrantyType: '5년 무상 A/S 기본 포함',
       };
       const nextItems = [...prev.items, newItem];
       const repPeriod: SubscriptionPeriod = nextItems.every(
@@ -1351,8 +1348,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       : state.subscriptionPeriod === 36
                       ? 36
                       : 60;
-                  const itemWarrantyBadge =
-                    itemPeriod === 36 ? '3년 무상 A/S' : '5년 무상 A/S';
+                  const itemWarrantyBadge = '5년 무상 A/S 기본 포함';
 
                   return (
                     <div
@@ -1393,10 +1389,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                                 onClick={() =>
                                   handleUpdateSubItem(item.id, {
                                     period: p,
-                                    warrantyType:
-                                      p === 36
-                                        ? '3년 무상 A/S 기본 포함'
-                                        : '5년 무상 A/S 기본 포함',
+                                    warrantyType: '5년 무상 A/S 기본 포함',
                                   })
                                 }
                                 className={`flex-1 py-1 rounded-md font-extrabold text-[10px] sm:text-[11px] transition cursor-pointer whitespace-nowrap ${
@@ -1513,10 +1506,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 })}
               </div>
 
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 px-1">
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold text-slate-500 px-1">
                 <span className="text-rose-600 font-extrabold">
                   ✓ 구독기간: {periodLabel} (원금 합계{' '}
-                  {totalPrincipal.toLocaleString()}원)
+                  {totalPrincipal.toLocaleString()}원 · 전 품목 5년 무상 A/S 기본 보장)
                 </span>
                 <span className="text-slate-800 font-extrabold">
                   총 월 구독료 합계: {totalBaseMonthly.toLocaleString()}원

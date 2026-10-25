@@ -117,6 +117,11 @@ function normalizeModelCode(rawCode?: string): string {
   return code.trim();
 }
 
+function sanitizeFiveYearWarrantyText(raw?: string): string {
+  if (!raw) return '';
+  return raw.replace(/3년\s*(무상|A\/?S)/gi, '5년 $1');
+}
+
 async function startServer() {
   const app = express();
 
@@ -338,12 +343,14 @@ async function startServer() {
 
       const promptText = `당신은 롯데하이마트 세일즈툴의 '구독 견적 (맞춤 구독 견적 계산기)' 및 가전 구독 전산 화면을 분석하는 전문 AI입니다.
 업로드된 화면 사진에서 다음 6가지 핵심 항목을 빈틈없이 정확하게 추출하여 JSON으로 반환하세요.
+롯데하이마트 가전 구독의 무상 A/S 기간은 구독 개월수(36개월/60개월)와 상관없이 무조건 5년(5년 무상 A/S)입니다. 화면에서 36개월 버튼이 선택되어 있더라도 절대 '3년 무상 A/S'로 해석하거나 작성하지 마세요.
 
 [핵심 추출 규칙 (맞춤 구독 견적 계산기 & 구독 전산 화면)]
 1. 구독 기간 (period):
    - 화면에서 파란색 테두리(또는 강조색)로 활성화된 개월 수 버튼(예: '36개월' 또는 '60개월')을 읽어 숫자 36 또는 60으로 설정하세요.
 2. 케어 서비스 (careService / careType):
    - 활성화된 케어 버튼 텍스트(예: '안심케어_1', '방문케어', '셀프케어' 등)와 그 아래 설명 박스 텍스트(예: '완전 분해 클리닝... 서비스 횟수: 1회, 30개월')를 함께 읽어 하나의 읽기 좋은 문자열로 조합하세요. (예: "안심케어_1 (완전 분해 클리닝 / 1회, 30개월)")
+   - 롯데하이마트 가전 구독의 무상 A/S 기간은 구독 개월수(36개월/60개월)와 상관없이 무조건 5년(5년 무상 A/S)입니다. 화면에서 36개월 버튼이 선택되어 있더라도 절대 '3년 무상 A/S'로 해석하거나 작성하지 마세요.
 3. 보장서비스 (warrantyType):
    - 우측 상단 '보장서비스' 박스에 적힌 텍스트(예: "AS연장보험 + 가전수리올케어")를 원문 그대로 추출하세요.
 4. 결제카드 (cardName):
@@ -504,20 +511,16 @@ async function startServer() {
           : []),
       ].join(' ');
 
-      const has3Yr =
-        Boolean(parsed.hasThreeYearKeyword) ||
-        combinedCareText.includes('3년') ||
-        combinedCareText.includes('안심케어3') ||
-        combinedCareText.includes('정기케어3');
-
-      const warrantyYears: 3 | 5 = has3Yr ? 3 : 5;
+      const warrantyYears = 5;
       const hasAllCare =
         Boolean(parsed.allCare) ||
         combinedCareText.includes('올케어') ||
         combinedCareText.includes('가전수리올케어');
 
       const topUrlModelCode = normalizeModelCode(parsed.urlModelCode || '');
-      const topWarrantyType = parsed.warrantyType || '';
+      const topWarrantyType = sanitizeFiveYearWarrantyText(
+        parsed.warrantyType || ''
+      );
       const topCardName = parsed.cardName || '';
       const topContractAmount = Math.max(0, Number(parsed.contractAmount) || 0);
 
@@ -533,12 +536,16 @@ async function startServer() {
                 cleanCode,
                 item.category
               );
-              const resolvedWarrantyType =
-                item.warrantyType || topWarrantyType || '';
+              const resolvedWarrantyType = sanitizeFiveYearWarrantyText(
+                item.warrantyType || topWarrantyType || ''
+              );
               const resolvedCardName = item.cardName || topCardName || '';
               const resolvedContractAmount =
                 Math.max(0, Number(item.contractAmount) || 0) ||
                 topContractAmount;
+              const cleanCareService = sanitizeFiveYearWarrantyText(
+                item.careService || '안심케어5 (5년 무상A/S)'
+              );
 
               return {
                 category: resolvedCategory,
@@ -547,12 +554,8 @@ async function startServer() {
                 monthlyFee: Math.max(0, Number(item.monthlyFee) || 0),
                 contractAmount: resolvedContractAmount,
                 period: Number(item.period) === 36 ? 36 : 60,
-                careService:
-                  item.careService ||
-                  (warrantyYears === 3
-                    ? '안심케어3 (3년 무상A/S)'
-                    : '안심케어5 (5년 무상A/S)'),
-                careType: item.careService || '',
+                careService: cleanCareService,
+                careType: cleanCareService,
                 warrantyType: resolvedWarrantyType,
                 cardName: resolvedCardName,
                 extraCashback: Math.max(0, Number(item.extraCashback) || 0),
@@ -569,9 +572,11 @@ async function startServer() {
           topContractAmount || normalizedItems[0]?.contractAmount || 0,
         urlModelCode: topUrlModelCode,
         warrantyYears,
-        hasThreeYearKeyword: has3Yr,
+        hasThreeYearKeyword: false,
         allCare: hasAllCare,
-        detectedTextSummary: parsed.detectedTextSummary || '',
+        detectedTextSummary: sanitizeFiveYearWarrantyText(
+          parsed.detectedTextSummary || ''
+        ),
       });
     } catch (error: unknown) {
       console.error('AI image parse error:', error);
@@ -665,6 +670,7 @@ async function startServer() {
 
       const prompt = `당신은 가전제품 구독/렌탈 견적서 및 하이마트 세일즈툴(맞춤 구독 견적 계산기) 화면 이미지 분석 전문가입니다.
 사용자가 업로드한 화면 캡처 또는 사진에서 다음 구독 POP 제작에 필요한 핵심 정보들을 정확하게 추출하세요.
+롯데하이마트 가전 구독의 무상 A/S 기간은 구독 개월수(36개월/60개월)와 상관없이 무조건 5년(5년 무상 A/S)입니다. 화면에서 36개월 버튼이 선택되어 있더라도 절대 '3년 무상 A/S'로 해석하거나 작성하지 마세요.
 
 [필드 추출 가이드]
 1. category (품목): 가전제품 품목명 (예: 워시타워/세탁건조기, 전기밥솥, 냉장고, 김치냉장고, 세탁기, 건조기, 에어컨, 정수기, TV, 청소기, 공기청정기 등).
@@ -673,10 +679,10 @@ async function startServer() {
 4. monthlyFee (월 구독료): 정기 월 구독료/하단 노란색 글씨 '월 납부요금' (숫자 정수, 예: 약 58,653원이면 58653).
 5. period (구독기간): 파란색 테두리로 활성화된 구독 개월 수 정수 숫자 (예: 36, 48, 60 등).
 6. downPayment (계약금/선납금): 초기 납부금/계약금 (숫자, 없거나 0원이면 0).
-7. careServiceText (케어서비스): 활성화된 케어 버튼명 및 설명 (예: 안심케어_1, 셀프케어 등). 이미지에 '3년', '5년', '안심케어3', '정기케어3' 등 무상 A/S 보증기간 관련 문구가 있다면 반드시 원문 그대로 포함할 것.
+7. careServiceText (케어서비스): 활성화된 케어 버튼명 및 설명 (예: 안심케어_1, 셀프케어 등). 무상 A/S 보증기간은 무조건 '5년 무상 A/S'로 표기하고 절대 '3년 무상 A/S'로 작성하지 말 것.
 8. careServiceCycle (방문/배송주기): 케어 주기 (예: 30개월, 12/24개월, 3개월 등).
 9. careServiceCount (제공횟수): 케어 제공 횟수 (예: 1회, 2회 등).
-10. careServiceDetail (보증/서비스상세): 우측 상단 보장서비스 박스(예: AS연장보험 + 가전수리올케어) 및 하단 클리닝 상세 설명.
+10. careServiceDetail (보증/서비스상세): 우측 상단 보장서비스 박스(예: AS연장보험 + 가전수리올케어) 및 하단 클리닝 상세 설명. (무상 A/S 기간은 무조건 5년 무상 A/S)
 11. isAllCare (올케어 여부): 이미지에 '올케어', '가전수리올케어', 'allcare', '사용중 가전 보증', '2년 수리비 보증' 등이 포함되어 있으면 true, 아니면 false.`;
 
       let responseText = '';
@@ -743,6 +749,12 @@ async function startServer() {
       const cleanModel = normalizeModelCode(parsedData.modelName || '');
       parsedData.modelName = cleanModel || parsedData.modelName || '';
       parsedData.category = inferCategoryFromModelCode(cleanModel, parsedData.category);
+      parsedData.careServiceText = sanitizeFiveYearWarrantyText(
+        parsedData.careServiceText || ''
+      );
+      parsedData.careServiceDetail = sanitizeFiveYearWarrantyText(
+        parsedData.careServiceDetail || ''
+      );
 
       res.json({
         success: true,

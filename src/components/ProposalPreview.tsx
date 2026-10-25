@@ -41,6 +41,11 @@ interface ProposalPreviewProps {
 
 const SHEET_WIDTH = 920;
 
+const sanitizeFiveYearText = (text?: string): string => {
+  if (!text) return '';
+  return text.replace(/3년\s*(무상|A\/?S)/gi, '5년 $1');
+};
+
 const LIFE_CARE_SERVICES = [
   {
     title: '크루즈 여행',
@@ -922,16 +927,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     <div className="text-right">
                       <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-white">
                         <ShieldCheck className="w-4 h-4 text-rose-400" />
-                        {isMixedPeriod
-                          ? '품목별 맞춤 케어 · 3년/5년 무상 A/S 보장'
-                          : representativePeriod === 36
-                          ? '품목별 맞춤 케어 · 3년 무상 A/S 보장'
-                          : '품목별 맞춤 케어 · 5년 무상 A/S 보장'}
+                        품목별 맞춤 케어 · 5년 무상 A/S 보장
                       </span>
                     </div>
                   </div>
 
-                  {/* 품목 및 총 월 구독료 합계 영역 (품목 아래쪽에 개별 케어서비스 및 3년/5년 무상 A/S 표시) */}
+                  {/* 품목 및 총 월 구독료 합계 영역 (품목 아래쪽에 개별 케어서비스 및 5년 무상 A/S 표시) */}
                   {state.items.length >= 2 ? (
                     <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-2.5">
                       <div className="flex items-center justify-between px-1">
@@ -952,10 +953,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                               : state.subscriptionPeriod === 36
                               ? 36
                               : 60;
-                          const itemWarrantyText =
-                            itemPeriod === 36
-                              ? '3년 무상 A/S 보장'
-                              : '5년 무상 A/S 보장';
+                          const itemWarrantyText = '5년 무상 A/S 보장';
+                          const cleanCareService = sanitizeFiveYearText(
+                            item.careService || '전문가 방문케어'
+                          );
                           return (
                             <div
                               key={item.id}
@@ -979,8 +980,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                   </span>
                                 </div>
                                 <div className="text-xs font-bold text-slate-500 mt-1 pl-7">
-                                  🛡️ {item.careService || '전문가 방문케어'} ·{' '}
-                                  {itemWarrantyText}
+                                  🛡️ {cleanCareService} · {itemWarrantyText}
                                 </div>
                               </div>
                               <span className="text-base font-black text-slate-900 shrink-0">
@@ -1014,10 +1014,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           : state.subscriptionPeriod === 36
                           ? 36
                           : 60;
-                      const singleWarrantyText =
-                        singlePeriod === 36
-                          ? '3년 무상 A/S 보장'
-                          : '5년 무상 A/S 보장';
+                      const singleWarrantyText = '5년 무상 A/S 보장';
+                      const cleanSingleCareService = sanitizeFiveYearText(
+                        singleItem?.careService || '전문가 방문케어'
+                      );
                       return (
                         <div className="bg-slate-50 rounded-2xl border-2 border-slate-200 px-6 py-4 flex items-center justify-between">
                           <div className="flex items-center gap-3.5">
@@ -1043,8 +1043,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                 </span>
                               </div>
                               <div className="text-xs font-bold text-slate-500 mt-1">
-                                🛡️ {singleItem?.careService || '전문가 방문케어'}{' '}
-                                · {singleWarrantyText}
+                                🛡️ {cleanSingleCareService} · {singleWarrantyText}
                               </div>
                             </div>
                           </div>
@@ -1343,7 +1342,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                         </span>
                       </div>
 
-                      {/* 품목 및 총 월 구독료 합계 (품목별 개월수 배지 + 케어서비스 + 3년/5년 무상 A/S 표시) */}
+                      {/* 품목 및 총 월 구독료 합계 (품목별 개월수 배지 + 케어서비스 + 5년 무상 A/S 표시) */}
                       {state.items.length >= 2 ? (
                         <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
                           {state.items.map((it, idx) => {
@@ -1355,10 +1354,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                 : state.subscriptionPeriod === 36
                                 ? 36
                                 : 60;
-                            const itemWarrantyText =
-                              itemPeriod === 36
-                                ? '3년 무상 A/S 보장'
-                                : '5년 무상 A/S 보장';
+                            const itemWarrantyText = '5년 무상 A/S 보장';
+                            const cleanCareService = sanitizeFiveYearText(
+                              it.careService || '전문가 방문케어'
+                            );
                             return (
                               <div
                                 key={it.id}
@@ -1375,8 +1374,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                     </span>
                                   </div>
                                   <div className="text-[11px] font-semibold text-slate-500">
-                                    🛡️ {it.careService || '전문가 방문케어'} ·{' '}
-                                    {itemWarrantyText}
+                                    🛡️ {cleanCareService} · {itemWarrantyText}
                                   </div>
                                 </div>
                                 <span className="font-black text-slate-900 shrink-0">
@@ -1409,10 +1407,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                               : state.subscriptionPeriod === 36
                               ? 36
                               : 60;
-                          const singleWarrantyText =
-                            singlePeriod === 36
-                              ? '3년 무상 A/S 보장'
-                              : '5년 무상 A/S 보장';
+                          const singleWarrantyText = '5년 무상 A/S 보장';
+                          const cleanSingleCareService = sanitizeFiveYearText(
+                            singleItem?.careService || '전문가 방문케어'
+                          );
                           return (
                             <div className="bg-white rounded-xl border border-slate-200 p-3 flex items-center justify-between gap-2">
                               <div>
@@ -1431,9 +1429,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                   </span>
                                 </div>
                                 <div className="text-xs font-semibold text-slate-500 mt-0.5">
-                                  🛡️{' '}
-                                  {singleItem?.careService || '전문가 방문케어'} ·{' '}
-                                  {singleWarrantyText}
+                                  🛡️ {cleanSingleCareService} · {singleWarrantyText}
                                 </div>
                               </div>
                               <div className="text-right shrink-0">

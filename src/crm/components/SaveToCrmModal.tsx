@@ -243,10 +243,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       paidAmount: primarySubSummary.totalBaseMonthly,
       netAmount: primarySubSummary.finalMonthlyFee,
       expectedBenefit:
-        benefitParts.join(' + ') ||
-        `${primarySubSummary.periodLabel} 무상 A/S 및 방문케어 (원금 ${formatCurrency(
-          primarySubSummary.totalPrincipal
-        )}원)`,
+        benefitParts.join(' + ') || '전 품목 5년 무상 A/S 및 방문케어',
       defaultQuoteTitle: `[구독 ${primarySubSummary.periodLabel}] ${
         primarySubSummary.validSubNames.join(', ').slice(0, 18) || '맞춤 구독'
       }`,
