@@ -510,7 +510,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       {/* 상단 메뉴 복귀 버튼 & 현재 고객 뱃지 & AI 키 설정 & CRM 고객 저장 버튼 */}
       <div
         className={`w-full ${
-          state.quoteMode === 'hybrid' ? 'max-w-6xl' : 'max-w-xl'
+          state.quoteMode === 'hybrid'
+            ? 'max-w-6xl xl:max-w-7xl'
+            : 'max-w-2xl lg:max-w-3xl'
         } mb-2.5 flex flex-wrap items-center justify-between gap-2`}
       >
         <div className="flex items-center gap-2 flex-wrap">
@@ -581,10 +583,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       {/* ==================== 전체 폭 공통 배너: [견적 1안] / [견적 2안] / [📋 1안 내용 ➔ 2안 복사] ==================== */}
       <div
         className={`w-full ${
-          state.quoteMode === 'hybrid' ? 'max-w-6xl' : 'max-w-xl'
+          state.quoteMode === 'hybrid'
+            ? 'max-w-6xl xl:max-w-7xl'
+            : 'max-w-2xl lg:max-w-3xl'
         } mb-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-2`}
       >
-        <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+        <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 max-w-full overflow-x-auto">
           <button
             type="button"
             onClick={() => handleSelectGeneralPlan(1)}
@@ -688,8 +692,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       <div
         className={
           state.quoteMode === 'hybrid'
-            ? 'w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
-            : 'w-full max-w-xl'
+            ? 'w-full max-w-6xl xl:max-w-7xl grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
+            : 'w-full max-w-2xl lg:max-w-3xl'
         }
       >
         {/* ==================== 일반구매 입력 카드 ==================== */}
@@ -782,7 +786,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 ))}
               </div>
 
-              <div className="max-h-[168px] overflow-y-auto space-y-1.5 pr-1">
+              <div className="max-h-[210px] sm:max-h-[168px] overflow-y-auto space-y-1.5 pr-1">
                 {state.generalItems.map((item, idx) => (
                   <div
                     key={item.id}
@@ -798,7 +802,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         })
                       }
                       placeholder={`품목명 ${idx + 1}`}
-                      className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
+                      className="col-span-5 sm:col-span-3 order-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
                     />
                     <input
                       type="text"
@@ -810,9 +814,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         })
                       }
                       placeholder="상품코드/모델명"
-                      className="col-span-3 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                      className="col-span-6 sm:col-span-3 order-2 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
                     />
-                    <div className="col-span-2 relative">
+                    <div className="col-span-4 sm:col-span-2 order-4 sm:order-3 relative">
                       <input
                         type="number"
                         min={1}
@@ -831,7 +835,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         개
                       </span>
                     </div>
-                    <div className="col-span-3 relative">
+                    <div className="col-span-8 sm:col-span-3 order-5 sm:order-4 relative">
                       <input
                         type="number"
                         step={10000}
@@ -850,7 +854,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         원
                       </span>
                     </div>
-                    <div className="col-span-1 flex justify-center">
+                    <div className="col-span-1 sm:col-span-1 order-3 sm:order-5 flex justify-center">
                       {state.generalItems.length > 1 && (
                         <button
                           type="button"
@@ -894,7 +898,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                           generalCardType: cardOpt,
                         }))
                       }
-                      className={`py-1.5 px-1.5 rounded-xl font-extrabold text-[11px] border transition cursor-pointer ${
+                      className={`py-1.5 px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
                         active
                           ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -1136,7 +1140,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
                 {GENERAL_HIPREED_PLANS.map((plan) => {
                   const count = state.generalHiPreedCounts[plan.id] || 0;
                   const active = count > 0;
@@ -1147,21 +1151,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   return (
                     <div
                       key={plan.id}
-                      className={`p-2.5 rounded-2xl border-2 flex flex-col justify-between transition ${
+                      className={`p-2 sm:p-2.5 rounded-2xl border-2 flex flex-col justify-between transition ${
                         active
                           ? 'bg-blue-50/70 border-blue-600 shadow-xs'
                           : 'bg-white border-slate-200'
                       }`}
                     >
-                      <div className="text-center mb-2">
+                      <div className="text-center mb-1.5 sm:mb-2">
                         <div
-                          className={`text-xs font-black ${
+                          className={`text-[11px] sm:text-xs font-black whitespace-nowrap ${
                             active ? 'text-blue-700' : 'text-slate-800'
                           }`}
                         >
                           {plan.buttonLabel}
                         </div>
-                        <div className="text-[11px] font-extrabold text-rose-600 mt-0.5">
+                        <div className="text-[10px] sm:text-[11px] font-extrabold text-rose-600 mt-0.5 whitespace-nowrap">
                           -{(plan.supportAmount / 10000).toLocaleString()}만원 지원
                         </div>
                       </div>
@@ -1338,7 +1342,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
 
               {/* 품목 행 + 품목별 개별 [36개월 | 60개월] 토글 & 케어서비스 선택/입력 줄 */}
-              <div className="max-h-[260px] overflow-y-auto space-y-2 pr-1">
+              <div className="max-h-[300px] sm:max-h-[260px] overflow-y-auto space-y-2 pr-1">
                 {state.items.map((item, index) => {
                   const itemPeriod: SubscriptionPeriod =
                     item.period === 36
@@ -1365,7 +1369,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             })
                           }
                           placeholder={`품목명 ${index + 1}`}
-                          className="col-span-3 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
+                          className="col-span-5 sm:col-span-3 order-1 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-slate-800 focus:border-blue-600 focus:outline-none"
                         />
                         <input
                           type="text"
@@ -1377,10 +1381,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             })
                           }
                           placeholder="모델코드"
-                          className="col-span-2 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                          className="col-span-6 sm:col-span-2 order-2 px-2 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
                         />
                         {/* 품목별 개별 [36개월 | 60개월] 선택 토글 */}
-                        <div className="col-span-3 flex justify-center">
+                        <div className="col-span-5 sm:col-span-3 order-4 sm:order-3 flex justify-center">
                           <div className="inline-flex w-full bg-white p-0.5 rounded-lg border border-slate-200">
                             {([36, 60] as SubscriptionPeriod[]).map((p) => (
                               <button
@@ -1392,7 +1396,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                                     warrantyType: '5년 무상 A/S 기본 포함',
                                   })
                                 }
-                                className={`flex-1 py-1 rounded-md font-extrabold text-[10px] sm:text-[11px] transition cursor-pointer whitespace-nowrap ${
+                                className={`flex-1 py-1 rounded-md font-extrabold text-[11px] sm:text-[11px] transition cursor-pointer whitespace-nowrap ${
                                   itemPeriod === p
                                     ? 'bg-rose-600 text-white shadow-2xs'
                                     : 'text-slate-500 hover:text-slate-900'
@@ -1403,7 +1407,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             ))}
                           </div>
                         </div>
-                        <div className="col-span-3 relative">
+                        <div className="col-span-7 sm:col-span-3 order-5 sm:order-4 relative">
                           <input
                             type="number"
                             step={1000}
@@ -1420,7 +1424,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             원
                           </span>
                         </div>
-                        <div className="col-span-1 flex justify-center">
+                        <div className="col-span-1 sm:col-span-1 order-3 sm:order-5 flex justify-center">
                           {state.items.length > 1 && (
                             <button
                               type="button"
@@ -1450,7 +1454,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                               });
                             }
                           }}
-                          className="col-span-4 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-extrabold text-slate-700 focus:border-blue-600 focus:outline-none"
+                          className="col-span-6 sm:col-span-4 px-2 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-extrabold text-slate-700 focus:border-blue-600 focus:outline-none"
                         >
                           {SUB_CARE_OPTIONS.map((opt) => (
                             <option key={opt} value={opt}>
@@ -1470,10 +1474,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             })
                           }
                           placeholder="케어서비스 (예: 안심케어_1)"
-                          className="col-span-4 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
+                          className="col-span-6 sm:col-span-4 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 focus:border-blue-600 focus:outline-none"
                         />
 
-                        <div className="col-span-4 flex items-center justify-end gap-1">
+                        <div className="col-span-12 sm:col-span-4 flex items-center justify-end gap-1">
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-200/80 text-[10px] font-black text-slate-700 shrink-0">
                             {itemPeriod}개월
                           </span>
@@ -1524,7 +1528,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 2. 제휴카드 및 월 사용금액 구간
               </label>
 
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
                 {AFFILIATE_CARDS.map((card) => {
                   const selected = state.selectedCardId === card.id;
                   return (
@@ -1532,7 +1536,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       key={card.id}
                       type="button"
                       onClick={() => handleCardSelect(card.id)}
-                      className={`py-2 px-1 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                      className={`py-1.5 sm:py-2 px-1 sm:px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
                         selected
                           ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
@@ -1545,7 +1549,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => handleCardSelect('none')}
-                  className={`py-2 px-1 rounded-xl font-extrabold text-xs border transition cursor-pointer ${
+                  className={`py-1.5 sm:py-2 px-1 sm:px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
                     state.selectedCardId === 'none'
                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                       : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
@@ -1569,16 +1573,16 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             selectedCardTierId: tier.id,
                           }))
                         }
-                        className={`py-2 px-2 rounded-xl border text-center transition cursor-pointer ${
+                        className={`py-1.5 sm:py-2 px-1.5 sm:px-2 rounded-xl border text-center transition cursor-pointer ${
                           active
                             ? 'bg-blue-50 border-blue-600 text-blue-950 ring-2 ring-blue-600/15'
                             : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                       >
-                        <div className="text-[11px] font-extrabold text-slate-600">
+                        <div className="text-[10px] sm:text-[11px] font-extrabold text-slate-600 whitespace-nowrap">
                           {tier.minSpendShort}
                         </div>
-                        <div className="text-xs font-black text-blue-600">
+                        <div className="text-[11px] sm:text-xs font-black text-blue-600 whitespace-nowrap">
                           -{tier.monthlyDiscount.toLocaleString()}원
                         </div>
                       </button>
@@ -1612,7 +1616,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                 {HI_PLUS_PLANS.map((plan) => {
                   const count = state.hiPlusCounts[plan.id] || 0;
                   const active = count > 0;
@@ -1625,21 +1629,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   return (
                     <div
                       key={plan.id}
-                      className={`p-3 rounded-2xl border-2 flex flex-col justify-between transition ${
+                      className={`p-2 sm:p-3 rounded-2xl border-2 flex flex-col justify-between transition ${
                         active
                           ? 'bg-blue-50/70 border-blue-600 shadow-xs'
                           : 'bg-white border-slate-200'
                       }`}
                     >
-                      <div className="text-center mb-2">
+                      <div className="text-center mb-1.5 sm:mb-2">
                         <div
-                          className={`text-xs sm:text-sm font-black ${
+                          className={`text-[11px] sm:text-sm font-black whitespace-nowrap ${
                             active ? 'text-blue-700' : 'text-slate-800'
                           }`}
                         >
                           {plan.buttonLabel}
                         </div>
-                        <div className="text-[11px] font-extrabold text-rose-600 mt-0.5">
+                        <div className="text-[10px] sm:text-[11px] font-extrabold text-rose-600 mt-0.5 whitespace-nowrap">
                           월 -{monthlyUnitSupport.toLocaleString()}원 지원
                         </div>
                       </div>
@@ -1737,7 +1741,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
       {/* 혼합견적 모드일 때 하단 통합 확인 버튼 */}
       {state.quoteMode === 'hybrid' && (
-        <div className="w-full max-w-6xl mt-4">
+        <div className="w-full max-w-6xl xl:max-w-7xl mt-4">
           <button
             type="button"
             onClick={onShowProposal}

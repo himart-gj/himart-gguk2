@@ -833,18 +833,18 @@ export function App() {
 
       {/* ==================== STEP 0: 심플 메인 메뉴 선택 화면 ==================== */}
       {step === 'home' && (
-        <main className="flex-1 w-full flex items-center justify-center p-4">
-          <div className="w-full max-w-md space-y-3">
+        <main className="flex-1 w-full flex items-center justify-center p-3.5 sm:p-6">
+          <div className="w-full max-w-md sm:max-w-lg lg:max-w-xl space-y-3 sm:space-y-3.5">
             <button
               type="button"
               onClick={() => handleEnterMode('general')}
-              className="w-full py-6 px-6 rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition">
-                  <CreditCard className="w-6 h-6" />
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition shrink-0">
+                  <CreditCard className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="text-xl font-black tracking-tight">
+                <span className="text-lg sm:text-xl font-black tracking-tight">
                   1. 일반구매 견적서
                 </span>
               </div>
@@ -856,13 +856,13 @@ export function App() {
             <button
               type="button"
               onClick={() => handleEnterMode('subscription')}
-              className="w-full py-6 px-6 rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition">
-                  <RefreshCw className="w-6 h-6" />
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition shrink-0">
+                  <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="text-xl font-black tracking-tight">
+                <span className="text-lg sm:text-xl font-black tracking-tight">
                   2. 구독구매 견적서
                 </span>
               </div>
@@ -874,13 +874,13 @@ export function App() {
             <button
               type="button"
               onClick={() => handleEnterMode('hybrid')}
-              className="w-full py-6 px-6 rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition">
-                  <Layers className="w-6 h-6" />
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition shrink-0">
+                  <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="text-xl font-black tracking-tight">
+                <span className="text-lg sm:text-xl font-black tracking-tight">
                   3. 일반+구독 혼합견적서
                 </span>
               </div>
@@ -892,13 +892,13 @@ export function App() {
             <button
               type="button"
               onClick={() => setStep('pop-printer')}
-              className="w-full py-6 px-6 rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition">
-                  <Printer className="w-6 h-6" />
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition shrink-0">
+                  <Printer className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="text-xl font-black tracking-tight">
+                <span className="text-lg sm:text-xl font-black tracking-tight">
                   4. 구독 POP 자동 출력기
                 </span>
               </div>
@@ -910,17 +910,17 @@ export function App() {
             <button
               type="button"
               onClick={() => setStep('crm')}
-              className="w-full py-6 px-6 rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-amber-500 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-amber-500 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
             >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-500 flex items-center justify-center transition">
-                  <Users className="w-6 h-6" />
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-500 flex items-center justify-center transition shrink-0">
+                  <Users className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="text-xl font-black tracking-tight">
+                <span className="text-lg sm:text-xl font-black tracking-tight">
                   5. 통합 고객관리 시스템
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 {urgentCount >= 1 && (
                   <span className="px-2.5 py-1 rounded-full bg-rose-600 text-white text-xs font-black animate-pulse shadow-xs">
                     🔥 긴급 {urgentCount}건

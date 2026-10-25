@@ -204,11 +204,28 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
       setSheetH(nextSheetH);
 
-      const nextScale = Math.min(
-        1,
-        (availW - 24) / sheetW,
-        (availH - 24) / nextSheetH
-      );
+      const viewportWidth = window.innerWidth || availW;
+      let nextScale: number;
+
+      if (viewportWidth < 640) {
+        // 일반 스마트폰 (가로 640px 미만): 좌우 여백 최소화(패딩 8px * 2 = 16px) 후 가로폭 기준으로 확대 (세로 스크롤 지원)
+        nextScale = Math.min(1, (availW - 16) / sheetW);
+      } else if (viewportWidth >= 1280) {
+        // PC 모니터 (가로 1280px 이상): 최대 1.1배까지 허용하여 대화면 중앙에 시원하게 표시
+        nextScale = Math.min(
+          1.1,
+          (availW - 28) / sheetW,
+          (availH - 28) / nextSheetH
+        );
+      } else {
+        // 갤럭시 폴드 펼침 화면 & 태블릿 (가로 640px ~ 1279px): 기존 2D Auto-Fit 배율 계산식 100% 동일 유지
+        nextScale = Math.min(
+          1,
+          (availW - 24) / sheetW,
+          (availH - 24) / nextSheetH
+        );
+      }
+
       setScale(Math.max(0.25, nextScale));
     };
 
@@ -363,13 +380,13 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
   return (
     <div className="h-[100dvh] w-full overflow-hidden flex flex-col bg-slate-200 select-none">
-      {/* ==================== 상단 고정 액션바 (52px, 인쇄 시 숨김) ==================== */}
-      <header className="no-print h-[52px] shrink-0 w-full bg-slate-900 border-b border-slate-800 px-2.5 sm:px-5 flex items-center justify-between gap-1.5 z-20 shadow-md">
-        <div className="flex items-center gap-1.5 flex-nowrap">
+      {/* ==================== 상단 고정 액션바 (스마트폰 2줄 자동정렬, 폴드/PC 52px 1줄, 인쇄 시 숨김) ==================== */}
+      <header className="no-print min-h-[52px] sm:h-[52px] py-1.5 sm:py-0 shrink-0 w-full bg-slate-900 border-b border-slate-800 px-2 sm:px-5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 z-20 shadow-md">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap sm:flex-nowrap">
           <button
             type="button"
             onClick={onBackToInput}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] sm:text-xs border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] sm:text-xs border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             조건 다시 입력하기
@@ -531,12 +548,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto sm:ml-0">
           {onOpenSaveToCrm && (
             <button
               type="button"
               onClick={onOpenSaveToCrm}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
             >
               <Save className="w-3.5 h-3.5" />
               💾 CRM 고객 저장
@@ -546,7 +563,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             type="button"
             onClick={handleDownloadPng}
             disabled={isExporting}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             {isExporting ? '저장 중...' : '이미지 저장'}
@@ -554,7 +571,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
           >
             <Printer className="w-3.5 h-3.5" />
             인쇄 / PDF
@@ -565,14 +582,14 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       {/* ==================== 중앙 2D Auto-Fit 뷰포트 ==================== */}
       <div
         ref={viewportRef}
-        className="print-stage flex-1 min-h-0 w-full flex items-center justify-center overflow-hidden p-3"
+        className="print-stage flex-1 min-h-0 w-full flex items-start sm:items-center justify-center overflow-y-auto sm:overflow-hidden overflow-x-hidden p-2 sm:p-3"
       >
         <div
           style={{
             width: `${Math.round(920 * scale)}px`,
             height: `${Math.round(sheetH * scale)}px`,
           }}
-          className="sheet-scale-wrapper relative overflow-hidden"
+          className="sheet-scale-wrapper relative overflow-hidden shrink-0"
         >
           {/* ===================================================================== */}
           {/* TAB 1: 고객 맞춤 제안서 (#sheet-proposal) - width: 920px 고정 */}
