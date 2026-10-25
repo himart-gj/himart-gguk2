@@ -1,5 +1,5 @@
 export type QuoteMode = 'general' | 'subscription' | 'hybrid';
-export type AppStep = 'home' | 'input' | 'proposal' | 'pop-printer' | 'crm' | 'himobile' | 'insurance';
+export type AppStep = 'home' | 'input' | 'proposal' | 'pop-printer' | 'crm' | 'himobile' | 'insurance' | 'care-table';
 export type SubscriptionPeriod = 36 | 60;
 
 // ==================== 일반구매(일시불) 타입 ====================

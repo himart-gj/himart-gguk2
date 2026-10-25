@@ -14,6 +14,7 @@ import { PopPrinterApp } from './pop/PopPrinterApp';
 import { CrmApp } from './crm/CrmApp';
 import { HiMobileView } from './components/HiMobileView';
 import { InsuranceGuideView } from './components/InsuranceGuideView';
+import { CareTableView } from './components/CareTableView';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
@@ -28,6 +29,7 @@ import {
 import {
   CreditCard,
   Download,
+  FileSpreadsheet,
   Home,
   Layers,
   Maximize2,
@@ -818,6 +820,19 @@ export function App() {
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>7.보험안내</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setStep('care-table')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              step === 'care-table'
+                ? 'bg-cyan-600 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5" />
+            <span>8.안심케어</span>
+          </button>
         </div>
 
         {/* 우측: 전체화면 토글 & PWA 앱 설치 버튼 */}
@@ -996,6 +1011,24 @@ export function App() {
                 ➔
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setStep('care-table')}
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-cyan-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-cyan-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-cyan-600 group-hover:bg-white text-white group-hover:text-cyan-600 flex items-center justify-center transition shrink-0">
+                  <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <span className="text-lg sm:text-xl font-black tracking-tight">
+                  8. 안심케어 · 가전이사 조견표
+                </span>
+              </div>
+              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
+                ➔
+              </span>
+            </button>
           </div>
         </main>
       )}
@@ -1054,6 +1087,11 @@ export function App() {
       {/* ==================== STEP 6: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
       {step === 'insurance' && (
         <InsuranceGuideView onBackToHome={() => setStep('home')} />
+      )}
+
+      {/* ==================== STEP 7: 8. 안심케어 · 가전이사 조견표 화면 ==================== */}
+      {step === 'care-table' && (
+        <CareTableView onBackToHome={() => setStep('home')} />
       )}
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
