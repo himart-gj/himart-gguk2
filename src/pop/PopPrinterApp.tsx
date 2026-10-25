@@ -308,89 +308,107 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
       <style>{`@media print { @page { size: A4 landscape !important; margin: 0 !important; } }`}</style>
       {/* Header (Hidden on Print) */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm no-print">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col gap-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 flex flex-col gap-2">
           {/* Top Row */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-between gap-2 flex-nowrap">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={onBackToHome}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 처음 메뉴로
               </button>
-              <div className="flex items-center gap-2">
-                <FileSpreadsheet className="text-blue-600 w-6 h-6" />
-                <h1 className="text-xl font-bold tracking-tight text-slate-800">구독 POP 자동 출력기</h1>
+              <div className="flex items-center gap-1.5">
+                <FileSpreadsheet className="text-blue-600 w-5 h-5 shrink-0" />
+                <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-slate-800 whitespace-nowrap">
+                  구독 POP 자동 출력기
+                </h1>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setScannerInitialImage(null);
                   setIsImageScannerOpen(true);
                 }}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-indigo-700 text-white px-3.5 py-1.5 rounded-lg text-sm font-black shadow-sm transition-all cursor-pointer"
+                className="flex items-center gap-1.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs font-black shadow-sm transition-all cursor-pointer whitespace-nowrap shrink-0"
                 title="스마트폰 견적 화면 사진이나 캡처 이미지를 AI가 자동으로 읽어 POP 카드로 만듭니다 (Ctrl+V 붙여넣기 지원)"
               >
-                <Camera className="w-4 h-4 text-amber-300" />
+                <Camera className="w-3.5 h-3.5 text-amber-300" />
                 <span>사진/캡처 견적서 AI 등록</span>
               </button>
               <button
                 onClick={() => setIsDataModalOpen(true)}
-                className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
-                <Upload className="w-4 h-4" />
+                <Upload className="w-3.5 h-3.5" />
                 자료 관리 (엑셀)
               </button>
               <button
                 onClick={() => setIsSettingsModalOpen(true)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
               >
-                <Settings className="w-5 h-5" />
+                <Settings className="w-4 h-4" />
               </button>
             </div>
           </div>
-          
+
           {/* Bottom Row */}
-          <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {/* Card Selector */}
-              <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200 shrink-0">
-                <CreditCard className="w-4 h-4 text-slate-500 ml-1" />
-                <select 
-                  value={selectedCardId}
-                  onChange={(e) => setSelectedCardId(e.target.value)}
-                  className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer pr-8 py-0.5"
-                >
-                  {CARD_BENEFITS.map(card => (
-                    <option key={card.id} value={card.id}>
-                      {card.name} ({card.discount.toLocaleString()}원)
-                    </option>
-                  ))}
-                </select>
+          <div className="flex items-center justify-between gap-1.5 flex-nowrap border-t border-slate-100 pt-2">
+            <div className="flex items-center gap-1.5 flex-nowrap">
+              {/* Card Selector (Compact Inline Buttons) */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+                <CreditCard className="w-3.5 h-3.5 text-slate-500 ml-1.5 shrink-0" />
+                {CARD_BENEFITS.map((card) => {
+                  const isSelected = selectedCardId === card.id;
+                  const shortCardName = card.name.replace('하이마트 ', '').replace('구독 ', '');
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => setSelectedCardId(card.id)}
+                      className={`px-2 py-1 rounded-md text-xs font-bold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        isSelected
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                      }`}
+                    >
+                      {shortCardName} ({card.discount.toLocaleString()}원)
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Print Filter Selector */}
               {products.length > 0 && (
-                <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200 shrink-0">
-                  <Filter className="w-4 h-4 text-slate-500 ml-1" />
-                  <select 
+                <div className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200 shrink-0">
+                  <Filter className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <select
                     value={printMode}
                     onChange={(e) => setPrintMode(e.target.value as any)}
-                    className="bg-transparent border-none text-sm font-medium focus:ring-0 cursor-pointer pr-8 py-0.5"
+                    className="bg-transparent border-none text-xs font-bold focus:ring-0 cursor-pointer px-1 py-0.5 pr-6 whitespace-nowrap"
                   >
                     <option value="all">전체 인쇄 ({products.length})</option>
-                    {products.some(p => p.isAllCare) && (
-                      <option value="allcare">🛡️ 올케어 모델만 ({products.filter(p => p.isAllCare).length})</option>
+                    {products.some((p) => p.isAllCare) && (
+                      <option value="allcare">
+                        🛡️ 올케어 모델만 ({products.filter((p) => p.isAllCare).length})
+                      </option>
                     )}
-                    {products.some(p => !p.isAllCare) && products.some(p => p.isAllCare) && (
-                      <option value="standard">일반 모델만 ({products.filter(p => !p.isAllCare).length})</option>
-                    )}
-                    <option value="changed">가격 변동 모델만 ({products.filter(p => p.changeStatus === 'changed').length})</option>
-                    <option value="new">새로 추가된 모델만 ({products.filter(p => p.changeStatus === 'new').length})</option>
+                    {products.some((p) => !p.isAllCare) &&
+                      products.some((p) => p.isAllCare) && (
+                        <option value="standard">
+                          일반 모델만 ({products.filter((p) => !p.isAllCare).length})
+                        </option>
+                      )}
+                    <option value="changed">
+                      가격 변동 모델만 ({products.filter((p) => p.changeStatus === 'changed').length})
+                    </option>
+                    <option value="new">
+                      새로 추가된 모델만 ({products.filter((p) => p.changeStatus === 'new').length})
+                    </option>
                   </select>
                 </div>
               )}
@@ -400,29 +418,31 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                 <button
                   type="button"
                   onClick={() => {
-                    const anyAllCare = products.some(p => p.isAllCare);
+                    const anyAllCare = products.some((p) => p.isAllCare);
                     handleSetAllCare(!anyAllCare);
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors shrink-0 shadow-sm cursor-pointer ${
-                    products.some(p => p.isAllCare)
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors whitespace-nowrap shrink-0 shadow-xs cursor-pointer ${
+                    products.some((p) => p.isAllCare)
                       ? 'bg-indigo-900 text-yellow-300 border-indigo-700 hover:bg-indigo-950'
                       : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
                   }`}
                   title="클릭하여 전체 카드의 올케어(사용중인가전 2년 수리비 보증)를 켜거나 끕니다"
                 >
-                  <span className="text-sm">🛡️</span>
-                  <span>올케어 {products.some(p => p.isAllCare) ? '적용중 (ON)' : '미적용 (OFF)'}</span>
+                  <span className="text-xs">🛡️</span>
+                  <span>
+                    올케어 {products.some((p) => p.isAllCare) ? '적용중(ON)' : '미적용(OFF)'}
+                  </span>
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               {isInstallable && !isInstalled && (
                 <button
                   onClick={install}
-                  className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold border border-blue-700 hover:bg-blue-700 transition-colors"
+                  className="flex items-center gap-1 bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-700 hover:bg-blue-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-3.5 h-3.5" />
                   앱 설치하기
                 </button>
               )}
@@ -430,30 +450,30 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
               {isIOS && !isInstalled && (
                 <button
                   onClick={() => setShowIOSGuide(true)}
-                  className="flex items-center gap-2 bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-sm font-bold border border-slate-200 hover:bg-slate-200 transition-colors"
+                  className="flex items-center gap-1 bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-3.5 h-3.5" />
                   홈 화면 추가
                 </button>
               )}
 
               {/* Print Button */}
-              <button 
+              <button
                 onClick={handlePrint}
                 disabled={displayedProducts.length === 0}
-                className="flex items-center gap-2 bg-slate-800 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 bg-slate-800 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Printer className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5" />
                 일반 인쇄 ({displayedProducts.length})
               </button>
 
               {/* PDF Button */}
-              <button 
+              <button
                 onClick={handleDownloadPDF}
                 disabled={displayedProducts.length === 0 || isDownloading}
-                className="flex items-center gap-2 bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 bg-red-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <FileText className="w-4 h-4" />
+                <FileText className="w-3.5 h-3.5" />
                 {isDownloading ? 'PDF 생성 중...' : 'PDF 저장'}
               </button>
             </div>

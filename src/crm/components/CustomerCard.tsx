@@ -146,23 +146,59 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const handleCopyQuoteToClipboard = async (q: QuoteRecord) => {
     let text = '';
     if (q.plan2Summary && q.plan2Summary.itemSummary) {
-      text = `[롯데하이마트 국지점 1안 vs 2안 비교 견적 안내]
+      if (q.quoteMode === 'subscription') {
+        text = `[롯데하이마트 국지점 구독 1안 vs 2안 비교 견적 안내]
+👤 고객명: ${customer.name} 고객님
+
+━━━━━━━━━━━━━━━━━━
+📘 [구독 1안] ${q.itemSummary || '맞춤 구독 가전 1안'}
+- 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원
+- 최종 월 체감가: 월 ${formatCurrency(q.netAmount)}원${
+          q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
+        }
+
+📗 [구독 2안] ${q.plan2Summary.itemSummary}
+- 월 기준 구독료: 월 ${formatCurrency(q.plan2Summary.paidAmount)}원
+- 최종 월 체감가: 월 ${formatCurrency(q.plan2Summary.netAmount)}원${
+          q.plan2Summary.benefit ? `\n- 혜택요약: ${q.plan2Summary.benefit}` : ''
+        }
+━━━━━━━━━━━━━━━━━━
+두 가지 구독 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
+      } else if (q.quoteMode === 'hybrid') {
+        text = `[롯데하이마트 국지점 혼합 1안 vs 2안 비교 견적 안내]
+👤 고객명: ${customer.name} 고객님
+
+━━━━━━━━━━━━━━━━━━
+📘 [혼합 1안] ${q.itemSummary || '일반+구독 혼합 1안'}
+- 일반 일시불 실결제가: ${formatCurrency(q.paidAmount)}원 (최종 체감가: ${formatCurrency(q.netAmount)}원)${
+          q.benefit ? `\n- 상세 구성: ${q.benefit}` : ''
+        }
+
+📗 [혼합 2안] ${q.plan2Summary.itemSummary}
+- 일반 일시불 실결제가: ${formatCurrency(q.plan2Summary.paidAmount)}원 (최종 체감가: ${formatCurrency(q.plan2Summary.netAmount)}원)${
+          q.plan2Summary.benefit ? `\n- 상세 구성: ${q.plan2Summary.benefit}` : ''
+        }
+━━━━━━━━━━━━━━━━━━
+두 가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
+      } else {
+        text = `[롯데하이마트 국지점 1안 vs 2안 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
 📘 [1안] ${q.itemSummary || '맞춤 가전 1안'}
 - 실결제가: ${formatCurrency(q.paidAmount)}원
 - 최종 체감가: ${formatCurrency(q.netAmount)}원${
-        q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
-      }
+          q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
+        }
 
 📗 [2안] ${q.plan2Summary.itemSummary}
 - 실결제가: ${formatCurrency(q.plan2Summary.paidAmount)}원
 - 최종 체감가: ${formatCurrency(q.plan2Summary.netAmount)}원${
-        q.plan2Summary.benefit ? `\n- 혜택요약: ${q.plan2Summary.benefit}` : ''
-      }
+          q.plan2Summary.benefit ? `\n- 혜택요약: ${q.plan2Summary.benefit}` : ''
+        }
 ━━━━━━━━━━━━━━━━━━
 두 가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
+      }
     } else if (q.quoteMode === 'subscription') {
       text = `[롯데하이마트 국지점 맞춤 구독 견적 안내]
 👤 고객명: ${customer.name} 고객님
@@ -171,6 +207,13 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
 💳 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원
 🎁 혜택요약: ${q.benefit || '제휴카드 및 구독프리드 혜택'}
 ✨ 최종 월 체감가: 월 ${formatCurrency(q.netAmount)}원`;
+    } else if (q.quoteMode === 'hybrid') {
+      text = `[롯데하이마트 국지점 맞춤 일반+구독 혼합 견적 안내]
+👤 고객명: ${customer.name} 고객님
+📌 견적명: ${q.title}
+📦 상담모델: ${q.itemSummary}
+💳 일반 일시불 결제예정가: ${formatCurrency(q.paidAmount)}원 (체감가: ${formatCurrency(q.netAmount)}원)
+🎁 통합 혜택 및 구독 상세: ${q.benefit || '일반+구독 결합 혜택'}`;
     } else {
       text = `[롯데하이마트 국지점 맞춤 견적 안내]
 👤 고객명: ${customer.name} 고객님
@@ -473,11 +516,26 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                       {q.itemSummary || '품목 요약 없음'}
                     </p>
 
+                    {q.benefit && (
+                      <p className="mt-1 text-[11px] font-bold text-indigo-700 bg-indigo-50/70 border border-indigo-100 rounded-md px-2 py-0.5">
+                        {q.benefit}
+                      </p>
+                    )}
+
                     {q.plan2Summary && (
-                      <div className="mt-1 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800">
-                        [2안] {q.plan2Summary.itemSummary} · 실결제{' '}
-                        {formatCurrency(q.plan2Summary.paidAmount)}원 / 체감{' '}
-                        {formatCurrency(q.plan2Summary.netAmount)}원
+                      <div className="mt-1 px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800 space-y-0.5">
+                        <div>
+                          [2안] {q.plan2Summary.itemSummary} ·{' '}
+                          {q.quoteMode === 'subscription' ? '월 기본 ' : '실결제 '}
+                          {formatCurrency(q.plan2Summary.paidAmount)}원 /{' '}
+                          {q.quoteMode === 'subscription' ? '월 체감 ' : '체감 '}
+                          {formatCurrency(q.plan2Summary.netAmount)}원
+                        </div>
+                        {q.plan2Summary.benefit && (
+                          <div className="text-[10px] font-semibold text-emerald-700">
+                            └ {q.plan2Summary.benefit}
+                          </div>
+                        )}
                       </div>
                     )}
 

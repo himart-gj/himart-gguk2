@@ -120,8 +120,15 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   >('proposal');
 
   const activePlan = state.activeGeneralPlan || 1;
-  const { plan1Summary, plan2Summary } = getGeneralPlan1And2Summaries(state);
-  const hasBothPlans = plan1Summary.sum > 0 && plan2Summary.sum > 0;
+  const {
+    plan1Summary,
+    plan2Summary,
+    plan1SubSummary,
+    plan2SubSummary,
+    hasPlan1Data,
+    hasPlan2Data,
+  } = getGeneralPlan1And2Summaries(state);
+  const hasBothPlans = hasPlan1Data && hasPlan2Data;
 
   // ==================== 데이터 계산 ====================
   const generalSummary = calculateGeneralPurchaseSummary(state);
@@ -357,23 +364,23 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   return (
     <div className="h-[100dvh] w-full overflow-hidden flex flex-col bg-slate-200 select-none">
       {/* ==================== 상단 고정 액션바 (52px, 인쇄 시 숨김) ==================== */}
-      <header className="no-print h-[52px] shrink-0 w-full bg-slate-900 border-b border-slate-800 px-3 sm:px-6 flex items-center justify-between z-20 shadow-md">
-        <div className="flex items-center gap-2 overflow-x-auto">
+      <header className="no-print h-[52px] shrink-0 w-full bg-slate-900 border-b border-slate-800 px-2.5 sm:px-5 flex items-center justify-between gap-1.5 z-20 shadow-md">
+        <div className="flex items-center gap-1.5 flex-nowrap">
           <button
             type="button"
             onClick={onBackToInput}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-xs border border-slate-700 transition cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] sm:text-xs border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             조건 다시 입력하기
           </button>
 
           {/* 탭 전환 버튼: 모드별 제안서 및 안내서 분리 */}
-          <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 shrink-0">
+          <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 shrink-0">
             <button
               type="button"
               onClick={() => setActiveTab('proposal')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
                 activeTab === 'proposal'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-300 hover:text-white'
@@ -389,7 +396,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('guide-general')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
                   activeTab === 'guide-general'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white'
@@ -409,7 +416,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
               <button
                 type="button"
                 onClick={() => setActiveTab('guide-sub')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
                   activeTab === 'guide-sub'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'text-slate-300 hover:text-white'
@@ -430,7 +437,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('guide-general')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
                     activeTab === 'guide-general'
                       ? 'bg-amber-500 text-slate-950 shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -447,7 +454,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 <button
                   type="button"
                   onClick={() => setActiveTab('guide-sub')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
                     activeTab === 'guide-sub'
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'text-slate-300 hover:text-white'
@@ -465,47 +472,71 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             )}
           </div>
 
-          {/* 일반구매 [일반 1안] / [일반 2안] 즉시 전환 스위치 (일반 및 혼합 모드에서 표시) */}
-          {state.quoteMode !== 'subscription' && (
-            <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700 shrink-0">
-              <button
-                type="button"
-                onClick={() => handleSwitchGeneralPlan(1)}
-                className={`px-2.5 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                  activePlan === 1
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                일반 1안
-                {plan1Summary.sum > 0
-                  ? ` (${plan1Summary.rawNet.toLocaleString()}원)`
-                  : ''}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSwitchGeneralPlan(2)}
-                className={`px-2.5 py-1 rounded-lg font-extrabold text-xs transition cursor-pointer ${
-                  activePlan === 2
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-slate-300 hover:text-white'
-                }`}
-              >
-                일반 2안
-                {plan2Summary.sum > 0
-                  ? ` (${plan2Summary.rawNet.toLocaleString()}원)`
-                  : ''}
-              </button>
-            </div>
-          )}
+          {/* 통합 [1안] / [2안] 즉시 전환 스위치 (일반 · 구독 · 혼합 전 모드에서 표시) */}
+          <div className="flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700 shrink-0">
+            <button
+              type="button"
+              onClick={() => handleSwitchGeneralPlan(1)}
+              className={`px-2 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+                activePlan === 1
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              {state.quoteMode === 'subscription'
+                ? `구독 1안${
+                    plan1SubSummary.totalMonthlyFee > 0
+                      ? ` (월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()}원)`
+                      : ''
+                  }`
+                : state.quoteMode === 'hybrid'
+                  ? `1안${
+                      plan1Summary.sum > 0 || plan1SubSummary.totalMonthlyFee > 0
+                        ? ` (일반 ${plan1Summary.rawNet.toLocaleString()} / 월 ${plan1SubSummary.finalMonthlyFee.toLocaleString()})`
+                        : ''
+                    }`
+                  : `1안${
+                      plan1Summary.sum > 0
+                        ? ` (${plan1Summary.rawNet.toLocaleString()}원)`
+                        : ''
+                    }`}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSwitchGeneralPlan(2)}
+              className={`px-2 py-1 rounded-lg font-extrabold text-[11px] sm:text-xs transition cursor-pointer whitespace-nowrap ${
+                activePlan === 2
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              {state.quoteMode === 'subscription'
+                ? `구독 2안${
+                    plan2SubSummary.totalMonthlyFee > 0
+                      ? ` (월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()}원)`
+                      : ''
+                  }`
+                : state.quoteMode === 'hybrid'
+                  ? `2안${
+                      plan2Summary.sum > 0 || plan2SubSummary.totalMonthlyFee > 0
+                        ? ` (일반 ${plan2Summary.rawNet.toLocaleString()} / 월 ${plan2SubSummary.finalMonthlyFee.toLocaleString()})`
+                        : ''
+                    }`
+                  : `2안${
+                      plan2Summary.sum > 0
+                        ? ` (${plan2Summary.rawNet.toLocaleString()}원)`
+                        : ''
+                    }`}
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {onOpenSaveToCrm && (
             <button
               type="button"
               onClick={onOpenSaveToCrm}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-xs transition cursor-pointer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
             >
               <Save className="w-3.5 h-3.5" />
               💾 CRM 고객 저장
@@ -515,7 +546,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             type="button"
             onClick={handleDownloadPng}
             disabled={isExporting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs shadow-xs transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
           >
             <Download className="w-3.5 h-3.5" />
             {isExporting ? '저장 중...' : '이미지 저장'}
@@ -523,7 +554,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs shadow-xs transition cursor-pointer"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] sm:text-xs shadow-xs transition cursor-pointer whitespace-nowrap"
           >
             <Printer className="w-3.5 h-3.5" />
             인쇄 / PDF
@@ -688,134 +719,149 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     </div>
                   )}
 
-                  {/* [1단계: 고객 실 결제부담금 산출] 카드 */}
-                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                      <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
-                        <span className="w-6 h-6 rounded-lg bg-blue-600 text-white text-xs font-black flex items-center justify-center">
-                          1
-                        </span>
-                        1단계: 고객 실 결제부담금 산출
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">
-                        총 합계 금액에서 즉시할인 및 하이프리드 지원금 차감
-                      </span>
-                    </div>
+                  {/* [1단계: 고객 실 결제부담금 산출] 카드 (전체 혜택이 0원일 때는 중복되는 실결제가 박스를 생략하고 최종 혜택가만 표시) */}
+                  {generalSummary.totalDiscountAndBenefit > 0 && (
+                    <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-3">
+                      {(generalSummary.totalStep1InstantDiscount > 0 ||
+                        generalSummary.hiFreedSupport > 0) && (
+                        <>
+                          <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                            <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
+                              <span className="w-6 h-6 rounded-lg bg-blue-600 text-white text-xs font-black flex items-center justify-center">
+                                1
+                              </span>
+                              1단계: 고객 실 결제부담금 산출
+                            </span>
+                            <span className="text-xs font-bold text-slate-500">
+                              총 합계 금액에서 즉시할인 및 하이프리드 지원금 차감
+                            </span>
+                          </div>
 
-                    <div className="space-y-2">
-                      {/* (-) 즉시할인 혜택 */}
-                      <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-slate-200">
-                        <div>
-                          <div className="text-sm font-black text-slate-900">
-                            (-) 즉시할인 혜택
-                          </div>
-                          <div className="text-xs font-bold text-slate-500 mt-0.5">
-                            {step1DiscountDetails.length > 0
-                              ? step1DiscountDetails.join(' · ')
-                              : '기본 즉시할인 + 추가 즉시할인 + 포인트 즉시사용'}
-                          </div>
-                        </div>
-                        <div className="text-xl font-black text-blue-600">
-                          -{generalSummary.totalStep1InstantDiscount.toLocaleString()}
-                          원
-                        </div>
-                      </div>
+                          <div className="space-y-2">
+                            {/* (-) 즉시할인 혜택 (0원보다 클 때만 표시) */}
+                            {generalSummary.totalStep1InstantDiscount > 0 && (
+                              <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-slate-200">
+                                <div>
+                                  <div className="text-sm font-black text-slate-900">
+                                    (-) 즉시할인 혜택
+                                  </div>
+                                  <div className="text-xs font-bold text-slate-500 mt-0.5">
+                                    {step1DiscountDetails.length > 0
+                                      ? step1DiscountDetails.join(' · ')
+                                      : '기본 즉시할인 + 추가 즉시할인 + 포인트 즉시사용'}
+                                  </div>
+                                </div>
+                                <div className="text-xl font-black text-blue-600">
+                                  -
+                                  {generalSummary.totalStep1InstantDiscount.toLocaleString()}
+                                  원
+                                </div>
+                              </div>
+                            )}
 
-                      {/* (-) 하이프리드 지원금 (선택 시에만 표시) */}
-                      {generalSummary.hiFreedSupport > 0 && (
-                        <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-blue-200">
-                          <div>
-                            <div className="text-sm font-black text-slate-900">
-                              (-) 하이프리드 지원금
-                            </div>
-                            <div className="text-xs font-bold text-blue-600 mt-0.5">
-                              {generalHiPreedSummary.activePlans
-                                .map((p) => `${p.name} (${p.count}건)`)
-                                .join(' + ')}{' '}
-                              결합 지원
-                            </div>
+                            {/* (-) 하이프리드 지원금 (선택 시에만 표시) */}
+                            {generalSummary.hiFreedSupport > 0 && (
+                              <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-blue-200">
+                                <div>
+                                  <div className="text-sm font-black text-slate-900">
+                                    (-) 하이프리드 지원금
+                                  </div>
+                                  <div className="text-xs font-bold text-blue-600 mt-0.5">
+                                    {generalHiPreedSummary.activePlans
+                                      .map((p) => `${p.name} (${p.count}건)`)
+                                      .join(' + ')}{' '}
+                                    결합 지원
+                                  </div>
+                                </div>
+                                <div className="text-xl font-black text-blue-600">
+                                  -{generalSummary.hiFreedSupport.toLocaleString()}
+                                  원
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-xl font-black text-blue-600">
-                            -{generalSummary.hiFreedSupport.toLocaleString()}원
-                          </div>
-                        </div>
+                        </>
                       )}
-                    </div>
 
-                    {/* 💳 고객 실 결제부담금 (실결제가) 강조 박스 */}
-                    <div className="bg-blue-600 text-white rounded-2xl px-6 py-4 flex items-center justify-between shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0">
-                          <CreditCard className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="text-base font-black text-white">
-                            💳 고객 실 결제부담금 (실결제가)
+                      {/* 💳 고객 실 결제부담금 (실결제가) 강조 박스 */}
+                      <div className="bg-blue-600 text-white rounded-2xl px-6 py-4 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-white/15 text-white flex items-center justify-center shrink-0">
+                            <CreditCard className="w-5 h-5" />
                           </div>
-                          <div className="text-xs font-bold text-blue-100">
-                            매장 결제 시 실제 카드로 결제하시는 금액
+                          <div>
+                            <div className="text-base font-black text-white">
+                              💳 고객 실 결제부담금 (실결제가)
+                            </div>
+                            <div className="text-xs font-bold text-blue-100">
+                              매장 결제 시 실제 카드로 결제하시는 금액
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="text-3xl font-black text-white tracking-tight">
-                        {generalSummary.payPrice.toLocaleString()}원
+                        <div className="text-3xl font-black text-white tracking-tight">
+                          {generalSummary.payPrice.toLocaleString()}원
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* [2단계: 캐시백 및 추가 혜택 차감 ➔ 최종 혜택가] 카드 */}
                   <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
-                      <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
-                        <span className="w-6 h-6 rounded-lg bg-rose-600 text-white text-xs font-black flex items-center justify-center">
-                          2
-                        </span>
-                        2단계: 캐시백 및 추가 혜택 차감 ➔ 최종 혜택가
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">
-                        결제 후 돌려받으시는 캐시백 및 추가 혜택 반영
-                      </span>
-                    </div>
-
                     {(generalSummary.totalStep2Cashback > 0 ||
                       generalSummary.totalStep2ExtraBenefit > 0) && (
-                      <div className="space-y-2">
-                        {/* (-) 캐시백 혜택 (0원보다 클 때만 표시) */}
-                        {generalSummary.totalStep2Cashback > 0 && (
-                          <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-rose-200">
-                            <div>
-                              <div className="text-sm font-black text-slate-900">
-                                (-) 캐시백 혜택
-                              </div>
-                              <div className="text-xs font-bold text-rose-600 mt-0.5">
-                                {step2CashbackDetails.join(' · ')}
-                              </div>
-                            </div>
-                            <div className="text-xl font-black text-rose-600">
-                              -{generalSummary.totalStep2Cashback.toLocaleString()}
-                              원
-                            </div>
-                          </div>
-                        )}
+                      <>
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                          <span className="inline-flex items-center gap-2 text-sm font-black text-slate-900">
+                            <span className="w-6 h-6 rounded-lg bg-rose-600 text-white text-xs font-black flex items-center justify-center">
+                              2
+                            </span>
+                            2단계: 캐시백 및 추가 혜택 차감 ➔ 최종 혜택가
+                          </span>
+                          <span className="text-xs font-bold text-slate-500">
+                            결제 후 돌려받으시는 캐시백 및 추가 혜택 반영
+                          </span>
+                        </div>
 
-                        {/* (-) 추가 혜택 (0원보다 클 때만 표시) */}
-                        {generalSummary.totalStep2ExtraBenefit > 0 && (
-                          <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-slate-200">
-                            <div>
-                              <div className="text-sm font-black text-slate-900">
-                                (-) 추가 혜택
+                        <div className="space-y-2">
+                          {/* (-) 캐시백 혜택 (0원보다 클 때만 표시) */}
+                          {generalSummary.totalStep2Cashback > 0 && (
+                            <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-rose-200">
+                              <div>
+                                <div className="text-sm font-black text-slate-900">
+                                  (-) 캐시백 혜택
+                                </div>
+                                <div className="text-xs font-bold text-rose-600 mt-0.5">
+                                  {step2CashbackDetails.join(' · ')}
+                                </div>
                               </div>
-                              <div className="text-xs font-bold text-slate-600 mt-0.5">
-                                {step2ExtraDetails.join(' · ')}
+                              <div className="text-xl font-black text-rose-600">
+                                -
+                                {generalSummary.totalStep2Cashback.toLocaleString()}
+                                원
                               </div>
                             </div>
-                            <div className="text-xl font-black text-rose-600">
-                              -{generalSummary.totalStep2ExtraBenefit.toLocaleString()}
-                              원
+                          )}
+
+                          {/* (-) 추가 혜택 (0원보다 클 때만 표시) */}
+                          {generalSummary.totalStep2ExtraBenefit > 0 && (
+                            <div className="flex items-center justify-between bg-white px-5 py-3.5 rounded-xl border border-slate-200">
+                              <div>
+                                <div className="text-sm font-black text-slate-900">
+                                  (-) 추가 혜택
+                                </div>
+                                <div className="text-xs font-bold text-slate-600 mt-0.5">
+                                  {step2ExtraDetails.join(' · ')}
+                                </div>
+                              </div>
+                              <div className="text-xl font-black text-rose-600">
+                                -
+                                {generalSummary.totalStep2ExtraBenefit.toLocaleString()}
+                                원
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
+                          )}
+                        </div>
+                      </>
                     )}
 
                     {/* 🎯 최종 혜택가 (체감 구매가) 메인 히어로 강조 박스 */}
@@ -827,13 +873,16 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       <div className="text-5xl font-black text-rose-600 tracking-tight py-1">
                         {generalSummary.rawNet.toLocaleString()}원
                       </div>
-                      <div className="text-xs font-bold text-slate-600">
-                        실결제가 {generalSummary.payPrice.toLocaleString()}원
-                        {generalSummary.totalStep2Cashback > 0 &&
-                          ` - 캐시백 ${generalSummary.totalStep2Cashback.toLocaleString()}원`}
-                        {generalSummary.totalStep2ExtraBenefit > 0 &&
-                          ` - 추가혜택 ${generalSummary.totalStep2ExtraBenefit.toLocaleString()}원`}
-                      </div>
+                      {(generalSummary.totalStep2Cashback > 0 ||
+                        generalSummary.totalStep2ExtraBenefit > 0) && (
+                        <div className="text-xs font-bold text-slate-600">
+                          실결제가 {generalSummary.payPrice.toLocaleString()}원
+                          {generalSummary.totalStep2Cashback > 0 &&
+                            ` - 캐시백 ${generalSummary.totalStep2Cashback.toLocaleString()}원`}
+                          {generalSummary.totalStep2ExtraBenefit > 0 &&
+                            ` - 추가혜택 ${generalSummary.totalStep2ExtraBenefit.toLocaleString()}원`}
+                        </div>
+                      )}
                       {generalSummary.rawNet < 0 && (
                         <div className="pt-1">
                           <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-black">
@@ -859,6 +908,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           <RefreshCw className="w-3.5 h-3.5 text-rose-400" />
                           맞춤 구독 설계안
                         </div>
+                        {hasBothPlans && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 text-xs font-extrabold">
+                            견적 {activePlan}안
+                          </span>
+                        )}
                         {activeCustomer && (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-extrabold">
                             <User className="w-3 h-3 text-amber-300" />
@@ -1017,9 +1071,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
                   {/* 메인 히어로 강조 박스 (가운데 정렬, 초대형 숫자) */}
                   <div className="bg-rose-50/70 border-2 border-rose-500 rounded-2xl p-6 text-center space-y-2 shadow-xs">
-                    <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-white border border-rose-200 text-xs font-extrabold text-slate-700">
-                      <span>{subFormulaText}</span>
-                    </div>
+                    {(cardMonthlyDiscount > 0 || hiPlusMonthlySupport > 0) && (
+                      <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-white border border-rose-200 text-xs font-extrabold text-slate-700">
+                        <span>{subFormulaText}</span>
+                      </div>
+                    )}
                     <div className="text-sm font-black text-rose-600 pt-1">
                       🎯 최종 월 체감가 ({state.subscriptionPeriod}개월 구독)
                     </div>
@@ -1158,41 +1214,52 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                         </div>
                       )}
 
-                      {/* 1단계 */}
-                      <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
-                        <div className="text-xs font-black text-blue-700">
-                          [1단계: 고객 실 결제부담금 산출]
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                          <span>(-) 즉시할인 혜택</span>
-                          <span className="font-black text-blue-600">
-                            -{generalSummary.totalStep1InstantDiscount.toLocaleString()}
-                            원
-                          </span>
-                        </div>
-                        {generalSummary.hiFreedSupport > 0 && (
-                          <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                            <span>(-) 하이프리드 지원금</span>
-                            <span className="font-black text-blue-600">
-                              -{generalSummary.hiFreedSupport.toLocaleString()}원
+                      {/* 1단계 (전체 혜택이 0원일 때는 중복되는 실결제가 박스를 생략하고 최종 혜택가만 표시) */}
+                      {generalSummary.totalDiscountAndBenefit > 0 && (
+                        <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
+                          {(generalSummary.totalStep1InstantDiscount > 0 ||
+                            generalSummary.hiFreedSupport > 0) && (
+                            <div className="text-xs font-black text-blue-700">
+                              [1단계: 고객 실 결제부담금 산출]
+                            </div>
+                          )}
+                          {generalSummary.totalStep1InstantDiscount > 0 && (
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                              <span>(-) 즉시할인 혜택</span>
+                              <span className="font-black text-blue-600">
+                                -
+                                {generalSummary.totalStep1InstantDiscount.toLocaleString()}
+                                원
+                              </span>
+                            </div>
+                          )}
+                          {generalSummary.hiFreedSupport > 0 && (
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                              <span>(-) 하이프리드 지원금</span>
+                              <span className="font-black text-blue-600">
+                                -{generalSummary.hiFreedSupport.toLocaleString()}원
+                              </span>
+                            </div>
+                          )}
+                          <div className="bg-blue-600 text-white rounded-xl px-3.5 py-2.5 flex items-center justify-between">
+                            <span className="text-xs font-black">
+                              💳 고객 실 결제부담금
+                            </span>
+                            <span className="text-base font-black">
+                              {generalSummary.payPrice.toLocaleString()}원
                             </span>
                           </div>
-                        )}
-                        <div className="bg-blue-600 text-white rounded-xl px-3.5 py-2.5 flex items-center justify-between">
-                          <span className="text-xs font-black">
-                            💳 고객 실 결제부담금
-                          </span>
-                          <span className="text-base font-black">
-                            {generalSummary.payPrice.toLocaleString()}원
-                          </span>
                         </div>
-                      </div>
+                      )}
 
                       {/* 2단계 */}
                       <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
-                        <div className="text-xs font-black text-rose-600">
-                          [2단계: 캐시백 및 추가 혜택 차감]
-                        </div>
+                        {(generalSummary.totalStep2Cashback > 0 ||
+                          generalSummary.totalStep2ExtraBenefit > 0) && (
+                          <div className="text-xs font-black text-rose-600">
+                            [2단계: 캐시백 및 추가 혜택 차감]
+                          </div>
+                        )}
                         {generalSummary.totalStep2Cashback > 0 && (
                           <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                             <span>(-) 캐시백 혜택</span>
@@ -1325,9 +1392,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
                       {/* 메인 히어로: 최종 월 체감가 */}
                       <div className="bg-rose-50/80 border-2 border-rose-500 rounded-xl p-4 text-center space-y-1">
-                        <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white border border-rose-200 text-[10px] font-extrabold text-slate-600">
-                          {subFormulaText}
-                        </div>
+                        {(cardMonthlyDiscount > 0 ||
+                          hiPlusMonthlySupport > 0) && (
+                          <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white border border-rose-200 text-[10px] font-extrabold text-slate-600">
+                            {subFormulaText}
+                          </div>
+                        )}
                         <div className="text-xs font-black text-rose-600 pt-0.5">
                           🎯 최종 월 체감가
                         </div>
@@ -1362,8 +1432,9 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       </div>
                       <div className="text-xs font-bold text-slate-400">
                         일반 실결제 부담금 {generalSummary.payPrice.toLocaleString()}
-                        원 · 통합 총 할인/지원 혜택 -
-                        {hybridTotalDiscountAndSupport.toLocaleString()}원
+                        원
+                        {hybridTotalDiscountAndSupport > 0 &&
+                          ` · 통합 총 할인/지원 혜택 -${hybridTotalDiscountAndSupport.toLocaleString()}원`}
                       </div>
                     </div>
                     <div className="text-right shrink-0 pl-4">

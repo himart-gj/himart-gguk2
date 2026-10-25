@@ -11,11 +11,10 @@ import {
   X,
 } from 'lucide-react';
 import {
-  AFFILIATE_CARDS,
+  GeneralPlanData,
   ProposalState,
   calculateGeneralHiPreedSummary,
-  calculateGeneralPurchaseSummary,
-  calculateHiPlusSummary,
+  getGeneralPlan1And2Summaries,
 } from '../../types/proposal';
 import {
   CustomerItem,
@@ -42,6 +41,17 @@ interface SaveToCrmModalProps {
   }) => void;
 }
 
+function getValidGeneralItemNames(planData: GeneralPlanData): string[] {
+  return (planData.generalItems || [])
+    .map((it) => {
+      const cat = (it.category || '').trim();
+      const mod = (it.modelName || '').trim();
+      if (!cat && !mod) return '';
+      return mod ? `${cat || '가전'}(${mod})` : cat;
+    })
+    .filter(Boolean);
+}
+
 export function extractQuotePayloadFromProposalState(state: ProposalState): {
   itemsSummary: string;
   paidAmount: number;
@@ -49,194 +59,280 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
   expectedBenefit: string;
   defaultQuoteTitle: string;
   plan2Summary?: QuotePlan2Summary;
+  plan1Data: GeneralPlanData;
+  plan2Data: GeneralPlanData;
+  primaryGenSummary: ReturnType<typeof getGeneralPlan1And2Summaries>['plan1Summary'];
+  primarySubSummary: ReturnType<typeof getGeneralPlan1And2Summaries>['plan1SubSummary'];
+  secondaryGenSummary: ReturnType<typeof getGeneralPlan1And2Summaries>['plan2Summary'];
+  secondarySubSummary: ReturnType<typeof getGeneralPlan1And2Summaries>['plan2SubSummary'];
 } {
-  // 1안 및 현재 플랜 계산
-  const generalSummary = calculateGeneralPurchaseSummary(state);
-  const generalHiPreed = calculateGeneralHiPreedSummary(
-    state.generalHiPreedCounts
-  );
+  const {
+    plan1Data,
+    plan2Data,
+    plan1Summary,
+    plan2Summary: plan2GenSummary,
+    plan1SubSummary,
+    plan2SubSummary,
+    hasPlan1Data,
+    hasPlan2Data,
+  } = getGeneralPlan1And2Summaries(state);
 
-  // 2안 유효성 및 계산 (일반 또는 혼합 모드에서 generalPlan2에 유효 품목이 있는지 확인)
-  const plan2Data = state.generalPlan2;
-  const validPlan2Items = (plan2Data?.generalItems || []).filter(
-    (it) => it.category.trim() !== '' || (Number(it.unitPrice) || 0) > 0
-  );
-  const plan2SummaryCalc = calculateGeneralPurchaseSummary(plan2Data);
+  // 만약 1안은 비어 있고 2안에만 데이터가 있다면 2안을 기본 대표 데이터로 사용
+  const usePlan2AsPrimary = !hasPlan1Data && hasPlan2Data;
+  const primaryData = usePlan2AsPrimary ? plan2Data : plan1Data;
+  const primaryGenSummary = usePlan2AsPrimary ? plan2GenSummary : plan1Summary;
+  const primarySubSummary = usePlan2AsPrimary
+    ? plan2SubSummary
+    : plan1SubSummary;
+  const hasSecondPlan = !usePlan2AsPrimary && hasPlan2Data;
 
-  // 구독 계산
-  const currentCard = AFFILIATE_CARDS.find(
-    (c) => c.id === state.selectedCardId
-  );
-  const currentCardTier = currentCard?.tiers.find(
-    (t) => t.id === state.selectedCardTierId
-  );
-  const hiSummary = calculateHiPlusSummary(
-    state.hiPlusCounts,
-    state.subscriptionPeriod
-  );
-  const totalBaseMonthly = state.items.reduce(
-    (sum, item) => sum + (Number(item.monthlyFee) || 0),
-    0
-  );
-  const cardDiscount = currentCardTier?.monthlyDiscount || 0;
-  const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
-  const finalMonthlyFee = totalBaseMonthly - cardDiscount - hiPlusMonthly;
-
-  const validGenNames = state.generalItems
-    .map((it) => {
-      const cat = it.category.trim();
-      const mod = it.modelName.trim();
-      if (!cat && !mod) return '';
-      return mod ? `${cat || '가전'}(${mod})` : cat;
-    })
-    .filter(Boolean);
-
-  const validSubNames = state.items
-    .map((it) => {
-      const cat = it.category.trim();
-      const mod = it.modelName.trim();
-      if (!cat && !mod) return '';
-      return mod ? `${cat || '구독가전'}(${mod})` : cat;
-    })
-    .filter(Boolean);
+  const primaryGenNames = getValidGeneralItemNames(primaryData);
+  const plan2GenNames = getValidGeneralItemNames(plan2Data);
 
   if (state.quoteMode === 'general') {
     const itemsSummary =
-      validGenNames.length > 0
-        ? validGenNames.join(', ')
+      primaryGenNames.length > 0
+        ? primaryGenNames.join(', ')
         : '일반구매 맞춤 가전 패키지';
+
+    const generalHiPreed = calculateGeneralHiPreedSummary(
+      primaryData.generalHiPreedCounts
+    );
     const benefitParts: string[] = [];
-    if (generalSummary.totalStep1InstantDiscount > 0) {
+    if (primaryGenSummary.totalStep1InstantDiscount > 0) {
       benefitParts.push(
-        `즉시할인 ${formatCurrency(generalSummary.totalStep1InstantDiscount)}원`
+        `즉시할인 ${formatCurrency(primaryGenSummary.totalStep1InstantDiscount)}원`
       );
     }
-    if (generalSummary.hiFreedSupport > 0) {
+    if (primaryGenSummary.hiFreedSupport > 0) {
       benefitParts.push(
         `하이프리드(${generalHiPreed.totalAccounts}구좌) ${formatCurrency(
-          generalSummary.hiFreedSupport
+          primaryGenSummary.hiFreedSupport
         )}원`
       );
     }
-    if (generalSummary.totalStep2Cashback > 0) {
+    if (primaryGenSummary.totalStep2Cashback > 0) {
       benefitParts.push(
-        `캐시백 ${formatCurrency(generalSummary.totalStep2Cashback)}원`
+        `캐시백 ${formatCurrency(primaryGenSummary.totalStep2Cashback)}원`
       );
     }
-    if (generalSummary.totalStep2ExtraBenefit > 0) {
+    if (primaryGenSummary.totalStep2ExtraBenefit > 0) {
       benefitParts.push(
-        `추가혜택 ${formatCurrency(generalSummary.totalStep2ExtraBenefit)}원`
+        `추가혜택 ${formatCurrency(primaryGenSummary.totalStep2ExtraBenefit)}원`
       );
     }
 
     let plan2Summary: QuotePlan2Summary | undefined;
-    if (validPlan2Items.length > 0 && plan2SummaryCalc.sum > 0) {
-      const p2Names = validPlan2Items
-        .map((it) =>
-          it.modelName.trim()
-            ? `${it.category.trim() || '가전'}(${it.modelName.trim()})`
-            : it.category.trim() || '일반가전'
-        )
-        .join(', ');
+    if (hasSecondPlan && plan2GenSummary.sum > 0) {
+      const p2Names =
+        plan2GenNames.length > 0 ? plan2GenNames.join(', ') : '일반가전 2안';
+      const p2BenefitParts: string[] = [];
+      if (plan2GenSummary.totalStep1InstantDiscount > 0) {
+        p2BenefitParts.push(
+          `즉시할인 ${formatCurrency(plan2GenSummary.totalStep1InstantDiscount)}원`
+        );
+      }
+      if (plan2GenSummary.hiFreedSupport > 0) {
+        p2BenefitParts.push(
+          `하이프리드 ${formatCurrency(plan2GenSummary.hiFreedSupport)}원`
+        );
+      }
+      if (plan2GenSummary.totalStep2Cashback > 0) {
+        p2BenefitParts.push(
+          `캐시백 ${formatCurrency(plan2GenSummary.totalStep2Cashback)}원`
+        );
+      }
+      if (plan2GenSummary.totalStep2ExtraBenefit > 0) {
+        p2BenefitParts.push(
+          `추가혜택 ${formatCurrency(plan2GenSummary.totalStep2ExtraBenefit)}원`
+        );
+      }
+
       plan2Summary = {
         itemSummary: p2Names,
-        paidAmount: plan2SummaryCalc.payPrice,
-        netAmount: plan2SummaryCalc.rawNet,
+        paidAmount: plan2GenSummary.payPrice,
+        netAmount: plan2GenSummary.rawNet,
         benefit:
-          plan2SummaryCalc.totalDiscountAndBenefit > 0
+          p2BenefitParts.join(' + ') ||
+          (plan2GenSummary.totalDiscountAndBenefit > 0
             ? `총 혜택 ${formatCurrency(
-                plan2SummaryCalc.totalDiscountAndBenefit
+                plan2GenSummary.totalDiscountAndBenefit
               )}원`
-            : undefined,
+            : undefined),
       };
     }
 
     return {
       itemsSummary,
-      paidAmount: generalSummary.payPrice,
-      netAmount: generalSummary.rawNet,
+      paidAmount: primaryGenSummary.payPrice,
+      netAmount: primaryGenSummary.rawNet,
       expectedBenefit:
         benefitParts.join(' + ') ||
         `총 할인/혜택 ${formatCurrency(
-          generalSummary.totalDiscountAndBenefit
+          primaryGenSummary.totalDiscountAndBenefit
         )}원`,
       defaultQuoteTitle: `[일반구매] ${itemsSummary.slice(0, 22)}`,
       plan2Summary,
+      plan1Data,
+      plan2Data,
+      primaryGenSummary,
+      primarySubSummary,
+      secondaryGenSummary: plan2GenSummary,
+      secondarySubSummary: plan2SubSummary,
     };
   }
 
   if (state.quoteMode === 'subscription') {
     const itemsSummary =
-      validSubNames.length > 0
-        ? `[${state.subscriptionPeriod}개월 구독] ${validSubNames.join(', ')}`
-        : `[${state.subscriptionPeriod}개월 구독] 맞춤 구독 패키지`;
+      primarySubSummary.validSubNames.length > 0
+        ? `[${primarySubSummary.period}개월 구독] ${primarySubSummary.validSubNames.join(', ')}`
+        : `[${primarySubSummary.period}개월 구독] 맞춤 구독 패키지`;
+
     const benefitParts: string[] = [];
-    if (cardDiscount > 0 && currentCard) {
-      benefitParts.push(`${currentCard.name} 월 -${formatCurrency(cardDiscount)}원`);
-    }
-    if (hiPlusMonthly > 0) {
+    if (primarySubSummary.cardDiscount > 0 && primarySubSummary.currentCard) {
       benefitParts.push(
-        `구독프리드(${hiSummary.totalAccounts}구좌) 월 -${formatCurrency(
-          hiPlusMonthly
+        `${primarySubSummary.currentCard.name} 월 -${formatCurrency(
+          primarySubSummary.cardDiscount
+        )}원`
+      );
+    }
+    if (primarySubSummary.hiPlusMonthly > 0) {
+      benefitParts.push(
+        `구독프리드(${primarySubSummary.hiSummary.totalAccounts}구좌) 월 -${formatCurrency(
+          primarySubSummary.hiPlusMonthly
         )}원`
       );
     }
 
+    let plan2Summary: QuotePlan2Summary | undefined;
+    if (hasSecondPlan && plan2SubSummary.totalBaseMonthly > 0) {
+      const p2SubNames =
+        plan2SubSummary.validSubNames.length > 0
+          ? `[${plan2SubSummary.period}개월 구독] ${plan2SubSummary.validSubNames.join(', ')}`
+          : `[${plan2SubSummary.period}개월 구독] 맞춤 구독 2안`;
+      const p2SubBenefits: string[] = [];
+      if (plan2SubSummary.cardDiscount > 0 && plan2SubSummary.currentCard) {
+        p2SubBenefits.push(
+          `${plan2SubSummary.currentCard.name} 월 -${formatCurrency(
+            plan2SubSummary.cardDiscount
+          )}원`
+        );
+      }
+      if (plan2SubSummary.hiPlusMonthly > 0) {
+        p2SubBenefits.push(
+          `구독프리드(${plan2SubSummary.hiSummary.totalAccounts}구좌) 월 -${formatCurrency(
+            plan2SubSummary.hiPlusMonthly
+          )}원`
+        );
+      }
+
+      plan2Summary = {
+        itemSummary: p2SubNames,
+        paidAmount: plan2SubSummary.totalBaseMonthly,
+        netAmount: plan2SubSummary.finalMonthlyFee,
+        benefit:
+          p2SubBenefits.join(' + ') ||
+          `${plan2SubSummary.period}개월 총 체감가 ${formatCurrency(
+            plan2SubSummary.finalTotalFee
+          )}원`,
+      };
+    }
+
     return {
       itemsSummary,
-      paidAmount: totalBaseMonthly,
-      netAmount: finalMonthlyFee,
+      paidAmount: primarySubSummary.totalBaseMonthly,
+      netAmount: primarySubSummary.finalMonthlyFee,
       expectedBenefit:
         benefitParts.join(' + ') ||
-        `${state.subscriptionPeriod}개월 무상 A/S 및 방문케어`,
-      defaultQuoteTitle: `[구독 ${state.subscriptionPeriod}M] ${
-        validSubNames.join(', ').slice(0, 18) || '맞춤 구독'
+        `${primarySubSummary.period}개월 무상 A/S 및 방문케어`,
+      defaultQuoteTitle: `[구독 ${primarySubSummary.period}M] ${
+        primarySubSummary.validSubNames.join(', ').slice(0, 18) || '맞춤 구독'
       }`,
+      plan2Summary,
+      plan1Data,
+      plan2Data,
+      primaryGenSummary,
+      primarySubSummary,
+      secondaryGenSummary: plan2GenSummary,
+      secondarySubSummary: plan2SubSummary,
     };
   }
 
-  // hybrid 모드
-  const genLabel =
-    validGenNames.length > 0 ? `일반(${validGenNames.join(', ')})` : '일반가전';
-  const subLabel =
-    validSubNames.length > 0
-      ? `구독 ${state.subscriptionPeriod}M(${validSubNames.join(', ')})`
-      : `구독 ${state.subscriptionPeriod}M`;
-  const itemsSummary = `${genLabel} + ${subLabel}`;
-  const hybridTotalBenefit =
-    generalSummary.totalDiscountAndBenefit +
-    (cardDiscount + hiPlusMonthly) * state.subscriptionPeriod;
+  // hybrid 모드 (일반 + 구독 혼합견적)
+  const p1GenLabel =
+    primaryGenNames.length > 0 ? primaryGenNames.join(', ') : '일반가전';
+  const p1SubLabel =
+    primarySubSummary.validSubNames.length > 0
+      ? primarySubSummary.validSubNames.join(', ')
+      : '구독가전';
+  const itemsSummary = `일반 1안(${p1GenLabel}) + 구독 ${primarySubSummary.period}M(${p1SubLabel})`;
+
+  const primaryPaidAmount =
+    primaryGenSummary.sum > 0
+      ? primaryGenSummary.payPrice
+      : primarySubSummary.totalBaseMonthly;
+  const primaryNetAmount =
+    primaryGenSummary.sum > 0
+      ? primaryGenSummary.rawNet
+      : primarySubSummary.finalMonthlyFee;
+
+  const expectedBenefit = `일반 1안 실결제 ${formatCurrency(
+    primaryGenSummary.payPrice
+  )}원(체감 ${formatCurrency(primaryGenSummary.rawNet)}원) + 구독 ${
+    primarySubSummary.period
+  }M 월 기본 ${formatCurrency(
+    primarySubSummary.totalBaseMonthly
+  )}원(월 체감 ${formatCurrency(
+    primarySubSummary.finalMonthlyFee
+  )}원 / 총 체감 ${formatCurrency(primarySubSummary.finalTotalFee)}원)`;
 
   let plan2Summary: QuotePlan2Summary | undefined;
-  if (validPlan2Items.length > 0 && plan2SummaryCalc.sum > 0) {
-    const p2Names = validPlan2Items
-      .map((it) =>
-        it.modelName.trim()
-          ? `${it.category.trim() || '가전'}(${it.modelName.trim()})`
-          : it.category.trim() || '일반가전'
-      )
-      .join(', ');
+  if (
+    hasSecondPlan &&
+    (plan2GenSummary.sum > 0 || plan2SubSummary.totalBaseMonthly > 0)
+  ) {
+    const p2GenLabel =
+      plan2GenNames.length > 0 ? plan2GenNames.join(', ') : '일반가전';
+    const p2SubLabel =
+      plan2SubSummary.validSubNames.length > 0
+        ? plan2SubSummary.validSubNames.join(', ')
+        : '구독가전';
+
     plan2Summary = {
-      itemSummary: `일반 2안(${p2Names}) + ${subLabel}`,
-      paidAmount: plan2SummaryCalc.payPrice,
-      netAmount: plan2SummaryCalc.rawNet,
-      benefit: `일반 2안 체감가 ${formatCurrency(
-        plan2SummaryCalc.rawNet
-      )}원 / 구독 월 ${formatCurrency(finalMonthlyFee)}원`,
+      itemSummary: `일반 2안(${p2GenLabel}) + 구독 ${plan2SubSummary.period}M(${p2SubLabel})`,
+      paidAmount:
+        plan2GenSummary.sum > 0
+          ? plan2GenSummary.payPrice
+          : plan2SubSummary.totalBaseMonthly,
+      netAmount:
+        plan2GenSummary.sum > 0
+          ? plan2GenSummary.rawNet
+          : plan2SubSummary.finalMonthlyFee,
+      benefit: `일반 2안 실결제 ${formatCurrency(
+        plan2GenSummary.payPrice
+      )}원(체감 ${formatCurrency(plan2GenSummary.rawNet)}원) + 구독 ${
+        plan2SubSummary.period
+      }M 월 기본 ${formatCurrency(
+        plan2SubSummary.totalBaseMonthly
+      )}원(월 체감 ${formatCurrency(
+        plan2SubSummary.finalMonthlyFee
+      )}원 / 총 체감 ${formatCurrency(plan2SubSummary.finalTotalFee)}원)`,
     };
   }
 
   return {
     itemsSummary,
-    paidAmount: generalSummary.payPrice,
-    netAmount: generalSummary.rawNet,
-    expectedBenefit: `일반 체감 ${formatCurrency(
-      generalSummary.rawNet
-    )}원 + 구독 월 체감 ${formatCurrency(
-      finalMonthlyFee
-    )}원 (통합 총혜택 ${formatCurrency(hybridTotalBenefit)}원)`,
+    paidAmount: primaryPaidAmount,
+    netAmount: primaryNetAmount,
+    expectedBenefit,
     defaultQuoteTitle: `[혼합견적] ${itemsSummary.slice(0, 22)}`,
     plan2Summary,
+    plan1Data,
+    plan2Data,
+    primaryGenSummary,
+    primarySubSummary,
+    secondaryGenSummary: plan2GenSummary,
+    secondarySubSummary: plan2SubSummary,
   };
 }
 
@@ -333,6 +429,12 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
+    const syncedProposalState: ProposalState = {
+      ...state,
+      generalPlan1: extracted.plan1Data,
+      generalPlan2: extracted.plan2Data,
+    };
+
     const result = await saveCustomerQuote({
       targetCustomerId:
         tabMode === 'existing' && selectedExistingId
@@ -351,7 +453,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       orderNo: orderNo.trim(),
       giftItems: giftItems.trim(),
       quoteTitle: quoteTitle.trim() || extracted.defaultQuoteTitle,
-      proposalState: state,
+      proposalState: syncedProposalState,
       quoteMode: state.quoteMode,
       plan2Summary: extracted.plan2Summary,
     });
@@ -447,7 +549,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 <FolderKanban className="w-3 h-3" />
                 {state.quoteMode === 'general' && '일반구매 견적'}
                 {state.quoteMode === 'subscription' &&
-                  `구독구매 견적 (${state.subscriptionPeriod}개월)`}
+                  `구독구매 견적 (${extracted.primarySubSummary.period}개월)`}
                 {state.quoteMode === 'hybrid' && '일반+구독 혼합견적'}
               </span>
 
@@ -462,29 +564,66 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               📦 {extracted.itemsSummary}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80 text-xs">
-              <span className="text-slate-600 font-bold">
-                {state.quoteMode === 'subscription'
-                  ? '월 기준 구독료: '
-                  : '실결제가: '}
-                <strong className="text-slate-900 font-black">
-                  {formatCurrency(extracted.paidAmount)}원
-                </strong>
-              </span>
-              <span className="text-blue-600 font-black">
-                {state.quoteMode === 'subscription'
-                  ? '최종 월 체감가: '
-                  : '최종 혜택가(체감가): '}
-                {formatCurrency(extracted.netAmount)}원
-              </span>
-            </div>
+            {state.quoteMode === 'hybrid' ? (
+              <div className="space-y-1.5 pt-1 border-t border-slate-200/80 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200">
+                  <span className="font-extrabold text-blue-700">
+                    📘 [1안 일반] 실결제{' '}
+                    {formatCurrency(extracted.primaryGenSummary.payPrice)}원 /
+                    체감 {formatCurrency(extracted.primaryGenSummary.rawNet)}원
+                  </span>
+                  <span className="font-extrabold text-rose-600">
+                    🔄 [1안 구독 {extracted.primarySubSummary.period}M] 월 기본{' '}
+                    {formatCurrency(
+                      extracted.primarySubSummary.totalBaseMonthly
+                    )}
+                    원 / 월 체감{' '}
+                    {formatCurrency(extracted.primarySubSummary.finalMonthlyFee)}
+                    원
+                  </span>
+                </div>
 
-            {extracted.plan2Summary && (
-              <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-900">
-                📗 [2안 요약] {extracted.plan2Summary.itemSummary} · 실결제가{' '}
-                {formatCurrency(extracted.plan2Summary.paidAmount)}원 / 체감가{' '}
-                {formatCurrency(extracted.plan2Summary.netAmount)}원
+                {extracted.plan2Summary && (
+                  <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-900 space-y-0.5">
+                    <div>📗 [2안 품목] {extracted.plan2Summary.itemSummary}</div>
+                    <div className="text-emerald-800">
+                      • {extracted.plan2Summary.benefit}
+                    </div>
+                  </div>
+                )}
               </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80 text-xs">
+                  <span className="text-slate-600 font-bold">
+                    {state.quoteMode === 'subscription'
+                      ? '월 기준 구독료: '
+                      : '실결제가: '}
+                    <strong className="text-slate-900 font-black">
+                      {formatCurrency(extracted.paidAmount)}원
+                    </strong>
+                  </span>
+                  <span className="text-blue-600 font-black">
+                    {state.quoteMode === 'subscription'
+                      ? '최종 월 체감가: '
+                      : '최종 혜택가(체감가): '}
+                    {formatCurrency(extracted.netAmount)}원
+                  </span>
+                </div>
+
+                {extracted.plan2Summary && (
+                  <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-900">
+                    📗 [2안 요약] {extracted.plan2Summary.itemSummary} ·{' '}
+                    {state.quoteMode === 'subscription' ? '월 기본 ' : '실결제가 '}
+                    {formatCurrency(extracted.plan2Summary.paidAmount)}원 /{' '}
+                    {state.quoteMode === 'subscription' ? '월 체감 ' : '체감가 '}
+                    {formatCurrency(extracted.plan2Summary.netAmount)}원
+                    {extracted.plan2Summary.benefit
+                      ? ` (${extracted.plan2Summary.benefit})`
+                      : ''}
+                  </div>
+                )}
+              </>
             )}
           </div>
 

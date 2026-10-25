@@ -154,14 +154,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }, 800);
   };
 
-  // ==================== 일반구매 핸들러 ====================
+  // ==================== 일반구매 & 구독구매 1안/2안 요약 핸들러 ====================
   const generalSummary = calculateGeneralPurchaseSummary(state);
   const generalHiPreedSummary = calculateGeneralHiPreedSummary(
     state.generalHiPreedCounts
   );
-  const { plan1Summary, plan2Summary } = getGeneralPlan1And2Summaries(state);
+  const { plan1Summary, plan2Summary, plan1SubSummary, plan2SubSummary } =
+    getGeneralPlan1And2Summaries(state);
   const bothPlansHavePrice = plan1Summary.sum > 0 && plan2Summary.sum > 0;
   const planNetDiff = plan2Summary.rawNet - plan1Summary.rawNet;
+
+  const bothSubPlansHavePrice =
+    plan1SubSummary.totalBaseMonthly > 0 &&
+    plan2SubSummary.totalBaseMonthly > 0;
+  const subNetDiff =
+    plan2SubSummary.finalMonthlyFee - plan1SubSummary.finalMonthlyFee;
 
   const handleSelectGeneralPlan = (targetPlan: 1 | 2) => {
     onChange((prev) => switchGeneralPlanInState(prev, targetPlan));
@@ -494,6 +501,112 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
       </div>
 
+      {/* ==================== 전체 폭 공통 배너: [견적 1안] / [견적 2안] / [📋 1안 내용 ➔ 2안 복사] ==================== */}
+      <div
+        className={`w-full ${
+          state.quoteMode === 'hybrid' ? 'max-w-6xl' : 'max-w-xl'
+        } mb-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-2`}
+      >
+        <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <button
+            type="button"
+            onClick={() => handleSelectGeneralPlan(1)}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              state.activeGeneralPlan === 1
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {state.quoteMode === 'general' && (
+              <>
+                견적 1안
+                {plan1Summary.sum > 0 && (
+                  <span className="ml-1 text-[10px] opacity-90">
+                    (일반 {(plan1Summary.rawNet / 10000).toFixed(0)}만)
+                  </span>
+                )}
+              </>
+            )}
+            {state.quoteMode === 'subscription' && (
+              <>
+                견적 1안
+                {plan1SubSummary.totalBaseMonthly > 0 && (
+                  <span className="ml-1 text-[10px] opacity-90">
+                    (월 {plan1SubSummary.finalMonthlyFee.toLocaleString()}원)
+                  </span>
+                )}
+              </>
+            )}
+            {state.quoteMode === 'hybrid' && (
+              <>
+                견적 1안 (일반+구독)
+                {(plan1Summary.sum > 0 ||
+                  plan1SubSummary.totalBaseMonthly > 0) && (
+                  <span className="ml-1 text-[10px] opacity-90">
+                    · 일반 {(plan1Summary.rawNet / 10000).toFixed(0)}만 / 월{' '}
+                    {plan1SubSummary.finalMonthlyFee.toLocaleString()}원
+                  </span>
+                )}
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectGeneralPlan(2)}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+              state.activeGeneralPlan === 2
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            {state.quoteMode === 'general' && (
+              <>
+                견적 2안
+                {plan2Summary.sum > 0 && (
+                  <span className="ml-1 text-[10px] opacity-90">
+                    (일반 {(plan2Summary.rawNet / 10000).toFixed(0)}만)
+                  </span>
+                )}
+              </>
+            )}
+            {state.quoteMode === 'subscription' && (
+              <>
+                견적 2안
+                {plan2SubSummary.totalBaseMonthly > 0 && (
+                  <span className="ml-1 text-[10px] opacity-90">
+                    (월 {plan2SubSummary.finalMonthlyFee.toLocaleString()}원)
+                  </span>
+                )}
+              </>
+            )}
+            {state.quoteMode === 'hybrid' && (
+              <>
+                견적 2안 (일반+구독)
+                {(plan2Summary.sum > 0 ||
+                  plan2SubSummary.totalBaseMonthly > 0) && (
+                  <span className="ml-1 text-[10px] opacity-90">
+                    · 일반 {(plan2Summary.rawNet / 10000).toFixed(0)}만 / 월{' '}
+                    {plan2SubSummary.finalMonthlyFee.toLocaleString()}원
+                  </span>
+                )}
+              </>
+            )}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCopyPlan1ToPlan2}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs shadow-2xs transition cursor-pointer"
+        >
+          <Copy className="w-3.5 h-3.5" />
+          {copiedNotice
+            ? '✓ 2안으로 복사 완료!'
+            : '📋 1안 내용 ➔ 2안 복사'}
+        </button>
+      </div>
+
       {/* 입력 컨테이너 */}
       <div
         className={
@@ -541,55 +654,6 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   {parseGeneralError}
                 </p>
               )}
-            </div>
-
-            {/* 최상단: [견적 1안] / [견적 2안] 탭 & [📋 1안 내용 ➔ 2안 복사] 버튼 */}
-            <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-2">
-              <div className="inline-flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => handleSelectGeneralPlan(1)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                    state.activeGeneralPlan === 1
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  견적 1안
-                  {plan1Summary.sum > 0 && (
-                    <span className="ml-1 text-[10px] opacity-90">
-                      ({(plan1Summary.rawNet / 10000).toFixed(0)}만)
-                    </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSelectGeneralPlan(2)}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                    state.activeGeneralPlan === 2
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  견적 2안
-                  {plan2Summary.sum > 0 && (
-                    <span className="ml-1 text-[10px] opacity-90">
-                      ({(plan2Summary.rawNet / 10000).toFixed(0)}만)
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCopyPlan1ToPlan2}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 font-extrabold text-xs shadow-2xs transition cursor-pointer"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                {copiedNotice
-                  ? '✓ 2안으로 복사 완료!'
-                  : '📋 1안 내용 ➔ 2안 복사'}
-              </button>
             </div>
 
             {/* 1. 구매 품목 및 행사가 */}
@@ -1162,7 +1226,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <label className="text-xs sm:text-sm font-black text-slate-900">
-                  1. 구독 품목 및 월요금
+                  1. 구독 품목 및 월요금 ({state.activeGeneralPlan}안)
                 </label>
                 <div className="flex items-center gap-1.5">
                   <div className="inline-flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
@@ -1501,23 +1565,49 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             </div>
 
-            {/* 구독구매 실시간 최종 월 체감가 미니 요약 바 (단독 구독 & 혼합 모두 표시) */}
-            <div className="bg-rose-50/70 border-2 border-rose-200 rounded-2xl px-4 py-2.5 flex items-center justify-between">
-              <div>
-                <div className="text-[10px] font-bold text-rose-700">
-                  실시간 예상 최종 월 체감가 ({state.subscriptionPeriod}개월)
+            {/* 구독구매 실시간 최종 월 체감가 미니 요약 바 & [1안 vs 2안] 비교 박스 (단독 구독 & 혼합 모두 표시) */}
+            <div className="bg-rose-50/70 border-2 border-rose-200 rounded-2xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] font-black text-rose-700">
+                    실시간 예상 최종 월 체감가 ({state.activeGeneralPlan}안 ·{' '}
+                    {state.subscriptionPeriod}개월)
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-semibold">
+                    기본 {totalBaseMonthly.toLocaleString()}원 - 카드{' '}
+                    {cardDiscount.toLocaleString()}원 - 프리드{' '}
+                    {hiPlusMonthly.toLocaleString()}원
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-600 font-semibold">
-                  기본 {totalBaseMonthly.toLocaleString()}원 - 카드{' '}
-                  {cardDiscount.toLocaleString()}원 - 프리드{' '}
-                  {hiPlusMonthly.toLocaleString()}원
+                <div className="text-right">
+                  <div className="text-lg sm:text-xl font-black text-rose-600">
+                    월 {rawFinalMonthly.toLocaleString()}원
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-lg sm:text-xl font-black text-rose-600">
-                  월 {rawFinalMonthly.toLocaleString()}원
+
+              {bothSubPlansHavePrice && (
+                <div className="bg-slate-900 text-white rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                  <div className="font-bold">
+                    <span className="text-rose-300 font-black">
+                      [1안 월 체감가: 월{' '}
+                      {plan1SubSummary.finalMonthlyFee.toLocaleString()}원]
+                    </span>{' '}
+                    vs{' '}
+                    <span className="text-amber-300 font-black">
+                      [2안 월 체감가: 월{' '}
+                      {plan2SubSummary.finalMonthlyFee.toLocaleString()}원]
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-white/15 font-black text-emerald-300">
+                    차액: 월{' '}
+                    {subNetDiff > 0
+                      ? `+${subNetDiff.toLocaleString()}`
+                      : subNetDiff.toLocaleString()}
+                    원
+                  </span>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* 단독 구독구매 모드일 때 확인 버튼 */}

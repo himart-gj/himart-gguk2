@@ -227,22 +227,54 @@ export interface GeneralPlanData {
   extraCashback: number;
   extraBenefits: GeneralExtraBenefitItem[];
   generalHiPreedCounts: GeneralHiPreedCounts;
+
+  // 구독구매 필드 통합 (1안 / 2안 개별 저장·복원용)
+  items: SubscriptionItem[];
+  subscriptionPeriod: SubscriptionPeriod;
+  careService: string;
+  warrantyType?: string;
+  warrantyYears: 3 | 5;
+  allCare: boolean;
+  selectedCardId: AffiliateCardId;
+  selectedCardTierId: string;
+  hiPlusCounts: HiPlusCounts;
 }
 
 export function extractGeneralPlanData(
   source: GeneralPlanData
 ): GeneralPlanData {
   return {
-    generalItems: source.generalItems.map((it) => ({ ...it })),
-    generalCardType: source.generalCardType,
-    instantDiscount: source.instantDiscount,
-    earnedPoints: source.earnedPoints,
-    pointUsed: source.pointUsed,
-    autoTierCashback: source.autoTierCashback,
-    manualTierCashback: source.manualTierCashback,
-    extraCashback: source.extraCashback,
+    generalItems: (source.generalItems || []).map((it) => ({ ...it })),
+    generalCardType: source.generalCardType || '미정',
+    instantDiscount: Number(source.instantDiscount) || 0,
+    earnedPoints: Number(source.earnedPoints) || 0,
+    pointUsed: Number(source.pointUsed) || 0,
+    autoTierCashback: source.autoTierCashback ?? true,
+    manualTierCashback: Number(source.manualTierCashback) || 0,
+    extraCashback: Number(source.extraCashback) || 0,
     extraBenefits: (source.extraBenefits || []).map((b) => ({ ...b })),
-    generalHiPreedCounts: { ...source.generalHiPreedCounts },
+    generalHiPreedCounts: {
+      hf75: 0,
+      hf150: 0,
+      hf225: 0,
+      hf300: 0,
+      ...(source.generalHiPreedCounts || {}),
+    },
+
+    items: (source.items || []).map((it) => ({ ...it })),
+    subscriptionPeriod: source.subscriptionPeriod === 36 ? 36 : 60,
+    careService: source.careService || SUB_CARE_OPTIONS[0],
+    warrantyType: source.warrantyType || 'AS연장보험 + 가전수리올케어',
+    warrantyYears: source.warrantyYears === 3 ? 3 : 5,
+    allCare: source.allCare ?? true,
+    selectedCardId: source.selectedCardId || 'none',
+    selectedCardTierId: source.selectedCardTierId || '',
+    hiPlusCounts: {
+      hi72: 0,
+      hi90: 0,
+      hi108: 0,
+      ...(source.hiPlusCounts || {}),
+    },
   };
 }
 
@@ -251,26 +283,52 @@ export function cloneGeneralPlanData(
   idPrefix = 'plan2'
 ): GeneralPlanData {
   return {
-    generalItems: source.generalItems.map((it, idx) => ({
+    generalItems: (source.generalItems || []).map((it, idx) => ({
       ...it,
       id: `${idPrefix}-item-${Date.now()}-${idx}-${Math.random()
         .toString(36)
         .slice(2, 6)}`,
     })),
-    generalCardType: source.generalCardType,
-    instantDiscount: source.instantDiscount,
-    earnedPoints: source.earnedPoints,
-    pointUsed: source.pointUsed,
-    autoTierCashback: source.autoTierCashback,
-    manualTierCashback: source.manualTierCashback,
-    extraCashback: source.extraCashback,
+    generalCardType: source.generalCardType || '미정',
+    instantDiscount: Number(source.instantDiscount) || 0,
+    earnedPoints: Number(source.earnedPoints) || 0,
+    pointUsed: Number(source.pointUsed) || 0,
+    autoTierCashback: source.autoTierCashback ?? true,
+    manualTierCashback: Number(source.manualTierCashback) || 0,
+    extraCashback: Number(source.extraCashback) || 0,
     extraBenefits: (source.extraBenefits || []).map((b, idx) => ({
       ...b,
       id: `${idPrefix}-ext-${Date.now()}-${idx}-${Math.random()
         .toString(36)
         .slice(2, 6)}`,
     })),
-    generalHiPreedCounts: { ...source.generalHiPreedCounts },
+    generalHiPreedCounts: {
+      hf75: 0,
+      hf150: 0,
+      hf225: 0,
+      hf300: 0,
+      ...(source.generalHiPreedCounts || {}),
+    },
+
+    items: (source.items || []).map((it, idx) => ({
+      ...it,
+      id: `${idPrefix}-sub-${Date.now()}-${idx}-${Math.random()
+        .toString(36)
+        .slice(2, 6)}`,
+    })),
+    subscriptionPeriod: source.subscriptionPeriod === 36 ? 36 : 60,
+    careService: source.careService || SUB_CARE_OPTIONS[0],
+    warrantyType: source.warrantyType || 'AS연장보험 + 가전수리올케어',
+    warrantyYears: source.warrantyYears === 3 ? 3 : 5,
+    allCare: source.allCare ?? true,
+    selectedCardId: source.selectedCardId || 'none',
+    selectedCardTierId: source.selectedCardTierId || '',
+    hiPlusCounts: {
+      hi72: 0,
+      hi90: 0,
+      hi108: 0,
+      ...(source.hiPlusCounts || {}),
+    },
   };
 }
 
@@ -320,11 +378,11 @@ export function copyPlan1ToPlan2InState(prev: ProposalState): ProposalState {
 }
 
 export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
-  const validItems = state.generalItems.filter(
-    (it) => it.category.trim() !== '' || it.unitPrice > 0
+  const items = state.generalItems || [];
+  const validItems = items.filter(
+    (it) => (it.category || '').trim() !== '' || (Number(it.unitPrice) || 0) > 0
   );
-  const displayItems =
-    validItems.length > 0 ? validItems : state.generalItems;
+  const displayItems = validItems.length > 0 ? validItems : items;
 
   // 총 행사가 합계
   const sum = displayItems.reduce(
@@ -345,11 +403,12 @@ export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
   const extraDiscountItems = extraBenefits.filter(
     (b) =>
       b.type === 'discount' &&
-      (Number(b.amount) > 0 || b.description.trim() !== '')
+      (Number(b.amount) > 0 || (b.description || '').trim() !== '')
   );
   const extraEtcItems = extraBenefits.filter(
     (b) =>
-      b.type === 'etc' && (Number(b.amount) > 0 || b.description.trim() !== '')
+      b.type === 'etc' &&
+      (Number(b.amount) > 0 || (b.description || '').trim() !== '')
   );
 
   const extraDiscountSum = extraDiscountItems.reduce(
@@ -366,7 +425,7 @@ export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
     instantDiscount + extraDiscountSum + pointUsed;
 
   const freedSummary = calculateGeneralHiPreedSummary(
-    state.generalHiPreedCounts
+    state.generalHiPreedCounts || { hf75: 0, hf150: 0, hf225: 0, hf300: 0 }
   );
   const hiFreedAccounts = freedSummary.totalAccounts;
   const hiFreedSupport = freedSummary.totalSupport;
@@ -438,31 +497,128 @@ export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
   };
 }
 
+export function calculateSubscriptionSummary(planData: GeneralPlanData) {
+  const items = planData.items || [];
+  const validItems = items.filter(
+    (it) =>
+      (it.category || '').trim() !== '' ||
+      (it.modelName || '').trim() !== '' ||
+      (Number(it.monthlyFee) || 0) > 0
+  );
+  const displayItems = validItems.length > 0 ? validItems : items;
+
+  const validSubNames = items
+    .map((it) => {
+      const cat = (it.category || '').trim();
+      const mod = (it.modelName || '').trim();
+      if (!cat && !mod) return '';
+      return mod ? `${cat || '구독가전'}(${mod})` : cat;
+    })
+    .filter(Boolean);
+
+  const period: SubscriptionPeriod =
+    planData.subscriptionPeriod === 36 ? 36 : 60;
+
+  const totalBaseMonthly = items.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.monthlyFee) || 0),
+    0
+  );
+  const totalPrincipal = totalBaseMonthly * period;
+
+  const currentCard = AFFILIATE_CARDS.find(
+    (c) => c.id === planData.selectedCardId
+  );
+  const currentCardTier = currentCard?.tiers.find(
+    (t) => t.id === planData.selectedCardTierId
+  );
+  const cardDiscount = currentCardTier?.monthlyDiscount || 0;
+
+  const hiSummary = calculateHiPlusSummary(
+    planData.hiPlusCounts || { hi72: 0, hi90: 0, hi108: 0 },
+    period
+  );
+  const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
+
+  const finalMonthlyFee = totalBaseMonthly - cardDiscount - hiPlusMonthly;
+  const finalTotalFee = finalMonthlyFee * period;
+  const totalSubBenefit = (cardDiscount + hiPlusMonthly) * period;
+
+  const hasSubData =
+    totalBaseMonthly > 0 ||
+    items.some(
+      (it) =>
+        (it.category || '').trim() !== '' || (it.modelName || '').trim() !== ''
+    );
+
+  return {
+    displayItems,
+    validSubNames,
+    period,
+    subscriptionPeriod: period,
+    totalBaseMonthly,
+    totalPrincipal,
+    currentCard,
+    currentCardTier,
+    cardDiscount,
+    hiSummary,
+    hiPlusMonthly,
+    finalMonthlyFee,
+    finalTotalFee,
+    totalSubBenefit,
+    hasSubData,
+  };
+}
+
 export function getGeneralPlan1And2Summaries(state: ProposalState) {
   const plan1Data =
     state.activeGeneralPlan === 1
       ? extractGeneralPlanData(state)
-      : state.generalPlan1;
+      : extractGeneralPlanData(state.generalPlan1);
   const plan2Data =
     state.activeGeneralPlan === 2
       ? extractGeneralPlanData(state)
-      : state.generalPlan2;
+      : extractGeneralPlanData(state.generalPlan2);
 
   const plan1Summary = calculateGeneralPurchaseSummary(plan1Data);
   const plan2Summary = calculateGeneralPurchaseSummary(plan2Data);
 
-  const hasPlan1Data =
+  const plan1SubSummary = calculateSubscriptionSummary(plan1Data);
+  const plan2SubSummary = calculateSubscriptionSummary(plan2Data);
+
+  const hasPlan1Gen =
     plan1Summary.sum > 0 ||
-    plan1Data.generalItems.some((it) => it.category.trim() !== '');
-  const hasPlan2Data =
+    plan1Data.generalItems.some(
+      (it) =>
+        (it.category || '').trim() !== '' || (it.modelName || '').trim() !== ''
+    );
+  const hasPlan2Gen =
     plan2Summary.sum > 0 ||
-    plan2Data.generalItems.some((it) => it.category.trim() !== '');
+    plan2Data.generalItems.some(
+      (it) =>
+        (it.category || '').trim() !== '' || (it.modelName || '').trim() !== ''
+    );
+
+  const hasPlan1Data =
+    state.quoteMode === 'general'
+      ? hasPlan1Gen
+      : state.quoteMode === 'subscription'
+      ? plan1SubSummary.hasSubData
+      : hasPlan1Gen || plan1SubSummary.hasSubData;
+
+  const hasPlan2Data =
+    state.quoteMode === 'general'
+      ? hasPlan2Gen
+      : state.quoteMode === 'subscription'
+      ? plan2SubSummary.hasSubData
+      : hasPlan2Gen || plan2SubSummary.hasSubData;
 
   return {
     plan1Data,
     plan2Data,
     plan1Summary,
     plan2Summary,
+    plan1SubSummary,
+    plan2SubSummary,
     hasPlan1Data,
     hasPlan2Data,
   };

@@ -51,6 +51,29 @@ const createEmptyGeneralPlanData = (
     hf225: 0,
     hf300: 0,
   },
+
+  // 구독구매 초기값
+  items: [
+    {
+      id: `sub-${mode}-p${planNum}-1`,
+      category: '',
+      modelName: '',
+      monthlyFee: 0,
+      careService: SUB_CARE_OPTIONS[0],
+    },
+  ],
+  subscriptionPeriod: 60,
+  careService: SUB_CARE_OPTIONS[0],
+  warrantyType: 'AS연장보험 + 가전수리올케어',
+  warrantyYears: 5,
+  allCare: true,
+  selectedCardId: 'none',
+  selectedCardTierId: '',
+  hiPlusCounts: {
+    hi72: 0,
+    hi90: 0,
+    hi108: 0,
+  },
 });
 
 const createInitialState = (mode: QuoteMode): ProposalState => {
@@ -60,35 +83,12 @@ const createInitialState = (mode: QuoteMode): ProposalState => {
   return {
     quoteMode: mode,
 
-    // 일반구매(일시불) 1안 / 2안 상태
+    // 1안 / 2안 상태 (일반구매 + 구독구매 통합)
     activeGeneralPlan: 1,
     generalPlan1: plan1,
     generalPlan2: plan2,
 
     ...plan1,
-
-    // 구독구매 상태 - 모든 기본값 공란/0/미선택으로 초기화
-    items: [
-      {
-        id: `sub-${mode}-1`,
-        category: '',
-        modelName: '',
-        monthlyFee: 0,
-        careService: SUB_CARE_OPTIONS[0],
-      },
-    ],
-    subscriptionPeriod: 60,
-    careService: SUB_CARE_OPTIONS[0],
-    warrantyType: 'AS연장보험 + 가전수리올케어',
-    warrantyYears: 5,
-    allCare: true,
-    selectedCardId: 'none',
-    selectedCardTierId: '',
-    hiPlusCounts: {
-      hi72: 0,
-      hi90: 0,
-      hi108: 0,
-    },
   };
 };
 
@@ -150,12 +150,28 @@ export function App() {
   const setCurrentState: React.Dispatch<React.SetStateAction<ProposalState>> =
     useCallback(
       (updater) => {
+        const applyWithSnapshotSync = (prev: ProposalState): ProposalState => {
+          const nextState =
+            typeof updater === 'function' ? updater(prev) : updater;
+          const snapshot = extractGeneralPlanData(nextState);
+          if (nextState.activeGeneralPlan === 2) {
+            return {
+              ...nextState,
+              generalPlan2: snapshot,
+            };
+          }
+          return {
+            ...nextState,
+            generalPlan1: snapshot,
+          };
+        };
+
         if (activeMode === 'general') {
-          setGeneralState(updater);
+          setGeneralState(applyWithSnapshotSync);
         } else if (activeMode === 'subscription') {
-          setSubscriptionState(updater);
+          setSubscriptionState(applyWithSnapshotSync);
         } else {
-          setHybridState(updater);
+          setHybridState(applyWithSnapshotSync);
         }
       },
       [activeMode]
@@ -192,10 +208,70 @@ export function App() {
             : fallbackQuoteMode || 'general';
 
         const base = createInitialState(targetMode);
+        const parsed = JSON.parse(JSON.stringify(savedProposalState));
+
+        // 하위 호환성 보장: 예전 데이터에 generalPlan1/2 내부의 구독 필드가 없었던 경우 안전 병합
+        const mergedPlan1 = extractGeneralPlanData({
+          ...base.generalPlan1,
+          ...(parsed.generalPlan1 || {}),
+          items:
+            Array.isArray(parsed.generalPlan1?.items) &&
+            parsed.generalPlan1.items.length > 0
+              ? parsed.generalPlan1.items
+              : Array.isArray(parsed.items) && parsed.items.length > 0
+              ? parsed.items
+              : base.generalPlan1.items,
+          subscriptionPeriod:
+            parsed.generalPlan1?.subscriptionPeriod ||
+            parsed.subscriptionPeriod ||
+            base.generalPlan1.subscriptionPeriod,
+          careService:
+            parsed.generalPlan1?.careService ||
+            parsed.careService ||
+            base.generalPlan1.careService,
+          warrantyType:
+            parsed.generalPlan1?.warrantyType ||
+            parsed.warrantyType ||
+            base.generalPlan1.warrantyType,
+          warrantyYears:
+            parsed.generalPlan1?.warrantyYears ||
+            parsed.warrantyYears ||
+            base.generalPlan1.warrantyYears,
+          allCare:
+            parsed.generalPlan1?.allCare ??
+            parsed.allCare ??
+            base.generalPlan1.allCare,
+          selectedCardId:
+            parsed.generalPlan1?.selectedCardId ||
+            parsed.selectedCardId ||
+            base.generalPlan1.selectedCardId,
+          selectedCardTierId:
+            parsed.generalPlan1?.selectedCardTierId ??
+            parsed.selectedCardTierId ??
+            base.generalPlan1.selectedCardTierId,
+          hiPlusCounts:
+            parsed.generalPlan1?.hiPlusCounts ||
+            parsed.hiPlusCounts ||
+            base.generalPlan1.hiPlusCounts,
+        });
+
+        const mergedPlan2 = extractGeneralPlanData({
+          ...base.generalPlan2,
+          ...(parsed.generalPlan2 || {}),
+        });
+
+        const activePlanNum: 1 | 2 = parsed.activeGeneralPlan === 2 ? 2 : 1;
+        const activePlanFields =
+          activePlanNum === 2 ? mergedPlan2 : mergedPlan1;
+
         const restored: ProposalState = {
           ...base,
-          ...JSON.parse(JSON.stringify(savedProposalState)),
+          ...parsed,
+          ...activePlanFields,
           quoteMode: targetMode,
+          activeGeneralPlan: activePlanNum,
+          generalPlan1: mergedPlan1,
+          generalPlan2: mergedPlan2,
         };
 
         if (targetMode === 'general') {
@@ -221,15 +297,15 @@ export function App() {
 
       if (targetMode === 'subscription') {
         const nextSub = createInitialState('subscription');
-        nextSub.items = [
-          {
-            id: `sub-crm-${Date.now()}`,
-            category: summaryStr || '맞춤 구독 가전',
-            modelName: '',
-            monthlyFee: paidNum,
-            careService: SUB_CARE_OPTIONS[0],
-          },
-        ];
+        const firstSubItem = {
+          id: `sub-crm-${Date.now()}`,
+          category: summaryStr || '맞춤 구독 가전',
+          modelName: '',
+          monthlyFee: paidNum,
+          careService: SUB_CARE_OPTIONS[0],
+        };
+        nextSub.items = [firstSubItem];
+        nextSub.generalPlan1 = extractGeneralPlanData(nextSub);
         setSubscriptionState(nextSub);
       } else {
         const nextGen = createInitialState('general');
@@ -241,10 +317,7 @@ export function App() {
           unitPrice: paidNum,
         };
         nextGen.generalItems = [firstItem];
-        nextGen.generalPlan1 = {
-          ...nextGen.generalPlan1,
-          generalItems: [firstItem],
-        };
+        nextGen.generalPlan1 = extractGeneralPlanData(nextGen);
         setGeneralState(nextGen);
       }
 
