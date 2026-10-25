@@ -990,47 +990,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         *실결제가({generalSummary.payPrice.toLocaleString()}원) 기준
                       </span>
                     </span>
-                    <label className="inline-flex items-center gap-1 text-[10px] font-extrabold text-blue-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={state.autoTierCashback}
-                        onChange={(e) =>
-                          onChange((prev) => ({
-                            ...prev,
-                            autoTierCashback: e.target.checked,
-                            manualTierCashback: e.target.checked
-                              ? prev.manualTierCashback
-                              : generalSummary.tierCashback,
-                          }))
-                        }
-                        className="rounded text-blue-600"
-                      />
-                      [자동]
-                    </label>
                   </div>
-                  {state.autoTierCashback ? (
-                    <div className="px-2.5 py-1 rounded-lg bg-white border border-blue-200 text-xs font-black text-right text-blue-700">
-                      {generalSummary.tierCashback.toLocaleString()}원
-                    </div>
-                  ) : (
-                    <input
-                      type="number"
-                      step={10000}
-                      value={state.manualTierCashback || ''}
-                      onChange={(e) => {
-                        const val = Math.max(0, Number(e.target.value));
-                        onChange((prev) => ({
-                          ...prev,
-                          manualTierCashback: val,
-                          generalItems: prev.generalItems.map((it, idx) =>
-                            idx === 0 ? { ...it, cashback: val } : it
-                          ),
-                        }));
-                      }}
-                      placeholder="수동 입력"
-                      className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-slate-900 focus:outline-none"
-                    />
-                  )}
+                  <input
+                    type="number"
+                    step={10000}
+                    value={state.manualTierCashback || ''}
+                    onChange={(e) => {
+                      const val = Math.max(0, Number(e.target.value));
+                      onChange((prev) => ({
+                        ...prev,
+                        autoTierCashback: false,
+                        manualTierCashback: val,
+                        generalItems: prev.generalItems.map((it, idx) =>
+                          idx === 0 ? { ...it, cashback: val } : it
+                        ),
+                      }));
+                    }}
+                    placeholder="금액대별 캐시백 직접 입력"
+                    className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-slate-900 focus:outline-none"
+                  />
                 </div>
 
                 <div className="col-span-2 sm:col-span-1 bg-slate-50 p-2 rounded-xl border border-slate-200">

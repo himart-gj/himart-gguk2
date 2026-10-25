@@ -228,11 +228,12 @@ export const HiMobileView: React.FC<HiMobileViewProps> = ({ onBackToHome }) => {
             </div>
             <div>
               <div className="text-xs font-extrabold text-slate-500">
-                💳 유심(USIM) 비용 안내
+                💳 유심 · eSIM 비용 안내
               </div>
               <div className="text-sm sm:text-base font-black text-slate-900 mt-0.5">
-                NFC 유심 <span className="text-blue-600">8,800원</span> / 일반 유심{' '}
-                <span className="text-blue-600">6,600원</span>
+                NFC 유심 <span className="text-blue-600">8,800원</span> · 일반 유심{' '}
+                <span className="text-blue-600">6,600원</span> · eSIM{' '}
+                <span className="text-blue-600">3,000원</span>
               </div>
             </div>
           </div>

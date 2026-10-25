@@ -1,5 +1,5 @@
 export type QuoteMode = 'general' | 'subscription' | 'hybrid';
-export type AppStep = 'home' | 'input' | 'proposal' | 'pop-printer' | 'crm' | 'himobile';
+export type AppStep = 'home' | 'input' | 'proposal' | 'pop-printer' | 'crm' | 'himobile' | 'insurance';
 export type SubscriptionPeriod = 36 | 60;
 
 // ==================== 일반구매(일시불) 타입 ====================
@@ -457,10 +457,8 @@ export function calculateGeneralPurchaseSummary(state: GeneralPlanData) {
     sum - totalStep1InstantDiscount - hiFreedSupport
   );
 
-  // 금액대별 자동 캐시백 (payPrice 기준)
-  const tierCashback = state.autoTierCashback
-    ? calculateAutoTierCashback(payPrice, state.generalCardType)
-    : Math.max(0, Number(state.manualTierCashback) || 0);
+  // 금액대별 캐시백 (직접 입력/전산 스캔값 기준)
+  const tierCashback = Math.max(0, Number(state.manualTierCashback) || 0);
 
   // 배송익월 추가 캐시백
   const extraCashback = Math.max(0, Number(state.extraCashback) || 0);

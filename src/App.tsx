@@ -13,6 +13,7 @@ import { ProposalPreview } from './components/ProposalPreview';
 import { PopPrinterApp } from './pop/PopPrinterApp';
 import { CrmApp } from './crm/CrmApp';
 import { HiMobileView } from './components/HiMobileView';
+import { InsuranceGuideView } from './components/InsuranceGuideView';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
@@ -33,6 +34,7 @@ import {
   Minimize2,
   Printer,
   RefreshCw,
+  ShieldCheck,
   Smartphone,
   Users,
   X,
@@ -60,7 +62,7 @@ const createEmptyGeneralPlanData = (
   instantDiscount: 0,
   earnedPoints: 0,
   pointUsed: 0,
-  autoTierCashback: true,
+  autoTierCashback: false,
   manualTierCashback: 0,
   extraCashback: 0,
   extraBenefits: [],
@@ -803,6 +805,19 @@ export function App() {
             <Smartphone className="w-3.5 h-3.5" />
             <span>6.알뜰폰</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setStep('insurance')}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
+              step === 'insurance'
+                ? 'bg-teal-600 text-white shadow-xs'
+                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>7.보험안내</span>
+          </button>
         </div>
 
         {/* 우측: 전체화면 토글 & PWA 앱 설치 버튼 */}
@@ -963,6 +978,24 @@ export function App() {
                 ➔
               </span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setStep('insurance')}
+              className="w-full py-5 sm:py-6 px-5 sm:px-6 rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-lg hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+            >
+              <div className="flex items-center gap-3.5 sm:gap-4">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
+                  <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <span className="text-lg sm:text-xl font-black tracking-tight">
+                  7. 보험상품 청구안내 (고객 전달용)
+                </span>
+              </div>
+              <span className="text-sm font-extrabold text-slate-400 group-hover:text-white">
+                ➔
+              </span>
+            </button>
           </div>
         </main>
       )}
@@ -1016,6 +1049,11 @@ export function App() {
       {/* ==================== STEP 5: 6. 하이모바일 알뜰요금제 안내 & 즉시 개통 화면 ==================== */}
       {step === 'himobile' && (
         <HiMobileView onBackToHome={() => setStep('home')} />
+      )}
+
+      {/* ==================== STEP 6: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
+      {step === 'insurance' && (
+        <InsuranceGuideView onBackToHome={() => setStep('home')} />
       )}
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
