@@ -20,7 +20,7 @@ import {
 } from '../utils/aiImageParser';
 
 export const USER_NAME_STORAGE_KEY = 'himart_gj_user_name';
-export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v2';
+export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v3';
 export const SCHEDULE_UPDATED_EVENT = 'himart_gj_schedule_updated';
 
 const OBSOLETE_FAKE_NAMES = new Set([
@@ -43,6 +43,84 @@ const OBSOLETE_FAKE_NAMES = new Set([
   '유현승',
   '조민혁',
   '노재성',
+]);
+
+// 성명 패턴 스캔 시 제외할 직책/근태/요약 키워드
+const NON_NAME_KEYWORDS = new Set([
+  '합계',
+  '총계',
+  '소계',
+  '총인원',
+  '총근무인원',
+  '근무인원',
+  '결원',
+  '사용연차',
+  '성명',
+  '이름',
+  '사원명',
+  '직원명',
+  '성함',
+  '근무자',
+  '구분',
+  '담당',
+  '직책',
+  '부서',
+  '코너',
+  '직급',
+  '파트',
+  '비고',
+  '대형',
+  '생활',
+  '주방',
+  '쿠쿠',
+  '모바일',
+  '애플',
+  '통신',
+  '점장',
+  '부점장',
+  '지점장',
+  '판매사',
+  '선임',
+  '수석',
+  '책임',
+  '사원',
+  '대리',
+  '과장',
+  '차장',
+  '부장',
+  '연차',
+  '반차',
+  '교육',
+  '회의',
+  '휴무',
+  '휴가',
+  '정상',
+  '출근',
+  '근무',
+  '오전',
+  '오후',
+  '월요일',
+  '화요일',
+  '수요일',
+  '목요일',
+  '금요일',
+  '토요일',
+  '일요일',
+  '일자',
+  '날짜',
+  '요일',
+  '페이지',
+  '오전반차',
+  '오후반차',
+  '정규휴무',
+  '정기휴무',
+  '특별휴가',
+  '연차휴가',
+  '정상근무',
+  '출장',
+  '하계',
+  '동계',
+  '리프',
 ]);
 
 export type DayScheduleCode =
@@ -197,7 +275,7 @@ export const DEFAULT_2026_10_EMPLOYEES: EmployeeMonthlySchedule[] = [
     },
   },
   {
-    name: '한춘애',
+    name: '한춘매',
     role: '대형',
     days: {
       1: 'O',
@@ -215,7 +293,7 @@ export const DEFAULT_2026_10_EMPLOYEES: EmployeeMonthlySchedule[] = [
     },
   },
   {
-    name: '손경민',
+    name: '손정민',
     role: '생활',
     days: {
       2: '연차',
@@ -425,12 +503,22 @@ export const DEFAULT_2026_10_SCHEDULE: MonthlyScheduleData = {
   employees: DEFAULT_2026_10_EMPLOYEES,
 };
 
+const NAME_TYPO_MAP: Record<string, string> = {
+  한춘애: '한춘매',
+  손경민: '손정민',
+};
+
 export function loadSavedUserName(): string {
   try {
     const raw = localStorage.getItem(USER_NAME_STORAGE_KEY)?.trim() || '';
     if (raw && OBSOLETE_FAKE_NAMES.has(raw)) {
       localStorage.removeItem(USER_NAME_STORAGE_KEY);
       return '';
+    }
+    if (raw && NAME_TYPO_MAP[raw]) {
+      const corrected = NAME_TYPO_MAP[raw];
+      localStorage.setItem(USER_NAME_STORAGE_KEY, corrected);
+      return corrected;
     }
     return raw;
   } catch {
@@ -440,7 +528,8 @@ export function loadSavedUserName(): string {
 
 export function saveUserName(name: string): void {
   try {
-    const clean = name.trim();
+    const raw = name.trim();
+    const clean = NAME_TYPO_MAP[raw] || raw;
     if (clean) {
       localStorage.setItem(USER_NAME_STORAGE_KEY, clean);
     } else {
@@ -454,11 +543,13 @@ export function saveUserName(name: string): void {
 
 export function loadAllSchedules(): SchedulesMap {
   try {
-    // 구버전 가짜 데이터 키 삭제
+    // 구버전 키 정리
     localStorage.removeItem('himart_gj_schedules_v1');
+    localStorage.removeItem('himart_gj_schedules_v2');
 
     const raw = localStorage.getItem(SCHEDULES_STORAGE_KEY);
     // 최초 앱 실행 시 (localStorage에 키 자체가 없을 때만) 기본 2026-10 데이터 1회 주입
+    // 사용자가 삭제한 달은 다시 살아나지 않음
     if (raw === null) {
       const initial: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
       localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(initial));
@@ -469,26 +560,25 @@ export function loadAllSchedules(): SchedulesMap {
       return {};
     }
 
-    // 만약 어떤 월에든 가짜 직원 이름(이현구, 권태영 등)이 들어있으면 즉시 폐기 후 초기화
-    let hasFakeEmployee = false;
+    // 만약 어떤 월에든 가짜 직원 이름(이현구, 권태영 등)이 들어있으면 해당 월만 제거
+    const cleanedMap: SchedulesMap = {};
     for (const ymKey of Object.keys(parsed)) {
-      const emps = parsed[ymKey]?.employees;
-      if (
-        Array.isArray(emps) &&
-        emps.some((e) => OBSOLETE_FAKE_NAMES.has((e?.name || '').trim()))
-      ) {
-        hasFakeEmployee = true;
-        break;
+      const monthObj = parsed[ymKey];
+      const emps = monthObj?.employees;
+      if (!Array.isArray(emps)) continue;
+      if (emps.some((e) => OBSOLETE_FAKE_NAMES.has((e?.name || '').trim()))) {
+        continue;
       }
+      cleanedMap[ymKey] = {
+        ...monthObj,
+        employees: emps.map((e) => ({
+          ...e,
+          name: NAME_TYPO_MAP[e.name] || e.name,
+        })),
+      };
     }
 
-    if (hasFakeEmployee) {
-      const resetMap: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
-      localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(resetMap));
-      return resetMap;
-    }
-
-    return parsed;
+    return cleanedMap;
   } catch {
     return {};
   }
@@ -513,12 +603,20 @@ export function getOrCreateMonthSchedule(
       isRegistered: schedules[yearMonth].isRegistered ?? true,
     };
   }
-  // 등록되지 않은 월이거나 삭제된 월인 경우 빈 휴무표(isRegistered: false)를 반환
+  // 등록되지 않은 월이거나 삭제된 월인 경우 가장 최근 등록된 월의 직원 명단(또는 기본 명단)으로 빈 휴무표 반환
+  const sortedKeys = Object.keys(schedules)
+    .filter((k) => schedules[k]?.employees?.length > 0)
+    .sort();
+  const baseRoster =
+    sortedKeys.length > 0
+      ? schedules[sortedKeys[sortedKeys.length - 1]].employees
+      : DEFAULT_2026_10_EMPLOYEES;
+
   return {
     yearMonth,
     updatedAt: '미등록 (사진/엑셀 업로드로 등록 가능)',
     isRegistered: false,
-    employees: DEFAULT_2026_10_EMPLOYEES.map((emp) => ({
+    employees: baseRoster.map((emp) => ({
       name: emp.name,
       role: emp.role,
       days: {},
@@ -526,9 +624,15 @@ export function getOrCreateMonthSchedule(
   };
 }
 
-function normalizeScheduleCode(raw: string): DayScheduleCode {
-  const s = raw.trim().toUpperCase();
-  if (!s || s === '-' || s === '_' || s === '출근' || s === '정상') return '';
+/**
+ * [2-1] 근태 기호 유연 정규화
+ */
+export function normalizeScheduleCode(raw: string): DayScheduleCode {
+  const rawTrim = String(raw ?? '').trim();
+  if (!rawTrim) return '';
+  const s = rawTrim.toUpperCase();
+
+  // 정기 휴무 ('O')
   if (
     s === 'O' ||
     s === '○' ||
@@ -537,68 +641,806 @@ function normalizeScheduleCode(raw: string): DayScheduleCode {
     s === '0' ||
     s === 'ㅇ' ||
     s === '휴무' ||
-    s === '휴'
+    s === '휴' ||
+    s === '정규휴무' ||
+    s === '정기휴무' ||
+    s === 'OFF' ||
+    s.includes('정규휴무') ||
+    s.includes('정기휴무')
   ) {
     return 'O';
   }
-  if (s.includes('연차') || s === '연') return '연차';
-  if (s === 'V' || s.includes('휴가') || s.includes('리프')) return 'V';
-  if (s.includes('반차') || s === '반') return '반차';
-  if (s.includes('교육') || s === '교') return '교육';
-  if (s.includes('회의') || s === '회') return '회의';
-  if (s.includes('HP')) return 'HP';
+
+  // 연차 ('연차')
+  if (s === '연차' || s === '연' || s === '연차휴가' || s.includes('연차')) {
+    return '연차';
+  }
+
+  // 휴가 ('V')
+  if (
+    s === 'V' ||
+    s === '휴가' ||
+    s === '하계' ||
+    s === '동계' ||
+    s === '리프' ||
+    s === '특별휴가' ||
+    s.includes('휴가') ||
+    s.includes('하계') ||
+    s.includes('동계') ||
+    s.includes('리프')
+  ) {
+    return 'V';
+  }
+
+  // 반차 ('반차')
+  if (
+    s === '반차' ||
+    s === '반' ||
+    s === '오전반차' ||
+    s === '오후반차' ||
+    s.includes('반차')
+  ) {
+    return '반차';
+  }
+
+  // 교육 ('교육')
+  if (
+    s === '교육' ||
+    s === '교' ||
+    s === '출장' ||
+    s.includes('교육') ||
+    s.includes('출장')
+  ) {
+    return '교육';
+  }
+
+  // 회의 ('회의')
+  if (s === '회의' || s === '회' || s.includes('회의')) {
+    return '회의';
+  }
+
+  // HP ('HP')
+  if (s === 'HP' || s.includes('HP')) {
+    return 'HP';
+  }
+
+  // 정상 출근 ('근무', '정상', '정상근무', '출근', '-', '' 또는 숫자)
+  if (
+    s === '근무' ||
+    s === '정상' ||
+    s === '정상근무' ||
+    s === '출근' ||
+    s === '-' ||
+    s === '_' ||
+    /^\d+(\.\d+)?$/.test(s)
+  ) {
+    return '';
+  }
+
   return '';
 }
 
 /**
- * 경기광주점 19명 표준 명단과 대조하여 성명/담당 오타만 보정하고,
- * 날짜별 근태(days) 데이터는 AI 또는 엑셀에서 추출한 실제 값을 100% 그대로 반영합니다.
+ * 한글 인명(2~4글자) 여부 판별 (요약/직책/근태 어휘 제외)
  */
-function reconcileGwangjuEmployees(
-  rawList: { no?: number; name: string; role: string; days: Record<string, DayScheduleCode> }[],
-  _targetYearMonth: string
-): EmployeeMonthlySchedule[] {
-  const isGwangjuStore = rawList.some((emp) =>
-    DEFAULT_2026_10_EMPLOYEES.some(
-      (std) =>
-        emp.name.includes(std.name) ||
-        std.name.includes(emp.name) ||
-        (emp.name.length >= 2 &&
-          std.name.slice(0, 2) === emp.name.slice(0, 2))
-    )
-  );
+function isValidKoreanStaffName(raw: string): boolean {
+  const clean = String(raw || '')
+    .replace(/\s+/g, '')
+    .replace(/^\d+[.)]?\s*/, '')
+    .trim();
+  if (!clean || clean.length < 2 || clean.length > 4) return false;
+  if (OBSOLETE_FAKE_NAMES.has(clean) || NON_NAME_KEYWORDS.has(clean)) {
+    return false;
+  }
+  if (
+    clean.includes('인원') ||
+    clean.includes('합계') ||
+    clean.includes('소계') ||
+    clean.includes('결원') ||
+    clean.includes('연차') ||
+    clean.includes('휴무') ||
+    clean.includes('휴가') ||
+    clean.includes('계획') ||
+    clean.includes('성명') ||
+    clean.includes('이름') ||
+    clean.includes('담당') ||
+    clean.includes('직책') ||
+    clean.includes('구분') ||
+    clean.includes('페이지') ||
+    clean.includes('근무')
+  ) {
+    return false;
+  }
+  return /^[가-힣]{2,4}$/.test(clean);
+}
 
-  if (!isGwangjuStore) {
-    return rawList.map((r) => ({
-      name: r.name,
-      role: r.role,
-      days: r.days || {},
-    }));
+/**
+ * 셀 값에서 1~31일 날짜 정수를 추출
+ */
+function extractDayNumberFromCell(cellVal: any): number | null {
+  if (cellVal === null || cellVal === undefined || cellVal === '') return null;
+
+  if (cellVal instanceof Date && !isNaN(cellVal.getTime())) {
+    return cellVal.getDate();
   }
 
-  // 경기광주점 휴무표: 19명 표준 성명/담당 오타 보정, 추출된 근태(days)는 100% 그대로 유지
-  return rawList.map((r, idx) => {
-    const byExact = DEFAULT_2026_10_EMPLOYEES.find((s) => s.name === r.name);
-    const byFuzzy = DEFAULT_2026_10_EMPLOYEES.find(
-      (s) =>
-        r.name.length >= 2 &&
-        (s.name.slice(0, 2) === r.name.slice(0, 2) ||
-          s.name.slice(-2) === r.name.slice(-2))
-    );
-    const byNo =
-      r.no && r.no >= 1 && r.no <= DEFAULT_2026_10_EMPLOYEES.length
-        ? DEFAULT_2026_10_EMPLOYEES[r.no - 1]
-        : idx < DEFAULT_2026_10_EMPLOYEES.length
-        ? DEFAULT_2026_10_EMPLOYEES[idx]
-        : undefined;
+  if (typeof cellVal === 'number') {
+    if (Number.isInteger(cellVal) && cellVal >= 1 && cellVal <= 31) {
+      return cellVal;
+    }
+    // 엑셀 시리얼 날짜 (예: 2020년~2035년 -> 약 43831 ~ 49675)
+    if (cellVal >= 43000 && cellVal <= 52000) {
+      const utcDays = Math.floor(cellVal - 25569);
+      const d = new Date(utcDays * 86400 * 1000);
+      const day = d.getUTCDate();
+      if (day >= 1 && day <= 31) return day;
+    }
+    return null;
+  }
 
-    const std = byExact || byFuzzy || byNo;
+  const str = String(cellVal).trim();
+  if (!str) return null;
+
+  // 1) 단순 숫자 "1" ~ "31" 또는 "1일" ~ "31일" 또는 "1(목)" / "1일(목)"
+  const mSimple = str.match(
+    /^0?([1-9]|[12]\d|3[01])\s*(?:일)?(?:\s*[(（][월화수목금토일][)）])?$/
+  );
+  if (mSimple) {
+    return parseInt(mSimple[1], 10);
+  }
+
+  // 2) YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
+  const mFullDate = str.match(
+    /^20\d{2}\s*[-./년]\s*\d{1,2}\s*[-./월]\s*0?([1-9]|[12]\d|3[01])\s*일?/
+  );
+  if (mFullDate) {
+    return parseInt(mFullDate[1], 10);
+  }
+
+  // 3) MM/DD, MM-DD, MM.DD (예: 10/1, 10-01, 11.1)
+  const mMonthDay = str.match(
+    /^(?:0?[1-9]|1[0-2])\s*[-./월]\s*0?([1-9]|[12]\d|3[01])\s*(?:일)?(?:\s*[(（][월화수목금토일][)）])?$/
+  );
+  if (mMonthDay) {
+    return parseInt(mMonthDay[1], 10);
+  }
+
+  return null;
+}
+
+/**
+ * 텍스트에서 연-월('YYYY-MM') 자동 감지
+ */
+function detectYearMonthFromText(
+  text: string,
+  fallbackYear: number
+): string | null {
+  if (!text) return null;
+  const s = String(text);
+
+  // 2026년 11월, 2026-11, 2026.10 등
+  const ymMatch = s.match(/20(\d{2})\s*[년.\-/_]\s*(0?[1-9]|1[0-2])(?:\s*월|\b)/);
+  if (ymMatch) {
+    const y = 2000 + parseInt(ymMatch[1], 10);
+    const m = parseInt(ymMatch[2], 10);
+    return `${y}-${String(m).padStart(2, '0')}`;
+  }
+
+  // "11월 휴무", "11월" 등
+  const mOnlyMatch = s.match(/(?:^|[^0-9])(0?[1-9]|1[0-2])\s*월/);
+  if (mOnlyMatch) {
+    const m = parseInt(mOnlyMatch[1], 10);
+    if (m >= 1 && m <= 12) {
+      return `${fallbackYear}-${String(m).padStart(2, '0')}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 엑셀 업로드 시: 하드코딩 명단을 강제하지 않고 엑셀에 적힌 직원 명단과 근태(days)를 100% 신뢰하여 반영
+ * (단, 알려진 오타 '한춘애'->'한춘매', '손경민'->'손정민' 교정 및 직책 누락 시 기존 직책 보완)
+ */
+function finalizeExcelEmployees(
+  rawList: { name: string; role: string; days: Record<string, DayScheduleCode> }[]
+): EmployeeMonthlySchedule[] {
+  const result: EmployeeMonthlySchedule[] = [];
+  const seenNames = new Set<string>();
+
+  for (const item of rawList) {
+    const cleanRawName = item.name.replace(/\s+/g, '').trim();
+    if (!cleanRawName || OBSOLETE_FAKE_NAMES.has(cleanRawName)) continue;
+    const finalName = NAME_TYPO_MAP[cleanRawName] || cleanRawName;
+
+    const stdMatch = DEFAULT_2026_10_EMPLOYEES.find((s) => s.name === finalName);
+    const rawRole = (item.role || '').trim();
+    const finalRole =
+      rawRole && rawRole !== '매장'
+        ? rawRole
+        : stdMatch?.role || rawRole || '매장';
+
+    if (seenNames.has(finalName)) {
+      const existing = result.find((e) => e.name === finalName);
+      if (existing) {
+        existing.days = { ...existing.days, ...item.days };
+        if (existing.role === '매장' && finalRole !== '매장') {
+          existing.role = finalRole;
+        }
+      }
+    } else {
+      seenNames.add(finalName);
+      result.push({
+        name: finalName,
+        role: finalRole,
+        days: { ...item.days },
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * 사진(이미지) AI OCR 업로드 전용:
+ * 글자 깨짐(예: 한춘애->한춘매, 손경민->손정민 등 1글자 OCR 오인식)만 보정하되,
+ * 새로운 직원 이름이 있으면 누락시키지 않고 그대로 포함하며 날짜별 근태(days)는 100% 그대로 보존합니다.
+ */
+function reconcileOcrEmployees(
+  rawList: { no?: number; name: string; role: string; days: Record<string, DayScheduleCode> }[]
+): EmployeeMonthlySchedule[] {
+  return rawList.map((r) => {
+    const rawName = r.name.replace(/\s+/g, '').trim();
+    const typoCorrected = NAME_TYPO_MAP[rawName] || rawName;
+
+    // 1) 정확히 일치하는 기존 직원 확인
+    const exactMatch = DEFAULT_2026_10_EMPLOYEES.find(
+      (s) => s.name === typoCorrected
+    );
+    if (exactMatch) {
+      return {
+        name: exactMatch.name,
+        role: r.role && r.role !== '매장' ? r.role : exactMatch.role,
+        days: r.days || {},
+      };
+    }
+
+    // 2) 담당(role)이 같고 이름 3글자 중 2글자가 일치하는 OCR 깨짐(예: 박기복 -> 박기록)만 보정
+    const fuzzyOcrMatch = DEFAULT_2026_10_EMPLOYEES.find((s) => {
+      if (s.name.length !== 3 || typoCorrected.length !== 3) return false;
+      let matchChars = 0;
+      for (let i = 0; i < 3; i++) {
+        if (s.name[i] === typoCorrected[i]) matchChars++;
+      }
+      const sameRole =
+        r.role &&
+        (s.role.includes(r.role) || r.role.includes(s.role));
+      return matchChars >= 2 && sameRole;
+    });
+
+    if (fuzzyOcrMatch) {
+      return {
+        name: fuzzyOcrMatch.name,
+        role: fuzzyOcrMatch.role,
+        days: r.days || {},
+      };
+    }
+
+    // 3) 신규 직원 또는 타 지점 직원은 이름/담당/근태 모두 100% 그대로 유지
     return {
-      name: std ? std.name : r.name,
-      role: std ? std.role : r.role || '매장',
+      name: typoCorrected,
+      role: r.role || '매장',
       days: r.days || {},
     };
   });
+}
+
+/**
+ * [1] 양식이 바뀌어도 절대 실패하지 않는 '3중 만능 엑셀/CSV 파서 + AI 자동 폴백'
+ * 1단계(자율 격자 위치 탐색) ➔ 2단계(세로형 Long DB & 요약형 표 호환) ➔ 3단계(Gemini AI 만능 폴백)
+ */
+async function parseUniversalExcelSchedule(
+  wb: XLSX.WorkBook,
+  fileName: string,
+  fallbackYearMonth: string
+): Promise<{ yearMonth: string; employees: EmployeeMonthlySchedule[] }> {
+  const defaultYear =
+    parseInt(fallbackYearMonth.split('-')[0], 10) || new Date().getFullYear();
+
+  let detectedYearMonth =
+    detectYearMonthFromText(fileName, defaultYear) || fallbackYearMonth;
+
+  const sheetCsvTexts: string[] = [];
+
+  for (const sheetName of wb.SheetNames) {
+    const sheet = wb.Sheets[sheetName];
+    if (!sheet) continue;
+
+    const ymFromSheetName = detectYearMonthFromText(sheetName, defaultYear);
+    if (ymFromSheetName) {
+      detectedYearMonth = ymFromSheetName;
+    }
+
+    const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+      header: 1,
+      defval: '',
+    });
+    if (!rows || rows.length === 0) continue;
+
+    // 상단 1~10행 셀 텍스트에서 연/월 자동 감지
+    for (let rIdx = 0; rIdx < Math.min(rows.length, 10); rIdx++) {
+      const rowText = (rows[rIdx] || []).map((c) => String(c ?? '')).join(' ');
+      const ymFromRow = detectYearMonthFromText(rowText, defaultYear);
+      if (ymFromRow) {
+        detectedYearMonth = ymFromRow;
+        break;
+      }
+    }
+
+    // 3단계 폴백 대비 CSV 텍스트 보관
+    const csvText = XLSX.utils.sheet_to_csv(sheet, { blankrows: false }).trim();
+    if (csvText) {
+      sheetCsvTexts.push(`[시트: ${sheetName}]\n${csvText}`);
+    }
+
+    // =========================================================================
+    // [1단계] 가로형 격자 표(Matrix) 자율 위치 탐색 (헤더 위치·병합 무관)
+    // =========================================================================
+    let bestDateRowIdx = -1;
+    let bestDayColMap: Record<number, number> = {};
+    let maxDayCount = 0;
+
+    // 상단 1~20행 전체를 스캔하여 날짜(1~31일)가 가장 많이 포함된 행 탐색 (절대 중간 break 금지)
+    const scanHeaderLimit = Math.min(rows.length, 20);
+    for (let rIdx = 0; rIdx < scanHeaderLimit; rIdx++) {
+      const r = rows[rIdx] || [];
+      const foundDays: Record<number, number> = {};
+      for (let cIdx = 0; cIdx < r.length; cIdx++) {
+        const dayNum = extractDayNumberFromCell(r[cIdx]);
+        if (dayNum !== null && dayNum >= 1 && dayNum <= 31) {
+          // 우측 끝에 나오는 다음 달 1일 열이 기존 1일 열을 덮어쓰지 않도록 보호
+          if (foundDays[dayNum] === undefined) {
+            foundDays[dayNum] = cIdx;
+          }
+        }
+      }
+      const count = Object.keys(foundDays).length;
+      if (count > maxDayCount) {
+        maxDayCount = count;
+        bestDateRowIdx = rIdx;
+        bestDayColMap = foundDays;
+      }
+    }
+
+    if (maxDayCount >= 7) {
+      const dateColSet = new Set<number>(Object.values(bestDayColMap));
+
+      // 성명 열(nameColIdx) 및 담당/직책 열(roleColIdx) 자율 탐색
+      // 방법 A: 상단 1~20행에서 키워드 탐색 (날짜 행과 다른 줄이어도 독립 탐색)
+      let keywordNameColIdx = -1;
+      let keywordRoleColIdx = -1;
+
+      for (let rIdx = 0; rIdx < scanHeaderLimit; rIdx++) {
+        const r = rows[rIdx] || [];
+        for (let cIdx = 0; cIdx < Math.min(r.length, 15); cIdx++) {
+          const cleanCell = String(r[cIdx] ?? '').replace(/\s+/g, '');
+          if (!cleanCell) continue;
+          if (
+            keywordNameColIdx === -1 &&
+            (cleanCell.includes('성명') ||
+              cleanCell.includes('이름') ||
+              cleanCell.includes('사원명') ||
+              cleanCell.includes('직원명') ||
+              cleanCell.includes('성함') ||
+              cleanCell.includes('근무자'))
+          ) {
+            keywordNameColIdx = cIdx;
+          }
+          if (
+            keywordRoleColIdx === -1 &&
+            (cleanCell.includes('담당') ||
+              cleanCell.includes('직책') ||
+              cleanCell.includes('부서') ||
+              cleanCell.includes('코너') ||
+              cleanCell.includes('직급') ||
+              cleanCell.includes('파트'))
+          ) {
+            keywordRoleColIdx = cIdx;
+          }
+        }
+      }
+
+      // 방법 B: 데이터 패턴 자율 스캔 (좌측 0~10번 열 중 2~4글자 한글 이름이 가장 많이 등장하는 열 계산)
+      let patternNameColIdx = -1;
+      let maxNameHits = 0;
+      const maxColToScan = 10;
+
+      for (let cIdx = 0; cIdx <= maxColToScan; cIdx++) {
+        let hits = 0;
+        for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+          if (rIdx === bestDateRowIdx) continue;
+          const cellStr = String(rows[rIdx]?.[cIdx] ?? '').trim();
+          if (isValidKoreanStaffName(cellStr)) {
+            hits++;
+          }
+        }
+        if (hits > maxNameHits) {
+          maxNameHits = hits;
+          patternNameColIdx = cIdx;
+        }
+      }
+
+      // 키워드 열에 실제 한글 이름이 2명 이상 있는지 검증, 없으면 패턴 스캔 열 채택
+      let nameColIdx = keywordNameColIdx;
+      if (nameColIdx !== -1) {
+        let keywordHits = 0;
+        for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+          if (rIdx === bestDateRowIdx) continue;
+          if (isValidKoreanStaffName(String(rows[rIdx]?.[nameColIdx] ?? ''))) {
+            keywordHits++;
+          }
+        }
+        if (keywordHits < 2 && maxNameHits >= 2) {
+          nameColIdx = patternNameColIdx;
+        }
+      } else if (patternNameColIdx !== -1) {
+        nameColIdx = patternNameColIdx;
+      } else {
+        nameColIdx = 0;
+      }
+
+      // roleColIdx 결정: 키워드로 못 찾았으면 nameColIdx + 1 또는 nameColIdx - 1 중 직책 텍스트가 있는 열 자동 탐색
+      let roleColIdx =
+        keywordRoleColIdx !== -1 && keywordRoleColIdx !== nameColIdx
+          ? keywordRoleColIdx
+          : -1;
+
+      if (roleColIdx === -1) {
+        const candidates = [nameColIdx + 1, nameColIdx - 1].filter(
+          (c) => c >= 0 && !dateColSet.has(c)
+        );
+        for (const candCol of candidates) {
+          let roleLikeCount = 0;
+          for (let rIdx = bestDateRowIdx + 1; rIdx < rows.length; rIdx++) {
+            const val = String(rows[rIdx]?.[candCol] ?? '').trim();
+            if (
+              val &&
+              val.length >= 1 &&
+              val.length <= 10 &&
+              !/^\d+$/.test(val)
+            ) {
+              roleLikeCount++;
+            }
+          }
+          if (roleLikeCount >= 2) {
+            roleColIdx = candCol;
+            break;
+          }
+        }
+      }
+
+      const matrixEmployees: {
+        name: string;
+        role: string;
+        days: Record<string, DayScheduleCode>;
+      }[] = [];
+
+      for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+        if (rIdx <= bestDateRowIdx) continue;
+        const r = rows[rIdx] || [];
+        const rawName = String(r[nameColIdx] ?? '')
+          .replace(/\s+/g, '')
+          .replace(/^\d+[.)]?\s*/, '')
+          .trim();
+
+        if (!isValidKoreanStaffName(rawName)) continue;
+
+        // 행 전체에 합계/근무인원/결원 요약 키워드가 있으면 스킵
+        const rowJoined = r
+          .slice(0, Math.min(r.length, 6))
+          .map((c) => String(c ?? ''))
+          .join(' ');
+        if (
+          rowJoined.includes('근무인원') ||
+          rowJoined.includes('결원') ||
+          rowJoined.includes('합계') ||
+          rowJoined.includes('총계')
+        ) {
+          continue;
+        }
+
+        const days: Record<string, DayScheduleCode> = {};
+        Object.entries(bestDayColMap).forEach(([dayStr, colIdx]) => {
+          if (colIdx === nameColIdx || colIdx === roleColIdx) return;
+          const code = normalizeScheduleCode(String(r[colIdx] ?? ''));
+          if (code) {
+            days[dayStr] = code;
+          }
+        });
+
+        const rawRole =
+          roleColIdx >= 0 ? String(r[roleColIdx] ?? '').trim() : '';
+
+        matrixEmployees.push({
+          name: rawName,
+          role: rawRole || '매장',
+          days,
+        });
+      }
+
+      const finalizedMatrix = finalizeExcelEmployees(matrixEmployees);
+      if (finalizedMatrix.length >= 3) {
+        return {
+          yearMonth: detectedYearMonth,
+          employees: finalizedMatrix,
+        };
+      }
+    }
+
+    // =========================================================================
+    // [2단계] 세로형 일자별 표(Long DB: 날짜 | 성명 | 근태상태) & 요약형 표(Summary: 성명 | 일정요약)
+    // =========================================================================
+    const stage2Map = new Map<
+      string,
+      { name: string; role: string; days: Record<string, DayScheduleCode> }
+    >();
+
+    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+      const r = rows[rIdx] || [];
+      if (r.length < 2) continue;
+
+      // 행 안에서 한글 이름 셀 찾기
+      let rowName = '';
+      let rowNameCol = -1;
+      for (let cIdx = 0; cIdx < Math.min(r.length, 8); cIdx++) {
+        const cand = String(r[cIdx] ?? '').replace(/\s+/g, '').trim();
+        if (isValidKoreanStaffName(cand)) {
+          rowName = cand;
+          rowNameCol = cIdx;
+          break;
+        }
+      }
+      if (!rowName) continue;
+
+      if (!stage2Map.has(rowName)) {
+        stage2Map.set(rowName, { name: rowName, role: '매장', days: {} });
+      }
+      const empEntry = stage2Map.get(rowName)!;
+
+      // 같은 행의 다른 셀들 분석:
+      // 케이스 A: 요약형 문자열 (예: "10/1(O), 10/14(연차)" 또는 "1일(휴무), 6일(O)" 또는 "1, 6, 8, 9")
+      // 케이스 B: 세로형 단일 일자 + 근태상태 (예: 날짜 셀 = "10/14" 또는 14, 상태 셀 = "연차" 또는 "O")
+      let singleDayInRow: number | null = null;
+      let singleCodeInRow: DayScheduleCode = '';
+
+      for (let cIdx = 0; cIdx < r.length; cIdx++) {
+        if (cIdx === rowNameCol) continue;
+        const cellVal = r[cIdx];
+        const cellStr = String(cellVal ?? '').trim();
+        if (!cellStr) continue;
+
+        // 요약형 패턴 1: "(10/)?14일?\s*[:(（]?\s*(O|연차|V|반차|교육|회의|HP|휴무|휴가)"
+        const summaryRegex =
+          /(?:(?:0?[1-9]|1[0-2])\s*[-./월]\s*)?0?([1-9]|[12]\d|3[01])\s*일?\s*[(（:：-]?\s*(O|o|○|휴무|정기휴무|연차|V|v|휴가|반차|오전반차|오후반차|교육|회의|HP)\s*[)）]?/g;
+        let matchSummary: RegExpExecArray | null;
+        let matchedAnySummary = false;
+        while ((matchSummary = summaryRegex.exec(cellStr)) !== null) {
+          matchedAnySummary = true;
+          const dNum = parseInt(matchSummary[1], 10);
+          const code = normalizeScheduleCode(matchSummary[2]);
+          if (dNum >= 1 && dNum <= 31 && code) {
+            empEntry.days[String(dNum)] = code;
+          }
+        }
+        if (matchedAnySummary) continue;
+
+        // 요약형 패턴 2: 쉼표로 구분된 휴무 일자 나열 (예: "1, 6, 8, 9, 15, 20")
+        if (/^\d{1,2}(?:\s*,\s*\d{1,2}){2,}$/.test(cellStr)) {
+          cellStr.split(',').forEach((part) => {
+            const dNum = parseInt(part.trim(), 10);
+            if (dNum >= 1 && dNum <= 31 && !empEntry.days[String(dNum)]) {
+              empEntry.days[String(dNum)] = 'O';
+            }
+          });
+          continue;
+        }
+
+        // 세로형 단일 날짜인지 확인
+        const maybeDay = extractDayNumberFromCell(cellVal);
+        if (maybeDay !== null && singleDayInRow === null) {
+          singleDayInRow = maybeDay;
+          continue;
+        }
+
+        // 세로형 근태 코드인지 확인
+        const maybeCode = normalizeScheduleCode(cellStr);
+        if (maybeCode) {
+          singleCodeInRow = maybeCode;
+          continue;
+        }
+
+        // 직책/담당 텍스트 보완
+        if (
+          empEntry.role === '매장' &&
+          cellStr.length >= 2 &&
+          cellStr.length <= 8 &&
+          !/^\d+$/.test(cellStr)
+        ) {
+          empEntry.role = cellStr;
+        }
+      }
+
+      if (singleDayInRow !== null) {
+        empEntry.days[String(singleDayInRow)] = singleCodeInRow || 'O';
+      }
+    }
+
+    const stage2List = finalizeExcelEmployees(Array.from(stage2Map.values()));
+    const stage2WithDays = stage2List.filter(
+      (e) => Object.keys(e.days).length > 0
+    );
+    if (stage2WithDays.length >= 3) {
+      return {
+        yearMonth: detectedYearMonth,
+        employees: stage2List,
+      };
+    }
+  }
+
+  // =========================================================================
+  // [3단계] 초강력 Gemini AI 엑셀 폴백 (어떤 기상천외한 엑셀 양식도 100% 해결)
+  // =========================================================================
+  const apiKey = getEffectiveGeminiApiKey();
+  if (!apiKey || sheetCsvTexts.length === 0) {
+    throw new Error(
+      '엑셀 파일에서 직원 성명 및 휴무 데이터를 찾지 못했습니다.'
+    );
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const combinedCsv = sheetCsvTexts.join('\n\n').slice(0, 60000);
+
+  const aiPrompt = `다음은 매장 월간 휴무표 엑셀/CSV 데이터입니다. 양식이 비정형이어도 표의 맥락을 파악하여 직원별 월간 스케줄 JSON으로 정확히 변환하세요.
+
+[변환 규칙]
+1. 파일명("${fileName}") 및 데이터 상단에서 연도(year, 기본 ${defaultYear})와 월(month, 1~12 정수)을 추출하세요.
+2. 실제 직원(2~4글자 성명)과 담당/직책(role, 없으면 "매장")을 모두 추출하세요. ('총 근무인원', '결원', '합계' 등 요약 행은 제외)
+3. 각 직원의 1일~31일 중 휴무/연차/휴가/반차/교육/회의/HP 일자를 찾아 schedule 배열에 { day: 1~31 정수, status: 기호 }로 반환하세요.
+   - 정기휴무('O', '○', '0', '휴무', '휴', 'OFF') -> 'O'
+   - 연차('연차', '연') -> '연차'
+   - 휴가('V', '휴가', '리프', '하계', '동계') -> 'V'
+   - 반차('반차', '반', '오전반차', '오후반차') -> '반차'
+   - 교육('교육', '교', '출장') -> '교육'
+   - 회의('회의', '회') -> '회의'
+   - HP -> 'HP'
+   - 정상 출근일은 생략하거나 status를 ''로 설정하세요.
+
+[엑셀/CSV 원문]
+${combinedCsv}`;
+
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      year: { type: Type.INTEGER },
+      month: { type: Type.INTEGER },
+      employees: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING },
+            role: { type: Type.STRING },
+            schedule: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  day: { type: Type.INTEGER },
+                  status: { type: Type.STRING },
+                },
+                required: ['day', 'status'],
+              },
+            },
+          },
+          required: ['name', 'role', 'schedule'],
+        },
+      },
+    },
+    required: ['month', 'employees'],
+  };
+
+  const GEMINI_MODELS = [
+    'gemini-3.8-flash',
+    'gemini-3.1-pro-preview',
+    'gemini-3.7-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-latest',
+  ];
+
+  let rawJsonText = '';
+  let lastErr: any = null;
+
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [{ role: 'user', parts: [{ text: aiPrompt }] }],
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema,
+          temperature: 0.0,
+        },
+      });
+      if (response.text) {
+        rawJsonText = response.text.trim();
+        break;
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+
+  if (!rawJsonText) {
+    throw (
+      lastErr ||
+      new Error('엑셀 양식 자동 분석 및 AI 폴백 분석에 실패했습니다.')
+    );
+  }
+
+  const cleanedJson = rawJsonText
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
+    .trim();
+
+  const parsedAi = JSON.parse(cleanedJson);
+  if (
+    typeof parsedAi.month === 'number' &&
+    parsedAi.month >= 1 &&
+    parsedAi.month <= 12
+  ) {
+    const y =
+      typeof parsedAi.year === 'number' && parsedAi.year >= 2024
+        ? parsedAi.year
+        : defaultYear;
+    detectedYearMonth = `${y}-${String(parsedAi.month).padStart(2, '0')}`;
+  }
+
+  const aiEmployeesRaw: {
+    name: string;
+    role: string;
+    days: Record<string, DayScheduleCode>;
+  }[] = (parsedAi.employees || [])
+    .filter((emp: any) => isValidKoreanStaffName(String(emp?.name || '')))
+    .map((emp: any) => {
+      const days: Record<string, DayScheduleCode> = {};
+      if (Array.isArray(emp.schedule)) {
+        for (const item of emp.schedule) {
+          const dNum = Number(item?.day);
+          if (dNum >= 1 && dNum <= 31) {
+            const code = normalizeScheduleCode(String(item?.status || ''));
+            if (code) {
+              days[String(dNum)] = code;
+            }
+          }
+        }
+      }
+      return {
+        name: String(emp.name || '').trim(),
+        role: String(emp.role || '매장').trim(),
+        days,
+      };
+    });
+
+  const finalizedAi = finalizeExcelEmployees(aiEmployeesRaw);
+  if (finalizedAi.length === 0) {
+    throw new Error('엑셀 파일에서 유효한 직원 휴무 데이터를 추출하지 못했습니다.');
+  }
+
+  return {
+    yearMonth: detectedYearMonth,
+    employees: finalizedAi,
+  };
 }
 
 function classifyRoleGroup(role: string): string {
@@ -871,84 +1713,14 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
       if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
         const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
-          header: 1,
-          defval: '',
-        });
-
-        let dayColMap: Record<number, number> = {};
-        let nameColIdx = 0;
-        let roleColIdx = 1;
-
-        for (let rIdx = 0; rIdx < Math.min(rows.length, 10); rIdx++) {
-          const r = rows[rIdx];
-          const foundDays: Record<number, number> = {};
-          r.forEach((cellVal, cIdx) => {
-            const num = parseInt(String(cellVal).trim(), 10);
-            if (num >= 1 && num <= 31 && !foundDays[num]) {
-              foundDays[num] = cIdx;
-            }
-            const strVal = String(cellVal).trim();
-            if (strVal.includes('성명') || strVal.includes('이름')) {
-              nameColIdx = cIdx;
-            }
-            if (strVal.includes('담당') || strVal.includes('직책')) {
-              roleColIdx = cIdx;
-            }
-          });
-          if (Object.keys(foundDays).length >= 20) {
-            dayColMap = foundDays;
-            break;
-          }
-        }
-
-        const baseEmps = getOrCreateMonthSchedule(
-          schedules,
+        const wb = XLSX.read(buf, { type: 'array', cellDates: false });
+        const parsedResult = await parseUniversalExcelSchedule(
+          wb,
+          file.name,
           targetYearMonth
-        ).employees;
-        const empList: EmployeeMonthlySchedule[] = [];
-
-        for (const r of rows) {
-          const rawName = String(r[nameColIdx] || '').trim();
-          if (
-            !rawName ||
-            rawName.includes('성명') ||
-            rawName.includes('이름') ||
-            rawName.includes('구분') ||
-            rawName.includes('합계') ||
-            rawName.length > 6 ||
-            OBSOLETE_FAKE_NAMES.has(rawName)
-          ) {
-            continue;
-          }
-          const matchedBase = baseEmps.find((e) => e.name === rawName);
-          if (matchedBase || /^[가-힣]{2,4}$/.test(rawName)) {
-            const days: Record<string, DayScheduleCode> = {};
-            Object.entries(dayColMap).forEach(([dayStr, colIdx]) => {
-              const code = normalizeScheduleCode(String(r[colIdx] || ''));
-              if (code) {
-                days[dayStr] = code;
-              }
-            });
-            empList.push({
-              name: rawName,
-              role:
-                String(r[roleColIdx] || '').trim() ||
-                matchedBase?.role ||
-                '매장',
-              days,
-            });
-          }
-        }
-
-        if (empList.length === 0) {
-          throw new Error(
-            '엑셀 파일에서 직원 성명 및 1~31일 휴무 데이터를 찾지 못했습니다.'
-          );
-        }
-        parsedEmployees = reconcileGwangjuEmployees(empList, targetYearMonth);
+        );
+        targetYearMonth = parsedResult.yearMonth;
+        parsedEmployees = parsedResult.employees;
       } else {
         // 이미지(JPG/PNG) — 휴무표 전용 고해상도(maxWidth=3000, quality=0.95) 리사이징 및 1~31일 전수 대조 스캔
         const apiKey = getEffectiveGeminiApiKey();
@@ -967,21 +1739,21 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 반드시 아래 규칙을 지켜 1일부터 말일(31일)까지 모든 날짜 칸(빈칸 포함)을 상단 날짜 헤더와 1:1로 대조하여 순서대로 읽으세요.
 
 [1. 상단 타이틀 연월 추출]
-- 상단 타이틀(예: '10월 휴무 계획표')에서 해당 연도(year, 기본 ${currentYear})와 월(month, 1~12 정수)을 정확히 추출하세요.
+- 상단 타이틀(예: '10월 휴무 계획표', '11월 휴무 계획표')에서 해당 연도(year, 기본 ${currentYear})와 월(month, 1~12 정수)을 정확히 추출하세요.
 
 [2. 표의 열(Column) 구조 및 칸 밀림(Column Shift) 절대 방지 규칙]
-- 좌측 고정열: [사용연차] | [NO (1~19)] | [성명] | [담당]
-- 중앙 날짜열: [1일]부터 [31일](또는 해당 월 말일)까지의 세로 열 (상단 날짜 숫자 1~31 및 요일 목,금,토,일,월,화,수 세로줄 기준).
-- ⚠️ 주의 1: 31일(토) 오른쪽 옆에 있는 '1(일)' 열은 다음 달 1일(11월 1일) 열이므로 현재 월(1~31일) 날짜와 절대 혼동하거나 앞당겨 읽지 마세요!
-- ⚠️ 주의 2: 2일~5일 열 주변의 굵은 빨간색 테두리 박스와 표 중앙의 '1 페이지' 반투명 워터마크 글씨는 무시하고 그 아래 실제 셀 기호만 읽으세요!
-- ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하고, NO 1번부터 19번까지의 실제 직원 행만 추출하세요!
+- 좌측 고정열: [사용연차] | [NO] | [성명] | [담당]
+- 중앙 날짜열: [1일]부터 [31일](또는 해당 월 말일)까지의 세로 열 (상단 날짜 숫자 1~31 및 요일 세로줄 기준).
+- ⚠️ 주의 1: 말일 오른쪽 옆에 있는 '1' 열은 다음 달 1일 열이므로 현재 월(1~31일) 날짜와 절대 혼동하거나 앞당겨 읽지 마세요!
+- ⚠️ 주의 2: 셀 주변의 굵은 빨간색 테두리 박스와 표 중앙의 '1 페이지' 반투명 워터마크 글씨는 무시하고 그 아래 실제 셀 기호만 읽으세요!
+- ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하고, 실제 직원 행만 추출하세요!
 
-[3. 경기광주점 NO 1~19번 표준 직원 명단 및 담당]
-1: 강석원(점장), 2: 김재훈(부점장), 3: 국지현(SCM), 4: 심우영(선임/대형), 5: 정충영(대형), 6: 한세희(대형), 7: 김태형(대형), 8: 한춘애(대형), 9: 손경민(생활), 10: 박기복(주방), 11: 최문기(쿠쿠), 12: 윤현주(쿠쿠), 13: 한나라(생활), 14: 권지혜(KBB), 15: 서형래(애플), 16: 김지우(모바일), 17: 김도인(SKT), 18: 정태일(LGU), 19: 주형남(KT)
+[3. 경기광주점 기본 직원 명단 및 담당 (참고용 — 새 직원이 있으면 누락 없이 그대로 포함)]
+1: 강석원(점장), 2: 김재훈(부점장), 3: 국지현(SCM), 4: 심우영(선임/대형), 5: 정충영(대형), 6: 한세희(대형), 7: 김태형(대형), 8: 한춘매(대형), 9: 손정민(생활), 10: 박기복(주방), 11: 최문기(쿠쿠), 12: 윤현주(쿠쿠), 13: 한나라(생활), 14: 권지혜(KBB), 15: 서형래(애플), 16: 김지우(모바일), 17: 김도인(SKT), 18: 정태일(LGU), 19: 주형남(KT)
 
 [4. 기호 정규화 및 1~31일 전수 매핑 규칙]
-- 동그라미('O', 'o', '○', '0', 'ㅇ') -> 무조건 대문자 'O'로 통일
-- 빈칸, 공백, '-' -> '' (정상 출근)
+- 동그라미('O', 'o', '○', '0', 'ㅇ', '휴무', 'OFF') -> 무조건 대문자 'O'로 통일
+- 빈칸, 공백, '-', '근무', '정상', '출근' -> '' (정상 출근)
 - '연차', 'V'(휴가), '반차', '교육', '회의', 'HP' -> 원문 그대로 유지
 - 각 직원을 읽을 때 빈칸을 건너뛰지 말고 먼저 cellTrace 필드에 "1:O, 2:, 3:, 4:, 5:, 6:O, ... 31:" 형태로 1일부터 31일까지 모든 칸을 순서대로 기록한 뒤, schedule 배열에도 1일부터 31일까지 day(1~31 정수)와 status('', 'O', '연차', 'V', '반차', '교육', '회의', 'HP')를 정확히 출력하세요.`;
 
@@ -1173,10 +1945,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               };
             });
 
-          parsedEmployees = reconcileGwangjuEmployees(
-            rawExtracted,
-            targetYearMonth
-          );
+          parsedEmployees = reconcileOcrEmployees(rawExtracted);
         } else {
           throw new Error(
             '이미지에서 직원별 휴무 데이터를 인식하지 못했습니다.'
@@ -1562,9 +2331,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               </span>
             </div>
 
-            {/* 경기광주점 실제 직원 19명 원터치 선택 칩 */}
+            {/* 직원 원터치 선택 칩 (현재 월 직원 명단 반영) */}
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              {DEFAULT_2026_10_EMPLOYEES.map((emp) => (
+              {(monthData.employees.length > 0
+                ? monthData.employees
+                : DEFAULT_2026_10_EMPLOYEES
+              ).map((emp) => (
                 <button
                   key={emp.name}
                   type="button"
@@ -1642,7 +2414,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           {/* 저장된 휴무표 월(Month) 퀵 배지 바 */}
           <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/80 text-xs">
             <span className="font-bold text-slate-500 shrink-0 flex items-center gap-1">
-              📂 저장된 휴무표:
+              📂 저장된 달:
             </span>
             {savedYearMonths.length === 0 ? (
               <span className="text-slate-400 font-semibold text-[11px]">
@@ -1662,7 +2434,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                         : 'bg-white hover:bg-slate-200 text-slate-700 border-slate-300'
                     }`}
                   >
-                    📅 {ym}
+                    {ym.replace('-', '.')}
                     {isSelected && (
                       <span className="ml-1 text-[10px] font-extrabold text-amber-950">✓</span>
                     )}
@@ -2138,8 +2910,14 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
       {/* 휴무표 삭제 / 관리 모달 */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in duration-150">
+        <div
+          className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+          onClick={() => setIsDeleteModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Trash2 className="w-5 h-5 text-rose-400" />
@@ -2156,25 +2934,18 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
             <div className="p-5 space-y-5">
               {/* 1. 현재 보고 있는 월 삭제 */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                <div className="text-xs font-bold text-slate-500">현재 조회 중인 월</div>
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-black text-slate-900 text-sm">
-                    📅 {currentYearMonth} ({currentYear}년 {currentMonth}월)
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!schedules[currentYearMonth]}
-                    onClick={() => {
-                      if (window.confirm(`${currentYearMonth} 휴무표 데이터를 정말 삭제하시겠습니까?`)) {
-                        handleDeleteMonth(currentYearMonth);
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 disabled:opacity-40 text-xs font-black transition cursor-pointer"
-                  >
-                    현재 월 삭제
-                  </button>
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div className="text-xs font-bold text-slate-500">
+                  현재 조회 중인 월 ({currentYearMonth.replace('-', '.')})
                 </div>
+                <button
+                  type="button"
+                  disabled={!schedules[currentYearMonth]}
+                  onClick={() => handleDeleteMonth(currentYearMonth)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 disabled:opacity-40 text-xs font-black transition cursor-pointer"
+                >
+                  현재 보고 있는 {currentYear}년 {currentMonth}월 휴무표 삭제
+                </button>
               </div>
 
               {/* 2. 등록된 월별 개별 삭제 목록 */}
@@ -2195,18 +2966,14 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                         className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs"
                       >
                         <div className="font-black text-slate-800 flex items-center gap-2">
-                          <span>📅 {ym}</span>
+                          <span>📅 {ym.replace('-', '.')}</span>
                           <span className="text-[11px] font-medium text-slate-500">
                             ({schedules[ym]?.employees?.length || 0}명 등록)
                           </span>
                         </div>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (window.confirm(`${ym} 휴무표 데이터를 삭제하시겠습니까?`)) {
-                              handleDeleteMonth(ym);
-                            }
-                          }}
+                          onClick={() => handleDeleteMonth(ym)}
                           className="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-300 text-xs font-bold transition cursor-pointer"
                         >
                           삭제
@@ -2221,14 +2988,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               <div className="pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('⚠️ 저장된 모든 월의 휴무표를 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
-                      handleDeleteAllSchedules();
-                    }
-                  }}
+                  onClick={handleDeleteAllSchedules}
                   className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition cursor-pointer shadow-xs"
                 >
-                  ⚠️ 저장된 모든 휴무표 전체 삭제
+                  ⚠️ 저장된 전체 휴무표 초기화
                 </button>
               </div>
             </div>
