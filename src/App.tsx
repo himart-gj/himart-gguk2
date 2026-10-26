@@ -18,6 +18,7 @@ import { CareTableView } from './components/CareTableView';
 import { LottePlanCalcView } from './components/LottePlanCalcView';
 import { AllCareGuideView } from './components/AllCareGuideView';
 import { CardInstallmentModal } from './components/CardInstallmentModal';
+import { QuickCenterModal } from './components/QuickCenterModal';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
@@ -179,6 +180,7 @@ export function App() {
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState<boolean>(false);
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] =
     useState<boolean>(false);
+  const [isQuickCenterOpen, setIsQuickCenterOpen] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -193,6 +195,7 @@ export function App() {
     isSaveToCrmOpen,
     isInstallGuideOpen,
     isInstallmentModalOpen,
+    isQuickCenterOpen,
     isMenuOpen,
   });
 
@@ -202,6 +205,7 @@ export function App() {
       isSaveToCrmOpen,
       isInstallGuideOpen,
       isInstallmentModalOpen,
+      isQuickCenterOpen,
       isMenuOpen,
     };
   }, [
@@ -209,6 +213,7 @@ export function App() {
     isSaveToCrmOpen,
     isInstallGuideOpen,
     isInstallmentModalOpen,
+    isQuickCenterOpen,
     isMenuOpen,
   ]);
 
@@ -251,6 +256,10 @@ export function App() {
       }
       if (current.isInstallmentModalOpen) {
         setIsInstallmentModalOpen(false);
+        return;
+      }
+      if (current.isQuickCenterOpen) {
+        setIsQuickCenterOpen(false);
         return;
       }
       if (current.isSaveToCrmOpen) {
@@ -902,7 +911,16 @@ export function App() {
             <span>💳 무이자 할부</span>
           </button>
 
-          <span className="hidden xs:inline-block sm:inline-block px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
+          <button
+            type="button"
+            onClick={() => setIsQuickCenterOpen(true)}
+            title="제휴카드 발급 링크(내 사번 연동) 및 가전 A/S 센터 안내"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 bg-emerald-400 hover:bg-emerald-300 text-slate-950 border border-emerald-300 shadow-xs transition cursor-pointer"
+          >
+            <span>📞 AS · 카드발급</span>
+          </button>
+
+          <span className="hidden md:inline-block px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
             {currentScreenBadgeLabel}
           </span>
         </div>
@@ -1432,6 +1450,12 @@ export function App() {
       <CardInstallmentModal
         isOpen={isInstallmentModalOpen}
         onClose={() => setIsInstallmentModalOpen(false)}
+      />
+
+      {/* ==================== 제휴카드 발급 링크 & 가전 A/S 센터 통합 모달 ==================== */}
+      <QuickCenterModal
+        isOpen={isQuickCenterOpen}
+        onClose={() => setIsQuickCenterOpen(false)}
       />
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
