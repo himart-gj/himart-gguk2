@@ -5,11 +5,9 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
-  Edit3,
   Loader2,
   RotateCcw,
   Save,
-  Settings,
   Table2,
   Upload,
   UserCheck,
@@ -22,8 +20,30 @@ import {
 } from '../utils/aiImageParser';
 
 export const USER_NAME_STORAGE_KEY = 'himart_gj_user_name';
-export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v1';
+export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v2';
 export const SCHEDULE_UPDATED_EVENT = 'himart_gj_schedule_updated';
+
+const OBSOLETE_FAKE_NAMES = new Set([
+  '이현구',
+  '박정우',
+  '정아름',
+  '최윤호',
+  '한정우',
+  '권태영',
+  '조시형',
+  '오현실',
+  '문지선',
+  '박경진',
+  '백희진',
+  '김란희',
+  '이재성',
+  '이승환',
+  '심지혜',
+  '지상현',
+  '유현승',
+  '조민혁',
+  '노재성',
+]);
 
 export type DayScheduleCode =
   | '' // 정상 출근
@@ -55,205 +75,345 @@ export function isOffDayCode(code?: string): boolean {
   return c === 'O' || c === '연차' || c === 'V' || c === '휴무' || c === '휴가';
 }
 
-function buildDaysMap(spec: {
-  O?: number[];
-  연차?: number[];
-  V?: number[];
-  반차?: number[];
-  교육?: number[];
-  회의?: number[];
-  HP?: number[];
-}): Record<string, DayScheduleCode> {
-  const map: Record<string, DayScheduleCode> = {};
-  (spec.O || []).forEach((d) => {
-    map[String(d)] = 'O';
-  });
-  (spec.연차 || []).forEach((d) => {
-    map[String(d)] = '연차';
-  });
-  (spec.V || []).forEach((d) => {
-    map[String(d)] = 'V';
-  });
-  (spec.반차 || []).forEach((d) => {
-    map[String(d)] = '반차';
-  });
-  (spec.교육 || []).forEach((d) => {
-    map[String(d)] = '교육';
-  });
-  (spec.회의 || []).forEach((d) => {
-    map[String(d)] = '회의';
-  });
-  (spec.HP || []).forEach((d) => {
-    map[String(d)] = 'HP';
-  });
-  return map;
-}
-
 export const DEFAULT_2026_10_EMPLOYEES: EmployeeMonthlySchedule[] = [
   {
-    name: '이현구',
-    role: '지점장',
-    days: buildDaysMap({
-      O: [3, 4, 9, 17, 24, 30, 31],
-      연차: [10, 11],
-      V: [18],
-      반차: [2, 23],
-      회의: [7, 13, 16],
-    }),
+    name: '강석원',
+    role: '점장',
+    days: {
+      1: 'O',
+      6: 'O',
+      8: 'O',
+      9: 'O',
+      14: '연차',
+      15: 'O',
+      20: 'O',
+      21: 'O',
+      23: 'O',
+      28: 'O',
+    },
   },
   {
-    name: '박정우',
+    name: '김재훈',
     role: '부점장',
-    days: buildDaysMap({
-      O: [2, 5, 11, 12, 16, 19, 25, 29],
-      연차: [26],
-      V: [20],
-      회의: [6],
-    }),
+    days: {
+      2: '연차',
+      7: 'O',
+      10: 'O',
+      12: 'O',
+      16: 'O',
+      19: 'O',
+      22: 'O',
+      23: '연차',
+      25: 'O',
+      26: 'O',
+      27: '회의',
+      29: 'O',
+      31: 'O',
+    },
   },
   {
-    name: '정아름',
+    name: '국지현',
     role: 'SCM',
-    days: buildDaysMap({
-      O: [3, 4, 9, 10, 11, 17, 18, 25, 31],
-      연차: [7, 14, 21, 22, 28],
-      V: [24],
-      교육: [16],
-    }),
+    days: {
+      1: 'O',
+      5: 'O',
+      6: 'O',
+      11: 'O',
+      13: 'O',
+      14: 'O',
+      17: '연차',
+      21: 'O',
+      26: 'O',
+      28: 'O',
+    },
   },
   {
-    name: '최윤호',
+    name: '심우영',
+    role: '선임/대형',
+    days: {
+      1: 'O',
+      7: 'O',
+      8: 'O',
+      13: 'O',
+      16: 'O',
+      19: 'V',
+      20: 'V',
+      21: 'V',
+      22: 'O',
+      23: 'O',
+      27: 'O',
+      30: 'O',
+    },
+  },
+  {
+    name: '정충영',
     role: '대형',
-    days: buildDaysMap({
-      O: [1, 6, 7, 15, 22, 26, 27],
-      연차: [21, 28],
-      V: [8],
-    }),
+    days: {
+      2: 'O',
+      5: 'O',
+      7: 'O',
+      8: 'O',
+      12: 'O',
+      15: 'O',
+      19: 'O',
+      22: 'O',
+      26: 'O',
+      27: 'O',
+      29: '연차',
+    },
   },
   {
-    name: '한정우',
+    name: '한세희',
     role: '대형',
-    days: buildDaysMap({
-      O: [5, 8, 12, 13, 19, 27, 29],
-      연차: [6, 14, 20],
-    }),
+    days: {
+      1: 'O',
+      5: 'O',
+      8: 'O',
+      12: 'O',
+      14: 'O',
+      17: 'O',
+      18: '연차',
+      20: 'O',
+      24: 'O',
+      27: 'O',
+      30: 'O',
+    },
   },
   {
-    name: '권태영',
+    name: '김태형',
     role: '대형',
-    days: buildDaysMap({
-      O: [5, 13, 21, 27, 28],
-      연차: [6, 7, 14, 15],
-      V: [20],
-      교육: [22],
-    }),
+    days: {
+      1: 'O',
+      6: 'O',
+      9: 'O',
+      13: 'O',
+      15: 'O',
+      19: 'O',
+      22: 'O',
+      26: 'O',
+      28: 'O',
+      29: 'O',
+    },
   },
   {
-    name: '조시형',
-    role: '생활/빌트인',
-    days: buildDaysMap({
-      O: [6, 12, 16, 19, 20, 27, 29],
-      연차: [1, 13],
-      V: [5],
-    }),
+    name: '한춘애',
+    role: '대형',
+    days: {
+      1: 'O',
+      5: 'O',
+      7: 'O',
+      9: 'O',
+      12: 'O',
+      16: 'O',
+      20: 'O',
+      21: '연차',
+      23: '연차',
+      27: 'O',
+      28: 'O',
+      29: 'O',
+    },
   },
   {
-    name: '오현실',
-    role: '생활/주방',
-    days: buildDaysMap({
-      O: [6, 7, 12, 19, 20, 28],
-      연차: [13, 21, 26],
-      V: [27],
-    }),
+    name: '손경민',
+    role: '생활',
+    days: {
+      2: '연차',
+      6: 'O',
+      9: 'O',
+      13: 'O',
+      16: 'O',
+      19: 'O',
+      21: 'O',
+      24: 'O',
+      26: 'O',
+      29: 'V',
+      30: 'V',
+      31: 'V',
+    },
   },
   {
-    name: '문지선',
-    role: '주방/계절',
-    days: buildDaysMap({
-      O: [1, 7, 8, 13, 14, 21, 26],
-      연차: [15, 22],
-      V: [6],
-      교육: [27],
-    }),
+    name: '박기복',
+    role: '주방',
+    days: {
+      1: '연차',
+      4: '연차',
+      5: 'V',
+      6: 'V',
+      7: 'V',
+      8: '연차',
+      10: 'O',
+      13: 'O',
+      15: 'O',
+      17: 'O',
+      20: 'O',
+      23: 'O',
+      25: 'O',
+      27: 'O',
+      31: 'O',
+    },
   },
   {
-    name: '박경진',
+    name: '최문기',
     role: '쿠쿠',
-    days: buildDaysMap({
-      O: [1, 7, 14, 15, 20, 22, 27, 28],
-    }),
+    days: {
+      2: '연차',
+      7: 'O',
+      8: 'O',
+      11: 'O',
+      12: 'O',
+      15: 'O',
+      16: 'O',
+      19: 'O',
+      22: '교육',
+      23: 'O',
+      26: 'O',
+      29: 'O',
+    },
   },
   {
-    name: '백희진',
+    name: '윤현주',
     role: '쿠쿠',
-    days: buildDaysMap({
-      O: [2, 6, 8, 13, 16, 19, 21, 29],
-    }),
+    days: {
+      3: 'O',
+      6: 'O',
+      9: 'O',
+      13: 'O',
+      14: 'O',
+      18: 'O',
+      20: '반차',
+      21: 'O',
+      22: '교육',
+      26: 'O',
+      30: 'O',
+    },
   },
   {
-    name: '김란희',
+    name: '한나라',
+    role: '생활',
+    days: {
+      1: 'O',
+      4: 'O',
+      5: 'O',
+      9: 'O',
+      13: 'O',
+      14: 'O',
+      17: 'O',
+      21: 'O',
+      24: 'O',
+      25: 'O',
+      28: 'O',
+      31: 'O',
+    },
+  },
+  {
+    name: '권지혜',
     role: 'KBB',
-    days: buildDaysMap({
-      O: [6, 7, 13, 14, 15, 20, 22, 27],
-      연차: [8, 28],
-      HP: [9, 10, 11, 12, 16, 17, 18, 19, 23, 24, 25, 26, 30, 31],
-    }),
+    days: {
+      2: 'O',
+      6: 'O',
+      7: 'O',
+      10: 'O',
+      12: 'O',
+      16: 'O',
+      18: 'O',
+      19: 'O',
+      20: '교육',
+      22: 'O',
+      23: 'O',
+      26: 'O',
+      27: 'V',
+      28: 'V',
+      29: '연차',
+      30: '연차',
+      31: '연차',
+    },
   },
   {
-    name: '이재성',
+    name: '서형래',
     role: '애플',
-    days: buildDaysMap({
-      O: [2, 8, 14, 19, 21, 26, 28],
-      연차: [7, 15],
-      V: [13],
-    }),
+    days: {
+      2: 'O',
+      5: 'O',
+      6: 'O',
+      7: 'HP',
+      9: 'O',
+      12: 'O',
+      15: 'O',
+      16: 'O',
+      17: '반차',
+      20: 'O',
+      23: 'O',
+      26: 'O',
+      27: 'O',
+      30: 'O',
+      31: '연차',
+    },
   },
   {
-    name: '이승환',
+    name: '김지우',
     role: '모바일',
-    days: buildDaysMap({
-      O: [6, 12, 15, 22, 26, 27, 29],
-      연차: [7, 20],
-      V: [13],
-    }),
+    days: {
+      1: 'O',
+      6: 'O',
+      7: 'O',
+      8: 'O',
+      11: '연차',
+      13: 'O',
+      14: 'O',
+      18: '연차',
+      19: '연차',
+      20: 'O',
+      21: 'O',
+      24: 'O',
+      28: 'O',
+      29: 'O',
+    },
   },
   {
-    name: '심지혜',
-    role: '모바일',
-    days: buildDaysMap({
-      O: [5, 6, 13, 14, 19, 20, 27, 28],
-      연차: [1, 8],
-    }),
+    name: '김도인',
+    role: 'SKT',
+    days: {
+      5: 'O',
+      8: 'O',
+      12: 'O',
+      15: 'O',
+      19: 'O',
+      20: 'O',
+      23: 'O',
+      27: 'O',
+      30: 'O',
+    },
   },
   {
-    name: '지상현',
-    role: '모바일',
-    days: buildDaysMap({
-      O: [1, 2, 16, 23, 29, 30],
-      연차: [7, 8, 15],
-      V: [22],
-    }),
+    name: '정태일',
+    role: 'LGU',
+    days: {
+      1: 'O',
+      6: 'O',
+      7: 'O',
+      13: 'O',
+      14: 'O',
+      21: 'O',
+      22: 'O',
+      25: 'O',
+      28: 'O',
+      29: 'O',
+    },
   },
   {
-    name: '유현승',
-    role: '모바일',
-    days: buildDaysMap({
-      O: [5, 6, 12, 13, 19, 20, 26, 27],
-    }),
-  },
-  {
-    name: '조민혁',
-    role: '통신',
-    days: buildDaysMap({
-      O: [1, 6, 7, 13, 14, 20, 21, 27, 28],
-    }),
-  },
-  {
-    name: '노재성',
-    role: '통신',
-    days: buildDaysMap({
-      O: [6, 7, 13, 14, 20, 21, 27, 28],
-    }),
+    name: '주형남',
+    role: 'KT',
+    days: {
+      2: 'O',
+      9: 'O',
+      12: 'O',
+      15: 'O',
+      16: 'O',
+      23: 'O',
+      26: 'O',
+      27: 'O',
+      30: '연차',
+    },
   },
 ];
 
@@ -265,7 +425,12 @@ export const DEFAULT_2026_10_SCHEDULE: MonthlyScheduleData = {
 
 export function loadSavedUserName(): string {
   try {
-    return localStorage.getItem(USER_NAME_STORAGE_KEY)?.trim() || '';
+    const raw = localStorage.getItem(USER_NAME_STORAGE_KEY)?.trim() || '';
+    if (raw && OBSOLETE_FAKE_NAMES.has(raw)) {
+      localStorage.removeItem(USER_NAME_STORAGE_KEY);
+      return '';
+    }
+    return raw;
   } catch {
     return '';
   }
@@ -287,14 +452,41 @@ export function saveUserName(name: string): void {
 
 export function loadAllSchedules(): SchedulesMap {
   try {
+    // 구버전 가짜 데이터 키 삭제
+    localStorage.removeItem('himart_gj_schedules_v1');
+
     const raw = localStorage.getItem(SCHEDULES_STORAGE_KEY);
     if (!raw) {
-      return { '2026-10': DEFAULT_2026_10_SCHEDULE };
+      const initial: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
+      localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(initial));
+      return initial;
     }
     const parsed = JSON.parse(raw) as SchedulesMap;
     if (!parsed || typeof parsed !== 'object') {
-      return { '2026-10': DEFAULT_2026_10_SCHEDULE };
+      const initial: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
+      localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(initial));
+      return initial;
     }
+
+    // 만약 어떤 월에든 가짜 직원 이름(이현구, 권태영 등)이 들어있으면 즉시 폐기 후 실제 19명 데이터로 강제 초기화
+    let hasFakeEmployee = false;
+    for (const ymKey of Object.keys(parsed)) {
+      const emps = parsed[ymKey]?.employees;
+      if (
+        Array.isArray(emps) &&
+        emps.some((e) => OBSOLETE_FAKE_NAMES.has((e?.name || '').trim()))
+      ) {
+        hasFakeEmployee = true;
+        break;
+      }
+    }
+
+    if (hasFakeEmployee) {
+      const resetMap: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
+      localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(resetMap));
+      return resetMap;
+    }
+
     if (!parsed['2026-10']) {
       parsed['2026-10'] = DEFAULT_2026_10_SCHEDULE;
     }
@@ -323,7 +515,7 @@ export function getOrCreateMonthSchedule(
   if (yearMonth === '2026-10') {
     return DEFAULT_2026_10_SCHEDULE;
   }
-  // 등록되지 않은 새 월은 직원 19명 명단만 유지하고 일별 휴무는 빈 상태로 생성
+  // 등록되지 않은 새 월은 실제 직원 19명 명단만 유지하고 일별 휴무는 빈 상태로 생성
   return {
     yearMonth,
     updatedAt: '미등록 (사진/엑셀 업로드 또는 셀 클릭으로 입력 가능)',
@@ -350,7 +542,7 @@ function normalizeScheduleCode(raw: string): DayScheduleCode {
 }
 
 function classifyRoleGroup(role: string): string {
-  const r = role.trim();
+  const r = role.trim().toUpperCase();
   if (r.includes('점장') || r.includes('SCM')) return '점장·부점장·SCM';
   if (r.includes('대형')) return '대형';
   if (
@@ -368,7 +560,7 @@ function classifyRoleGroup(role: string): string {
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
-// 2026년 10월 공휴일 (개천절 3, 추석/대체 5~6, 한글날 9)
+// 2026년 10월 공휴일 (개천절 3, 한글날 9)
 const HOLIDAYS_BY_MONTH: Record<string, number[]> = {
   '2026-10': [3, 9],
 };
@@ -378,15 +570,51 @@ interface ScheduleModalProps {
   onClose: () => void;
 }
 
-const DAY_CODE_OPTIONS: { value: DayScheduleCode; label: string; badge: string }[] = [
-  { value: '', label: '🟢 정상 출근 (빈칸)', badge: 'bg-emerald-100 text-emerald-900 border-emerald-300' },
-  { value: 'O', label: '🔴 O (정기 휴무)', badge: 'bg-rose-500 text-white border-rose-600' },
-  { value: '연차', label: '🟠 연차 휴무', badge: 'bg-amber-500 text-slate-950 border-amber-600' },
-  { value: 'V', label: '🟣 V (휴가)', badge: 'bg-purple-600 text-white border-purple-700' },
-  { value: '반차', label: '🟡 반차', badge: 'bg-yellow-200 text-yellow-950 border-yellow-400' },
-  { value: '교육', label: '🔵 교육', badge: 'bg-sky-500 text-white border-sky-600' },
-  { value: '회의', label: '靛 회의', badge: 'bg-indigo-500 text-white border-indigo-600' },
-  { value: 'HP', label: '⚡ HP 근무', badge: 'bg-teal-100 text-teal-900 border-teal-300' },
+const DAY_CODE_OPTIONS: {
+  value: DayScheduleCode;
+  label: string;
+  badge: string;
+}[] = [
+  {
+    value: '',
+    label: '🟢 정상 출근 (빈칸)',
+    badge: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+  },
+  {
+    value: 'O',
+    label: '🔴 O (정기 휴무)',
+    badge: 'bg-rose-500 text-white border-rose-600',
+  },
+  {
+    value: '연차',
+    label: '🟠 연차 휴무',
+    badge: 'bg-amber-500 text-slate-950 border-amber-600',
+  },
+  {
+    value: 'V',
+    label: '🟣 V (휴가)',
+    badge: 'bg-purple-600 text-white border-purple-700',
+  },
+  {
+    value: '반차',
+    label: '🟡 반차',
+    badge: 'bg-yellow-200 text-yellow-950 border-yellow-400',
+  },
+  {
+    value: '교육',
+    label: '🔵 교육',
+    badge: 'bg-sky-500 text-white border-sky-600',
+  },
+  {
+    value: '회의',
+    label: '🟣 회의',
+    badge: 'bg-indigo-500 text-white border-indigo-600',
+  },
+  {
+    value: 'HP',
+    label: '⚡ HP 근무',
+    badge: 'bg-teal-100 text-teal-900 border-teal-300',
+  },
 ];
 
 export const ScheduleModal: React.FC<ScheduleModalProps> = ({
@@ -574,8 +802,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           defval: '',
         });
 
-        // 날짜 헤더 행(1~31이 들어있는 행) 탐색
-        let dayColMap: Record<number, number> = {}; // day(1~31) -> colIndex
+        let dayColMap: Record<number, number> = {};
         let nameColIdx = 0;
         let roleColIdx = 1;
 
@@ -615,11 +842,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             rawName.includes('이름') ||
             rawName.includes('구분') ||
             rawName.includes('합계') ||
-            rawName.length > 6
+            rawName.length > 6 ||
+            OBSOLETE_FAKE_NAMES.has(rawName)
           ) {
             continue;
           }
-          // 기존 직원 명단 또는 한글 2~4자 이름인지 확인
           const matchedBase = baseEmps.find((e) => e.name === rawName);
           if (matchedBase || /^[가-힣]{2,4}$/.test(rawName)) {
             const days: Record<string, DayScheduleCode> = {};
@@ -647,7 +874,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         }
         parsedEmployees = empList;
       } else {
-        // 이미지(JPG/PNG) — Gemini Vision AI 자동 인식
+        // 이미지(JPG/PNG) — Gemini Vision AI 자동 인식 (4개 모델 순차 폴백)
         const apiKey = getEffectiveGeminiApiKey();
         if (!apiKey) {
           throw new Error(
@@ -655,11 +882,16 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           );
         }
 
-        const { base64Data, mimeType } = await compressImageFile(file);
+        const compressed = await compressImageFile(file);
+        const base64Data = compressed.base64 || compressed.base64Data;
+        const mimeType = compressed.mimeType;
         const ai = new GoogleGenAI({ apiKey });
 
         const prompt = `당신은 롯데하이마트 경기광주점 월간 근무/휴무표 이미지를 정확하게 읽어내는 전문 스케줄 파서입니다.
 이미지에서 연월(YYYY-MM)과 각 직원의 성명(name), 담당(role), 그리고 1일부터 31일까지 표시된 기호를 읽어 순수 JSON으로만 응답하세요. 마크다운 코드블록 없이 JSON만 반환하세요.
+
+경기광주점 주요 직원 명단 참고:
+강석원(점장), 김재훈(부점장), 국지현(SCM), 심우영(선임/대형), 정충영(대형), 한세희(대형), 김태형(대형), 한춘애(대형), 손경민(생활), 박기복(주방), 최문기(쿠쿠), 윤현주(쿠쿠), 한나라(생활), 권지혜(KBB), 서형래(애플), 김지우(모바일), 김도인(SKT), 정태일(LGU), 주형남(KT)
 
 기호 분류 규칙 (출근일 빈칸은 생략하고 아래 기호가 있는 날짜만 days 객체에 기록):
 - "O": O, 휴무, 정기휴무
@@ -675,36 +907,62 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   "yearMonth": "${targetYearMonth}",
   "employees": [
     {
-      "name": "권태영",
-      "role": "대형",
+      "name": "강석원",
+      "role": "점장",
       "days": {
-        "5": "O",
-        "6": "연차",
-        "20": "V"
+        "1": "O",
+        "6": "O",
+        "14": "연차"
       }
     }
   ]
 }`;
 
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { text: prompt },
+        const GEMINI_MODELS = [
+          'gemini-3-flash-preview',
+          'gemini-flash-latest',
+          'gemini-2.5-pro',
+          'gemini-2.5-flash',
+        ];
+
+        let rawText = '';
+        let lastError: any = null;
+
+        for (const modelName of GEMINI_MODELS) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: [
                 {
-                  inlineData: {
-                    mimeType,
-                    data: base64Data,
-                  },
+                  role: 'user',
+                  parts: [
+                    { text: prompt },
+                    {
+                      inlineData: {
+                        mimeType,
+                        data: base64Data,
+                      },
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-        });
+            });
+            if (response.text) {
+              rawText = response.text.trim();
+              break;
+            }
+          } catch (err) {
+            lastError = err;
+          }
+        }
 
-        const rawText = (response.text || '').trim();
+        if (!rawText) {
+          throw (
+            lastError ||
+            new Error('휴무표 이미지 AI 분석에 실패했습니다.')
+          );
+        }
+
         const cleanedJson = rawText
           .replace(/^```json\s*/i, '')
           .replace(/^```\s*/i, '')
@@ -719,25 +977,35 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           targetYearMonth = parsedAi.yearMonth.trim();
         }
 
-        if (Array.isArray(parsedAi.employees) && parsedAi.employees.length > 0) {
-          parsedEmployees = parsedAi.employees.map((emp: any) => {
-            const cleanDays: Record<string, DayScheduleCode> = {};
-            if (emp.days && typeof emp.days === 'object') {
-              Object.entries(emp.days).forEach(([dKey, val]) => {
-                const code = normalizeScheduleCode(String(val || ''));
-                if (code) {
-                  cleanDays[String(parseInt(dKey, 10))] = code;
-                }
-              });
-            }
-            return {
-              name: String(emp.name || '').trim(),
-              role: String(emp.role || '매장').trim(),
-              days: cleanDays,
-            };
-          });
+        if (
+          Array.isArray(parsedAi.employees) &&
+          parsedAi.employees.length > 0
+        ) {
+          parsedEmployees = parsedAi.employees
+            .filter(
+              (emp: any) =>
+                !OBSOLETE_FAKE_NAMES.has(String(emp?.name || '').trim())
+            )
+            .map((emp: any) => {
+              const cleanDays: Record<string, DayScheduleCode> = {};
+              if (emp.days && typeof emp.days === 'object') {
+                Object.entries(emp.days).forEach(([dKey, val]) => {
+                  const code = normalizeScheduleCode(String(val || ''));
+                  if (code) {
+                    cleanDays[String(parseInt(dKey, 10))] = code;
+                  }
+                });
+              }
+              return {
+                name: String(emp.name || '').trim(),
+                role: String(emp.role || '매장').trim(),
+                days: cleanDays,
+              };
+            });
         } else {
-          throw new Error('이미지에서 직원별 휴무 데이터를 인식하지 못했습니다.');
+          throw new Error(
+            '이미지에서 직원별 휴무 데이터를 인식하지 못했습니다.'
+          );
         }
       }
 
@@ -783,7 +1051,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       saveAllSchedules(next);
       setNotice({
         type: 'info',
-        text: '2026년 10월 기본 휴무표 데이터로 복원되었습니다.',
+        text: '2026년 10월 경기광주점 19명 기본 휴무표 데이터로 복원되었습니다.',
       });
     }
   };
@@ -848,7 +1116,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     return { workingByGroup: groups, restingList: resting };
   }, [monthData, currentDay]);
 
-  // 전체 휴무표에서 내 이름이 있으면 최상단에도 고정/하이라이트하기 위한 정렬 목록
+  // 전체 휴무표에서 내 이름이 있으면 최상단 첫 번째 행으로 고정/강조 배치
   const sortedEmployeesForTable = useMemo(() => {
     if (!savedName) return monthData.employees;
     const me = monthData.employees.filter((e) => e.name === savedName);
@@ -865,47 +1133,77 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     selectedDate.getMonth() === todayReal.getMonth() &&
     selectedDate.getDate() === todayReal.getDate();
 
-  const renderCodeBadge = (code: DayScheduleCode, compact = false) => {
+  const renderCodeBadge = (
+    code: DayScheduleCode,
+    compact = false,
+    dayNumberForCell?: number
+  ) => {
     if (!code) return null;
     const baseCls = compact
       ? 'px-1 py-0.5 rounded text-[10px] font-black leading-none inline-block'
       : 'px-2 py-0.5 rounded-md text-xs font-black inline-block';
+
+    let badgeEl: React.ReactNode;
     switch (code) {
       case 'O':
-        return (
+        badgeEl = (
           <span className={`${baseCls} bg-rose-500 text-white`}>O</span>
         );
+        break;
       case '연차':
-        return (
+        badgeEl = (
           <span className={`${baseCls} bg-amber-400 text-slate-950`}>연차</span>
         );
+        break;
       case 'V':
-        return (
+        badgeEl = (
           <span className={`${baseCls} bg-purple-600 text-white`}>V</span>
         );
+        break;
       case '반차':
-        return (
-          <span className={`${baseCls} bg-yellow-200 text-yellow-950 border border-yellow-400`}>
+        badgeEl = (
+          <span
+            className={`${baseCls} bg-yellow-200 text-yellow-950 border border-yellow-400`}
+          >
             반차
           </span>
         );
+        break;
       case '교육':
-        return (
+        badgeEl = (
           <span className={`${baseCls} bg-sky-500 text-white`}>교육</span>
         );
+        break;
       case '회의':
-        return (
+        badgeEl = (
           <span className={`${baseCls} bg-indigo-500 text-white`}>회의</span>
         );
+        break;
       case 'HP':
-        return (
-          <span className={`${baseCls} bg-teal-100 text-teal-900 border border-teal-300`}>
+        badgeEl = (
+          <span
+            className={`${baseCls} bg-teal-100 text-teal-900 border border-teal-300`}
+          >
             HP
           </span>
         );
+        break;
       default:
-        return <span className={baseCls}>{code}</span>;
+        badgeEl = <span className={baseCls}>{code}</span>;
     }
+
+    if (dayNumberForCell !== undefined) {
+      return (
+        <div className="flex flex-col items-center justify-center leading-none gap-0.5">
+          <span className="text-[9px] font-extrabold text-slate-500 leading-none">
+            {dayNumberForCell}일
+          </span>
+          {badgeEl}
+        </div>
+      );
+    }
+
+    return badgeEl;
   };
 
   return (
@@ -1050,7 +1348,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSaveUserName();
                 }}
-                placeholder="내 이름 입력 (예: 권태영)"
+                placeholder="내 이름 입력 (예: 강석원)"
                 className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-600 text-xs sm:text-sm font-black text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-400 w-48 sm:w-60"
               />
               <button
@@ -1062,13 +1360,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 <span>저장</span>
               </button>
               <span className="text-[11px] font-bold text-slate-400">
-                또는 아래 직원 이름을 터치하면 즉시 저장됩니다 👇
+                또는 아래 경기광주점 직원 이름을 터치하면 즉시 저장됩니다 👇
               </span>
             </div>
 
-            {/* 경기광주점 19명 원터치 선택 칩 */}
+            {/* 경기광주점 실제 직원 19명 원터치 선택 칩 */}
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-              {monthData.employees.map((emp) => (
+              {DEFAULT_2026_10_EMPLOYEES.map((emp) => (
                 <button
                   key={emp.name}
                   type="button"
@@ -1407,12 +1705,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             </div>
           )}
 
-          {/* ==================== [뷰 2: 🗓️ 전체 휴무표] ==================== */}
+          {/* ==================== [뷰 2: 🗓️ 전체 휴무표 (상단 날짜 Sticky 고정 + 셀 내부 날짜 표기)] ==================== */}
           {activeView === 'full' && (
             <div className="space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                 <p className="text-xs font-black text-slate-700">
-                  💡 표의 날짜 칸을 터치하면 해당 직원의 휴무/연차/교육을 즉시 수정할 수 있습니다.
+                  💡 아래로 내려도 상단 날짜가 항상 고정됩니다 · 날짜 칸을 터치하면 즉시 상태를 수정할 수 있습니다.
                 </p>
                 <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-black">
                   <span className="px-2 py-0.5 rounded bg-rose-500 text-white">
@@ -1436,15 +1734,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 </div>
               </div>
 
-              <div className="w-full overflow-x-auto rounded-2xl border border-slate-300 bg-white shadow-sm">
-                <table className="w-full border-collapse min-w-[1150px] text-center">
+              {/* 고정 높이 스크롤 래퍼: 상단 날짜 행(sticky top-0)과 좌측 성명 열(sticky left-0) 동시 고정 */}
+              <div className="w-full max-h-[56dvh] overflow-auto relative rounded-2xl border border-slate-300 bg-white shadow-sm">
+                <table className="w-full border-collapse min-w-[1200px] text-center">
                   <thead>
-                    <tr className="bg-slate-900 text-white">
-                      <th className="sticky left-0 z-20 bg-slate-900 w-20 px-2 py-2 text-xs font-black border-r border-b border-slate-700">
-                        성명
-                      </th>
-                      <th className="sticky left-20 z-20 bg-slate-900 w-24 px-2 py-2 text-xs font-black border-r border-b border-slate-700">
-                        담당
+                    <tr className="sticky top-0 z-20 bg-slate-900 text-white shadow-sm">
+                      <th className="sticky top-0 left-0 z-30 bg-slate-900 w-32 min-w-[128px] px-2 py-2 text-xs font-black border-r border-b border-slate-700">
+                        성명 (담당)
                       </th>
                       {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(
                         (d) => {
@@ -1470,10 +1766,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   new Date(currentYear, currentMonth - 1, d)
                                 )
                               }
-                              className={`px-1 py-1.5 border-r border-b border-slate-700 cursor-pointer transition ${
+                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b border-slate-700 cursor-pointer transition ${
                                 isTodayCol
                                   ? 'bg-amber-400 text-slate-950'
-                                  : 'hover:bg-slate-800'
+                                  : 'bg-slate-900 hover:bg-slate-800'
                               }`}
                             >
                               <div
@@ -1487,7 +1783,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                     : 'text-white'
                                 }`}
                               >
-                                {d}
+                                {d}일
                               </div>
                               <div
                                 className={`text-[10px] font-bold ${
@@ -1521,22 +1817,20 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                           }`}
                         >
                           <td
-                            className={`sticky left-0 z-10 px-2 py-2 text-xs font-black border-r border-slate-300 ${
+                            className={`sticky left-0 z-10 px-2 py-2 text-xs font-black border-r border-slate-300 whitespace-nowrap ${
                               isMe
-                                ? 'bg-amber-300 text-slate-950'
+                                ? 'bg-amber-300 text-slate-950 shadow-2xs'
                                 : 'bg-slate-100 text-slate-900'
                             }`}
                           >
-                            {isMe ? `⭐${emp.name}` : emp.name}
-                          </td>
-                          <td
-                            className={`sticky left-20 z-10 px-1.5 py-2 text-[11px] font-bold border-r border-slate-300 truncate ${
-                              isMe
-                                ? 'bg-amber-200 text-slate-900'
-                                : 'bg-slate-50 text-slate-600'
-                            }`}
-                          >
-                            {emp.role}
+                            <span>{isMe ? `⭐${emp.name}` : emp.name}</span>
+                            <span
+                              className={`ml-1 text-[10px] font-bold ${
+                                isMe ? 'text-slate-800' : 'text-slate-500'
+                              }`}
+                            >
+                              ({emp.role})
+                            </span>
                           </td>
                           {Array.from(
                             { length: daysInMonth },
@@ -1558,7 +1852,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                     currentCode: code,
                                   })
                                 }
-                                className={`px-0.5 py-1.5 border-r border-slate-200 last:border-r-0 cursor-pointer transition ${
+                                className={`px-0.5 py-1 border-r border-slate-200 last:border-r-0 cursor-pointer transition align-middle ${
                                   isTodayCol
                                     ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
                                     : isMe
@@ -1566,7 +1860,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                     : ''
                                 }`}
                               >
-                                {renderCodeBadge(code, true)}
+                                {renderCodeBadge(
+                                  code,
+                                  true,
+                                  code ? d : undefined
+                                )}
                               </td>
                             );
                           })}

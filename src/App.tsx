@@ -451,15 +451,15 @@ export function App() {
     if (step === 'home') return '메인 홈';
     if (step === 'crm') return '👑 통합 고객관리';
     if (step === 'input' || step === 'proposal') {
-      if (activeMode === 'general') return '1. 일반구매 견적';
-      if (activeMode === 'subscription') return '2. 구독구매 견적';
-      return '3. 일반+구독 혼합';
+      if (activeMode === 'general') return '1. 일반 견적';
+      if (activeMode === 'subscription') return '2. 구독 견적';
+      return '3. 혼합 견적';
     }
-    if (step === 'lotte-plan') return '4. 롯데 플랜 계산기';
-    if (step === 'pop-printer') return '5. 구독 POP 출력';
-    if (step === 'himobile') return '6. 알뜰폰 개통';
-    if (step === 'insurance') return '7. 보험 청구안내';
-    if (step === 'allcare-guide') return '8. 가전 올케어 안내·등록';
+    if (step === 'lotte-plan') return '4. 플랜 계산기';
+    if (step === 'pop-printer') return '5. 구독 POP';
+    if (step === 'himobile') return '6. 하이 모바일';
+    if (step === 'allcare-guide') return '7. 가전 올케어';
+    if (step === 'insurance') return '8. 보험 청구안내';
     if (step === 'care-table') return '📋 안심케어 조견표';
     return '메인 홈';
   }, [step, activeMode]);
@@ -1044,7 +1044,7 @@ export function App() {
                     }`}
                   >
                     <CreditCard className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    <span className="truncate">1. 일반구매 견적</span>
+                    <span className="truncate">1. 일반 견적</span>
                   </button>
 
                   <button
@@ -1061,7 +1061,7 @@ export function App() {
                     }`}
                   >
                     <RefreshCw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                    <span className="truncate">2. 구독구매 견적</span>
+                    <span className="truncate">2. 구독 견적</span>
                   </button>
 
                   <button
@@ -1078,7 +1078,7 @@ export function App() {
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span className="truncate">3. 일반+구독 혼합</span>
+                    <span className="truncate">3. 혼합 견적</span>
                   </button>
 
                   <button
@@ -1094,11 +1094,11 @@ export function App() {
                     }`}
                   >
                     <Calculator className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                    <span className="truncate">4. 롯데 플랜 계산기</span>
+                    <span className="truncate">4. 플랜 계산기</span>
                   </button>
                 </div>
 
-                {/* 우측 열 (5 ~ 8) */}
+                {/* 우측 열 (5 ~ 8 — 7번 가전 올케어, 8번 보험 청구안내 위치 맞교환) */}
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
@@ -1113,7 +1113,7 @@ export function App() {
                     }`}
                   >
                     <Printer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="truncate">5. 구독 POP 출력</span>
+                    <span className="truncate">5. 구독 POP</span>
                   </button>
 
                   <button
@@ -1129,23 +1129,7 @@ export function App() {
                     }`}
                   >
                     <Smartphone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                    <span className="truncate">6. 알뜰폰 개통</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      setStep('insurance');
-                    }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
-                      step === 'insurance'
-                        ? 'bg-teal-600 text-white border-teal-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
-                    }`}
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                    <span className="truncate">7. 보험 청구안내</span>
+                    <span className="truncate">6. 하이 모바일</span>
                   </button>
 
                   <button
@@ -1161,7 +1145,23 @@ export function App() {
                     }`}
                   >
                     <Wrench className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span className="truncate">8. 가전 올케어 안내·등록</span>
+                    <span className="truncate">7. 가전 올케어</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setStep('insurance');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      step === 'insurance'
+                        ? 'bg-teal-600 text-white border-teal-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                    <span className="truncate">8. 보험 청구안내</span>
                   </button>
                 </div>
               </div>
@@ -1315,7 +1315,7 @@ export function App() {
                       <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      1. 일반구매 견적
+                      1. 일반 견적
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
@@ -1333,7 +1333,7 @@ export function App() {
                       <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      2. 구독구매 견적
+                      2. 구독 견적
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
@@ -1351,7 +1351,7 @@ export function App() {
                       <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      3. 일반+구독 혼합
+                      3. 혼합 견적
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
@@ -1369,7 +1369,7 @@ export function App() {
                       <Calculator className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      4. 롯데 플랜 계산기
+                      4. 플랜 계산기
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
@@ -1378,7 +1378,7 @@ export function App() {
                 </button>
               </div>
 
-              {/* 오른쪽 열 (5 ~ 8번 : POP · 개통 · 보험 · 올케어) */}
+              {/* 오른쪽 열 (5 ~ 8번 : 7번 가전 올케어 · 8번 보험 청구안내 위치 교체) */}
               <div className="flex flex-col gap-2.5 sm:gap-3.5">
                 <button
                   type="button"
@@ -1390,7 +1390,7 @@ export function App() {
                       <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      5. 구독 POP 출력
+                      5. 구독 POP
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
@@ -1408,25 +1408,7 @@ export function App() {
                       <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      6. 알뜰폰 개통
-                    </span>
-                  </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setStep('insurance')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-                >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
-                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      7. 보험 청구안내
+                      6. 하이 모바일
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
@@ -1444,7 +1426,25 @@ export function App() {
                       <Wrench className="w-4 h-4 sm:w-5 sm:h-5" />
                     </div>
                     <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      8. 가전 올케어 안내·등록
+                      7. 가전 올케어
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('insurance')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
+                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      8. 보험 청구안내
                     </span>
                   </div>
                   <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">

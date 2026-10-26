@@ -1108,7 +1108,9 @@ export async function parseInstallmentFile(
     );
   }
 
-  const { base64Data, mimeType } = await compressImageFile(file);
+  const compressed = await compressImageFile(file);
+  const base64Data = compressed.base64 || compressed.base64Data;
+  const mimeType = compressed.mimeType;
   const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `당신은 롯데하이마트 카드사별 무이자/부분무이자 할부 행사표 이미지를 정확하게 읽어내는 전문 데이터 파서입니다.
@@ -1157,25 +1159,48 @@ export async function parseInstallmentFile(
   ]
 }`;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash',
-    contents: [
-      {
-        role: 'user',
-        parts: [
-          { text: prompt },
+  const GEMINI_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-flash-latest',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+  ];
+
+  let rawText = '';
+  let lastError: any = null;
+
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: [
           {
-            inlineData: {
-              mimeType,
-              data: base64Data,
-            },
+            role: 'user',
+            parts: [
+              { text: prompt },
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
+              },
+            ],
           },
         ],
-      },
-    ],
-  });
+      });
+      if (response.text) {
+        rawText = response.text.trim();
+        break;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+  }
 
-  const rawText = (response.text || '').trim();
+  if (!rawText) {
+    throw lastError || new Error('무이자 할부 행사표 AI 이미지 인식에 실패했습니다.');
+  }
+
   const cleanedJson = rawText
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')

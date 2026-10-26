@@ -212,11 +212,16 @@ async function startServer() {
         ],
       };
 
-      const candidateModels = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const GEMINI_MODELS = [
+        'gemini-3-flash-preview',
+        'gemini-flash-latest',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+      ];
       let responseText: string | undefined;
       let lastError: unknown;
 
-      for (const modelName of candidateModels) {
+      for (const modelName of GEMINI_MODELS) {
         try {
           const response = await ai.models.generateContent({
             model: modelName,
@@ -460,11 +465,16 @@ async function startServer() {
         ],
       };
 
-      const candidateModels = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+      const GEMINI_MODELS = [
+        'gemini-3-flash-preview',
+        'gemini-flash-latest',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+      ];
       let responseText: string | undefined;
       let lastError: unknown;
 
-      for (const modelName of candidateModels) {
+      for (const modelName of GEMINI_MODELS) {
         try {
           const response = await ai.models.generateContent({
             model: modelName,
@@ -602,34 +612,46 @@ async function startServer() {
 
       try {
         const ai = getGenAIClient(clientApiKey);
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: `가전제품 모델코드 "${cleanCode}"의 품목분류(category, 예: 워시타워/세탁건조기, 냉장고, 김치냉장고, TV, 에어컨, 세탁기, 건조기, 식기세척기 등)와 브랜드(brand), 대표 상품명(productName)을 JSON으로 답하세요.`,
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                category: { type: Type.STRING },
-                brand: { type: Type.STRING },
-                productName: { type: Type.STRING },
+        const GEMINI_MODELS = [
+          'gemini-3-flash-preview',
+          'gemini-flash-latest',
+          'gemini-2.5-pro',
+          'gemini-2.5-flash',
+        ];
+        for (const modelName of GEMINI_MODELS) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: `가전제품 모델코드 "${cleanCode}"의 품목분류(category, 예: 워시타워/세탁건조기, 냉장고, 김치냉장고, TV, 에어컨, 세탁기, 건조기, 식기세척기 등)와 브랜드(brand), 대표 상품명(productName)을 JSON으로 답하세요.`,
+              config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    category: { type: Type.STRING },
+                    brand: { type: Type.STRING },
+                    productName: { type: Type.STRING },
+                  },
+                  required: ['category', 'brand', 'productName'],
+                },
+                temperature: 0.1,
               },
-              required: ['category', 'brand', 'productName'],
-            },
-            temperature: 0.1,
-          },
-        });
+            });
 
-        if (response.text) {
-          const data = JSON.parse(response.text);
-          res.json({
-            success: true,
-            modelCode: cleanCode,
-            category: inferCategoryFromModelCode(cleanCode, data.category),
-            brand: data.brand || '',
-            productName: data.productName || cleanCode,
-          });
-          return;
+            if (response.text) {
+              const data = JSON.parse(response.text);
+              res.json({
+                success: true,
+                modelCode: cleanCode,
+                category: inferCategoryFromModelCode(cleanCode, data.category),
+                brand: data.brand || '',
+                productName: data.productName || cleanCode,
+              });
+              return;
+            }
+          } catch {
+            // try next model
+          }
         }
       } catch {
         // AI 호출 실패 시 규칙 기반 추론 결과 반환
@@ -686,7 +708,13 @@ async function startServer() {
 11. isAllCare (올케어 여부): 이미지에 '올케어', '가전수리올케어', 'allcare', '사용중 가전 보증', '2년 수리비 보증' 등이 포함되어 있으면 true, 아니면 false.`;
 
       let responseText = '';
-      const modelsToTry = [req.body.model, 'gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'].filter(Boolean);
+      const modelsToTry = [
+        req.body.model,
+        'gemini-3-flash-preview',
+        'gemini-flash-latest',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+      ].filter(Boolean);
       let lastError: any = null;
 
       for (const model of modelsToTry) {

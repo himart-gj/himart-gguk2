@@ -37,6 +37,13 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
   return envKey.trim();
 }
 
+export const GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-flash-latest',
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+] as const;
+
 /**
  * HTML5 Canvas를 사용해 가로 최대 1920px, JPEG 품질 0.85로 자동 압축/리사이징하는 헬퍼 함수
  */
@@ -44,7 +51,12 @@ export async function compressImageFile(
   input: File | string,
   maxWidth = 1920,
   quality = 0.85
-): Promise<{ base64: string; dataUrl: string; mimeType: string }> {
+): Promise<{
+  base64: string;
+  base64Data: string;
+  dataUrl: string;
+  mimeType: string;
+}> {
   const sourceDataUrl =
     typeof input === 'string'
       ? input
@@ -79,6 +91,7 @@ export async function compressImageFile(
             : sourceDataUrl;
           resolve({
             base64: fallbackBase64,
+            base64Data: fallbackBase64,
             dataUrl: sourceDataUrl,
             mimeType: 'image/jpeg',
           });
@@ -94,6 +107,7 @@ export async function compressImageFile(
 
         resolve({
           base64,
+          base64Data: base64,
           dataUrl: compressedDataUrl,
           mimeType: 'image/jpeg',
         });
@@ -103,6 +117,7 @@ export async function compressImageFile(
           : sourceDataUrl;
         resolve({
           base64: fallbackBase64,
+          base64Data: fallbackBase64,
           dataUrl: sourceDataUrl,
           mimeType: 'image/jpeg',
         });
@@ -115,6 +130,7 @@ export async function compressImageFile(
         : sourceDataUrl;
       resolve({
         base64: fallbackBase64,
+        base64Data: fallbackBase64,
         dataUrl: sourceDataUrl,
         mimeType: 'image/jpeg',
       });
@@ -416,11 +432,16 @@ export async function parseGeneralImageWithFallback(
     ],
   };
 
-  const models = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const GEMINI_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-flash-latest',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+  ];
   let responseText = '';
   let lastError: any = null;
 
-  for (const modelName of models) {
+  for (const modelName of GEMINI_MODELS) {
     try {
       const response = await ai.models.generateContent({
         model: modelName,
@@ -624,11 +645,16 @@ export async function parseSubscriptionImageWithFallback(
     ],
   };
 
-  const models = ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const GEMINI_MODELS = [
+    'gemini-3-flash-preview',
+    'gemini-flash-latest',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+  ];
   let responseText = '';
   let lastError: any = null;
 
-  for (const modelName of models) {
+  for (const modelName of GEMINI_MODELS) {
     try {
       const response = await ai.models.generateContent({
         model: modelName,

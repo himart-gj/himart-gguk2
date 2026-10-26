@@ -892,11 +892,30 @@ const PLUX_AS_GROUPS: PluxCategoryGroup[] = [
   },
 ];
 
+const PLUX_CATEGORY_BUTTON_LABELS: Record<string, string> = {
+  '냉장고 / 냉동고': '🧊 냉장고 / 냉동고',
+  '김치냉장고': '🥬 김치냉장고',
+  '에어컨 / 냉난방기': '❄️ 에어컨 / 냉난방기',
+  'TV': '📺 TV',
+  '세탁기 / 건조기': '🫧 세탁기 / 건조기',
+  '실링팬 / 선풍기 / 제습기 / 계절가전': '🌀 실링팬 / 선풍기 / 제습기 / 계절가전',
+  '청소기 / 비데 / 생활가전': '🧹 청소기 / 비데 / 생활가전',
+  '주방가전 (정수기 / 전자레인지 / 밥솥 / 에어프라이어 / 오븐 / 식기세척기)':
+    '🍳 주방가전 (정수기·레인지·밥솥·오븐)',
+  'IT / 모니터 / 음향 / 멀티탭 / 충전기': '💻 IT / 모니터 / 음향 / 멀티탭 / 충전기',
+};
+
 export const AsCenterModal: React.FC<AsCenterModalProps> = ({
   isOpen,
   onClose,
 }) => {
   const [asSearchQuery, setAsSearchQuery] = useState<string>('');
+  const [activeMainSection, setActiveMainSection] = useState<
+    'major' | 'tcl' | 'plux' | null
+  >(null);
+  const [activePluxCategory, setActivePluxCategory] = useState<string | null>(
+    null
+  );
   const [isTclGuideOpen, setIsTclGuideOpen] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -913,6 +932,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
   };
 
   const normalizedQuery = asSearchQuery.trim().toLowerCase();
+  const isSearching = normalizedQuery.length > 0;
 
   const filteredMajorCenters = useMemo(() => {
     if (!normalizedQuery) return MAJOR_AS_CENTERS;
@@ -938,7 +958,12 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
   const filteredPluxGroups = useMemo(() => {
     if (!normalizedQuery) return PLUX_AS_GROUPS;
     return PLUX_AS_GROUPS.map((group) => {
-      const catMatch = group.category.toLowerCase().includes(normalizedQuery);
+      const buttonLabel =
+        PLUX_CATEGORY_BUTTON_LABELS[group.category] || group.category;
+      const catMatch =
+        group.category.toLowerCase().includes(normalizedQuery) ||
+        buttonLabel.toLowerCase().includes(normalizedQuery) ||
+        '플럭스 plux 하이메이드 himade pb'.includes(normalizedQuery);
       const matchedEntries = group.entries.filter(
         (entry) =>
           catMatch ||
@@ -969,6 +994,20 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
     "④ 전원 켰을 때 IPTV 바로 연결: 설정 ➔ 모든 설정 ➔ 시스템 ➔ 전원 및 에너지 ➔ 전원이 켜질 때 동작 ➔ ['마지막으로 사용한 입력'] 선택",
     '⑤ 리모컨 페어링: 리모컨 [OK 버튼 + 홈(집) 버튼] 동시에 5초 누르기 (수동: 설정 ➔ 채널 및 입력 ➔ 리모컨 및 액세서리 ➔ 리모컨 페어링)',
   ].join('\n');
+
+  const isMajorVisible = isSearching
+    ? filteredMajorCenters.length > 0
+    : activeMainSection === 'major';
+  const isTclVisible = isSearching
+    ? showTclSection
+    : activeMainSection === 'tcl';
+  const isPluxVisible = isSearching
+    ? filteredPluxGroups.length > 0
+    : activeMainSection === 'plux';
+
+  const selectedPluxGroupObj = PLUX_AS_GROUPS.find(
+    (g) => g.category === activePluxCategory
+  );
 
   return (
     <div
@@ -1029,14 +1068,164 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
         </div>
 
         {/* 본문 스크롤 영역 */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-5">
-          {/* 1. 주요 대기업 & 생활가전 기본 A/S 센터 */}
-          {filteredMajorCenters.length > 0 && (
-            <div className="space-y-2.5">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-4">
+          {/* 상단 대분류 3가지 선택 버튼 (기본 접힘 상태) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-xs font-black text-slate-600">
+                👇 조회할 A/S 대분류를 선택하세요 (클릭 시 펼쳐짐)
+              </span>
+              {activeMainSection !== null && !isSearching && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveMainSection(null);
+                    setActivePluxCategory(null);
+                  }}
+                  className="text-[11px] font-black text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                >
+                  전체 접기
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {/* 대분류 1 */}
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveMainSection((prev) =>
+                    prev === 'major' ? null : 'major'
+                  )
+                }
+                className={`p-3.5 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
+                  activeMainSection === 'major'
+                    ? 'bg-emerald-600 border-emerald-700 text-white shadow-md'
+                    : 'bg-white hover:bg-emerald-50/70 border-slate-200 hover:border-emerald-300 text-slate-900'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-black truncate">
+                    🏢 1. 주요 브랜드 A/S
+                  </div>
+                  <div
+                    className={`text-[11px] font-bold mt-0.5 truncate ${
+                      activeMainSection === 'major'
+                        ? 'text-emerald-100'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    삼성·LG·쿠쿠·위니아·다이슨·안마의자 등
+                  </div>
+                </div>
+                {activeMainSection === 'major' ? (
+                  <ChevronUp className="w-4 h-4 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" />
+                )}
+              </button>
+
+              {/* 대분류 2 */}
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveMainSection((prev) =>
+                    prev === 'tcl' ? null : 'tcl'
+                  )
+                }
+                className={`p-3.5 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
+                  activeMainSection === 'tcl'
+                    ? 'bg-indigo-600 border-indigo-700 text-white shadow-md'
+                    : 'bg-white hover:bg-indigo-50/70 border-slate-200 hover:border-indigo-300 text-slate-900'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-black truncate">
+                    📺 2. TCL TV 전용 A/S &amp; 리모컨 설정
+                  </div>
+                  <div
+                    className={`text-[11px] font-bold mt-0.5 truncate ${
+                      activeMainSection === 'tcl'
+                        ? 'text-indigo-100'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    1660-1870 · 정진수 매니저 · IPTV 호환
+                  </div>
+                </div>
+                {activeMainSection === 'tcl' ? (
+                  <ChevronUp className="w-4 h-4 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" />
+                )}
+              </button>
+
+              {/* 대분류 3 */}
+              <button
+                type="button"
+                onClick={() =>
+                  setActiveMainSection((prev) =>
+                    prev === 'plux' ? null : 'plux'
+                  )
+                }
+                className={`p-3.5 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
+                  activeMainSection === 'plux'
+                    ? 'bg-blue-600 border-blue-700 text-white shadow-md'
+                    : 'bg-white hover:bg-blue-50/70 border-slate-200 hover:border-blue-300 text-slate-900'
+                }`}
+              >
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm font-black truncate">
+                    🏷️ 3. 플럭스(PLUX) · 하이메이드 품목별 A/S
+                  </div>
+                  <div
+                    className={`text-[11px] font-bold mt-0.5 truncate ${
+                      activeMainSection === 'plux'
+                        ? 'text-blue-100'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    하이마트 PB 9대 품목 위탁 파트너사
+                  </div>
+                </div>
+                {activeMainSection === 'plux' ? (
+                  <ChevronUp className="w-4 h-4 shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* 아무것도 선택하지 않았고 검색어도 없을 때 안내 배너 */}
+          {!isSearching && activeMainSection === null && (
+            <div className="rounded-2xl bg-white border border-dashed border-slate-300 p-6 text-center space-y-1.5">
+              <div className="text-xs sm:text-sm font-black text-slate-700">
+                위 3가지 대분류 버튼 중 하나를 클릭하거나, 상단 검색창에 브랜드/모델명을 입력해 주세요.
+              </div>
+              <p className="text-[11px] font-bold text-slate-400">
+                예: 삼성, LG, TCL, 냉장고, 실링팬, PLX-RF420, 바디프랜드 등 검색 시 즉시 자동 펼쳐짐
+              </p>
+            </div>
+          )}
+
+          {/* 검색 결과가 전혀 없을 때 */}
+          {isSearching &&
+            filteredMajorCenters.length === 0 &&
+            !showTclSection &&
+            filteredPluxGroups.length === 0 && (
+              <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-xs sm:text-sm font-bold text-slate-500">
+                검색하신 품목 또는 모델명과 일치하는 A/S 센터가 없습니다.
+              </div>
+            )}
+
+          {/* 1. 주요 브랜드 A/S 센터 */}
+          {isMajorVisible && (
+            <div className="space-y-2.5 rounded-3xl bg-emerald-50/50 border-2 border-emerald-200 p-3.5 sm:p-4">
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
                   <BadgeCheck className="w-4 h-4 text-emerald-600" />
-                  <span>1. 주요 대기업 &amp; 생활가전 기본 A/S 센터</span>
+                  <span>🏢 1. 주요 브랜드 A/S 센터</span>
                 </h3>
                 <span className="text-[11px] font-bold text-slate-500">
                   전화걸기 또는 번호 복사 가능
@@ -1106,7 +1295,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
           )}
 
           {/* 2. 📺 TCL TV 전용 A/S 센터 & 통합리모컨 호환 가이드 카드 */}
-          {showTclSection && (
+          {isTclVisible && (
             <div className="rounded-3xl bg-slate-900 text-white border-2 border-indigo-500/60 p-4 sm:p-5 shadow-md space-y-3.5">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
                 <div className="space-y-1">
@@ -1258,144 +1447,282 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
             </div>
           )}
 
-          {/* 3. 🏷️ 하이마트 PB 자체브랜드 플럭스(PLUX) / 하이메이드 품목별 A/S 접수처 */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2 px-1">
-              <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
-                <Wrench className="w-4 h-4 text-blue-600" />
-                <span>
-                  3. 🏷️ 하이마트 PB 자체브랜드 플럭스(PLUX) / 하이메이드 품목별 A/S 접수처
-                </span>
-              </h3>
-            </div>
-
-            {/* 기본 접수 원칙 배너 */}
-            <div className="rounded-2xl bg-blue-50 border-2 border-blue-200 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-1 text-xs font-bold text-slate-800">
-                <div className="font-black text-blue-950 text-xs sm:text-sm">
-                  📌 플럭스(PLUX) · 하이메이드 기본 A/S 접수 원칙
-                </div>
-                <p>
-                  ① <strong className="text-blue-800">하이마트 당사 접수:</strong>{' '}
-                  전산{' '}
-                  <strong className="underline">
-                    &ldquo;HISIS - 서비스접수 및 처리내역&rdquo;
-                  </strong>
-                  에서 접수 또는 하이마트 대표 CS{' '}
-                  <strong className="text-rose-600">1588-9030</strong>
-                </p>
-                <p>
-                  ② <strong className="text-blue-800">파트너사 직접 접수:</strong>{' '}
-                  아래 품목/모델별 위탁 파트너사 직통 번호로 전화 문의
-                </p>
+          {/* 3. 🏷️ 하이마트 PB 자체브랜드 플럭스(PLUX) · 하이메이드 품목별 A/S 접수처 */}
+          {isPluxVisible && (
+            <div className="space-y-3.5 rounded-3xl bg-blue-50/40 border-2 border-blue-200 p-3.5 sm:p-4">
+              <div className="flex items-center justify-between flex-wrap gap-2 px-1">
+                <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
+                  <Wrench className="w-4 h-4 text-blue-600" />
+                  <span>
+                    🏷️ 3. 플럭스(PLUX) · 하이메이드 품목별 A/S 접수처
+                  </span>
+                </h3>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                <a
-                  href="tel:1588-9030"
-                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-1 transition cursor-pointer"
-                >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>대표 CS 1588-9030</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() =>
-                    copyText(
-                      'himart-cs-main',
-                      '[롯데하이마트 대표 CS / 플럭스·하이메이드 접수] 1588-9030'
-                    )
-                  }
-                  className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-blue-300 text-xs font-black transition cursor-pointer"
-                >
-                  {copiedKey === 'himart-cs-main' ? '✓ 복사됨' : '📋 복사'}
-                </button>
-              </div>
-            </div>
-
-            {/* 품목별 플럭스(PLUX) 위탁 A/S 센터 일람표 */}
-            {filteredPluxGroups.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-xs sm:text-sm font-bold text-slate-500">
-                검색하신 품목 또는 모델명과 일치하는 A/S 센터가 없습니다.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredPluxGroups.map((group) => (
-                  <div
-                    key={group.category}
-                    className="rounded-2xl bg-white border border-slate-200 shadow-2xs overflow-hidden"
-                  >
-                    <div className="bg-slate-800 text-white px-4 py-2 text-xs sm:text-sm font-black flex items-center justify-between">
-                      <span>■ {group.category}</span>
-                      <span className="text-[11px] font-bold text-slate-300">
-                        {group.entries.length}개 위탁 파트너
-                      </span>
-                    </div>
-
-                    <div className="divide-y divide-slate-100">
-                      {group.entries.map((entry, idx) => (
-                        <div
-                          key={`${group.category}-${idx}`}
-                          className="p-3 sm:p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 hover:bg-slate-50/80 transition"
-                        >
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <div className="text-xs sm:text-sm font-black text-slate-900">
-                              • {entry.partnerName}
-                            </div>
-                            <div className="text-xs font-bold text-slate-600 leading-relaxed break-words">
-                              {entry.modelsDesc}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                            {entry.phones.map((ph) => {
-                              const copyId = `plux-${group.category}-${entry.partnerName}-${ph.number}`;
-                              return (
-                                <div
-                                  key={ph.number}
-                                  className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200"
-                                >
-                                  {ph.label && (
-                                    <span className="text-[10px] font-extrabold text-slate-500">
-                                      [{ph.label}]
-                                    </span>
-                                  )}
-                                  <span className="text-xs font-black text-blue-700 mr-1">
-                                    {ph.number}
-                                  </span>
-                                  <a
-                                    href={`tel:${ph.number}`}
-                                    className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black flex items-center gap-1 transition cursor-pointer"
-                                  >
-                                    <Phone className="w-3 h-3" />
-                                    <span>전화</span>
-                                  </a>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      copyText(
-                                        copyId,
-                                        `[플럭스/하이메이드 ${group.category} - ${entry.partnerName}] A/S 센터: ${ph.number}\n대상 모델: ${entry.modelsDesc}`
-                                      )
-                                    }
-                                    className="px-2 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-black transition cursor-pointer"
-                                  >
-                                    {copiedKey === copyId
-                                      ? '✓ 복사됨'
-                                      : '📋 복사'}
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+              {/* 기본 접수 원칙 배너 */}
+              <div className="rounded-2xl bg-blue-50 border-2 border-blue-200 p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1 text-xs font-bold text-slate-800">
+                  <div className="font-black text-blue-950 text-xs sm:text-sm">
+                    📌 플럭스(PLUX) · 하이메이드 기본 A/S 접수 원칙
                   </div>
-                ))}
+                  <p>
+                    ① <strong className="text-blue-800">하이마트 당사 접수:</strong>{' '}
+                    전산{' '}
+                    <strong className="underline">
+                      &ldquo;HISIS - 서비스접수 및 처리내역&rdquo;
+                    </strong>
+                    에서 접수 또는 하이마트 대표 CS{' '}
+                    <strong className="text-rose-600">1588-9030</strong>
+                  </p>
+                  <p>
+                    ② <strong className="text-blue-800">파트너사 직접 접수:</strong>{' '}
+                    아래 9개 품목 버튼을 클릭하여 위탁 파트너사 직통 번호로 전화 문의
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <a
+                    href="tel:1588-9030"
+                    className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-1 transition cursor-pointer"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>대표 CS 1588-9030</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      copyText(
+                        'himart-cs-main',
+                        '[롯데하이마트 대표 CS / 플럭스·하이메이드 접수] 1588-9030'
+                      )
+                    }
+                    className="px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-blue-300 text-xs font-black transition cursor-pointer"
+                  >
+                    {copiedKey === 'himart-cs-main' ? '✓ 복사됨' : '📋 복사'}
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
+
+              {/* 검색 중이 아닐 때: 9개 품목 2단계 선택 버튼 그리드 + 선택된 품목만 펼침 */}
+              {!isSearching ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-black text-blue-950">
+                      👇 조회할 플럭스(PLUX) · 하이메이드 품목을 선택하세요
+                    </span>
+                    {activePluxCategory && (
+                      <button
+                        type="button"
+                        onClick={() => setActivePluxCategory(null)}
+                        className="text-[11px] font-black text-blue-700 hover:text-blue-900 underline cursor-pointer"
+                      >
+                        품목 선택 접기
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {PLUX_AS_GROUPS.map((group) => {
+                      const isSelected = activePluxCategory === group.category;
+                      const btnLabel =
+                        PLUX_CATEGORY_BUTTON_LABELS[group.category] ||
+                        group.category;
+                      return (
+                        <button
+                          key={group.category}
+                          type="button"
+                          onClick={() =>
+                            setActivePluxCategory((prev) =>
+                              prev === group.category ? null : group.category
+                            )
+                          }
+                          className={`px-3.5 py-3 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
+                              : 'bg-white hover:bg-blue-50 border-slate-200 hover:border-blue-300 text-slate-900'
+                          }`}
+                        >
+                          <span className="text-xs sm:text-sm font-black truncate">
+                            {btnLabel}
+                          </span>
+                          <span
+                            className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
+                              isSelected
+                                ? 'bg-amber-400 text-slate-950'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                          >
+                            {group.entries.length}곳
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 클릭한 품목의 위탁 파트너사 리스트만 깔끔하게 펼침 */}
+                  {selectedPluxGroupObj && (
+                    <div className="rounded-2xl bg-white border-2 border-slate-800 shadow-sm overflow-hidden">
+                      <div className="bg-slate-900 text-white px-4 py-2.5 text-xs sm:text-sm font-black flex items-center justify-between">
+                        <span>
+                          {PLUX_CATEGORY_BUTTON_LABELS[
+                            selectedPluxGroupObj.category
+                          ] || selectedPluxGroupObj.category}{' '}
+                          위탁 파트너사 ({selectedPluxGroupObj.entries.length}곳)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setActivePluxCategory(null)}
+                          className="text-[11px] font-bold text-slate-300 hover:text-white cursor-pointer"
+                        >
+                          접기 ✕
+                        </button>
+                      </div>
+
+                      <div className="divide-y divide-slate-100">
+                        {selectedPluxGroupObj.entries.map((entry, idx) => (
+                          <div
+                            key={`${selectedPluxGroupObj.category}-${idx}`}
+                            className="p-3 sm:p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 hover:bg-slate-50/80 transition"
+                          >
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <div className="text-xs sm:text-sm font-black text-slate-900">
+                                • {entry.partnerName}
+                              </div>
+                              <div className="text-xs font-bold text-slate-600 leading-relaxed break-words">
+                                {entry.modelsDesc}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                              {entry.phones.map((ph) => {
+                                const copyId = `plux-${selectedPluxGroupObj.category}-${entry.partnerName}-${ph.number}`;
+                                return (
+                                  <div
+                                    key={ph.number}
+                                    className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200"
+                                  >
+                                    {ph.label && (
+                                      <span className="text-[10px] font-extrabold text-slate-500">
+                                        [{ph.label}]
+                                      </span>
+                                    )}
+                                    <span className="text-xs font-black text-blue-700 mr-1">
+                                      {ph.number}
+                                    </span>
+                                    <a
+                                      href={`tel:${ph.number}`}
+                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black flex items-center gap-1 transition cursor-pointer"
+                                    >
+                                      <Phone className="w-3 h-3" />
+                                      <span>전화</span>
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        copyText(
+                                          copyId,
+                                          `[플럭스/하이메이드 ${selectedPluxGroupObj.category} - ${entry.partnerName}] A/S 센터: ${ph.number}\n대상 모델: ${entry.modelsDesc}`
+                                        )
+                                      }
+                                      className="px-2 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-black transition cursor-pointer"
+                                    >
+                                      {copiedKey === copyId
+                                        ? '✓ 복사됨'
+                                        : '📋 복사'}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* 검색어 입력 시: 일치하는 플럭스 품목들을 즉시 펼쳐서 표시 */
+                <div className="space-y-3">
+                  {filteredPluxGroups.map((group) => (
+                    <div
+                      key={group.category}
+                      className="rounded-2xl bg-white border border-slate-200 shadow-2xs overflow-hidden"
+                    >
+                      <div className="bg-slate-800 text-white px-4 py-2 text-xs sm:text-sm font-black flex items-center justify-between">
+                        <span>
+                          {PLUX_CATEGORY_BUTTON_LABELS[group.category] ||
+                            `■ ${group.category}`}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-300">
+                          {group.entries.length}개 위탁 파트너
+                        </span>
+                      </div>
+
+                      <div className="divide-y divide-slate-100">
+                        {group.entries.map((entry, idx) => (
+                          <div
+                            key={`${group.category}-${idx}`}
+                            className="p-3 sm:p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 hover:bg-slate-50/80 transition"
+                          >
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <div className="text-xs sm:text-sm font-black text-slate-900">
+                                • {entry.partnerName}
+                              </div>
+                              <div className="text-xs font-bold text-slate-600 leading-relaxed break-words">
+                                {entry.modelsDesc}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                              {entry.phones.map((ph) => {
+                                const copyId = `plux-${group.category}-${entry.partnerName}-${ph.number}`;
+                                return (
+                                  <div
+                                    key={ph.number}
+                                    className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200"
+                                  >
+                                    {ph.label && (
+                                      <span className="text-[10px] font-extrabold text-slate-500">
+                                        [{ph.label}]
+                                      </span>
+                                    )}
+                                    <span className="text-xs font-black text-blue-700 mr-1">
+                                      {ph.number}
+                                    </span>
+                                    <a
+                                      href={`tel:${ph.number}`}
+                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black flex items-center gap-1 transition cursor-pointer"
+                                    >
+                                      <Phone className="w-3 h-3" />
+                                      <span>전화</span>
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        copyText(
+                                          copyId,
+                                          `[플럭스/하이메이드 ${group.category} - ${entry.partnerName}] A/S 센터: ${ph.number}\n대상 모델: ${entry.modelsDesc}`
+                                        )
+                                      }
+                                      className="px-2 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-black transition cursor-pointer"
+                                    >
+                                      {copiedKey === copyId
+                                        ? '✓ 복사됨'
+                                        : '📋 복사'}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
