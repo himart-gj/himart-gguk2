@@ -16,6 +16,8 @@ import {
   X,
 } from 'lucide-react';
 import {
+  ADMIN_MODE_CHANGED_EVENT,
+  ADMIN_PIN_CODE,
   CARE_FOLDERS,
   CareFolderKey,
   CareTableDataset,
@@ -23,12 +25,14 @@ import {
   fetchRemoteCareDataset,
   formatPriceDisplay,
   GitHubSyncConfig,
+  isAdminDevice,
   loadGitHubSyncConfig,
   loadLocalCareDataset,
   parseCareExcelBuffer,
   publishCareDatasetToGitHub,
   saveGitHubSyncConfig,
   saveLocalCareDataset,
+  setAdminDeviceUnlocked,
 } from '../utils/careTableParser';
 
 interface CareTableViewProps {
@@ -37,6 +41,19 @@ interface CareTableViewProps {
 
 export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) => {
   const [dataset, setDataset] = useState<CareTableDataset | null>(() => loadLocalCareDataset());
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => isAdminDevice());
+  const adminTapCountRef = useRef<number>(0);
+  const adminTapTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const syncAdmin = () => setIsAdmin(isAdminDevice());
+    window.addEventListener(ADMIN_MODE_CHANGED_EVENT, syncAdmin);
+    window.addEventListener('storage', syncAdmin);
+    return () => {
+      window.removeEventListener(ADMIN_MODE_CHANGED_EVENT, syncAdmin);
+      window.removeEventListener('storage', syncAdmin);
+    };
+  }, []);
 
   // 3단계 폴더 탐색 상태:
   // 1단계: selectedFolder === null (6대 상위 폴더 화면)
@@ -322,6 +339,28 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
 
   const activeFolderObj = CARE_FOLDERS.find((f) => f.key === selectedFolder) || null;
 
+  const handleSecretAdminTap = () => {
+    if (isAdmin) return;
+    adminTapCountRef.current += 1;
+    if (adminTapTimerRef.current) {
+      window.clearTimeout(adminTapTimerRef.current);
+    }
+    if (adminTapCountRef.current >= 5) {
+      adminTapCountRef.current = 0;
+      const pin = window.prompt('관리자 비밀번호를 입력하세요:');
+      if (pin?.trim() === ADMIN_PIN_CODE) {
+        setAdminDeviceUnlocked(true);
+        showToast('🔓 관리자 모드가 활성화되었습니다. (업로드 및 전 직원 동기화 버튼 표시)');
+      } else if (pin !== null) {
+        showToast('⚠️ 관리자 비밀번호가 일치하지 않습니다.');
+      }
+      return;
+    }
+    adminTapTimerRef.current = window.setTimeout(() => {
+      adminTapCountRef.current = 0;
+    }, 1800);
+  };
+
   return (
     <div className="flex-1 w-full bg-slate-100 pb-14">
       <input
@@ -345,7 +384,10 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
               <span>메인</span>
             </button>
             <div>
-              <h1 className="text-sm sm:text-base font-black text-slate-900">
+              <h1
+                onClick={handleSecretAdminTap}
+                className="text-sm sm:text-base font-black text-slate-900 select-none"
+              >
                 {dataset ? dataset.versionTitle : '8. 안심케어 · 가전이사 조견표'}
               </h1>
               {dataset && (
@@ -357,23 +399,38 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>📂 이달의 엑셀 업로드 (.xlsx)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsSyncModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer"
-            >
-              <CloudUpload className="w-3.5 h-3.5 text-emerald-400" />
-              <span>전 직원 동기화</span>
-            </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {isAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>📂 이달의 엑셀 업로드 (.xlsx)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(true)}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer"
+                >
+                  <CloudUpload className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>전 직원 동기화</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSyncModalOpen(false);
+                    setAdminDeviceUnlocked(false);
+                    showToast('🔒 관리자 버튼이 숨김 처리되었습니다.');
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-black flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🔒 관리자 숨김</span>
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={() => syncFromRemote(false)}
@@ -405,21 +462,40 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
             </div>
             <div className="space-y-1.5">
               <h2 className="text-lg sm:text-xl font-black text-slate-900">
-                이달의 안심케어 조견표 엑셀(.xlsx)을 업로드해 주세요
+                {isAdmin
+                  ? '이달의 안심케어 조견표 엑셀(.xlsx)을 업로드해 주세요'
+                  : '등록된 안심케어 조견표를 불러오고 있습니다'}
               </h2>
               <p className="text-xs sm:text-sm text-slate-600 font-medium max-w-lg mx-auto leading-relaxed">
-                한 번만 업로드하면 <strong>6개 상위 폴더 ➔ 하위 폴더</strong>로 모든 모델코드와 금액이 정리되며,
-                앱을 껐다 켜도 그 달 내내 유지됩니다.
+                {isAdmin ? (
+                  <>
+                    한 번만 업로드하면 <strong>6개 상위 폴더 ➔ 하위 폴더</strong>로 모든 모델코드와 금액이 정리되며,
+                    앱을 껐다 켜도 그 달 내내 유지됩니다.
+                  </>
+                ) : (
+                  '서버에 등록된 최신 조견표 데이터를 불러오려면 아래 새로고침 버튼을 눌러주세요.'
+                )}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="px-6 py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-black inline-flex items-center gap-2 shadow-lg cursor-pointer"
-            >
-              <Upload className="w-4 h-4" />
-              <span>📂 안심케어 엑셀 파일(.xlsx) 선택하기</span>
-            </button>
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-6 py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-black inline-flex items-center gap-2 shadow-lg cursor-pointer"
+              >
+                <Upload className="w-4 h-4" />
+                <span>📂 안심케어 엑셀 파일(.xlsx) 선택하기</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => syncFromRemote(false)}
+                className="px-6 py-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-black inline-flex items-center gap-2 shadow-lg cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-orange-400' : ''}`} />
+                <span>🔄 최신 조견표 불러오기</span>
+              </button>
+            )}
           </div>
         ) : (
           <>

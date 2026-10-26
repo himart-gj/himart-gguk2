@@ -150,6 +150,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   const renderCardBox = (card: {
     id: string;
     title: string;
+    subtitle: string;
     borderClass: string;
     openBtnClass: string;
     url: string;
@@ -159,33 +160,20 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
       key={card.id}
       className={`rounded-2xl bg-white border-2 ${card.borderClass} p-3.5 sm:p-4 shadow-2xs flex flex-col justify-between gap-3 transition`}
     >
-      <h3 className="text-sm sm:text-base font-black text-slate-900">
-        {card.title}
-      </h3>
+      <div>
+        <h3 className="text-sm sm:text-base font-black text-slate-900">
+          {card.title}
+        </h3>
+        <p className="text-[11px] sm:text-xs font-bold text-slate-500 mt-0.5 leading-snug">
+          {card.subtitle}
+        </p>
+      </div>
 
-      <div className="grid grid-cols-3 gap-1.5">
-        <button
-          type="button"
-          onClick={() => copyText(`${card.id}-url`, card.url)}
-          className="py-2 px-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
-        >
-          {copiedKey === `${card.id}-url` ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>복사됨</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5 shrink-0" />
-              <span>📋 링크 복사</span>
-            </>
-          )}
-        </button>
-
+      <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => copyText(`${card.id}-msg`, card.kakaoText)}
-          className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+          className="py-2 px-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
         >
           {copiedKey === `${card.id}-msg` ? (
             <>
@@ -204,7 +192,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
           href={card.url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`py-2 px-1.5 rounded-xl text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer ${card.openBtnClass}`}
+          className={`py-2 px-2 rounded-xl text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer ${card.openBtnClass}`}
         >
           <ExternalLink className="w-3.5 h-3.5 shrink-0" />
           <span>🔗 바로 열기</span>
@@ -218,6 +206,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     {
       id: 'lotte-card',
       title: '롯데카드 발급',
+      subtitle: '하이마트 제휴 롯데카드 모바일 간편 신청',
       borderClass: 'border-rose-200 hover:border-rose-300',
       openBtnClass: 'bg-rose-600 hover:bg-rose-500 text-white',
       url: lotteCardUrl,
@@ -226,6 +215,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     {
       id: 'lotte-hiplan',
       title: '플랜약정',
+      subtitle: '롯데카드 발급 후 하이플랜 캐시백 약정 등록',
       borderClass: 'border-rose-200 hover:border-rose-300',
       openBtnClass: 'bg-rose-600 hover:bg-rose-500 text-white',
       url: lotteHiPlanUrl,
@@ -234,6 +224,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     {
       id: 'lotte-lpoint',
       title: '롯데포인트 발급',
+      subtitle: 'L.POINT 모바일 멤버십 가입 및 포인트 카드 발급',
       borderClass: 'border-amber-200 hover:border-amber-300',
       openBtnClass: 'bg-amber-500 hover:bg-amber-400 text-slate-950',
       url: lottePointUrl,
@@ -246,6 +237,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     {
       id: 'samsung',
       title: '삼성카드 발급',
+      subtitle: '내 사번 자동 연동 · 하이마트 제휴 삼성카드 간편 신청',
       borderClass: 'border-blue-200 hover:border-blue-300',
       openBtnClass: 'bg-blue-600 hover:bg-blue-500 text-white',
       url: samsungUrl,
@@ -254,6 +246,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     {
       id: 'shinhan',
       title: '신한카드 발급',
+      subtitle: '내 사번 자동 연동 · 하이마트 제휴 신한카드 간편 신청',
       borderClass: 'border-indigo-200 hover:border-indigo-300',
       openBtnClass: 'bg-indigo-600 hover:bg-indigo-500 text-white',
       url: shinhanUrl,
@@ -265,6 +258,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   const row3WooriCard = {
     id: 'woori',
     title: '우리카드 발급',
+    subtitle: '일반 구매 캐시백 및 가전 구독 할인 전용 우리카드 신청',
     borderClass: 'border-sky-200 hover:border-sky-300',
     openBtnClass: 'bg-sky-600 hover:bg-sky-500 text-white',
     url: wooriCardUrl,

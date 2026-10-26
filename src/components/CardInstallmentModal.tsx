@@ -33,6 +33,12 @@ import {
   saveGitHubSyncConfig,
   saveLocalInstallmentDataset,
 } from '../utils/installmentParser';
+import {
+  ADMIN_MODE_CHANGED_EVENT,
+  ADMIN_PIN_CODE,
+  isAdminDevice,
+  setAdminDeviceUnlocked,
+} from '../utils/careTableParser';
 
 interface CardInstallmentModalProps {
   isOpen: boolean;
@@ -100,6 +106,49 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
   // 제목(기준월) 편집 상태
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(dataset.versionTitle);
+
+  // 관리자 권한 상태 (비밀번호 462846 인증 기기 또는 GitHub 토큰 보유 기기)
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => isAdminDevice());
+  const adminTapCountRef = useRef<number>(0);
+  const adminTapTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const syncAdmin = () => setIsAdmin(isAdminDevice());
+    window.addEventListener(ADMIN_MODE_CHANGED_EVENT, syncAdmin);
+    window.addEventListener('storage', syncAdmin);
+    return () => {
+      window.removeEventListener(ADMIN_MODE_CHANGED_EVENT, syncAdmin);
+      window.removeEventListener('storage', syncAdmin);
+    };
+  }, []);
+
+  const handleSecretAdminTap = () => {
+    if (isAdmin) return;
+    adminTapCountRef.current += 1;
+    if (adminTapTimerRef.current) {
+      window.clearTimeout(adminTapTimerRef.current);
+    }
+    if (adminTapCountRef.current >= 5) {
+      adminTapCountRef.current = 0;
+      const pin = window.prompt('관리자 비밀번호를 입력하세요:');
+      if (pin?.trim() === ADMIN_PIN_CODE) {
+        setAdminDeviceUnlocked(true);
+        setStatusMessage({
+          type: 'success',
+          text: '🔓 관리자 모드가 활성화되었습니다. (무이자 자료 업로드 · 전 직원 동기화 · 셀 직접 수정 가능)',
+        });
+      } else if (pin !== null) {
+        setStatusMessage({
+          type: 'error',
+          text: '⚠️ 관리자 비밀번호가 일치하지 않습니다.',
+        });
+      }
+      return;
+    }
+    adminTapTimerRef.current = window.setTimeout(() => {
+      adminTapCountRef.current = 0;
+    }, 1800);
+  };
 
   // 모달 열릴 때 최신 로컬 & 원격 데이터 동기화 확인
   useEffect(() => {
@@ -394,14 +443,17 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
           className="hidden"
         />
 
-        {/* 1) 모달 상단 헤더 + [📤 무이자 자료 업로드] & [☁️ 전 직원 동기화 설정] */}
+        {/* 1) 모달 상단 헤더 + 관리자 전용 [📤 무이자 자료 업로드] & [☁️ 전 직원 동기화 설정] */}
         <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
+            <div
+              onClick={handleSecretAdminTap}
+              className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-xs select-none"
+            >
               <CreditCard className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              {isEditingTitle ? (
+              {isAdmin && isEditingTitle ? (
                 <div className="flex items-center gap-1.5">
                   <input
                     type="text"
@@ -419,66 +471,91 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center gap-1.5">
-                  <h2 className="text-sm sm:text-lg font-black tracking-tight truncate">
+                  <h2
+                    onClick={handleSecretAdminTap}
+                    className="text-sm sm:text-lg font-black tracking-tight truncate select-none"
+                  >
                     💳 {dataset.versionTitle}
                   </h2>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTitleDraft(dataset.versionTitle);
-                      setIsEditingTitle(true);
-                    }}
-                    title="행사 제목(기준월) 수정"
-                    className="p-1 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition cursor-pointer"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTitleDraft(dataset.versionTitle);
+                        setIsEditingTitle(true);
+                      }}
+                      title="행사 제목(기준월) 수정"
+                      className="p-1 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               )}
               <p className="text-[11px] text-slate-300 font-bold hidden sm:block">
-                업데이트: {dataset.updatedAt} · 표의 셀을 클릭하면 직접 수정할 수 있습니다
+                {isAdmin
+                  ? `업데이트: ${dataset.updatedAt} · 표의 셀을 클릭하면 직접 수정할 수 있습니다`
+                  : `업데이트: ${dataset.updatedAt} · 매월 최신 카드사 무이자 혜택이 자동 반영됩니다`}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
-            {/* [📤 무이자 자료 업로드] 버튼 */}
-            <button
-              type="button"
-              disabled={isUploading}
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-xs font-black shadow-xs transition cursor-pointer"
-            >
-              {isUploading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Upload className="w-3.5 h-3.5" />
-              )}
-              <span>
-                {isUploading ? 'AI 분석 중...' : '📤 무이자 자료 업로드'}
-              </span>
-            </button>
+            {isAdmin && (
+              <>
+                {/* [📤 무이자 자료 업로드] 버튼 */}
+                <button
+                  type="button"
+                  disabled={isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-xs font-black shadow-xs transition cursor-pointer"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  <span>
+                    {isUploading ? 'AI 분석 중...' : '📤 무이자 자료 업로드'}
+                  </span>
+                </button>
 
-            {/* [☁️ 전 직원 동기화 설정] 버튼 */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSyncPanelOpen((prev) => {
-                  if (!prev) {
-                    window.history.pushState({ appGuard: true }, '');
-                  }
-                  return !prev;
-                });
-              }}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition cursor-pointer ${
-                isSyncPanelOpen
-                  ? 'bg-sky-500 text-slate-950 border-sky-400'
-                  : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>☁️ 전 직원 동기화 설정</span>
-            </button>
+                {/* [☁️ 전 직원 동기화 설정] 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSyncPanelOpen((prev) => {
+                      if (!prev) {
+                        window.history.pushState({ appGuard: true }, '');
+                      }
+                      return !prev;
+                    });
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition cursor-pointer ${
+                    isSyncPanelOpen
+                      ? 'bg-sky-500 text-slate-950 border-sky-400'
+                      : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
+                  }`}
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  <span>☁️ 전 직원 동기화 설정</span>
+                </button>
+
+                {/* [🔒 관리자 숨김] 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSyncPanelOpen(false);
+                    setEditingCell(null);
+                    setIsEditingTitle(false);
+                    setAdminDeviceUnlocked(false);
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-black transition cursor-pointer"
+                >
+                  <span>🔒 관리자 숨김</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
@@ -514,7 +591,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
         )}
 
         {/* 전 직원 GitHub 동기화 설정 드롭다운 패널 */}
-        {isSyncPanelOpen && (
+        {isAdmin && isSyncPanelOpen && (
           <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 border-b border-slate-700 space-y-3 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="text-xs sm:text-sm font-black text-sky-300 flex items-center gap-1.5">
@@ -614,7 +691,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
         )}
 
         {/* 개별 셀 클릭 즉시 편집 바 */}
-        {editingCell && (
+        {isAdmin && editingCell && (
           <div className="bg-amber-50 border-b-2 border-amber-400 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 text-xs font-black">
@@ -775,20 +852,26 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
         </div>
 
         {/* 3) 본문 스크롤 영역 */}
-        <div className="flex-1 overflow-auto p-3 sm:p-4 bg-slate-50">
+        <div
+          className={`flex-1 p-3 sm:p-4 bg-slate-50 ${
+            activeTab === 'table'
+              ? 'overflow-hidden flex flex-col min-h-0'
+              : 'overflow-auto'
+          }`}
+        >
           {/* ==================== [탭 1: 📊 전체 비교표] ==================== */}
           {activeTab === 'table' && (
-            <div className="w-full overflow-x-auto rounded-2xl border border-slate-300 bg-white shadow-sm">
+            <div className="w-full h-full max-h-[calc(94dvh-220px)] overflow-auto rounded-2xl border border-slate-300 bg-white shadow-sm">
               <table className="w-full border-collapse min-w-[1150px] table-fixed">
-                <thead>
+                <thead className="sticky top-0 z-20 bg-slate-900 text-white shadow-sm">
                   <tr className="bg-slate-900 text-white">
-                    <th className="sticky left-0 z-20 bg-slate-900 w-28 sm:w-32 px-2 py-2.5 text-xs font-black border-r border-b border-slate-700 text-center">
+                    <th className="sticky top-0 left-0 z-30 bg-slate-950 w-28 sm:w-32 px-2 py-2.5 text-xs font-black border-r border-b border-slate-700 text-center">
                       할부 개월
                     </th>
                     {filteredColumns.map((col) => (
                       <th
                         key={col.id}
-                        className="px-2 py-2 text-center border-r border-b border-slate-700 align-middle"
+                        className="sticky top-0 z-20 bg-slate-900 px-2 py-2.5 text-center border-r border-b border-slate-700 align-middle"
                       >
                         <div className="text-xs font-black text-amber-300">
                           {col.brand}
@@ -823,12 +906,14 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                             main: '-',
                           };
                           const isSelectedEditing =
+                            isAdmin &&
                             editingCell?.colId === col.id &&
                             editingCell?.rowLabel === rowLabel;
                           return (
                             <td
                               key={`${col.id}-${rowLabel}`}
                               onClick={() => {
+                                if (!isAdmin) return;
                                 window.history.pushState({ appGuard: true }, '');
                                 setEditingCell({
                                   colId: col.id,
@@ -839,11 +924,13 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                                   sub: cellData.sub || '',
                                 });
                               }}
-                              title="클릭하여 이 셀 수정"
-                              className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch h-12 cursor-pointer transition ${
-                                isSelectedEditing
-                                  ? 'ring-2 ring-inset ring-blue-600'
-                                  : 'hover:opacity-90'
+                              title={isAdmin ? '클릭하여 이 셀 수정' : undefined}
+                              className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch h-12 transition ${
+                                isAdmin
+                                  ? isSelectedEditing
+                                    ? 'cursor-pointer ring-2 ring-inset ring-blue-600'
+                                    : 'cursor-pointer hover:opacity-90'
+                                  : 'cursor-default'
                               }`}
                             >
                               {renderCell(cellData)}
@@ -931,7 +1018,9 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
             ※ 롯데카드 수수료 예시: 롯데제휴카드로 100만원 5개월 할부결제 시 지점손익에서 1만원(1%) 차감
           </span>
           <span className="text-[11px] text-slate-400">
-            표의 셀을 클릭하면 직접 편집 가능 · [📤 무이자 자료 업로드]로 매월 사진/엑셀 자동 반영
+            {isAdmin
+              ? '표의 셀을 클릭하면 직접 편집 가능 · [📤 무이자 자료 업로드]로 매월 사진/엑셀 자동 반영'
+              : '상단 카드사 필터를 눌러 원하는 카드사의 무이자·부분무이자 혜택을 빠르게 확인하세요'}
           </span>
         </div>
       </div>

@@ -608,6 +608,37 @@ export function saveGitHubSyncConfig(config: GitHubSyncConfig): void {
   localStorage.setItem(STORAGE_KEY_GH_CONFIG, JSON.stringify(config));
 }
 
+export const ADMIN_UNLOCK_STORAGE_KEY = 'himart_gj_admin_unlocked';
+export const ADMIN_PIN_CODE = '462846';
+export const ADMIN_MODE_CHANGED_EVENT = 'himart_gj_admin_mode_changed';
+
+export function isAdminDevice(): boolean {
+  try {
+    if (localStorage.getItem(ADMIN_UNLOCK_STORAGE_KEY) === 'true') {
+      return true;
+    }
+    if (loadGitHubSyncConfig().token.trim().length > 0) {
+      return true;
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+export function setAdminDeviceUnlocked(unlocked: boolean): void {
+  try {
+    if (unlocked) {
+      localStorage.setItem(ADMIN_UNLOCK_STORAGE_KEY, 'true');
+    } else {
+      localStorage.removeItem(ADMIN_UNLOCK_STORAGE_KEY);
+    }
+    window.dispatchEvent(new CustomEvent(ADMIN_MODE_CHANGED_EVENT));
+  } catch {
+    // ignore
+  }
+}
+
 export async function fetchRemoteCareDataset(): Promise<CareTableDataset | null> {
   try {
     const res = await fetch(`./care-table-data.json?t=${Date.now()}`, { cache: 'no-store' });
