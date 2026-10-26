@@ -15,10 +15,18 @@ import { CrmApp } from './crm/CrmApp';
 import { HiMobileView } from './components/HiMobileView';
 import { InsuranceGuideView } from './components/InsuranceGuideView';
 import { CareTableView } from './components/CareTableView';
+import { LottePlanCalcView } from './components/LottePlanCalcView';
+import { AllCareGuideView } from './components/AllCareGuideView';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
 import { isUrgentCustomer } from './crm/utils/date';
+import {
+  CareTableDataset,
+  fetchRemoteCareDataset,
+  loadLocalCareDataset,
+  saveLocalCareDataset,
+} from './utils/careTableParser';
 import {
   mapGeneralCardName,
   mapSubscriptionAffiliateCard,
@@ -27,18 +35,19 @@ import {
   sanitizeFiveYearWarrantyText,
 } from './utils/aiImageParser';
 import {
+  Calculator,
   CreditCard,
   Download,
   FileSpreadsheet,
   Home,
   Layers,
-  Maximize2,
-  Minimize2,
+  Menu,
   Printer,
   RefreshCw,
   ShieldCheck,
   Smartphone,
   Users,
+  Wrench,
   X,
 } from 'lucide-react';
 
@@ -166,14 +175,21 @@ export function App() {
         true
     );
   });
-  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState<boolean>(false);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const menuContainerRef = useRef<HTMLDivElement>(null);
+
+  // 안심케어 조견표 데이터셋 및 최신 업데이트 월(Month) 자동 감지
+  const [careDataset, setCareDataset] = useState<CareTableDataset | null>(() =>
+    loadLocalCareDataset()
+  );
 
   // 최신 화면 및 모달 상태를 참조하기 위한 Ref
   const latestAppStateRef = useRef({
     step,
     isSaveToCrmOpen,
     isInstallGuideOpen,
+    isMenuOpen,
   });
 
   useEffect(() => {
@@ -181,13 +197,30 @@ export function App() {
       step,
       isSaveToCrmOpen,
       isInstallGuideOpen,
+      isMenuOpen,
     };
-  }, [step, isSaveToCrmOpen, isInstallGuideOpen]);
+  }, [step, isSaveToCrmOpen, isInstallGuideOpen, isMenuOpen]);
 
-  // 단계나 메뉴가 바뀔 때마다 히스토리 가드 엔트리 1개 추가
+  // 단계나 메뉴가 바뀔 때마다 드롭다운 닫기 및 히스토리 가드 엔트리 1개 추가
   useEffect(() => {
+    setIsMenuOpen(false);
     window.history.pushState({ appGuard: true }, '');
   }, [step, activeMode]);
+
+  // 드롭다운 바깥 영역 클릭 시 자동 닫기
+  useEffect(() => {
+    if (!isMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        menuContainerRef.current &&
+        !menuContainerRef.current.contains(e.target as Node)
+      ) {
+        setIsMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMenuOpen]);
 
   // 최초 1회만 등록되는 스마트폰 물리/제스처 뒤로가기 인터셉터
   useEffect(() => {
@@ -200,7 +233,11 @@ export function App() {
 
       const current = latestAppStateRef.current;
 
-      // 1순위: 열려 있는 모달 닫기
+      // 1순위: 열려 있는 모달/드롭다운 닫기
+      if (current.isMenuOpen) {
+        setIsMenuOpen(false);
+        return;
+      }
       if (current.isSaveToCrmOpen) {
         setIsSaveToCrmOpen(false);
         return;
@@ -210,7 +247,7 @@ export function App() {
         return;
       }
 
-      // 2순위: 현재 화면(예: 8.안심케어 조견표) 내부의 하위 폴더/단계 뒤로가기가 있으면 먼저 실행
+      // 2순위: 현재 화면(예: 안심케어 조견표) 내부의 하위 폴더/단계 뒤로가기가 있으면 먼저 실행
       const subBackHandler = (window as any).__subViewBackHandler as
         | (() => boolean)
         | undefined;
@@ -249,10 +286,6 @@ export function App() {
       setIsInstallGuideOpen(false);
     };
 
-    const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const handleDisplayModeChange = (e: MediaQueryListEvent) => {
       if (e.matches) {
@@ -262,7 +295,6 @@ export function App() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
     mediaQuery.addEventListener?.('change', handleDisplayModeChange);
 
     return () => {
@@ -271,22 +303,8 @@ export function App() {
         handleBeforeInstallPrompt
       );
       window.removeEventListener('appinstalled', handleAppInstalled);
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       mediaQuery.removeEventListener?.('change', handleDisplayModeChange);
     };
-  }, []);
-
-  const handleToggleFullscreen = useCallback(async () => {
-    try {
-      if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
-      } else if (document.exitFullscreen) {
-        await document.exitFullscreen();
-      }
-    } catch {
-      // iOS Safari 등 Fullscreen API 미지원 환경에서는 설치 안내 모달 표시
-      setIsInstallGuideOpen(true);
-    }
   }, []);
 
   const handleInstallAppClick = useCallback(async () => {
@@ -305,14 +323,83 @@ export function App() {
     }
   }, [deferredPrompt]);
 
-  // 메인 홈 화면 진입 시 최신 CRM 캐시 동기화
+  // 메인 홈 화면 진입 시 최신 CRM 캐시 및 안심케어 조견표 동기화
   useEffect(() => {
     if (step === 'home') {
       setCrmCustomers(getCachedCustomers());
+      const local = loadLocalCareDataset();
+      if (local) setCareDataset(local);
+      fetchRemoteCareDataset()
+        .then((remote) => {
+          if (remote) {
+            saveLocalCareDataset(remote);
+            setCareDataset(remote);
+          }
+        })
+        .catch(() => {
+          // ignore
+        });
     }
   }, [step]);
 
-  // 메인 홈 화면 5번 버튼 우측 실시간 긴급 배지 카운트 계산
+  // 조견표 업데이트 월 표시 배지 텍스트 자동 추출
+  const careUpdateMonthBadge = useMemo(() => {
+    if (!careDataset) return '📅 기본 조견표 적용중';
+
+    const combinedTitle = `${careDataset.versionTitle || ''} ${
+      careDataset.fileName || ''
+    }`;
+    const monthMatch = combinedTitle.match(/(\d{1,2})\s*월/);
+    if (monthMatch) {
+      const m = parseInt(monthMatch[1], 10);
+      if (m >= 1 && m <= 12) {
+        return `📅 ${m}월 조견표 업데이트 완료`;
+      }
+    }
+
+    if (careDataset.updatedAt) {
+      const dateParts = careDataset.updatedAt.match(
+        /(\d{4})\D+(\d{1,2})\D+(\d{1,2})/
+      );
+      if (dateParts) {
+        const yyyy = dateParts[1];
+        const mmNum = parseInt(dateParts[2], 10);
+        const mmPad = String(mmNum).padStart(2, '0');
+        const ddPad = String(parseInt(dateParts[3], 10)).padStart(2, '0');
+        return `📅 ${mmNum}월분 업데이트 (${yyyy}.${mmPad}.${ddPad})`;
+      }
+      const parsedDate = new Date(careDataset.updatedAt);
+      if (!isNaN(parsedDate.getTime())) {
+        const yyyy = parsedDate.getFullYear();
+        const mmNum = parsedDate.getMonth() + 1;
+        const mmPad = String(mmNum).padStart(2, '0');
+        const ddPad = String(parsedDate.getDate()).padStart(2, '0');
+        return `📅 ${mmNum}월분 업데이트 (${yyyy}.${mmPad}.${ddPad})`;
+      }
+    }
+
+    return '📅 기본 조견표 적용중';
+  }, [careDataset]);
+
+  // 현재 열려 있는 화면 이름 배지 텍스트
+  const currentScreenBadgeLabel = useMemo(() => {
+    if (step === 'home') return '메인 홈';
+    if (step === 'crm') return '👑 통합 고객관리';
+    if (step === 'input' || step === 'proposal') {
+      if (activeMode === 'general') return '1. 일반구매 견적';
+      if (activeMode === 'subscription') return '2. 구독구매 견적';
+      return '3. 일반+구독 혼합';
+    }
+    if (step === 'lotte-plan') return '4. 롯데 플랜 계산기';
+    if (step === 'pop-printer') return '5. 구독 POP 출력';
+    if (step === 'himobile') return '6. 알뜰폰 개통';
+    if (step === 'insurance') return '7. 보험 청구안내';
+    if (step === 'allcare-guide') return '8. 가전 올케어 안내·등록';
+    if (step === 'care-table') return '📋 안심케어 조견표';
+    return '메인 홈';
+  }, [step, activeMode]);
+
+  // 메인 홈 화면 통합 고객관리 버튼 우측 실시간 긴급 배지 카운트 계산
   const urgentCount = useMemo(() => {
     return crmCustomers
       .filter((c) => !c.deletedAt)
@@ -774,161 +861,33 @@ export function App() {
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col">
-      {/* ==================== 상단 다크 글로벌 네비게이션 & 전체화면/앱설치 바 ==================== */}
-      <header className="w-full min-h-[44px] bg-slate-900 text-white border-b border-slate-800 px-2.5 sm:px-3 py-1.5 flex items-center justify-between gap-1.5 sticky top-0 z-40 no-print">
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+      {/* ==================== 상단 다크 글로벌 네비게이션 바 (좌: 홈 + 현재화면 배지 / 우: 앱설치 + 햄버거 메뉴) ==================== */}
+      <header className="w-full min-h-[44px] bg-slate-900 text-white border-b border-slate-800 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 sticky top-0 z-40 no-print">
+        {/* 좌측: [🏠 홈] 버튼 + 현재 열려 있는 화면 이름 배지 */}
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={() => setStep('home')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
               step === 'home'
-                ? 'bg-slate-700 text-white'
-                : 'bg-slate-800/80 text-slate-300 hover:bg-slate-800 hover:text-white'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-700'
             }`}
           >
             <Home className="w-3.5 h-3.5" />
-            <span>홈</span>
+            <span>🏠 홈</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => handleEnterMode('general')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              (step === 'input' || step === 'proposal') &&
-              activeMode === 'general'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <CreditCard className="w-3.5 h-3.5" />
-            <span>1.일반견적</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleEnterMode('subscription')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              (step === 'input' || step === 'proposal') &&
-              activeMode === 'subscription'
-                ? 'bg-rose-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>2.구독견적</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleEnterMode('hybrid')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              (step === 'input' || step === 'proposal') &&
-              activeMode === 'hybrid'
-                ? 'bg-indigo-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>3.혼합견적</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStep('pop-printer')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              step === 'pop-printer'
-                ? 'bg-emerald-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>4.POP출력</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStep('crm')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              step === 'crm'
-                ? 'bg-amber-500 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>5.고객관리</span>
-            {urgentCount >= 1 && (
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black leading-none">
-                {urgentCount}
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStep('himobile')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              step === 'himobile'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>6.알뜰폰</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStep('insurance')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              step === 'insurance'
-                ? 'bg-teal-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>7.보험안내</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStep('care-table')}
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
-              step === 'care-table'
-                ? 'bg-cyan-600 text-white shadow-xs'
-                : 'bg-slate-800/70 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>8.안심케어</span>
-          </button>
+          <span className="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
+            {currentScreenBadgeLabel}
+          </span>
         </div>
 
-        {/* 우측: 전체화면 토글 & PWA 앱 설치 버튼 */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <button
-            type="button"
-            onClick={handleToggleFullscreen}
-            title="주소창 숨김 전체화면 전환"
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 border transition cursor-pointer ${
-              isFullscreen
-                ? 'bg-emerald-600 border-emerald-500 text-white'
-                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
-            }`}
-          >
-            {isFullscreen ? (
-              <>
-                <Minimize2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">전체화면 해제</span>
-                <span className="sm:hidden">축소</span>
-              </>
-            ) : (
-              <>
-                <Maximize2 className="w-3.5 h-3.5" />
-                <span>⛶ 전체화면</span>
-              </>
-            )}
-          </button>
-
+        {/* 우측: PWA 앱 설치 버튼 & [☰ 메뉴] 드롭다운 */}
+        <div
+          ref={menuContainerRef}
+          className="relative flex items-center gap-1.5 shrink-0"
+        >
           {!isStandalone && (
             <button
               type="button"
@@ -940,169 +899,436 @@ export function App() {
               <span>📲 앱 설치</span>
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border transition cursor-pointer ${
+              isMenuOpen
+                ? 'bg-amber-500 border-amber-400 text-slate-950'
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-white'
+            }`}
+          >
+            {isMenuOpen ? (
+              <X className="w-4 h-4" />
+            ) : (
+              <Menu className="w-4 h-4" />
+            )}
+            <span>☰ 메뉴</span>
+            {urgentCount >= 1 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black leading-none">
+                {urgentCount}
+              </span>
+            )}
+          </button>
+
+          {/* [☰ 메뉴] 카드형 드롭다운 메뉴판 */}
+          {isMenuOpen && (
+            <div className="absolute right-0 top-[calc(100%+8px)] w-[330px] sm:w-[390px] rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-3 space-y-2.5 z-50 text-white">
+              {/* 1) 최상단 단독 버튼: 👑 통합 고객관리 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setStep('crm');
+                }}
+                className={`w-full py-2.5 px-3.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-between border transition cursor-pointer ${
+                  step === 'crm'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400'
+                    : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white border-amber-500/40'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-amber-400" />
+                  <span>👑 통합 고객관리</span>
+                </span>
+                {urgentCount >= 1 ? (
+                  <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-black">
+                    🔥긴급 {urgentCount}건
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-bold opacity-75">➔</span>
+                )}
+              </button>
+
+              {/* 2) 중단 2열 그리드 (좌 1~4 / 우 5~8) */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {/* 좌측 열 (1 ~ 4) */}
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleEnterMode('general');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      (step === 'input' || step === 'proposal') &&
+                      activeMode === 'general'
+                        ? 'bg-blue-600 text-white border-blue-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    <span className="truncate">1. 일반구매 견적</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleEnterMode('subscription');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      (step === 'input' || step === 'proposal') &&
+                      activeMode === 'subscription'
+                        ? 'bg-rose-600 text-white border-rose-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span className="truncate">2. 구독구매 견적</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleEnterMode('hybrid');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      (step === 'input' || step === 'proposal') &&
+                      activeMode === 'hybrid'
+                        ? 'bg-indigo-600 text-white border-indigo-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span className="truncate">3. 일반+구독 혼합</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setStep('lotte-plan');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      step === 'lotte-plan'
+                        ? 'bg-violet-600 text-white border-violet-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <Calculator className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                    <span className="truncate">4. 롯데 플랜 계산기</span>
+                  </button>
+                </div>
+
+                {/* 우측 열 (5 ~ 8) */}
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setStep('pop-printer');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      step === 'pop-printer'
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <Printer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="truncate">5. 구독 POP 출력</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setStep('himobile');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      step === 'himobile'
+                        ? 'bg-purple-600 text-white border-purple-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <Smartphone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                    <span className="truncate">6. 알뜰폰 개통</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setStep('insurance');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      step === 'insurance'
+                        ? 'bg-teal-600 text-white border-teal-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+                    <span className="truncate">7. 보험 청구안내</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setStep('allcare-guide');
+                    }}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                      step === 'allcare-guide'
+                        ? 'bg-sky-600 text-white border-sky-500'
+                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                    }`}
+                  >
+                    <Wrench className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    <span className="truncate">8. 가전 올케어 안내·등록</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3) 최하단 단독 버튼: 📋 안심케어 조견표 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  setStep('care-table');
+                }}
+                className={`w-full py-2.5 px-3.5 rounded-xl font-black text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
+                  step === 'care-table'
+                    ? 'bg-cyan-600 text-white border-cyan-400'
+                    : 'bg-slate-800 hover:bg-cyan-600 text-white border-cyan-500/40'
+                }`}
+              >
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
+                  <span>📋 안심케어 조견표</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-400/40 text-cyan-200 text-[10px] font-extrabold truncate">
+                  {careUpdateMonthBadge}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* ==================== STEP 0: 심플 메인 메뉴 선택 화면 (좌 1~4 / 우 5~8 2열 배치) ==================== */}
+      {/* ==================== STEP 0: 메인 홈 화면 (상단 단독 + 중앙 4×2 대칭 + 하단 단독) ==================== */}
       {step === 'home' && (
         <main className="flex-1 w-full flex items-center justify-center p-3 sm:p-6">
-          <div className="w-full max-w-3xl grid grid-cols-2 gap-2.5 sm:gap-4">
-            {/* 왼쪽 열: 1 ~ 4번 */}
-            <div className="flex flex-col gap-2.5 sm:gap-3.5">
-              <button
-                type="button"
-                onClick={() => handleEnterMode('general')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition shrink-0">
-                    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    1. 일반구매 견적
-                  </span>
+          <div className="w-full max-w-3xl flex flex-col gap-2.5 sm:gap-4">
+            {/* 1) 최상단 단독 (가로 전체 Full-width 1칸): 👑 통합 고객관리 */}
+            <button
+              type="button"
+              onClick={() => setStep('crm')}
+              className="w-full py-4 sm:py-5 px-4 sm:px-6 rounded-2xl sm:rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-amber-400 hover:border-amber-500 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-600 flex items-center justify-center transition shrink-0 shadow-xs">
+                  <Users className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                <div className="text-left min-w-0">
+                  <div className="text-base sm:text-xl font-black tracking-tight truncate">
+                    👑 통합 고객관리 (CRM · 스케줄 · 문자)
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 ml-2">
+                {urgentCount >= 1 && (
+                  <span className="px-2.5 py-1 rounded-full bg-rose-600 text-white text-xs sm:text-sm font-black animate-pulse shadow-xs">
+                    🔥 긴급 {urgentCount}건
+                  </span>
+                )}
+                <span className="text-sm sm:text-base font-extrabold text-amber-600 group-hover:text-white">
                   ➔
                 </span>
-              </button>
+              </div>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => handleEnterMode('subscription')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition shrink-0">
-                    <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    2. 구독구매 견적
-                  </span>
-                </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                  ➔
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleEnterMode('hybrid')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition shrink-0">
-                    <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    3. 일반+구독 혼합
-                  </span>
-                </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                  ➔
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setStep('pop-printer')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition shrink-0">
-                    <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    4. 구독 POP 출력
-                  </span>
-                </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                  ➔
-                </span>
-              </button>
-            </div>
-
-            {/* 오른쪽 열: 5 ~ 8번 */}
-            <div className="flex flex-col gap-2.5 sm:gap-3.5">
-              <button
-                type="button"
-                onClick={() => setStep('crm')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-amber-500 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer relative"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-500 flex items-center justify-center transition shrink-0">
-                    <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    5. 통합 고객관리
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0 ml-1">
-                  {urgentCount >= 1 && (
-                    <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] sm:text-xs font-black animate-pulse shadow-xs">
-                      🔥{urgentCount}
+            {/* 2) 중앙 양쪽 두 줄 (좌 1~4 / 우 5~8 완벽 2열 대칭) */}
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
+              {/* 왼쪽 열 (1 ~ 4번 : 견적 · 계산기) */}
+              <div className="flex flex-col gap-2.5 sm:gap-3.5">
+                <button
+                  type="button"
+                  onClick={() => handleEnterMode('general')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition shrink-0">
+                      <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      1. 일반구매 견적
                     </span>
-                  )}
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white">
+                  </div>
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
                     ➔
                   </span>
-                </div>
-              </button>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setStep('himobile')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-purple-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-purple-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-purple-600 group-hover:bg-white text-white group-hover:text-purple-600 flex items-center justify-center transition shrink-0">
-                    <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
+                <button
+                  type="button"
+                  onClick={() => handleEnterMode('subscription')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition shrink-0">
+                      <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      2. 구독구매 견적
+                    </span>
                   </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    6. 알뜰폰 개통
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
                   </span>
-                </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                  ➔
-                </span>
-              </button>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setStep('insurance')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
-                    <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                <button
+                  type="button"
+                  onClick={() => handleEnterMode('hybrid')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition shrink-0">
+                      <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      3. 일반+구독 혼합
+                    </span>
                   </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    7. 보험 청구안내
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
                   </span>
-                </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                  ➔
-                </span>
-              </button>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => setStep('care-table')}
-                className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-cyan-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-cyan-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
-              >
-                <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-cyan-600 group-hover:bg-white text-white group-hover:text-cyan-600 flex items-center justify-center transition shrink-0">
-                    <FileSpreadsheet className="w-4 h-4 sm:w-5 sm:h-5" />
+                <button
+                  type="button"
+                  onClick={() => setStep('lotte-plan')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-violet-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-violet-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-violet-600 group-hover:bg-white text-white group-hover:text-violet-600 flex items-center justify-center transition shrink-0">
+                      <Calculator className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      4. 롯데 플랜 계산기
+                    </span>
                   </div>
-                  <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                    8. 안심케어 조견표
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
                   </span>
-                </div>
-                <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                  ➔
-                </span>
-              </button>
+                </button>
+              </div>
+
+              {/* 오른쪽 열 (5 ~ 8번 : POP · 개통 · 보험 · 올케어) */}
+              <div className="flex flex-col gap-2.5 sm:gap-3.5">
+                <button
+                  type="button"
+                  onClick={() => setStep('pop-printer')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition shrink-0">
+                      <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      5. 구독 POP 출력
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('himobile')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-purple-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-purple-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-purple-600 group-hover:bg-white text-white group-hover:text-purple-600 flex items-center justify-center transition shrink-0">
+                      <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      6. 알뜰폰 개통
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('insurance')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
+                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      7. 보험 청구안내
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStep('allcare-guide')}
+                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-sky-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-sky-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-sky-600 group-hover:bg-white text-white group-hover:text-sky-600 flex items-center justify-center transition shrink-0">
+                      <Wrench className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
+                      8. 가전 올케어 안내·등록
+                    </span>
+                  </div>
+                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
+                    ➔
+                  </span>
+                </button>
+              </div>
             </div>
+
+            {/* 3) 최하단 단독 (가로 전체 Full-width 1칸 — 상단 통합고객관리와 대칭되는 배너형 버튼) */}
+            <button
+              type="button"
+              onClick={() => setStep('care-table')}
+              className="w-full py-4 sm:py-5 px-4 sm:px-6 rounded-2xl sm:rounded-3xl bg-white hover:bg-cyan-600 text-slate-900 hover:text-white border-2 border-cyan-500 hover:border-cyan-600 shadow-md hover:shadow-xl transition-all flex flex-wrap items-center justify-between gap-2 group cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-cyan-600 group-hover:bg-white text-white group-hover:text-cyan-600 flex items-center justify-center transition shrink-0 shadow-xs">
+                  <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6" />
+                </div>
+                <div className="text-left min-w-0">
+                  <div className="text-base sm:text-xl font-black tracking-tight truncate">
+                    📋 안심케어 · 가전이사 조견표
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 ml-auto">
+                <span className="px-3 py-1 rounded-full bg-cyan-50 group-hover:bg-cyan-950/90 text-cyan-800 group-hover:text-cyan-200 border border-cyan-300 group-hover:border-cyan-400/50 text-xs sm:text-sm font-black shadow-2xs transition">
+                  {careUpdateMonthBadge}
+                </span>
+                <span className="text-sm sm:text-base font-extrabold text-cyan-600 group-hover:text-white">
+                  ➔
+                </span>
+              </div>
+            </button>
           </div>
         </main>
       )}
@@ -1138,12 +1364,17 @@ export function App() {
         />
       )}
 
-      {/* ==================== STEP 3: 4. 구독 POP 자동 출력기 화면 ==================== */}
+      {/* ==================== STEP 3: 4. 롯데 플랜 카드 계산기 & 제안서 화면 ==================== */}
+      {step === 'lotte-plan' && (
+        <LottePlanCalcView onBackToHome={() => setStep('home')} />
+      )}
+
+      {/* ==================== STEP 4: 5. 구독 POP 자동 출력기 화면 ==================== */}
       {step === 'pop-printer' && (
         <PopPrinterApp onBackToHome={() => setStep('home')} />
       )}
 
-      {/* ==================== STEP 4: 5. 통합 고객관리 시스템 화면 ==================== */}
+      {/* ==================== STEP 5: 통합 고객관리 시스템 화면 ==================== */}
       {step === 'crm' && (
         <CrmApp
           onBackToHome={() => setStep('home')}
@@ -1153,17 +1384,22 @@ export function App() {
         />
       )}
 
-      {/* ==================== STEP 5: 6. 하이모바일 알뜰요금제 안내 & 즉시 개통 화면 ==================== */}
+      {/* ==================== STEP 6: 6. 하이모바일 알뜰요금제 안내 & 즉시 개통 화면 ==================== */}
       {step === 'himobile' && (
         <HiMobileView onBackToHome={() => setStep('home')} />
       )}
 
-      {/* ==================== STEP 6: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
+      {/* ==================== STEP 7: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
       {step === 'insurance' && (
         <InsuranceGuideView onBackToHome={() => setStep('home')} />
       )}
 
-      {/* ==================== STEP 7: 8. 안심케어 · 가전이사 조견표 화면 ==================== */}
+      {/* ==================== STEP 8: 8. 가전 올케어 서비스 안내 & 보유가전 등록 화면 ==================== */}
+      {step === 'allcare-guide' && (
+        <AllCareGuideView onBackToHome={() => setStep('home')} />
+      )}
+
+      {/* ==================== STEP 9: 안심케어 · 가전이사 조견표 화면 ==================== */}
       {step === 'care-table' && (
         <CareTableView onBackToHome={() => setStep('home')} />
       )}

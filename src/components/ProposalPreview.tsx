@@ -365,9 +365,17 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     );
   }
 
+  // 카드사별 혜택 명칭 분기 (롯데·신한: 캐시백 / 우리·삼성: 청구할인)
+  const subCardBenefitLabel =
+    currentCard?.benefitType === '캐시백' ||
+    currentCard?.id === 'lotte' ||
+    currentCard?.id === 'shinhan'
+      ? '캐시백'
+      : '청구할인';
+
   // 구독구매 수식 배지 문구
   const subFormulaParts = ['월 구독료'];
-  if (cardMonthlyDiscount > 0) subFormulaParts.push('카드할인');
+  if (cardMonthlyDiscount > 0) subFormulaParts.push(`카드${subCardBenefitLabel}`);
   if (hiPlusMonthlySupport > 0) subFormulaParts.push('구독프리드');
   const subFormulaText = subFormulaParts.join(' ➖ ');
 
@@ -1081,11 +1089,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                             </div>
                             <div>
                               <div className="text-base font-black text-slate-900">
-                                (-) 제휴카드 월 할인 ({currentCard.name})
+                                (-) 제휴카드 월 {subCardBenefitLabel} ({currentCard.name})
                               </div>
                               <div className="text-xs font-bold text-blue-700">
                                 {currentCardTier.minSpendLabel} ·{' '}
-                                {representativePeriod}개월간 매월 할인
+                                {representativePeriod}개월간 매월 {subCardBenefitLabel}
                               </div>
                             </div>
                           </div>
@@ -1466,7 +1474,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                             currentCardTier && (
                               <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                                 <span>
-                                  (-) 제휴카드 ({currentCard.shortName} ·{' '}
+                                  (-) 제휴카드 월 {subCardBenefitLabel} ({currentCard.shortName} ·{' '}
                                   {currentCardTier.minSpendShort})
                                 </span>
                                 <span className="font-black text-blue-600">
