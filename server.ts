@@ -213,10 +213,11 @@ async function startServer() {
       };
 
       const GEMINI_MODELS = [
-        'gemini-3-flash-preview',
+        'gemini-3.8-flash',
+        'gemini-3.1-pro-preview',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash',
         'gemini-flash-latest',
-        'gemini-2.5-pro',
-        'gemini-2.5-flash',
       ];
       let responseText: string | undefined;
       let lastError: unknown;
@@ -466,10 +467,11 @@ async function startServer() {
       };
 
       const GEMINI_MODELS = [
-        'gemini-3-flash-preview',
+        'gemini-3.8-flash',
+        'gemini-3.1-pro-preview',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash',
         'gemini-flash-latest',
-        'gemini-2.5-pro',
-        'gemini-2.5-flash',
       ];
       let responseText: string | undefined;
       let lastError: unknown;
@@ -613,10 +615,11 @@ async function startServer() {
       try {
         const ai = getGenAIClient(clientApiKey);
         const GEMINI_MODELS = [
-          'gemini-3-flash-preview',
+          'gemini-3.8-flash',
+          'gemini-3.1-pro-preview',
+          'gemini-3.7-flash',
+          'gemini-3.5-flash',
           'gemini-flash-latest',
-          'gemini-2.5-pro',
-          'gemini-2.5-flash',
         ];
         for (const modelName of GEMINI_MODELS) {
           try {
@@ -708,13 +711,14 @@ async function startServer() {
 11. isAllCare (올케어 여부): 이미지에 '올케어', '가전수리올케어', 'allcare', '사용중 가전 보증', '2년 수리비 보증' 등이 포함되어 있으면 true, 아니면 false.`;
 
       let responseText = '';
-      const modelsToTry = [
-        req.body.model,
-        'gemini-3-flash-preview',
+      const GEMINI_MODELS = [
+        'gemini-3.8-flash',
+        'gemini-3.1-pro-preview',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash',
         'gemini-flash-latest',
-        'gemini-2.5-pro',
-        'gemini-2.5-flash',
-      ].filter(Boolean);
+      ];
+      const modelsToTry = GEMINI_MODELS;
       let lastError: any = null;
 
       for (const model of modelsToTry) {

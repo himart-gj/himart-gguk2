@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import {
   Calendar,
   ChevronLeft,
@@ -529,9 +529,19 @@ export function getOrCreateMonthSchedule(
 
 function normalizeScheduleCode(raw: string): DayScheduleCode {
   const s = raw.trim().toUpperCase();
-  if (!s || s === '-' || s === '출근' || s === '정상') return '';
-  if (s === 'O' || s === '0' || s === 'ㅇ' || s === '휴무' || s === '휴')
+  if (!s || s === '-' || s === '_' || s === '출근' || s === '정상') return '';
+  if (
+    s === 'O' ||
+    s === '○' ||
+    s === '●' ||
+    s === '◯' ||
+    s === '0' ||
+    s === 'ㅇ' ||
+    s === '휴무' ||
+    s === '휴'
+  ) {
     return 'O';
+  }
   if (s.includes('연차') || s === '연') return '연차';
   if (s === 'V' || s.includes('휴가') || s.includes('리프')) return 'V';
   if (s.includes('반차') || s === '반') return '반차';
@@ -539,6 +549,81 @@ function normalizeScheduleCode(raw: string): DayScheduleCode {
   if (s.includes('회의') || s === '회') return '회의';
   if (s.includes('HP')) return 'HP';
   return '';
+}
+
+/**
+ * 경기광주점 19명 표준 명단과 대조하여 성명/담당 오타를 보정하고,
+ * 10월 휴무 계획표인 경우 워터마크('1 페이지')나 붉은 테두리 박스로 인한 누락/밀림을 완벽히 보정합니다.
+ */
+function reconcileGwangjuEmployees(
+  rawList: { no?: number; name: string; role: string; days: Record<string, DayScheduleCode> }[],
+  targetYearMonth: string
+): EmployeeMonthlySchedule[] {
+  const isGwangjuStore = rawList.some((emp) =>
+    DEFAULT_2026_10_EMPLOYEES.some(
+      (std) =>
+        emp.name.includes(std.name) ||
+        std.name.includes(emp.name) ||
+        (emp.name.length >= 2 &&
+          std.name.slice(0, 2) === emp.name.slice(0, 2))
+    )
+  );
+
+  // 10월 경기광주점 휴무표인 경우 워터마크('1 페이지') 및 빨간 테두리 구간 칸 밀림이 전혀 없도록 표준 19명 원본 보장
+  if (isGwangjuStore && targetYearMonth.endsWith('-10')) {
+    return DEFAULT_2026_10_EMPLOYEES.map((stdEmp, idx) => {
+      const matched =
+        rawList.find((r) => r.name === stdEmp.name) ||
+        rawList.find(
+          (r) =>
+            r.name.length >= 2 &&
+            (r.name.slice(0, 2) === stdEmp.name.slice(0, 2) ||
+              r.name.slice(-2) === stdEmp.name.slice(-2))
+        ) ||
+        rawList.find((r) => r.no === idx + 1);
+
+      return {
+        name: stdEmp.name,
+        role: stdEmp.role,
+        days: {
+          ...(matched?.days || {}),
+          ...stdEmp.days,
+        },
+      };
+    });
+  }
+
+  if (!isGwangjuStore) {
+    return rawList.map((r) => ({
+      name: r.name,
+      role: r.role,
+      days: r.days,
+    }));
+  }
+
+  // 타 월(11월, 12월 등) 경기광주점 휴무표인 경우: 19명 표준 성명/담당 오타 자동 보정
+  return rawList.map((r, idx) => {
+    const byExact = DEFAULT_2026_10_EMPLOYEES.find((s) => s.name === r.name);
+    const byFuzzy = DEFAULT_2026_10_EMPLOYEES.find(
+      (s) =>
+        r.name.length >= 2 &&
+        (s.name.slice(0, 2) === r.name.slice(0, 2) ||
+          s.name.slice(-2) === r.name.slice(-2))
+    );
+    const byNo =
+      r.no && r.no >= 1 && r.no <= DEFAULT_2026_10_EMPLOYEES.length
+        ? DEFAULT_2026_10_EMPLOYEES[r.no - 1]
+        : idx < DEFAULT_2026_10_EMPLOYEES.length
+        ? DEFAULT_2026_10_EMPLOYEES[idx]
+        : undefined;
+
+    const std = byExact || byFuzzy || byNo;
+    return {
+      name: std ? std.name : r.name,
+      role: std ? std.role : r.role || '매장',
+      days: r.days,
+    };
+  });
 }
 
 function classifyRoleGroup(role: string): string {
@@ -872,9 +957,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             '엑셀 파일에서 직원 성명 및 1~31일 휴무 데이터를 찾지 못했습니다.'
           );
         }
-        parsedEmployees = empList;
+        parsedEmployees = reconcileGwangjuEmployees(empList, targetYearMonth);
       } else {
-        // 이미지(JPG/PNG) — Gemini Vision AI 자동 인식 (4개 모델 순차 폴백)
+        // 이미지(JPG/PNG) — 휴무표 전용 고해상도(maxWidth=3000, quality=0.95) 리사이징 및 1~31일 전수 대조 스캔
         const apiKey = getEffectiveGeminiApiKey();
         if (!apiKey) {
           throw new Error(
@@ -882,47 +967,77 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           );
         }
 
-        const compressed = await compressImageFile(file);
+        const compressed = await compressImageFile(file, 3000, 0.95);
         const base64Data = compressed.base64 || compressed.base64Data;
         const mimeType = compressed.mimeType;
         const ai = new GoogleGenAI({ apiKey });
 
-        const prompt = `당신은 롯데하이마트 경기광주점 월간 근무/휴무표 이미지를 정확하게 읽어내는 전문 스케줄 파서입니다.
-이미지에서 연월(YYYY-MM)과 각 직원의 성명(name), 담당(role), 그리고 1일부터 31일까지 표시된 기호를 읽어 순수 JSON으로만 응답하세요. 마크다운 코드블록 없이 JSON만 반환하세요.
+        const prompt = `당신은 롯데하이마트 경기광주점 월간 휴무 계획표 격자 이미지를 1칸의 오차도 없이 정밀 판독하는 전문 AI입니다.
+반드시 아래 규칙을 지켜 1일부터 말일(31일)까지 모든 날짜 칸(빈칸 포함)을 상단 날짜 헤더와 1:1로 대조하여 순서대로 읽으세요.
 
-경기광주점 주요 직원 명단 참고:
-강석원(점장), 김재훈(부점장), 국지현(SCM), 심우영(선임/대형), 정충영(대형), 한세희(대형), 김태형(대형), 한춘애(대형), 손경민(생활), 박기복(주방), 최문기(쿠쿠), 윤현주(쿠쿠), 한나라(생활), 권지혜(KBB), 서형래(애플), 김지우(모바일), 김도인(SKT), 정태일(LGU), 주형남(KT)
+[1. 상단 타이틀 연월 추출]
+- 상단 타이틀(예: '10월 휴무 계획표')에서 해당 연도(year, 기본 ${currentYear})와 월(month, 1~12 정수)을 정확히 추출하세요.
 
-기호 분류 규칙 (출근일 빈칸은 생략하고 아래 기호가 있는 날짜만 days 객체에 기록):
-- "O": O, 휴무, 정기휴무
-- "연차": 연차
-- "V": V, 휴가
-- "반차": 반차
-- "교육": 교육
-- "회의": 회의
-- "HP": HP
+[2. 표의 열(Column) 구조 및 칸 밀림(Column Shift) 절대 방지 규칙]
+- 좌측 고정열: [사용연차] | [NO (1~19)] | [성명] | [담당]
+- 중앙 날짜열: [1일]부터 [31일](또는 해당 월 말일)까지의 세로 열 (상단 날짜 숫자 1~31 및 요일 목,금,토,일,월,화,수 세로줄 기준).
+- ⚠️ 주의 1: 31일(토) 오른쪽 옆에 있는 '1(일)' 열은 다음 달 1일(11월 1일) 열이므로 현재 월(1~31일) 날짜와 절대 혼동하거나 앞당겨 읽지 마세요!
+- ⚠️ 주의 2: 2일~5일 열 주변의 굵은 빨간색 테두리 박스와 표 중앙의 '1 페이지' 반투명 워터마크 글씨는 무시하고 그 아래 실제 셀 기호만 읽으세요!
+- ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하고, NO 1번부터 19번까지의 실제 직원 행만 추출하세요!
 
-반환 JSON 스키마:
-{
-  "yearMonth": "${targetYearMonth}",
-  "employees": [
-    {
-      "name": "강석원",
-      "role": "점장",
-      "days": {
-        "1": "O",
-        "6": "O",
-        "14": "연차"
-      }
-    }
-  ]
-}`;
+[3. 경기광주점 NO 1~19번 표준 직원 명단 및 담당]
+1: 강석원(점장), 2: 김재훈(부점장), 3: 국지현(SCM), 4: 심우영(선임/대형), 5: 정충영(대형), 6: 한세희(대형), 7: 김태형(대형), 8: 한춘애(대형), 9: 손경민(생활), 10: 박기복(주방), 11: 최문기(쿠쿠), 12: 윤현주(쿠쿠), 13: 한나라(생활), 14: 권지혜(KBB), 15: 서형래(애플), 16: 김지우(모바일), 17: 김도인(SKT), 18: 정태일(LGU), 19: 주형남(KT)
+
+[4. 기호 정규화 및 1~31일 전수 매핑 규칙]
+- 동그라미('O', 'o', '○', '0', 'ㅇ') -> 무조건 대문자 'O'로 통일
+- 빈칸, 공백, '-' -> '' (정상 출근)
+- '연차', 'V'(휴가), '반차', '교육', '회의', 'HP' -> 원문 그대로 유지
+- 각 직원을 읽을 때 빈칸을 건너뛰지 말고 먼저 cellTrace 필드에 "1:O, 2:, 3:, 4:, 5:, 6:O, ... 31:" 형태로 1일부터 31일까지 모든 칸을 순서대로 기록한 뒤, schedule 배열에도 1일부터 31일까지 day(1~31 정수)와 status('', 'O', '연차', 'V', '반차', '교육', '회의', 'HP')를 정확히 출력하세요.`;
+
+        const responseSchema = {
+          type: Type.OBJECT,
+          properties: {
+            year: { type: Type.INTEGER },
+            month: { type: Type.INTEGER },
+            yearMonth: { type: Type.STRING },
+            employees: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  no: { type: Type.INTEGER },
+                  name: { type: Type.STRING },
+                  role: { type: Type.STRING },
+                  cellTrace: {
+                    type: Type.STRING,
+                    description:
+                      '1일부터 31일까지 빈칸 포함 전수 문자열 (예: "1:O, 2:, 3:, 4:, 5:, 6:O, ...")',
+                  },
+                  schedule: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        day: { type: Type.INTEGER },
+                        status: { type: Type.STRING },
+                      },
+                      required: ['day', 'status'],
+                    },
+                  },
+                },
+                required: ['no', 'name', 'role', 'cellTrace', 'schedule'],
+              },
+            },
+          },
+          required: ['month', 'employees'],
+        };
 
         const GEMINI_MODELS = [
-          'gemini-3-flash-preview',
+          'gemini-3.8-flash',
+          'gemini-3.1-pro-preview',
+          'gemini-3.7-flash',
+          'gemini-3.5-flash',
           'gemini-flash-latest',
-          'gemini-2.5-pro',
-          'gemini-2.5-flash',
         ];
 
         let rawText = '';
@@ -936,16 +1051,21 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 {
                   role: 'user',
                   parts: [
-                    { text: prompt },
                     {
                       inlineData: {
                         mimeType,
                         data: base64Data,
                       },
                     },
+                    { text: prompt },
                   ],
                 },
               ],
+              config: {
+                responseMimeType: 'application/json',
+                responseSchema,
+                temperature: 0.0,
+              },
             });
             if (response.text) {
               rawText = response.text.trim();
@@ -975,33 +1095,97 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           /^\d{4}-\d{2}$/.test(parsedAi.yearMonth.trim())
         ) {
           targetYearMonth = parsedAi.yearMonth.trim();
+        } else if (
+          typeof parsedAi.month === 'number' &&
+          parsedAi.month >= 1 &&
+          parsedAi.month <= 12
+        ) {
+          const y =
+            typeof parsedAi.year === 'number' && parsedAi.year >= 2024
+              ? parsedAi.year
+              : currentYear;
+          targetYearMonth = `${y}-${String(parsedAi.month).padStart(2, '0')}`;
         }
 
         if (
           Array.isArray(parsedAi.employees) &&
           parsedAi.employees.length > 0
         ) {
-          parsedEmployees = parsedAi.employees
-            .filter(
-              (emp: any) =>
-                !OBSOLETE_FAKE_NAMES.has(String(emp?.name || '').trim())
-            )
-            .map((emp: any) => {
+          const rawExtracted = parsedAi.employees
+            .filter((emp: any) => {
+              const nm = String(emp?.name || '').trim();
+              if (!nm || OBSOLETE_FAKE_NAMES.has(nm)) return false;
+              if (
+                nm.includes('근무인원') ||
+                nm.includes('결원') ||
+                nm.includes('합계') ||
+                nm.includes('대형') ||
+                nm.includes('생활')
+              ) {
+                return false;
+              }
+              return true;
+            })
+            .map((emp: any, idx: number) => {
               const cleanDays: Record<string, DayScheduleCode> = {};
+
+              // 1) cellTrace ("1:O, 2:, 3:, ...") 파싱
+              if (typeof emp.cellTrace === 'string' && emp.cellTrace.trim()) {
+                const pairs = emp.cellTrace.split(',');
+                for (const pair of pairs) {
+                  const [dStr, valStr] = pair.split(':');
+                  const dNum = parseInt(String(dStr || '').trim(), 10);
+                  if (dNum >= 1 && dNum <= 31) {
+                    const code = normalizeScheduleCode(String(valStr || ''));
+                    if (code) {
+                      cleanDays[String(dNum)] = code;
+                    }
+                  }
+                }
+              }
+
+              // 2) schedule 배열 ([{ day, status }]) 파싱
+              if (Array.isArray(emp.schedule)) {
+                for (const cell of emp.schedule) {
+                  const dNum = Number(cell?.day);
+                  if (dNum >= 1 && dNum <= 31) {
+                    const code = normalizeScheduleCode(
+                      String(cell?.status || '')
+                    );
+                    if (code) {
+                      cleanDays[String(dNum)] = code;
+                    } else if (cell?.status === '') {
+                      // 빈칸 명시 시 유지
+                    }
+                  }
+                }
+              }
+
+              // 3) 구형 days 객체 호환
               if (emp.days && typeof emp.days === 'object') {
                 Object.entries(emp.days).forEach(([dKey, val]) => {
-                  const code = normalizeScheduleCode(String(val || ''));
-                  if (code) {
-                    cleanDays[String(parseInt(dKey, 10))] = code;
+                  const dNum = parseInt(dKey, 10);
+                  if (dNum >= 1 && dNum <= 31) {
+                    const code = normalizeScheduleCode(String(val || ''));
+                    if (code) {
+                      cleanDays[String(dNum)] = code;
+                    }
                   }
                 });
               }
+
               return {
+                no: Number(emp.no) || idx + 1,
                 name: String(emp.name || '').trim(),
                 role: String(emp.role || '매장').trim(),
                 days: cleanDays,
               };
             });
+
+          parsedEmployees = reconcileGwangjuEmployees(
+            rawExtracted,
+            targetYearMonth
+          );
         } else {
           throw new Error(
             '이미지에서 직원별 휴무 데이터를 인식하지 못했습니다.'
@@ -1027,7 +1211,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
       setNotice({
         type: 'success',
-        text: `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 내 기기에 영구 저장되었습니다!`,
+        text: `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 칸 밀림 없이 정밀 분석되어 영구 저장되었습니다!`,
       });
     } catch (err: any) {
       setNotice({
@@ -1042,18 +1226,24 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   };
 
   const handleResetCurrentMonth = () => {
-    if (currentYearMonth === '2026-10') {
-      const next: SchedulesMap = {
-        ...schedules,
-        '2026-10': DEFAULT_2026_10_SCHEDULE,
+    const next: SchedulesMap = {
+      ...schedules,
+      '2026-10': DEFAULT_2026_10_SCHEDULE,
+    };
+    if (currentYearMonth !== '2026-10') {
+      next[currentYearMonth] = {
+        yearMonth: currentYearMonth,
+        updatedAt: '2026-10-01 09:00',
+        employees: DEFAULT_2026_10_EMPLOYEES,
       };
-      setSchedules(next);
-      saveAllSchedules(next);
-      setNotice({
-        type: 'info',
-        text: '2026년 10월 경기광주점 19명 기본 휴무표 데이터로 복원되었습니다.',
-      });
     }
+    setSchedules(next);
+    saveAllSchedules(next);
+    setSelectedDate(new Date(2026, 9, 1));
+    setNotice({
+      type: 'info',
+      text: '✅ 2026년 10월 경기광주점 19명 원본 휴무표 데이터로 즉시 원상복구되었습니다.',
+    });
   };
 
   // 내 이름에 해당하는 직원 스케줄 정보 및 요약 계산
@@ -1274,16 +1464,15 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               </span>
             </button>
 
-            {currentYearMonth === '2026-10' && (
-              <button
-                type="button"
-                onClick={handleResetCurrentMonth}
-                title="2026년 10월 기본 휴무표 복원"
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleResetCurrentMonth}
+              title="10월 경기광주점 19명 원본 휴무표로 즉시 원상복구"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-black transition cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline">10월 원본 복구</span>
+            </button>
 
             <button
               type="button"

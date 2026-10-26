@@ -174,40 +174,60 @@ export default function ImageScannerModal({
 - 본문에 모델명이 안 보이면 화면 최상단 브라우저 주소창 URL 파라미터(예: productId=FG24GN.AKOR2)에서 모델코드를 반드시 추출할 것!
 - 하단 노란색 글씨 '월 납부요금'(예: 약 58,653원 -> 58653)을 monthlyFee로 추출할 것!`;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: compressed.mimeType, data: compressed.base64 } },
-            { text: prompt },
-          ],
-        },
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              category: { type: Type.STRING },
-              modelName: { type: Type.STRING },
-              productName: { type: Type.STRING },
-              monthlyFee: { type: Type.INTEGER },
-              period: { type: Type.INTEGER },
-              downPayment: { type: Type.INTEGER },
-              careServiceText: { type: Type.STRING },
-              careServiceCycle: { type: Type.STRING },
-              careServiceCount: { type: Type.STRING },
-              careServiceDetail: { type: Type.STRING },
-              isAllCare: { type: Type.BOOLEAN },
-            },
-            required: ['category', 'modelName', 'monthlyFee', 'period'],
-          },
-        },
-      });
+      const GEMINI_MODELS = [
+        'gemini-3.8-flash',
+        'gemini-3.1-pro-preview',
+        'gemini-3.7-flash',
+        'gemini-3.5-flash',
+        'gemini-flash-latest',
+      ];
+      let responseText = '';
+      let lastError: any = null;
 
-      if (!response.text) {
-        throw new Error('견적서 사진을 분석하지 못했습니다.');
+      for (const modelName of GEMINI_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: {
+              parts: [
+                { inlineData: { mimeType: compressed.mimeType, data: compressed.base64 } },
+                { text: prompt },
+              ],
+            },
+            config: {
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  category: { type: Type.STRING },
+                  modelName: { type: Type.STRING },
+                  productName: { type: Type.STRING },
+                  monthlyFee: { type: Type.INTEGER },
+                  period: { type: Type.INTEGER },
+                  downPayment: { type: Type.INTEGER },
+                  careServiceText: { type: Type.STRING },
+                  careServiceCycle: { type: Type.STRING },
+                  careServiceCount: { type: Type.STRING },
+                  careServiceDetail: { type: Type.STRING },
+                  isAllCare: { type: Type.BOOLEAN },
+                },
+                required: ['category', 'modelName', 'monthlyFee', 'period'],
+              },
+            },
+          });
+          if (response.text) {
+            responseText = response.text;
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+        }
       }
-      const parsedData = JSON.parse(response.text);
+
+      if (!responseText) {
+        throw lastError || new Error('견적서 사진을 분석하지 못했습니다.');
+      }
+      const parsedData = JSON.parse(responseText);
       const cleanModel = normalizeModelCode(parsedData.modelName || '');
       parsedData.modelName = cleanModel || parsedData.modelName || '';
       parsedData.category = inferCategoryFromModelCode(cleanModel, parsedData.category);

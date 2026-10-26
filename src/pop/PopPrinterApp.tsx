@@ -142,7 +142,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   }, []);
 
   const [apiKey, setApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-flash-latest');
+  const [aiModel, setAiModel] = useState('gemini-3.8-flash');
 
   // Load API key and model from local storage on mount (1~4번 메뉴 공통 키 'gemini_api_key' 공유)
   React.useEffect(() => {
@@ -152,7 +152,19 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
       '';
     if (storedKey) setApiKey(storedKey);
     const storedModel = localStorage.getItem('geminiAiModel');
-    if (storedModel) setAiModel(storedModel);
+    const validModels = [
+      'gemini-3.8-flash',
+      'gemini-3.1-pro-preview',
+      'gemini-3.7-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-latest',
+    ];
+    if (storedModel && validModels.includes(storedModel)) {
+      setAiModel(storedModel);
+    } else {
+      setAiModel('gemini-3.8-flash');
+      localStorage.setItem('geminiAiModel', 'gemini-3.8-flash');
+    }
   }, []);
 
   const handleSaveSettings = () => {
@@ -844,9 +856,11 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                       onChange={(e) => setAiModel(e.target.value)}
                       className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      <option value="gemini-flash-latest">gemini-flash-latest (권장)</option>
-                      <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                      <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                      <option value="gemini-3.8-flash">gemini-3.8-flash (1순위 권장)</option>
+                      <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+                      <option value="gemini-3.7-flash">gemini-3.7-flash</option>
+                      <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                      <option value="gemini-flash-latest">gemini-flash-latest</option>
                     </select>
                   </div>
                   
