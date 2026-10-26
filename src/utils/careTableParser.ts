@@ -614,8 +614,12 @@ export const ADMIN_MODE_CHANGED_EVENT = 'himart_gj_admin_mode_changed';
 
 export function isAdminDevice(): boolean {
   try {
-    if (localStorage.getItem(ADMIN_UNLOCK_STORAGE_KEY) === 'true') {
+    const flag = localStorage.getItem(ADMIN_UNLOCK_STORAGE_KEY);
+    if (flag === 'true') {
       return true;
+    }
+    if (flag === 'false') {
+      return false;
     }
     if (loadGitHubSyncConfig().token.trim().length > 0) {
       return true;
@@ -628,11 +632,7 @@ export function isAdminDevice(): boolean {
 
 export function setAdminDeviceUnlocked(unlocked: boolean): void {
   try {
-    if (unlocked) {
-      localStorage.setItem(ADMIN_UNLOCK_STORAGE_KEY, 'true');
-    } else {
-      localStorage.removeItem(ADMIN_UNLOCK_STORAGE_KEY);
-    }
+    localStorage.setItem(ADMIN_UNLOCK_STORAGE_KEY, unlocked ? 'true' : 'false');
     window.dispatchEvent(new CustomEvent(ADMIN_MODE_CHANGED_EVENT));
   } catch {
     // ignore
