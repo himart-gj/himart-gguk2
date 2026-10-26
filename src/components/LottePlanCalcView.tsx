@@ -367,6 +367,9 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     lines.push(
       '• 롤라머니 현금교환 방법: 로카앱 > 포인트·캐시백 메뉴 > 롤라머니 캐시백'
     );
+    lines.push(
+      `• 플랜 카드 사용기간: 약정 월 사용금액(${selectedSpend}만원)은 결제 다음 달부터 매월 1일 ~ 말일까지 사용 기준`
+    );
 
     return lines.join('\n');
   };
@@ -1132,7 +1135,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                 </h3>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs leading-relaxed">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs leading-relaxed">
                 <div className="p-3 rounded-xl bg-slate-800/90 border border-slate-700 space-y-1">
                   <div className="font-black text-rose-300 flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
@@ -1167,6 +1170,30 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                   <p className="text-amber-300 font-black">
                     로카앱 &gt; 포인트·캐시백 메뉴 &gt; 롤라머니 캐시백
                   </p>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-800/90 border border-slate-700 space-y-1">
+                  <div className="font-black text-sky-300 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>플랜 월 사용금액 산정 기간</span>
+                  </div>
+                  {isPlanServiceApplied ? (
+                    <p className="text-slate-200 font-bold">
+                      약정하신 월 사용금액(월 {selectedSpend}만원 이상)은{' '}
+                      <strong className="text-white underline underline-offset-2">
+                        결제 다음 달부터 매월 1일 ~ 말일까지
+                      </strong>{' '}
+                      기준으로 산정하여 사용하셔야 합니다.
+                    </p>
+                  ) : (
+                    <p className="text-slate-200 font-bold">
+                      플랜 서비스 신청 시 약정 월 사용금액은{' '}
+                      <strong className="text-white underline underline-offset-2">
+                        결제 다음 달부터 매월 1일 ~ 말일까지
+                      </strong>{' '}
+                      기준으로 산정됩니다.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
