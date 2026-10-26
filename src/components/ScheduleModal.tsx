@@ -6,9 +6,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  RotateCcw,
   Save,
   Table2,
+  Trash2,
   Upload,
   UserCheck,
   Users,
@@ -66,6 +66,7 @@ export interface MonthlyScheduleData {
   yearMonth: string; // 'YYYY-MM', e.g., '2026-10'
   updatedAt: string;
   employees: EmployeeMonthlySchedule[];
+  isRegistered?: boolean;
 }
 
 export type SchedulesMap = Record<string, MonthlyScheduleData>;
@@ -420,6 +421,7 @@ export const DEFAULT_2026_10_EMPLOYEES: EmployeeMonthlySchedule[] = [
 export const DEFAULT_2026_10_SCHEDULE: MonthlyScheduleData = {
   yearMonth: '2026-10',
   updatedAt: '2026-10-01 09:00',
+  isRegistered: true,
   employees: DEFAULT_2026_10_EMPLOYEES,
 };
 
@@ -456,19 +458,18 @@ export function loadAllSchedules(): SchedulesMap {
     localStorage.removeItem('himart_gj_schedules_v1');
 
     const raw = localStorage.getItem(SCHEDULES_STORAGE_KEY);
-    if (!raw) {
+    // 최초 앱 실행 시 (localStorage에 키 자체가 없을 때만) 기본 2026-10 데이터 1회 주입
+    if (raw === null) {
       const initial: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
       localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(initial));
       return initial;
     }
     const parsed = JSON.parse(raw) as SchedulesMap;
     if (!parsed || typeof parsed !== 'object') {
-      const initial: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
-      localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(initial));
-      return initial;
+      return {};
     }
 
-    // 만약 어떤 월에든 가짜 직원 이름(이현구, 권태영 등)이 들어있으면 즉시 폐기 후 실제 19명 데이터로 강제 초기화
+    // 만약 어떤 월에든 가짜 직원 이름(이현구, 권태영 등)이 들어있으면 즉시 폐기 후 초기화
     let hasFakeEmployee = false;
     for (const ymKey of Object.keys(parsed)) {
       const emps = parsed[ymKey]?.employees;
@@ -487,12 +488,9 @@ export function loadAllSchedules(): SchedulesMap {
       return resetMap;
     }
 
-    if (!parsed['2026-10']) {
-      parsed['2026-10'] = DEFAULT_2026_10_SCHEDULE;
-    }
     return parsed;
   } catch {
-    return { '2026-10': DEFAULT_2026_10_SCHEDULE };
+    return {};
   }
 }
 
@@ -510,15 +508,16 @@ export function getOrCreateMonthSchedule(
   yearMonth: string
 ): MonthlyScheduleData {
   if (schedules[yearMonth]) {
-    return schedules[yearMonth];
+    return {
+      ...schedules[yearMonth],
+      isRegistered: schedules[yearMonth].isRegistered ?? true,
+    };
   }
-  if (yearMonth === '2026-10') {
-    return DEFAULT_2026_10_SCHEDULE;
-  }
-  // 등록되지 않은 새 월은 실제 직원 19명 명단만 유지하고 일별 휴무는 빈 상태로 생성
+  // 등록되지 않은 월이거나 삭제된 월인 경우 빈 휴무표(isRegistered: false)를 반환
   return {
     yearMonth,
-    updatedAt: '미등록 (사진/엑셀 업로드 또는 셀 클릭으로 입력 가능)',
+    updatedAt: '미등록 (사진/엑셀 업로드로 등록 가능)',
+    isRegistered: false,
     employees: DEFAULT_2026_10_EMPLOYEES.map((emp) => ({
       name: emp.name,
       role: emp.role,
@@ -552,12 +551,12 @@ function normalizeScheduleCode(raw: string): DayScheduleCode {
 }
 
 /**
- * 경기광주점 19명 표준 명단과 대조하여 성명/담당 오타를 보정하고,
- * 10월 휴무 계획표인 경우 워터마크('1 페이지')나 붉은 테두리 박스로 인한 누락/밀림을 완벽히 보정합니다.
+ * 경기광주점 19명 표준 명단과 대조하여 성명/담당 오타만 보정하고,
+ * 날짜별 근태(days) 데이터는 AI 또는 엑셀에서 추출한 실제 값을 100% 그대로 반영합니다.
  */
 function reconcileGwangjuEmployees(
   rawList: { no?: number; name: string; role: string; days: Record<string, DayScheduleCode> }[],
-  targetYearMonth: string
+  _targetYearMonth: string
 ): EmployeeMonthlySchedule[] {
   const isGwangjuStore = rawList.some((emp) =>
     DEFAULT_2026_10_EMPLOYEES.some(
@@ -569,39 +568,15 @@ function reconcileGwangjuEmployees(
     )
   );
 
-  // 10월 경기광주점 휴무표인 경우 워터마크('1 페이지') 및 빨간 테두리 구간 칸 밀림이 전혀 없도록 표준 19명 원본 보장
-  if (isGwangjuStore && targetYearMonth.endsWith('-10')) {
-    return DEFAULT_2026_10_EMPLOYEES.map((stdEmp, idx) => {
-      const matched =
-        rawList.find((r) => r.name === stdEmp.name) ||
-        rawList.find(
-          (r) =>
-            r.name.length >= 2 &&
-            (r.name.slice(0, 2) === stdEmp.name.slice(0, 2) ||
-              r.name.slice(-2) === stdEmp.name.slice(-2))
-        ) ||
-        rawList.find((r) => r.no === idx + 1);
-
-      return {
-        name: stdEmp.name,
-        role: stdEmp.role,
-        days: {
-          ...(matched?.days || {}),
-          ...stdEmp.days,
-        },
-      };
-    });
-  }
-
   if (!isGwangjuStore) {
     return rawList.map((r) => ({
       name: r.name,
       role: r.role,
-      days: r.days,
+      days: r.days || {},
     }));
   }
 
-  // 타 월(11월, 12월 등) 경기광주점 휴무표인 경우: 19명 표준 성명/담당 오타 자동 보정
+  // 경기광주점 휴무표: 19명 표준 성명/담당 오타 보정, 추출된 근태(days)는 100% 그대로 유지
   return rawList.map((r, idx) => {
     const byExact = DEFAULT_2026_10_EMPLOYEES.find((s) => s.name === r.name);
     const byFuzzy = DEFAULT_2026_10_EMPLOYEES.find(
@@ -621,7 +596,7 @@ function reconcileGwangjuEmployees(
     return {
       name: std ? std.name : r.name,
       role: std ? std.role : r.role || '매장',
-      days: r.days,
+      days: r.days || {},
     };
   });
 }
@@ -786,6 +761,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       }
       return next;
     });
+    setEditingCell(null);
+  };
+
+  // 특정 년월로 직접 이동 (퀵 배지 클릭 시)
+  const handleSelectYearMonth = (ym: string) => {
+    const [yStr, mStr] = ym.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    if (!isNaN(y) && !isNaN(m)) {
+      const now = new Date();
+      if (y === now.getFullYear() && m === now.getMonth() + 1) {
+        setSelectedDate(now);
+      } else {
+        setSelectedDate(new Date(y, m - 1, 1));
+      }
+    }
     setEditingCell(null);
   };
 
@@ -1198,6 +1189,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         [targetYearMonth]: {
           yearMonth: targetYearMonth,
           updatedAt,
+          isRegistered: true,
           employees: parsedEmployees,
         },
       };
@@ -1211,7 +1203,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
       setNotice({
         type: 'success',
-        text: `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 칸 밀림 없이 정밀 분석되어 영구 저장되었습니다!`,
+        text: `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 성공적으로 저장되었습니다!`,
       });
     } catch (err: any) {
       setNotice({
@@ -1225,26 +1217,42 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     }
   };
 
-  const handleResetCurrentMonth = () => {
-    const next: SchedulesMap = {
-      ...schedules,
-      '2026-10': DEFAULT_2026_10_SCHEDULE,
-    };
-    if (currentYearMonth !== '2026-10') {
-      next[currentYearMonth] = {
-        yearMonth: currentYearMonth,
-        updatedAt: '2026-10-01 09:00',
-        employees: DEFAULT_2026_10_EMPLOYEES,
-      };
-    }
+  // 휴무표 삭제 및 관리 상태 및 핸들러
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const handleDeleteMonth = (ym: string) => {
+    if (!schedules[ym]) return;
+    const next = { ...schedules };
+    delete next[ym];
     setSchedules(next);
     saveAllSchedules(next);
-    setSelectedDate(new Date(2026, 9, 1));
     setNotice({
       type: 'info',
-      text: '✅ 2026년 10월 경기광주점 19명 원본 휴무표 데이터로 즉시 원상복구되었습니다.',
+      text: `🗑️ [${ym}] 휴무표 데이터가 삭제되었습니다.`,
     });
   };
+
+  const handleDeleteAllSchedules = () => {
+    const next: SchedulesMap = {};
+    setSchedules(next);
+    saveAllSchedules(next);
+    setNotice({
+      type: 'info',
+      text: '🗑️ 저장된 모든 월의 휴무표 데이터가 완전히 삭제되었습니다.',
+    });
+    setIsDeleteModalOpen(false);
+  };
+
+  // 저장된 월(Month) 목록 (퀵 배지용)
+  const savedYearMonths = useMemo(() => {
+    return Object.keys(schedules)
+      .filter((ym) => schedules[ym]?.employees && schedules[ym]?.employees.length > 0)
+      .sort();
+  }, [schedules]);
+
+  const isCurrentMonthRegistered = Boolean(
+    schedules[currentYearMonth] && schedules[currentYearMonth]?.isRegistered !== false
+  );
 
   // 내 이름에 해당하는 직원 스케줄 정보 및 요약 계산
   const myEmployee = useMemo(() => {
@@ -1466,12 +1474,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
             <button
               type="button"
-              onClick={handleResetCurrentMonth}
-              title="10월 경기광주점 19명 원본 휴무표로 즉시 원상복구"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-black transition cursor-pointer"
+              onClick={() => setIsDeleteModalOpen(true)}
+              title="저장된 휴무표 삭제 및 관리"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-rose-300 border border-slate-700 hover:border-rose-700/60 text-xs font-black transition cursor-pointer"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden sm:inline">10월 원본 복구</span>
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden sm:inline">🗑️ 휴무표 삭제</span>
+              <span className="sm:hidden">삭제</span>
             </button>
 
             <button
@@ -1575,57 +1584,92 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         )}
 
         {/* 2) 2개 메인 뷰 버튼 ([👥 오늘 근무자] / [🗓️ 전체 휴무표]) + 월 이동 화살표 ([◀] 2026년 10월 [▶]) */}
-        <div className="bg-slate-100 border-b border-slate-200 px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
-          {/* 좌측: 2개 메인 뷰 전환 버튼 */}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveView('today')}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
-                activeView === 'today'
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
-              }`}
-            >
-              <Users className="w-4 h-4 text-emerald-400" />
-              <span>👥 오늘 근무자</span>
-            </button>
+        <div className="bg-slate-100 border-b border-slate-200 px-3 sm:px-6 py-2.5 space-y-2 shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* 좌측: 2개 메인 뷰 전환 버튼 */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveView('today')}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
+                  activeView === 'today'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                }`}
+              >
+                <Users className="w-4 h-4 text-emerald-400" />
+                <span>👥 오늘 근무자</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveView('full')}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
-                activeView === 'full'
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
-              }`}
-            >
-              <Table2 className="w-4 h-4 text-amber-300" />
-              <span>🗓️ 전체 휴무표</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setActiveView('full')}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
+                  activeView === 'full'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
+                }`}
+              >
+                <Table2 className="w-4 h-4 text-amber-300" />
+                <span>🗓️ 전체 휴무표</span>
+              </button>
+            </div>
+
+            {/* 우측: 월 이동 화살표 [◀] 2026년 10월 [▶] */}
+            <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-300 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => handleMoveMonth(-1)}
+                title="이전 달 휴무표"
+                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="px-2 text-xs sm:text-sm font-black text-slate-900">
+                {currentYear}년 {currentMonth}월
+              </span>
+              <button
+                type="button"
+                onClick={() => handleMoveMonth(1)}
+                title="다음 달 휴무표"
+                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* 우측: 월 이동 화살표 [◀] 2026년 10월 [▶] */}
-          <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-300 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => handleMoveMonth(-1)}
-              title="이전 달 휴무표"
-              className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-2 text-xs sm:text-sm font-black text-slate-900">
-              {currentYear}년 {currentMonth}월
+          {/* 저장된 휴무표 월(Month) 퀵 배지 바 */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/80 text-xs">
+            <span className="font-bold text-slate-500 shrink-0 flex items-center gap-1">
+              📂 저장된 휴무표:
             </span>
-            <button
-              type="button"
-              onClick={() => handleMoveMonth(1)}
-              title="다음 달 휴무표"
-              className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            {savedYearMonths.length === 0 ? (
+              <span className="text-slate-400 font-semibold text-[11px]">
+                (등록된 휴무표 없음 - 우측 상단 업로드 필요)
+              </span>
+            ) : (
+              savedYearMonths.map((ym) => {
+                const isSelected = ym === currentYearMonth;
+                return (
+                  <button
+                    key={ym}
+                    type="button"
+                    onClick={() => handleSelectYearMonth(ym)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer border ${
+                      isSelected
+                        ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-2xs'
+                        : 'bg-white hover:bg-slate-200 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    📅 {ym}
+                    {isSelected && (
+                      <span className="ml-1 text-[10px] font-extrabold text-amber-950">✓</span>
+                    )}
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 
@@ -1672,6 +1716,30 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
         {/* 3) 본문 영역 */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-4">
+          {/* 미등록 월 안내 배너 */}
+          {!isCurrentMonthRegistered && (
+            <div className="rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <div className="font-black text-sm text-amber-900">
+                    아직 등록된 {currentYear}년 {currentMonth}월 휴무표가 없습니다.
+                  </div>
+                  <div className="text-xs text-amber-800 font-medium">
+                    우측 상단 <span className="font-bold underline text-amber-950">[📤 휴무표 사진/엑셀 업로드]</span> 버튼으로 해당 월 휴무표를 등록해 주세요.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shrink-0 transition shadow-xs cursor-pointer"
+              >
+                📤 지금 업로드하기
+              </button>
+            </div>
+          )}
+
           {/* ==================== [뷰 1: 👥 오늘 근무자] ==================== */}
           {activeView === 'today' && (
             <div className="space-y-4">
@@ -2067,6 +2135,116 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* 휴무표 삭제 / 관리 모달 */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in duration-150">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-400" />
+                <h3 className="font-black text-base">🗑️ 저장된 휴무표 관리 및 삭제</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {/* 1. 현재 보고 있는 월 삭제 */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                <div className="text-xs font-bold text-slate-500">현재 조회 중인 월</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-black text-slate-900 text-sm">
+                    📅 {currentYearMonth} ({currentYear}년 {currentMonth}월)
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!schedules[currentYearMonth]}
+                    onClick={() => {
+                      if (window.confirm(`${currentYearMonth} 휴무표 데이터를 정말 삭제하시겠습니까?`)) {
+                        handleDeleteMonth(currentYearMonth);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 disabled:opacity-40 text-xs font-black transition cursor-pointer"
+                  >
+                    현재 월 삭제
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. 등록된 월별 개별 삭제 목록 */}
+              <div className="space-y-2">
+                <div className="text-xs font-black text-slate-700 flex items-center justify-between">
+                  <span>저장된 월별 목록 ({savedYearMonths.length}개)</span>
+                  <span className="text-[11px] text-slate-400 font-normal">개별 삭제 가능</span>
+                </div>
+                {savedYearMonths.length === 0 ? (
+                  <div className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-xl">
+                    저장된 휴무표가 없습니다.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {savedYearMonths.map((ym) => (
+                      <div
+                        key={ym}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs"
+                      >
+                        <div className="font-black text-slate-800 flex items-center gap-2">
+                          <span>📅 {ym}</span>
+                          <span className="text-[11px] font-medium text-slate-500">
+                            ({schedules[ym]?.employees?.length || 0}명 등록)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`${ym} 휴무표 데이터를 삭제하시겠습니까?`)) {
+                              handleDeleteMonth(ym);
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-300 text-xs font-bold transition cursor-pointer"
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 3. 전체 초기화 / 삭제 */}
+              <div className="pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('⚠️ 저장된 모든 월의 휴무표를 완전히 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.')) {
+                      handleDeleteAllSchedules();
+                    }
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition cursor-pointer shadow-xs"
+                >
+                  ⚠️ 저장된 모든 휴무표 전체 삭제
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-100 px-5 py-3 text-right">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-xs transition cursor-pointer"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
