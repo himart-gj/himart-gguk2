@@ -43,13 +43,13 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
     '■ 가전올케어 핵심 혜택 요약',
     '• 한 줄 안내: 새 가전부터 집에 쓰던 기존 가전까지(구매처·브랜드 무관), 고장 수리비를 통합 보장하는 하이마트 안심 서비스',
     '• 가입 비용: 2년 50,000원 (단일가)',
-    '• 보장 대상(34종): 대형(TV·냉장고·세탁기·에어컨 등 8종), 생활/주방(밥솥·식기세척기·로봇/무선청소기·정수기 등 21종), IT(노트북·PC·태블릿·모니터 등 5종 / Apple·해외직구 제외)',
+    '• 보장 대상(34종): 대형 8종(냉장고, 김치냉장고, 에어컨, TV, 세탁기, 건조기, 세탁건조기, 의류관리기), 생활·주방 21종(청소기, 선풍기, 공기청정기, 제습기, 가습기, 안마의자, 비데, 전기레인지, 가스레인지, 전자레인지, 식기세척기, 전기밥솥, 정수기, 커피머신, 헤어용품, 복합오븐, 음식물처리기, 에어프라이어, 믹서기류, 전기그릴, 멀티쿠커), IT 5종(노트북, 데스크탑, 일체형PC, 모니터, 태블릿PC)',
     '• 보장 한도: 가입 60일 후부터 연간 100만원 한도 (횟수 무제한)',
     '• 자기부담금: 수리 1회당 5,000원 (제조 10년 경과 제품은 5만원)',
     '',
     '■ 기본 보장 및 제외 안내',
-    '• 보장 가능: 정상 사용 중 발생한 제품 본연의 기능상·기계적 고장 공식 센터 수리비',
-    '• 보장 제외: 고객 과실·충격 파손(액정 깨짐·낙하·침수), 단순 소모품(배터리·필터) 교체 및 세척, 가입 60일 이내 고장',
+    '• 보장 가능: 정상 사용 중 발생한 제품 본연의 기능상·기계적 고장 공식 서비스센터 수리비',
+    '• 보장 제외: 고객 과실·충격 파손(액정 깨짐·낙하·침수), 단순 소모품(배터리·필터) 교체 및 세척, 가입 60일 이내 고장, 해외직구 등 국내 공식 서비스센터 수리 불가 제품, 사업장·상업시설 등 업무·영업용 사용 제품',
     '',
     '※ 사전 등록된 가전에 한해 보장됩니다. (전용 고객센터: 1588-2355)',
   ].join('\n');
@@ -223,7 +223,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
         </section>
 
         {/* =================================================================== */}
-        {/* [2-2. 하단: 가전올케어 서비스란? (핵심 요약 + 34종 품목 상세 + 보장/제외 기준)] */}
+        {/* [2-2. 하단: 가전올케어 서비스란? (약관 제8조·제17조 기준 34종 및 보장/제외)] */}
         {/* =================================================================== */}
         <section className="rounded-3xl bg-white border border-slate-200 shadow-lg p-5 sm:p-6 space-y-5">
           {/* 한 줄 정의 */}
@@ -297,7 +297,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
             </div>
           </div>
 
-          {/* 1) 보유가전 등록 가능 34종 대상 품목 상세 리스트 (3개 카테고리 박스) */}
+          {/* 1) 보유가전 등록 가능 34종 대상 품목 상세 리스트 (약관 제8조 제1항 기준) */}
           <div className="space-y-3 pt-2 border-t border-slate-100">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
@@ -319,7 +319,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
                   </span>
                 </div>
                 <p className="text-xs font-bold text-slate-700 leading-relaxed">
-                  TV, 냉장고, 김치냉장고, 세탁기, 의류건조기, 에어컨, 의류관리기, 와인셀러
+                  냉장고, 김치냉장고, 에어컨, TV, 세탁기, 건조기, 세탁건조기, 의류관리기
                 </p>
               </div>
 
@@ -332,23 +332,23 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
                   </span>
                 </div>
                 <p className="text-xs font-bold text-slate-700 leading-relaxed">
-                  식기세척기, 전기밥솥, 전자레인지/오븐, 인덕션(전기레인지), 가스레인지, 청소기(로봇/무선/다이슨 가능), 공기청정기, 제습기, 선풍기, 안마의자, 정수기, 비데, 원액기/믹서기, 에어프라이어, 커피머신, 헤어용품, 도어락, 겨울계절가전 등
+                  청소기, 선풍기, 공기청정기, 제습기, 가습기, 안마의자, 비데, 전기레인지, 가스레인지, 전자레인지, 식기세척기, 전기밥솥, 정수기, 커피머신, 헤어용품, 복합오븐, 음식물처리기, 에어프라이어, 믹서기류, 전기그릴, 멀티쿠커
                 </p>
               </div>
 
-              {/* 💻 IT 기기 (5종) */}
+              {/* 💻 IT 가전 (5종) */}
               <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs sm:text-sm font-black text-purple-700 flex items-center gap-1">
                     <Laptop className="w-3.5 h-3.5" />
-                    💻 IT 기기 (5종)
+                    💻 IT 가전 (5종)
                   </span>
                 </div>
                 <p className="text-xs font-bold text-slate-700 leading-relaxed">
-                  노트북, 데스크탑PC, 태블릿PC, 모니터, 프린터/복합기
-                  <span className="block text-[11px] font-extrabold text-rose-600 mt-1">
-                    (※ 단, Apple 브랜드 및 해외직구 제품 제외)
-                  </span>
+                  노트북, 데스크탑, 일체형PC, 모니터, 태블릿PC
+                </p>
+                <p className="text-[11px] font-extrabold text-indigo-700 leading-snug pt-0.5">
+                  ※ 국내 정식 유통 제품으로 제조사 공식 서비스센터(애플·삼성·LG 등 공식 센터) 수리 가능 제품 보장 (단, 해외직구 등 국내 공식 서비스센터 수리 불가 제품 및 영업·업무용 제외)
                 </p>
               </div>
             </div>
@@ -358,7 +358,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
             </div>
           </div>
 
-          {/* 2) 기본 보장 기준 및 보상 제외 사항 (좌우 2열 비교 카드) */}
+          {/* 2) 기본 보장 기준 및 보상 제외 사항 (약관 제8조 제2항·제17조 기준) */}
           <div className="space-y-3 pt-2 border-t border-slate-100">
             <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4 text-rose-600" />
@@ -412,9 +412,8 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
                     발생한 고장, <strong className="text-rose-700">도난·분실</strong>,
                     제조사 공식 센터 외{' '}
                     <strong className="text-rose-700">사설 수리</strong>,{' '}
-                    <strong className="text-rose-700">상업/영업용 사용</strong>,{' '}
                     <strong className="text-rose-700">
-                      해외직구 및 Apple(애플) 제품
+                      해외직구 등 국내 공식 서비스센터 수리 불가 제품, 사업장·상업시설 등 업무·영업용 사용 제품
                     </strong>
                   </li>
                 </ul>

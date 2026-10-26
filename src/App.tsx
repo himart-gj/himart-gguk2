@@ -19,6 +19,8 @@ import { LottePlanCalcView } from './components/LottePlanCalcView';
 import { AllCareGuideView } from './components/AllCareGuideView';
 import { CardInstallmentModal } from './components/CardInstallmentModal';
 import { AsCenterModal, CardIssueModal } from './components/QuickCenterModal';
+import { ScheduleModal } from './components/ScheduleModal';
+import { ScheduleCharacterBanner } from './components/ScheduleCharacterBanner';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
@@ -30,6 +32,11 @@ import {
   saveLocalCareDataset,
 } from './utils/careTableParser';
 import {
+  fetchRemoteInstallmentDataset,
+  loadLocalInstallmentDataset,
+  saveLocalInstallmentDataset,
+} from './utils/installmentParser';
+import {
   mapGeneralCardName,
   mapSubscriptionAffiliateCard,
   parseGeneralImageWithFallback,
@@ -38,6 +45,7 @@ import {
 } from './utils/aiImageParser';
 import {
   Calculator,
+  Calendar,
   CreditCard,
   Download,
   FileSpreadsheet,
@@ -182,6 +190,8 @@ export function App() {
     useState<boolean>(false);
   const [isCardIssueOpen, setIsCardIssueOpen] = useState<boolean>(false);
   const [isAsCenterOpen, setIsAsCenterOpen] = useState<boolean>(false);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] =
+    useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -198,6 +208,7 @@ export function App() {
     isInstallmentModalOpen,
     isCardIssueOpen,
     isAsCenterOpen,
+    isScheduleModalOpen,
     isMenuOpen,
   });
 
@@ -209,6 +220,7 @@ export function App() {
       isInstallmentModalOpen,
       isCardIssueOpen,
       isAsCenterOpen,
+      isScheduleModalOpen,
       isMenuOpen,
     };
   }, [
@@ -218,6 +230,7 @@ export function App() {
     isInstallmentModalOpen,
     isCardIssueOpen,
     isAsCenterOpen,
+    isScheduleModalOpen,
     isMenuOpen,
   ]);
 
@@ -256,6 +269,10 @@ export function App() {
       // 1순위: 열려 있는 모달/드롭다운 닫기
       if (current.isMenuOpen) {
         setIsMenuOpen(false);
+        return;
+      }
+      if (current.isScheduleModalOpen) {
+        setIsScheduleModalOpen(false);
         return;
       }
       if (current.isInstallmentModalOpen) {
@@ -355,7 +372,7 @@ export function App() {
     }
   }, [deferredPrompt]);
 
-  // 메인 홈 화면 진입 시 최신 CRM 캐시 및 안심케어 조견표 동기화
+  // 메인 홈 화면 진입 시 최신 CRM 캐시 및 안심케어 조견표 · 무이자 할부 행사표 동기화
   useEffect(() => {
     if (step === 'home') {
       setCrmCustomers(getCachedCustomers());
@@ -366,6 +383,22 @@ export function App() {
           if (remote) {
             saveLocalCareDataset(remote);
             setCareDataset(remote);
+          }
+        })
+        .catch(() => {
+          // ignore
+        });
+
+      const localInst = loadLocalInstallmentDataset();
+      fetchRemoteInstallmentDataset()
+        .then((remoteInst) => {
+          if (
+            remoteInst &&
+            remoteInst.updatedAt &&
+            (!localInst.updatedAt ||
+              remoteInst.updatedAt >= localInst.updatedAt)
+          ) {
+            saveLocalInstallmentDataset(remoteInst);
           }
         })
         .catch(() => {
@@ -893,9 +926,9 @@ export function App() {
 
   return (
     <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col">
-      {/* ==================== 상단 다크 글로벌 네비게이션 바 (좌: 홈 + 현재화면 배지 / 우: 앱설치 + 햄버거 메뉴) ==================== */}
+      {/* ==================== 상단 다크 글로벌 네비게이션 바 (좌: [🏠 홈] + [📅 휴무표] / 우: 앱설치 + 햄버거 메뉴) ==================== */}
       <header className="w-full min-h-[44px] bg-slate-900 text-white border-b border-slate-800 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 sticky top-0 z-40 no-print">
-        {/* 좌측: [🏠 홈] 버튼 + [💳 무이자 할부] 상시 버튼 + 현재 열려 있는 화면 이름 배지 */}
+        {/* 좌측: 모바일에서 절대 잘리지 않도록 [🏠 홈]과 [📅 휴무표] 딱 2개만 배치 */}
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <button
             type="button"
@@ -912,29 +945,12 @@ export function App() {
 
           <button
             type="button"
-            onClick={() => setIsInstallmentModalOpen(true)}
-            title="카드사별 무이자 · 부분무이자 할부 행사표 즉시 보기"
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-300 shadow-xs transition cursor-pointer"
+            onClick={() => setIsScheduleModalOpen(true)}
+            title="경기광주점 오늘 근무자 및 월별 휴무표 보기"
+            className="px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 bg-indigo-500 hover:bg-indigo-400 text-white border border-indigo-400 shadow-xs transition cursor-pointer"
           >
-            <span>💳 무이자 할부</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsCardIssueOpen(true)}
-            title="제휴카드 간편 발급(내 사번 · 롯데주소 자동 적용)"
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 bg-sky-400 hover:bg-sky-300 text-slate-950 border border-sky-300 shadow-xs transition cursor-pointer"
-          >
-            <span>🪪 카드발급</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsAsCenterOpen(true)}
-            title="가전 A/S 센터 및 플럭스(PLUX) · TCL 직통 번호 안내"
-            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 bg-emerald-400 hover:bg-emerald-300 text-slate-950 border border-emerald-300 shadow-xs transition cursor-pointer"
-          >
-            <span>🛠️ AS센터</span>
+            <Calendar className="w-3.5 h-3.5" />
+            <span>📅 휴무표</span>
           </button>
 
           <span className="hidden lg:inline-block px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
@@ -1171,16 +1187,92 @@ export function App() {
                   {careUpdateMonthBadge}
                 </span>
               </button>
+
+              {/* 4) 어떤 화면에서든 열 수 있는 퀵 모달 바로가기 (무이자 할부 / 카드발급 / AS센터 / 휴무표) */}
+              <div className="pt-1 border-t border-slate-800 grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsInstallmentModalOpen(true);
+                  }}
+                  className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                >
+                  💳 무이자
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsCardIssueOpen(true);
+                  }}
+                  className="py-2 px-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                >
+                  🪪 카드발급
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsAsCenterOpen(true);
+                  }}
+                  className="py-2 px-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                >
+                  🛠️ AS센터
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsScheduleModalOpen(true);
+                  }}
+                  className="py-2 px-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-black text-center truncate cursor-pointer"
+                >
+                  📅 휴무표
+                </button>
+              </div>
             </div>
           )}
         </div>
       </header>
 
-      {/* ==================== STEP 0: 메인 홈 화면 (상단 단독 + 중앙 4×2 대칭 + 하단 단독) ==================== */}
+      {/* ==================== STEP 0: 메인 홈 화면 ==================== */}
       {step === 'home' && (
         <main className="flex-1 w-full flex items-center justify-center p-3 sm:p-6">
-          <div className="w-full max-w-3xl flex flex-col gap-2.5 sm:gap-4">
-            {/* 1) 최상단 단독 (가로 전체 Full-width 1칸): 👑 통합 고객관리 */}
+          <div className="w-full max-w-3xl flex flex-col gap-2.5 sm:gap-3.5">
+            {/* 0-1) 최상단 졸라맨 내 휴무 카운트다운 애니메이션 배너 (클릭 시 휴무표 모달 오픈) */}
+            <ScheduleCharacterBanner
+              onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+            />
+
+            {/* 0-2) [💳 무이자 할부] | [🪪 카드발급] | [🛠️ AS센터] 3열 상시 퀵 버튼 (통합 고객관리 바로 위) */}
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => setIsInstallmentModalOpen(true)}
+                className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 border-2 border-amber-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
+              >
+                <span>💳 무이자 할부</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsCardIssueOpen(true)}
+                className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-sky-400 hover:bg-sky-300 text-slate-950 border-2 border-sky-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
+              >
+                <span>🪪 카드발급</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAsCenterOpen(true)}
+                className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 border-2 border-emerald-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
+              >
+                <span>🛠️ AS센터</span>
+              </button>
+            </div>
+
+            {/* 1) 상단 단독 (가로 전체 Full-width 1칸): 👑 통합 고객관리 */}
             <button
               type="button"
               onClick={() => setStep('crm')}
@@ -1479,6 +1571,12 @@ export function App() {
       <AsCenterModal
         isOpen={isAsCenterOpen}
         onClose={() => setIsAsCenterOpen(false)}
+      />
+
+      {/* ==================== 경기광주점 근무 · 휴무표 전용 모달 ==================== */}
+      <ScheduleModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
       />
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}

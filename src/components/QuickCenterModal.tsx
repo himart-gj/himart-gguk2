@@ -132,40 +132,77 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   const lottePointUrl = `https://m.lpoint.com/app/card/LWCA800100.do?cop=L320&br=0134&pd=10135`;
   const wooriCardUrl = `https://nm.wooricard.com/dcmw/yh1/crd/crd01/M1CRD101S02.do?cdPrdCd=102734`;
 
-  const cardItems = [
-    {
-      id: 'samsung',
-      num: '①',
-      title: '삼성 제휴카드 발급',
-      desc: `내 사번(${activeEmpId}) 자동 적용됨`,
-      badge: `사번 HMT${activeEmpId}`,
-      badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
-      borderClass: 'border-blue-200 hover:border-blue-300',
-      openBtnClass: 'bg-blue-600 hover:bg-blue-500 text-white',
-      url: samsungUrl,
-      kakaoText: `[롯데하이마트] 💳 삼성 제휴카드 간편 발급 안내\n\n아래 전용 링크를 통해 삼성 제휴카드를 간편하게 신청하실 수 있습니다.\n▶ 발급 바로가기:\n${samsungUrl}`,
-    },
-    {
-      id: 'shinhan',
-      num: '②',
-      title: '신한 제휴카드 발급',
-      desc: `내 사번(${activeEmpId}) 자동 적용됨`,
-      badge: `사번 ${activeEmpId}`,
-      badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-200',
-      borderClass: 'border-indigo-200 hover:border-indigo-300',
-      openBtnClass: 'bg-indigo-600 hover:bg-indigo-500 text-white',
-      url: shinhanUrl,
-      kakaoText: `[롯데하이마트] 💳 신한 제휴카드 간편 발급 안내\n\n아래 전용 링크를 통해 신한 제휴카드를 간편하게 신청하실 수 있습니다.\n▶ 발급 바로가기:\n${shinhanUrl}`,
-    },
+  const renderCardBox = (card: {
+    id: string;
+    title: string;
+    borderClass: string;
+    openBtnClass: string;
+    url: string;
+    kakaoText: string;
+  }) => (
+    <div
+      key={card.id}
+      className={`rounded-2xl bg-white border-2 ${card.borderClass} p-3.5 sm:p-4 shadow-2xs flex flex-col justify-between gap-3 transition`}
+    >
+      <h3 className="text-sm sm:text-base font-black text-slate-900">
+        {card.title}
+      </h3>
+
+      <div className="grid grid-cols-3 gap-1.5">
+        <button
+          type="button"
+          onClick={() => copyText(`${card.id}-url`, card.url)}
+          className="py-2 px-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+        >
+          {copiedKey === `${card.id}-url` ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <span>복사됨</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3.5 h-3.5 shrink-0" />
+              <span>📋 링크 복사</span>
+            </>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => copyText(`${card.id}-msg`, card.kakaoText)}
+          className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+        >
+          {copiedKey === `${card.id}-msg` ? (
+            <>
+              <Check className="w-3.5 h-3.5 text-emerald-800 shrink-0" />
+              <span>복사됨</span>
+            </>
+          ) : (
+            <>
+              <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>💬 안내문 복사</span>
+            </>
+          )}
+        </button>
+
+        <a
+          href={card.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`py-2 px-1.5 rounded-xl text-[11px] sm:text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer ${card.openBtnClass}`}
+        >
+          <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+          <span>🔗 바로 열기</span>
+        </a>
+      </div>
+    </div>
+  );
+
+  // 1번째 줄: 롯데 3종
+  const row1LotteCards = [
     {
       id: 'lotte-card',
-      num: '③',
-      title: '롯데 제휴카드 발급',
-      desc: savedLotteUrl
-        ? '내가 등록한 개인 롯데카드 발급주소 자동 적용됨'
-        : '롯데 제휴카드 모바일 간편 발급 링크',
-      badge: savedLotteUrl ? '내 전용 주소 적용' : '기본 발급주소',
-      badgeClass: 'bg-rose-100 text-rose-800 border-rose-200',
+      title: '롯데카드 발급',
       borderClass: 'border-rose-200 hover:border-rose-300',
       openBtnClass: 'bg-rose-600 hover:bg-rose-500 text-white',
       url: lotteCardUrl,
@@ -173,11 +210,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     },
     {
       id: 'lotte-hiplan',
-      num: '④',
-      title: '롯데하이플랜 약정신청',
-      desc: '롯데 플랜 서비스(선할인 약정) 모바일 신청 페이지',
-      badge: '하이플랜 전용',
-      badgeClass: 'bg-rose-100 text-rose-800 border-rose-200',
+      title: '플랜약정',
       borderClass: 'border-rose-200 hover:border-rose-300',
       openBtnClass: 'bg-rose-600 hover:bg-rose-500 text-white',
       url: lotteHiPlanUrl,
@@ -185,29 +218,43 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     },
     {
       id: 'lotte-lpoint',
-      num: '⑤',
-      title: '롯데포인트(L.POINT) 카드 발급',
-      desc: 'L.POINT 모바일 멤버십 카드 간편 발급 페이지',
-      badge: 'L.POINT 멤버십',
-      badgeClass: 'bg-amber-100 text-amber-900 border-amber-200',
+      title: '롯데포인트 발급',
       borderClass: 'border-amber-200 hover:border-amber-300',
       openBtnClass: 'bg-amber-500 hover:bg-amber-400 text-slate-950',
       url: lottePointUrl,
       kakaoText: `[롯데하이마트] 🪙 롯데포인트(L.POINT) 모바일 카드 발급 안내\n\n아래 링크를 통해 L.POINT 멤버십을 간편하게 가입/발급받으실 수 있습니다.\n▶ 바로가기:\n${lottePointUrl}`,
     },
+  ];
+
+  // 2번째 줄: 삼성 · 신한 2종
+  const row2SamsungShinhanCards = [
     {
-      id: 'woori',
-      num: '⑥',
-      title: '우리 제휴카드 발급',
-      desc: '롯데하이마트 우리 제휴카드 모바일 간편 신청 페이지',
-      badge: '우리 제휴카드',
-      badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
-      borderClass: 'border-sky-200 hover:border-sky-300',
-      openBtnClass: 'bg-sky-600 hover:bg-sky-500 text-white',
-      url: wooriCardUrl,
-      kakaoText: `[롯데하이마트] 💳 우리 제휴카드 간편 발급 안내\n\n아래 전용 링크를 통해 우리 제휴카드를 간편하게 신청하실 수 있습니다.\n▶ 발급 바로가기:\n${wooriCardUrl}`,
+      id: 'samsung',
+      title: '삼성카드 발급',
+      borderClass: 'border-blue-200 hover:border-blue-300',
+      openBtnClass: 'bg-blue-600 hover:bg-blue-500 text-white',
+      url: samsungUrl,
+      kakaoText: `[롯데하이마트] 💳 삼성 제휴카드 간편 발급 안내\n\n아래 전용 링크를 통해 삼성 제휴카드를 간편하게 신청하실 수 있습니다.\n▶ 발급 바로가기:\n${samsungUrl}`,
+    },
+    {
+      id: 'shinhan',
+      title: '신한카드 발급',
+      borderClass: 'border-indigo-200 hover:border-indigo-300',
+      openBtnClass: 'bg-indigo-600 hover:bg-indigo-500 text-white',
+      url: shinhanUrl,
+      kakaoText: `[롯데하이마트] 💳 신한 제휴카드 간편 발급 안내\n\n아래 전용 링크를 통해 신한 제휴카드를 간편하게 신청하실 수 있습니다.\n▶ 발급 바로가기:\n${shinhanUrl}`,
     },
   ];
+
+  // 3번째 줄: 우리카드 단독 1종
+  const row3WooriCard = {
+    id: 'woori',
+    title: '우리카드 발급',
+    borderClass: 'border-sky-200 hover:border-sky-300',
+    openBtnClass: 'bg-sky-600 hover:bg-sky-500 text-white',
+    url: wooriCardUrl,
+    kakaoText: `[롯데하이마트] 💳 우리 제휴카드 간편 발급 안내\n\n아래 전용 링크를 통해 우리 제휴카드를 간편하게 신청하실 수 있습니다.\n▶ 발급 바로가기:\n${wooriCardUrl}`,
+  };
 
   return (
     <div
@@ -245,8 +292,8 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
         </div>
 
         {/* 본문 스크롤 영역 */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-4">
-          {/* 1. 상단 사번 / 롯데카드 개인 발급주소 설정 영역 (저장 완료 시 한 줄 배지로 축소) */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-3">
+          {/* 상단 사번 / 롯데카드 개인 발급주소 설정 영역 (저장 완료 시 한 줄 배지로 축소) */}
           {!isEditingProfile ? (
             <div className="rounded-2xl bg-slate-900 text-white px-4 py-2.5 flex items-center justify-between gap-2 flex-wrap shadow-xs">
               <div className="flex items-center gap-2 flex-wrap text-xs sm:text-sm font-black">
@@ -332,89 +379,30 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
             </div>
           )}
 
-          {/* 2. 카드사별 깔끔한 카드형 버튼 리스트 (지저분한 영문 URL 노출 전면 제거) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {cardItems.map((card) => (
-              <div
-                key={card.id}
-                className={`rounded-2xl bg-white border-2 ${card.borderClass} p-4 shadow-2xs flex flex-col justify-between gap-3 transition`}
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm sm:text-base font-black text-slate-900">
-                      {card.num} {card.title}
-                    </h3>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full border text-[11px] font-black shrink-0 ${card.badgeClass}`}
-                    >
-                      {card.badge}
-                    </span>
-                  </div>
-                  <p className="text-xs font-bold text-slate-500">
-                    {card.desc}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => copyText(`${card.id}-url`, card.url)}
-                    className="py-2 px-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
-                  >
-                    {copiedKey === `${card.id}-url` ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>복사됨</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>📋 링크 복사</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => copyText(`${card.id}-msg`, card.kakaoText)}
-                    className="py-2 px-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
-                  >
-                    {copiedKey === `${card.id}-msg` ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-800" />
-                        <span>복사됨</span>
-                      </>
-                    ) : (
-                      <>
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>💬 안내문 복사</span>
-                      </>
-                    )}
-                  </button>
-
-                  <a
-                    href={card.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer ${card.openBtnClass}`}
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>🔗 바로 열기</span>
-                  </a>
-                </div>
-              </div>
-            ))}
+          {/* 1번째 줄: 롯데 3종 (롯데카드 발급 / 플랜약정 / 롯데포인트 발급) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {row1LotteCards.map((card) => renderCardBox(card))}
           </div>
 
-          {/* 3. 하단: 우리카드 카드번호 확인 ARS & 특별한도 상향 ARS 안내 박스 */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-            {/* 박스 1: 발급 지연 시 카드번호 확인 방법 */}
-            <div className="p-4 rounded-2xl bg-sky-50/80 border border-sky-200 flex flex-col justify-between space-y-3">
+          {/* 2번째 줄: 삼성 · 신한 2종 (삼성카드 발급 / 신한카드 발급) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {row2SamsungShinhanCards.map((card) => renderCardBox(card))}
+          </div>
+
+          {/* 3번째 줄: 우리카드 단독 1종 (우리카드 발급) */}
+          <div className="grid grid-cols-1">
+            {renderCardBox(row3WooriCard)}
+          </div>
+
+          {/* 4번째 줄: 카드번호 확인 · 특별한도 2종 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* 박스 1: 카드번호 확인 */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-sky-50/80 border-2 border-sky-200 flex flex-col justify-between gap-3">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs sm:text-sm font-black text-sky-950">
-                    📌 [우리카드 발급 지연 시 카드번호 확인]
-                  </span>
+                  <h3 className="text-sm sm:text-base font-black text-sky-950">
+                    카드번호 확인
+                  </h3>
                   <span className="px-2 py-0.5 rounded-md bg-sky-600 text-white text-xs font-black">
                     ARS 1800-4134
                   </span>
@@ -423,9 +411,9 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
                 <div className="text-xs font-bold text-slate-700 leading-relaxed space-y-1">
                   <p>
                     <strong className="text-slate-900">
-                      ① ARS 확인 (1800-4134):
+                      ① ARS (1800-4134):
                     </strong>{' '}
-                    통화 ➔ 멘트 중{' '}
+                    통화 ➔{' '}
                     <span className="text-rose-600 font-black">
                       ③번(발급정보확인)
                     </span>{' '}
@@ -433,17 +421,17 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
                     <span className="text-blue-700 font-black">
                       ①번(개인정보 동의)
                     </span>{' '}
-                    ➔ 주민번호 입력 ➔ 휴대폰 본인인증 ➔ 카드번호·유효기간 확인
+                    ➔ 주민번호·본인인증 ➔ 카드번호·유효기간 확인
                   </p>
                   <p>
                     <strong className="text-slate-900">
-                      ② 우리카드 앱 확인:
+                      ② 우리카드 앱:
                     </strong>{' '}
-                    전체 메뉴(돋보기) ➔{' '}
+                    전체메뉴(돋보기) ➔{' '}
                     <span className="text-sky-800 font-black">
                       카드발급조회/취소
-                    </span>
-                    에서 발급완료 확인 후 ➔{' '}
+                    </span>{' '}
+                    발급완료 확인 ➔{' '}
                     <span className="text-sky-800 font-black">
                       내 카드 관리 ➔ 카드번호 보기
                     </span>
@@ -451,13 +439,13 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <a
                   href="tel:1800-4134"
-                  className="flex-1 py-2 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                  className="py-2 px-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
                 >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>📞 1800-4134 전화걸기</span>
+                  <Phone className="w-3.5 h-3.5 shrink-0" />
+                  <span>📞 전화걸기</span>
                 </a>
                 <button
                   type="button"
@@ -467,24 +455,30 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
                       '[우리카드 발급 후 카드번호 확인 방법]\n① ARS 확인 (1800-4134): 통화 ➔ ③번(발급정보확인) ➔ ①번(개인정보 동의) ➔ 주민번호 입력 ➔ 휴대폰 본인인증 ➔ 카드번호 및 유효기간 확인\n② 우리카드 앱: 전체 메뉴(돋보기) ➔ 카드발급조회/취소에서 발급완료 확인 후 ➔ 내 카드 관리 ➔ 카드번호 보기'
                     )
                   }
-                  className="py-2 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-sky-300 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                  className="py-2 px-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
                 >
                   {copiedKey === 'woori-delay-ars' ? (
-                    <span>✓ 복사됨</span>
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-800 shrink-0" />
+                      <span>복사됨</span>
+                    </>
                   ) : (
-                    <span>📋 안내 복사</span>
+                    <>
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                      <span>💬 안내문 복사</span>
+                    </>
                   )}
                 </button>
               </div>
             </div>
 
-            {/* 박스 2: 한도 부족 시 ARS 특별한도 부여 프로세스 */}
-            <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-300 flex flex-col justify-between space-y-3">
+            {/* 박스 2: 특별한도 */}
+            <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-50/80 border-2 border-amber-300 flex flex-col justify-between gap-3">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs sm:text-sm font-black text-amber-950">
-                    📌 [우리카드 한도 부족 시 특별한도 ARS]
-                  </span>
+                  <h3 className="text-sm sm:text-base font-black text-amber-950">
+                    특별한도
+                  </h3>
                   <span className="px-2 py-0.5 rounded-md bg-rose-600 text-white text-xs font-black">
                     ARS 1800-2452
                   </span>
@@ -501,19 +495,19 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
                     </strong>{' '}
                     ➔ 잔여한도 및 상향 가능 금액 안내 후 신청
                   </p>
-                  <p className="text-[11px] text-amber-900 bg-amber-100/80 px-2.5 py-1.5 rounded-lg border border-amber-200">
-                    ※ 하이마트 우리카드 소지 회원만 가능 / 취소 시 한도 복원 불가 / 부여일로부터 3개월(기간 내 1회) 우선 소진
+                  <p className="text-[11px] text-amber-900 bg-amber-100/80 px-2.5 py-1 rounded-lg border border-amber-200">
+                    ※ 우리 제휴카드 소지 회원 전용 / 취소 시 한도 복원 불가 / 3개월(1회) 우선 소진
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <a
                   href="tel:1800-2452"
-                  className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                  className="py-2 px-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
                 >
-                  <Phone className="w-3.5 h-3.5" />
-                  <span>📞 1800-2452 전화걸기</span>
+                  <Phone className="w-3.5 h-3.5 shrink-0" />
+                  <span>📞 전화걸기</span>
                 </a>
                 <button
                   type="button"
@@ -523,12 +517,18 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
                       '[우리제휴카드 특별한도 상향 ARS 안내]\n• 전용 ARS: 1800-2452\n• 진행 순서: 통화 ➔ 본인확인(1번) ➔ 비밀번호 입력 ➔ 가전 제휴카드 특별한도 상향(2번 선택) ➔ 잔여한도 및 상향 가능 금액 안내 후 신청\n※ 하이마트 우리카드 소지 회원만 가능 / 취소 시 한도 복원 불가 / 3개월(1회) 우선 소진'
                     )
                   }
-                  className="py-2 px-3 rounded-xl bg-white hover:bg-slate-100 text-slate-800 border border-amber-300 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                  className="py-2 px-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
                 >
                   {copiedKey === 'woori-limit-ars' ? (
-                    <span>✓ 복사됨</span>
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-800 shrink-0" />
+                      <span>복사됨</span>
+                    </>
                   ) : (
-                    <span>📋 안내 복사</span>
+                    <>
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                      <span>💬 안내문 복사</span>
+                    </>
                   )}
                 </button>
               </div>

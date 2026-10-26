@@ -1,607 +1,43 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Check,
+  CloudUpload,
   CreditCard,
+  Download,
+  Edit3,
   Info,
   LayoutGrid,
+  Loader2,
+  RotateCcw,
+  Save,
+  Settings,
   Table2,
+  Upload,
   X,
 } from 'lucide-react';
+import {
+  buildQuickSummariesFromColumns,
+  DEFAULT_INSTALLMENT_DATASET,
+  downloadInstallmentDatasetAsJson,
+  fetchRemoteInstallmentDataset,
+  GitHubSyncConfig,
+  INSTALLMENT_ROW_LABELS,
+  InstallmentCellData,
+  InstallmentCellKind,
+  InstallmentDataset,
+  loadGitHubSyncConfig,
+  loadLocalInstallmentDataset,
+  parseInstallmentFile,
+  pushInstallmentDatasetToGitHub,
+  saveGitHubSyncConfig,
+  saveLocalInstallmentDataset,
+} from '../utils/installmentParser';
 
 interface CardInstallmentModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-type CellKind =
-  | 'free' // 무이자 (노란색)
-  | 'partial' // 부분무이자 (연분홍)
-  | 'sub-free' // 구독 전용 무이자 (파란 테두리/배경 + 구독전용 빨간 글씨)
-  | 'interest' // 고객유이자 / 저리할부
-  | 'disabled' // 결제불가 (진회색)
-  | 'note'; // 기타 안내
-
-interface CellData {
-  kind: CellKind;
-  main: string;
-  sub?: string;
-}
-
-interface CardColumnDef {
-  id: string;
-  brand: string;
-  subName: string;
-  rows: Record<string, CellData>;
-}
-
-const ROW_LABELS = [
-  '2개월',
-  '3개월',
-  '4개월',
-  '5개월',
-  '6개월(비고)',
-  '7개월',
-  '8개월',
-  '10개월(비고)',
-  '11개월(비고)',
-  '12개월(비고)',
-  '18개월(비고)',
-  '24개월(비고)',
-  '36개월(비고)',
-  '48/60개월(비고)',
-  '기타 안내',
-] as const;
-
-const f = (main = '무이자', sub?: string): CellData => ({
-  kind: 'free',
-  main,
-  sub,
-});
-const p = (rounds: string, main = '부분무이자'): CellData => ({
-  kind: 'partial',
-  main,
-  sub: `고객부담: ${rounds}`,
-});
-const sf = (main = '무이자', sub = '구독 전용 (일반상품 적용불가)'): CellData => ({
-  kind: 'sub-free',
-  main,
-  sub,
-});
-const u = (main = '고객유이자', sub?: string): CellData => ({
-  kind: 'interest',
-  main,
-  sub,
-});
-const x = (main = '결제불가', sub?: string): CellData => ({
-  kind: 'disabled',
-  main,
-  sub,
-});
-const n = (main: string, sub?: string): CellData => ({
-  kind: 'note',
-  main,
-  sub,
-});
-
-const CARD_COLUMNS: CardColumnDef[] = [
-  // 1. 롯데카드 (4종)
-  {
-    id: 'lotte-members',
-    brand: '롯데카드',
-    subName: '멤버스 제휴카드',
-    rows: {
-      '2개월': f('무이자', '5만원 이상'),
-      '3개월': f('무이자', '5만원 이상'),
-      '4개월': f('무이자', '5만원 이상'),
-      '5개월': f('무이자', '5만원 이상'),
-      '6개월(비고)': p('1회차'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': f('★무이자★', '100만↑ 결제 시'),
-      '18개월(비고)': x(),
-      '24개월(비고)': f(
-        '조건부무이자',
-        '40~50만미만 전품목 / 초과건 특정품목'
-      ),
-      '36개월(비고)': sf('무이자', '구독 전용, 일반상품 적용불가'),
-      '48/60개월(비고)': sf('60개월 무이자', '구독 전용'),
-      '기타 안내': n(
-        '롯데 2~5개월(제휴포함) 100만↑: 고객무이자, 지점 1% 수수료 / 멤버스 24개월: 특정품목 고객무이자, 지점 3.5% 수수료'
-      ),
-    },
-  },
-  {
-    id: 'lotte-mobile',
-    brand: '롯데카드',
-    subName: '모바일 제휴카드',
-    rows: {
-      '2개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '3개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '4개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '5개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '6개월(비고)': p('1회차'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': u('고객유이자', '연이자 5.5%'),
-      '36개월(비고)': u('고객유이자', '연이자 6.9%'),
-      '48/60개월(비고)': u('고객유이자', '48/60만↑ 결제, 연이자 8%'),
-      '기타 안내': n(
-        '롯데 2~5개월(제휴포함) 100만↑: 고객무이자, 지점 1% 수수료지급'
-      ),
-    },
-  },
-  {
-    id: 'lotte-hiplan',
-    brand: '롯데카드',
-    subName: 'HI-Plan & 일반신용',
-    rows: {
-      '2개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '3개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '4개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '5개월': f('100만↑ 무이자', '※100만 미만 일시불 외 결제불가'),
-      '6개월(비고)': p('1회차'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': x(),
-      '36개월(비고)': sf('무이자', '구독 전용, 일반상품 적용불가'),
-      '48/60개월(비고)': u('고객유이자', '48/60만↑ 결제, 연이자 8%'),
-      '기타 안내': n(
-        '롯데 2~5개월(제휴포함) 100만↑: 고객무이자, 지점 1% 수수료지급'
-      ),
-    },
-  },
-  {
-    id: 'lotte-class',
-    brand: '롯데카드',
-    subName: '클래스 제휴카드',
-    rows: {
-      '2개월': f('무이자', '5만원 이상'),
-      '3개월': f('무이자', '5만원 이상'),
-      '4개월': f('무이자', '5만원 이상'),
-      '5개월': f('무이자', '5만원 이상'),
-      '6개월(비고)': p('1회차'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': f(
-        '조건부무이자',
-        '5~40만미만 이사/서비스, 40~50만미만 전품목, 초과건 특정품목'
-      ),
-      '36개월(비고)': sf('무이자', '구독 전용, 일반상품 적용불가'),
-      '48/60개월(비고)': sf('60개월 무이자', '구독 전용 (48개월 미운영)'),
-      '기타 안내': n(
-        '48개월 미운영 / 클래스 24개월: 지점 3.5% 수수료 (※수수료 고객 수취)'
-      ),
-    },
-  },
-
-  // 2. 현대카드
-  {
-    id: 'hyundai-general',
-    brand: '현대카드',
-    subName: '일반신용',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': u(),
-      '11개월(비고)': u(),
-      '12개월(비고)': u(),
-      '18개월(비고)': x(),
-      '24개월(비고)': x(),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('제휴카드 운영종료'),
-    },
-  },
-
-  // 3. 우리카드 (2종)
-  {
-    id: 'woori-affiliate',
-    brand: '우리카드',
-    subName: '제휴카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': f('무이자'),
-      '5개월': f('무이자'),
-      '6개월(비고)': f('무이자'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3,4회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3,4,5회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': u('고객유이자', '연이자 6.0%'),
-      '36개월(비고)': sf('무이자', '구독 전용, 일반상품 적용불가'),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('2~6개월 무이자 / 구독 36개월 무이자'),
-    },
-  },
-  {
-    id: 'woori-general',
-    brand: '우리카드',
-    subName: '일반개인 신용카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': f('무이자'),
-      '5개월': f('무이자'),
-      '6개월(비고)': f('무이자'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3,4회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3,4,5회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': x(),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('2~6개월 무이자'),
-    },
-  },
-
-  // 4. 광주카드
-  {
-    id: 'gwangju-affiliate',
-    brand: '광주카드',
-    subName: '제휴카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3회차'),
-      '11개월(비고)': p('1,2,3회차'),
-      '12개월(비고)': p('1,2,3회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': u('고객유이자', '40만↑ 결제, 연이자 5.5%'),
-      '36개월(비고)': u('고객유이자', '40만↑ 결제, 연이자 5.5%'),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('10~12개월 부분무이자(1~3회차)'),
-    },
-  },
-
-  // 5. KB국민
-  {
-    id: 'kb-general',
-    brand: 'KB국민',
-    subName: '일반개인 신용카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': f('무이자', '10월 확대'),
-      '5개월': f('무이자', '10월 확대'),
-      '6개월(비고)': p('1,2,3회차'),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3,4,5회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': u('저리할부', '연이자 5.5%'),
-      '18개월(비고)': u(),
-      '24개월(비고)': u(),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('12개월 5.5% 저리할부 / 10월 4,5개월 무이자 확대'),
-    },
-  },
-
-  // 6. 신한카드 (2종)
-  {
-    id: 'shinhan-affiliate',
-    brand: '신한카드',
-    subName: '제휴카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3,4회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': x(),
-      '18개월(비고)': x(),
-      '24개월(비고)': x(),
-      '36개월(비고)': sf('무이자', '구독 전용, 일반상품 적용불가'),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('제휴 12~24개월 결제불가 / 구독 36개월 무이자'),
-    },
-  },
-  {
-    id: 'shinhan-general',
-    brand: '신한카드',
-    subName: '심플플러스 & 일반개인',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3,4회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3,4,5회차'),
-      '18개월(비고)': u(),
-      '24개월(비고)': x(),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('신한일반 2~3개월 무이자 적용 가능'),
-    },
-  },
-
-  // 7. 하나카드
-  {
-    id: 'hana-all',
-    brand: '하나카드',
-    subName: '제휴카드 / 일반개인',
-    rows: {
-      '2개월': f('5만↑ 무이자'),
-      '3개월': f('5만↑ 무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3,4회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3,4,5회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': u('고객유이자', '연이자 6.0%'),
-      '36개월(비고)': u('고객유이자', '연이자 6.0%'),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('2~3개월 5만원 이상 무이자'),
-    },
-  },
-
-  // 8. NH농협
-  {
-    id: 'nh-general',
-    brand: 'NH농협',
-    subName: '일반개인 신용카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': p('1,2회차'),
-      '5개월': p('1,2회차'),
-      '6개월(비고)': p('1,2회차'),
-      '7개월': p('1,2,3회차'),
-      '8개월': p('1,2,3회차'),
-      '10개월(비고)': p('1,2,3회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3,4회차'),
-      '18개월(비고)': p('1,2,3,4,5회차'),
-      '24개월(비고)': p('1,2,3,4,5,6회차'),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('장기 부분무이자 최대 24개월 운영'),
-    },
-  },
-
-  // 9. 삼성카드 (2종)
-  {
-    id: 'samsung-affiliate',
-    brand: '삼성카드',
-    subName: '제휴카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': p('1,2,3회차'),
-      '8개월': u(),
-      '10개월(비고)': u(),
-      '11개월(비고)': p('1,2,3,4,5회차'),
-      '12개월(비고)': u(),
-      '18개월(비고)': x(),
-      '24개월(비고)': u('고객유이자', '연이자 6.5%'),
-      '36개월(비고)': sf('무이자', '구독 전용, 일반상품 적용불가'),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('7개월·11개월 부분무이자 / 구독 36개월 무이자'),
-    },
-  },
-  {
-    id: 'samsung-general',
-    brand: '삼성카드',
-    subName: '일반개인 신용카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': p('1,2,3회차'),
-      '8개월': u(),
-      '10개월(비고)': u(),
-      '11개월(비고)': p('1,2,3,4,5회차'),
-      '12개월(비고)': u(),
-      '18개월(비고)': x(),
-      '24개월(비고)': x(),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('삼성일반 2~3개월 무이자 적용 가능'),
-    },
-  },
-
-  // 10. BC카드
-  {
-    id: 'bc-general',
-    brand: 'BC카드',
-    subName: '일반개인 신용카드',
-    rows: {
-      '2개월': f('무이자'),
-      '3개월': f('무이자'),
-      '4개월': u(),
-      '5개월': u(),
-      '6개월(비고)': u(),
-      '7개월': u(),
-      '8개월': u(),
-      '10개월(비고)': p('1,2,3회차'),
-      '11개월(비고)': u(),
-      '12개월(비고)': p('1,2,3,4회차'),
-      '18개월(비고)': x(),
-      '24개월(비고)': x(),
-      '36개월(비고)': x(),
-      '48/60개월(비고)': x(),
-      '기타 안내': n('부분무이자 사전 신청 어플 및 ARS 가능 (1899-5772)'),
-    },
-  },
-];
-
-interface QuickSummaryCardItem {
-  brandKey: string;
-  brandTitle: string;
-  badgeColor: string;
-  freeInstallment: string;
-  partialInstallment: string;
-  subInstallment: string;
-  specialNotes: string[];
-}
-
-const QUICK_SUMMARY_CARDS: QuickSummaryCardItem[] = [
-  {
-    brandKey: '롯데',
-    brandTitle: '롯데카드 (멤버스 / 모바일 / HI-Plan / 클래스)',
-    badgeColor: 'bg-rose-600 text-white',
-    freeInstallment:
-      '• 멤버스·클래스: 2~5개월 (5만원↑ 무이자)\n• 멤버스 12개월: ★100만원↑ 무이자★\n• 모바일·HI-Plan·일반: 2~5개월 (100만원↑ 시 무이자, 100만 미만 일시불 외 불가)\n• 멤버스·클래스 24개월: 조건부 무이자 (40~50만 미만 전품목, 초과건 특정품목)',
-    partialInstallment:
-      '• 6개월: 1회차 고객부담\n• 10개월: 1,2회차 고객부담\n• 12개월 (모바일/HI-Plan/클래스): 1,2,3회차 고객부담',
-    subInstallment:
-      '• 36개월 무이자 (멤버스 / HI-Plan·일반 / 클래스 — 구독 전용)\n• 60개월 무이자 (멤버스 / 클래스 — 구독 전용)',
-    specialNotes: [
-      '⚠️ 8/1(토)부 신규/추가 발급 불가 (기존 고객 교체발급 가능)',
-      '롯데 2~5개월(제휴 포함) 100만원 이상 결제 시 고객 무이자 (지점 1% 수수료 차감)',
-      '멤버스·클래스 24개월 특정품목 지점 3.5% 수수료 (클래스는 고객 수취)',
-    ],
-  },
-  {
-    brandKey: '우리',
-    brandTitle: '우리카드 (제휴카드 / 일반개인 신용)',
-    badgeColor: 'bg-sky-600 text-white',
-    freeInstallment: '• 2 ~ 6개월 무이자 (제휴카드 / 일반개인 모두 적용)',
-    partialInstallment:
-      '• 10개월: 1,2,3,4회차 고객부담\n• 12개월: 1,2,3,4,5회차 고객부담',
-    subInstallment: '• 제휴카드 36개월 무이자 (구독 전용, 일반상품 적용불가)',
-    specialNotes: [
-      '제휴카드 24개월: 고객유이자 (연이자 6.0%)',
-      '18개월 / 48·60개월 결제불가',
-    ],
-  },
-  {
-    brandKey: 'KB국민',
-    brandTitle: 'KB국민카드 (일반개인 신용)',
-    badgeColor: 'bg-amber-500 text-slate-950',
-    freeInstallment: '• 2 ~ 5개월 무이자 (10월 4,5개월 무이자 확대!)',
-    partialInstallment:
-      '• 6개월: 1,2,3회차 고객부담\n• 10개월: 1,2,3,4,5회차 고객부담',
-    subInstallment: '• 36~60개월 결제불가',
-    specialNotes: [
-      '12개월: 연이자 5.5% (저리할부 운영)',
-      '18개월·24개월: 고객유이자',
-    ],
-  },
-  {
-    brandKey: '신한',
-    brandTitle: '신한카드 (제휴카드 / 심플플러스 & 일반개인)',
-    badgeColor: 'bg-blue-600 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자 (제휴 및 신한일반 모두 적용 가능)',
-    partialInstallment:
-      '• 10개월 (제휴/일반): 1,2,3,4회차 고객부담\n• 12개월 (심플플러스/일반만 가능): 1,2,3,4,5회차 고객부담 (※제휴카드는 12~24개월 결제불가)',
-    subInstallment: '• 제휴카드 36개월 무이자 (구독 전용, 일반상품 적용불가)',
-    specialNotes: [
-      '제휴카드는 12개월~24개월 할부 결제불가 (일반개인 카드는 12개월 부분무이자 가능)',
-    ],
-  },
-  {
-    brandKey: '삼성',
-    brandTitle: '삼성카드 (제휴카드 / 일반개인 신용)',
-    badgeColor: 'bg-indigo-600 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자 (제휴 및 삼성일반 모두 적용 가능)',
-    partialInstallment:
-      '• 7개월: 1,2,3회차 고객부담\n• 11개월: 1,2,3,4,5회차 고객부담 (※6, 8, 10, 12개월은 고객유이자)',
-    subInstallment: '• 제휴카드 36개월 무이자 (구독 전용, 일반상품 적용불가)',
-    specialNotes: [
-      '삼성카드는 10·12개월이 아닌 7개월·11개월에 부분무이자가 적용됩니다!',
-      '제휴카드 24개월: 고객유이자 (연이자 6.5%)',
-    ],
-  },
-  {
-    brandKey: 'NH농협',
-    brandTitle: 'NH농협카드 (일반개인 신용)',
-    badgeColor: 'bg-emerald-600 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자',
-    partialInstallment:
-      '• 4~6개월: 1,2회차 부담\n• 7~10개월: 1,2,3회차 부담\n• 12개월: 1,2,3,4회차 부담\n• 18개월: 1,2,3,4,5회차 부담\n• 24개월: 1,2,3,4,5,6회차 부담',
-    subInstallment: '• 36~60개월 결제불가',
-    specialNotes: [
-      '전 카드사 중 유일하게 4~10개월, 12개월, 18개월, 24개월 장기 부분무이자 폭넓게 운영',
-    ],
-  },
-  {
-    brandKey: '하나',
-    brandTitle: '하나카드 (제휴카드 / 일반개인)',
-    badgeColor: 'bg-teal-600 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자 (5만원 이상 결제 시)',
-    partialInstallment:
-      '• 10개월: 1,2,3,4회차 고객부담\n• 12개월: 1,2,3,4,5회차 고객부담',
-    subInstallment: '• 48/60개월 결제불가',
-    specialNotes: ['24개월 · 36개월: 고객유이자 (연이자 6.0%)'],
-  },
-  {
-    brandKey: '광주',
-    brandTitle: '광주카드 (제휴카드)',
-    badgeColor: 'bg-cyan-700 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자',
-    partialInstallment: '• 10 ~ 12개월: 1,2,3회차 고객부담',
-    subInstallment: '• 48/60개월 결제불가',
-    specialNotes: ['24개월 · 36개월: 40만원 이상 결제 시 고객유이자 (연이자 5.5%)'],
-  },
-  {
-    brandKey: 'BC',
-    brandTitle: 'BC카드 (일반개인 신용)',
-    badgeColor: 'bg-red-700 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자',
-    partialInstallment:
-      '• 10개월: 1,2,3회차 고객부담\n• 12개월: 1,2,3,4회차 고객부담',
-    subInstallment: '• 18~60개월 결제불가',
-    specialNotes: [
-      '부분무이자 사전 신청: 페이북 어플 및 ARS에서 가능 (☎ 1899-5772)',
-    ],
-  },
-  {
-    brandKey: '현대',
-    brandTitle: '현대카드 (일반신용)',
-    badgeColor: 'bg-slate-800 text-white',
-    freeInstallment: '• 2 ~ 3개월 무이자',
-    partialInstallment: '• 없음 (4 ~ 12개월 모두 고객유이자)',
-    subInstallment: '• 18~60개월 결제불가',
-    specialNotes: ['제휴카드 운영종료'],
-  },
-];
 
 const BRAND_FILTER_BUTTONS = [
   '전체',
@@ -617,26 +53,238 @@ const BRAND_FILTER_BUTTONS = [
   '현대',
 ] as const;
 
+const CELL_KIND_OPTIONS: { value: InstallmentCellKind; label: string }[] = [
+  { value: 'free', label: '■ 무이자 (노란색 강조)' },
+  { value: 'partial', label: '■ 부분무이자 (연분홍 강조)' },
+  { value: 'sub-free', label: '■ 구독 전용 무이자 (파란+빨간 테두리)' },
+  { value: 'interest', label: '□ 고객유이자 / 저리할부 (흰색)' },
+  { value: 'disabled', label: '■ 결제불가 (진회색)' },
+  { value: 'note', label: '📝 기타 안내 문구' },
+];
+
 export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const [dataset, setDataset] = useState<InstallmentDataset>(() =>
+    loadLocalInstallmentDataset()
+  );
   const [activeTab, setActiveTab] = useState<'table' | 'summary'>('table');
   const [selectedBrand, setSelectedBrand] = useState<string>('전체');
 
+  // 업로드 / AI 파싱 상태
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error' | 'info';
+    text: string;
+  } | null>(null);
+
+  // 전 직원 GitHub 동기화 설정 패널 상태 (조견표 GitHub 설정과 100% 공유)
+  const [isSyncPanelOpen, setIsSyncPanelOpen] = useState(false);
+  const [ghConfig, setGhConfig] = useState<GitHubSyncConfig>(() =>
+    loadGitHubSyncConfig()
+  );
+  const [isPushingGh, setIsPushingGh] = useState(false);
+
+  // 개별 셀 클릭 즉시 편집 상태
+  const [editingCell, setEditingCell] = useState<{
+    colId: string;
+    brandTitle: string;
+    rowLabel: string;
+    kind: InstallmentCellKind;
+    main: string;
+    sub: string;
+  } | null>(null);
+
+  // 제목(기준월) 편집 상태
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(dataset.versionTitle);
+
+  // 모달 열릴 때 최신 로컬 & 원격 데이터 동기화 확인
+  useEffect(() => {
+    if (!isOpen) return;
+    setGhConfig(loadGitHubSyncConfig());
+    const local = loadLocalInstallmentDataset();
+    setDataset(local);
+    setTitleDraft(local.versionTitle);
+
+    fetchRemoteInstallmentDataset()
+      .then((remote) => {
+        if (remote && remote.updatedAt) {
+          // 원격 데이터가 더 최신이거나 로컬이 기본값이면 갱신
+          if (
+            !local.updatedAt ||
+            remote.updatedAt >= local.updatedAt
+          ) {
+            saveLocalInstallmentDataset(remote);
+            setDataset(remote);
+            setTitleDraft(remote.versionTitle);
+          }
+        }
+      })
+      .catch(() => {
+        // ignore
+      });
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const applyAndSaveDataset = async (
+    nextData: InstallmentDataset,
+    autoPushIfConfigured = true
+  ) => {
+    saveLocalInstallmentDataset(nextData);
+    setDataset(nextData);
+    setTitleDraft(nextData.versionTitle);
+
+    const cfg = loadGitHubSyncConfig();
+    if (autoPushIfConfigured && cfg.repo.trim() && cfg.token.trim()) {
+      setIsPushingGh(true);
+      const res = await pushInstallmentDatasetToGitHub(nextData, cfg);
+      setIsPushingGh(false);
+      setStatusMessage({
+        type: res.ok ? 'success' : 'error',
+        text: res.message,
+      });
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    setIsUploading(true);
+    setStatusMessage({
+      type: 'info',
+      text: `⏳ [${file.name}] 무이자 할부 자료를 분석하여 표를 자동 업데이트하고 있습니다...`,
+    });
+
+    try {
+      const updated = await parseInstallmentFile(file, dataset);
+      await applyAndSaveDataset(updated, true);
+      const cfg = loadGitHubSyncConfig();
+      if (!cfg.repo.trim() || !cfg.token.trim()) {
+        setStatusMessage({
+          type: 'success',
+          text: `✅ [${file.name}] 업로드 완료! (전 직원 동기화 설정 시 전 직원 스마트폰에 자동 배포됩니다)`,
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({
+        type: 'error',
+        text:
+          err?.message ||
+          '무이자 할부 자료 분석 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.',
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleSaveGhConfigAndPush = async () => {
+    saveGitHubSyncConfig(ghConfig);
+    if (!ghConfig.repo.trim() || !ghConfig.token.trim()) {
+      setStatusMessage({
+        type: 'info',
+        text: 'GitHub 설정이 저장되었습니다. 저장소와 토큰을 입력하면 전 직원 자동 배포가 활성화됩니다.',
+      });
+      return;
+    }
+
+    setIsPushingGh(true);
+    const res = await pushInstallmentDatasetToGitHub(dataset, ghConfig);
+    setIsPushingGh(false);
+    setStatusMessage({
+      type: res.ok ? 'success' : 'error',
+      text: res.message,
+    });
+    if (res.ok) {
+      setIsSyncPanelOpen(false);
+    }
+  };
+
+  const handleSaveCellEdit = async () => {
+    if (!editingCell) return;
+    const now = new Date();
+    const updatedAt = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
+      now.getHours()
+    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const nextCols = dataset.columns.map((col) => {
+      if (col.id !== editingCell.colId) return col;
+      return {
+        ...col,
+        rows: {
+          ...col.rows,
+          [editingCell.rowLabel]: {
+            kind: editingCell.kind,
+            main: editingCell.main.trim() || '-',
+            sub: editingCell.sub.trim() || undefined,
+          },
+        },
+      };
+    });
+
+    const nextData: InstallmentDataset = {
+      ...dataset,
+      updatedAt,
+      columns: nextCols,
+      quickSummaries: buildQuickSummariesFromColumns(
+        nextCols,
+        dataset.quickSummaries
+      ),
+    };
+
+    setEditingCell(null);
+    await applyAndSaveDataset(nextData, true);
+    setStatusMessage({
+      type: 'success',
+      text: `✅ [${editingCell.brandTitle} - ${editingCell.rowLabel}] 항목이 수정되었습니다.`,
+    });
+  };
+
+  const handleSaveTitle = async () => {
+    const cleanTitle = titleDraft.trim() || dataset.versionTitle;
+    setIsEditingTitle(false);
+    const now = new Date();
+    const updatedAt = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
+      now.getHours()
+    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const nextData: InstallmentDataset = {
+      ...dataset,
+      updatedAt,
+      versionTitle: cleanTitle,
+    };
+    await applyAndSaveDataset(nextData, true);
+  };
+
+  const handleResetDefault = () => {
+    saveLocalInstallmentDataset(DEFAULT_INSTALLMENT_DATASET);
+    setDataset(DEFAULT_INSTALLMENT_DATASET);
+    setTitleDraft(DEFAULT_INSTALLMENT_DATASET.versionTitle);
+    setStatusMessage({
+      type: 'info',
+      text: '기본 10월 무이자 할부 행사표 데이터로 복원되었습니다.',
+    });
+  };
 
   const filteredColumns =
     selectedBrand === '전체'
-      ? CARD_COLUMNS
-      : CARD_COLUMNS.filter((col) => col.brand.includes(selectedBrand));
+      ? dataset.columns
+      : dataset.columns.filter((col) => col.brand.includes(selectedBrand));
 
   const filteredQuickCards =
     selectedBrand === '전체'
-      ? QUICK_SUMMARY_CARDS
-      : QUICK_SUMMARY_CARDS.filter((c) => c.brandKey === selectedBrand);
+      ? dataset.quickSummaries
+      : dataset.quickSummaries.filter((c) => c.brandKey === selectedBrand);
 
-  const renderCell = (cell: CellData) => {
+  const renderCell = (cell: InstallmentCellData) => {
     switch (cell.kind) {
       case 'free':
         return (
@@ -714,46 +362,311 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
         className="w-full max-w-[1440px] max-h-[94dvh] rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 1) 모달 상단 헤더 */}
-        <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 shrink-0">
+        {/* 숨김 파일 업로드 input (사진 / 엑셀 / JSON) */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.xlsx,.xls,.csv,.json"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
+        {/* 1) 모달 상단 헤더 + [📤 무이자 자료 업로드] & [☁️ 전 직원 동기화 설정] */}
+        <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-xs">
               <CreditCard className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm sm:text-lg font-black tracking-tight truncate">
-                💳 &apos;26년 10월 카드사별 무이자 · 부분무이자 할부 행사
-              </h2>
+              {isEditingTitle ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 border border-amber-400 text-xs sm:text-sm font-black text-white focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveTitle}
+                    className="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 text-xs font-black cursor-pointer"
+                  >
+                    저장
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-sm sm:text-lg font-black tracking-tight truncate">
+                    💳 {dataset.versionTitle}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTitleDraft(dataset.versionTitle);
+                      setIsEditingTitle(true);
+                    }}
+                    title="행사 제목(기준월) 수정"
+                    className="p-1 rounded-lg text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               <p className="text-[11px] text-slate-300 font-bold hidden sm:block">
-                현재 입력 중인 견적 화면을 닫지 않고 언제든 바로 확인하실 수 있습니다
+                업데이트: {dataset.updatedAt} · 표의 셀을 클릭하면 직접 수정할 수 있습니다
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-white text-xs font-black transition cursor-pointer shrink-0"
-          >
-            <X className="w-4 h-4" />
-            <span>닫기</span>
-          </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* [📤 무이자 자료 업로드] 버튼 */}
+            <button
+              type="button"
+              disabled={isUploading}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-xs font-black shadow-xs transition cursor-pointer"
+            >
+              {isUploading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              <span>
+                {isUploading ? 'AI 분석 중...' : '📤 무이자 자료 업로드'}
+              </span>
+            </button>
+
+            {/* [☁️ 전 직원 동기화 설정] 버튼 */}
+            <button
+              type="button"
+              onClick={() => setIsSyncPanelOpen((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition cursor-pointer ${
+                isSyncPanelOpen
+                  ? 'bg-sky-500 text-slate-950 border-sky-400'
+                  : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>☁️ 전 직원 동기화 설정</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-white text-xs font-black transition cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+              <span>닫기</span>
+            </button>
+          </div>
         </div>
+
+        {/* 알림 메시지 배너 */}
+        {statusMessage && (
+          <div
+            className={`px-4 py-2 text-xs font-black flex items-center justify-between gap-2 shrink-0 ${
+              statusMessage.type === 'success'
+                ? 'bg-emerald-600 text-white'
+                : statusMessage.type === 'error'
+                ? 'bg-rose-600 text-white'
+                : 'bg-sky-600 text-white'
+            }`}
+          >
+            <span>{statusMessage.text}</span>
+            <button
+              type="button"
+              onClick={() => setStatusMessage(null)}
+              className="p-0.5 rounded hover:bg-black/20 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* 전 직원 GitHub 동기화 설정 드롭다운 패널 */}
+        {isSyncPanelOpen && (
+          <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 border-b border-slate-700 space-y-3 shrink-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs sm:text-sm font-black text-sky-300 flex items-center gap-1.5">
+                <CloudUpload className="w-4 h-4" />
+                <span>
+                  ☁️ 전 직원 자동 동기화 (안심케어 조견표와 동일한 GitHub 설정 공유)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => downloadInstallmentDatasetAsJson(dataset)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-[11px] font-black cursor-pointer"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>JSON 백업 다운로드</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetDefault}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-rose-900/60 border border-slate-600 text-rose-300 text-[11px] font-black cursor-pointer"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>10월 기본값 복원</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <div className="sm:col-span-4">
+                <label className="block text-[11px] font-extrabold text-slate-400 mb-1">
+                  GitHub 저장소 (owner/repo)
+                </label>
+                <input
+                  type="text"
+                  value={ghConfig.repo}
+                  onChange={(e) =>
+                    setGhConfig((prev) => ({ ...prev, repo: e.target.value }))
+                  }
+                  placeholder="예: himart-gj/quote-app"
+                  className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-600 text-xs font-bold text-white"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11px] font-extrabold text-slate-400 mb-1">
+                  브랜치
+                </label>
+                <input
+                  type="text"
+                  value={ghConfig.branch}
+                  onChange={(e) =>
+                    setGhConfig((prev) => ({ ...prev, branch: e.target.value }))
+                  }
+                  placeholder="main"
+                  className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-600 text-xs font-bold text-white"
+                />
+              </div>
+              <div className="sm:col-span-6">
+                <label className="block text-[11px] font-extrabold text-slate-400 mb-1">
+                  GitHub 토큰 (PAT) — 조견표에 이미 입력하셨다면 자동 연동됨
+                </label>
+                <input
+                  type="password"
+                  value={ghConfig.token}
+                  onChange={(e) =>
+                    setGhConfig((prev) => ({ ...prev, token: e.target.value }))
+                  }
+                  placeholder="ghp_... 또는 github_pat_..."
+                  className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-600 text-xs font-bold text-white"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[11px] font-bold text-slate-400">
+                💡 사진(JPG/PNG) 또는 엑셀(.xlsx)을 업로드하거나 표의 셀을 클릭해 수정한 뒤 [전 직원 즉시 배포]를 누르면 `public/card-installment-data.json`에 자동 반영됩니다.
+              </p>
+              <button
+                type="button"
+                disabled={isPushingGh}
+                onClick={handleSaveGhConfigAndPush}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-950 text-xs font-black cursor-pointer"
+              >
+                {isPushingGh ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CloudUpload className="w-3.5 h-3.5" />
+                )}
+                <span>
+                  {isPushingGh
+                    ? 'GitHub 배포 중...'
+                    : '💾 설정 저장 & 전 직원 즉시 배포'}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 개별 셀 클릭 즉시 편집 바 */}
+        {editingCell && (
+          <div className="bg-amber-50 border-b-2 border-amber-400 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 text-xs font-black">
+                ✏️ 셀 직접 수정: {editingCell.brandTitle} ({editingCell.rowLabel})
+              </span>
+
+              <select
+                value={editingCell.kind}
+                onChange={(e) =>
+                  setEditingCell((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          kind: e.target.value as InstallmentCellKind,
+                        }
+                      : null
+                  )
+                }
+                className="px-2.5 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-black text-slate-900"
+              >
+                {CELL_KIND_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="text"
+                value={editingCell.main}
+                onChange={(e) =>
+                  setEditingCell((prev) =>
+                    prev ? { ...prev, main: e.target.value } : null
+                  )
+                }
+                placeholder="메인 문구 (예: 무이자, 부분무이자, 결제불가)"
+                className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-black text-slate-900 w-44 sm:w-52"
+              />
+
+              <input
+                type="text"
+                value={editingCell.sub}
+                onChange={(e) =>
+                  setEditingCell((prev) =>
+                    prev ? { ...prev, sub: e.target.value } : null
+                  )
+                }
+                placeholder="보조 문구 (예: 5만원 이상, 고객부담: 1,2회차)"
+                className="px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-bold text-slate-700 w-48 sm:w-64"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleSaveCellEdit}
+                className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 text-xs font-black cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>적용 저장</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingCell(null)}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-black cursor-pointer"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* 2) 상단 핵심 경고 배너 2줄 + 뷰 전환 탭 & 카드사 필터 */}
         <div className="bg-slate-100 border-b border-slate-200 px-3 sm:px-6 py-3 space-y-2.5 shrink-0">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             <div className="px-3 py-1.5 rounded-xl bg-rose-600 text-white text-xs font-black flex items-center gap-1.5 shadow-2xs">
               <AlertTriangle className="w-4 h-4 text-amber-300 shrink-0" />
-              <span>
-                ⚠️ 롯데카드 8/1(토)부 신규/추가 발급 불가 (기존 고객 교체발급 가능)
-              </span>
+              <span>{dataset.warningBanner1}</span>
             </div>
             <div className="px-3 py-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-950 text-xs font-black flex items-center gap-1.5">
               <Info className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>
-                ⚠️ 법인 / 개인사업자 / 체크 / 하이브리드 / BC(일부 제외) / 해외 / 가족카드는 행사 적용 불가
-              </span>
+              <span>{dataset.warningBanner2}</span>
             </div>
           </div>
 
@@ -853,7 +766,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {ROW_LABELS.map((rowLabel) => {
+                  {INSTALLMENT_ROW_LABELS.map((rowLabel) => {
                     const isNoteRow = rowLabel === '기타 안내';
                     return (
                       <tr
@@ -870,11 +783,32 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                           {rowLabel}
                         </td>
                         {filteredColumns.map((col) => {
-                          const cellData = col.rows[rowLabel] || u('-');
+                          const cellData = col.rows[rowLabel] || {
+                            kind: 'interest',
+                            main: '-',
+                          };
+                          const isSelectedEditing =
+                            editingCell?.colId === col.id &&
+                            editingCell?.rowLabel === rowLabel;
                           return (
                             <td
                               key={`${col.id}-${rowLabel}`}
-                              className="p-0 border-r border-slate-200 last:border-r-0 align-stretch h-12"
+                              onClick={() =>
+                                setEditingCell({
+                                  colId: col.id,
+                                  brandTitle: `${col.brand} (${col.subName})`,
+                                  rowLabel,
+                                  kind: cellData.kind,
+                                  main: cellData.main,
+                                  sub: cellData.sub || '',
+                                })
+                              }
+                              title="클릭하여 이 셀 수정"
+                              className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch h-12 cursor-pointer transition ${
+                                isSelectedEditing
+                                  ? 'ring-2 ring-inset ring-blue-600'
+                                  : 'hover:opacity-90'
+                              }`}
                             >
                               {renderCell(cellData)}
                             </td>
@@ -961,7 +895,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
             ※ 롯데카드 수수료 예시: 롯데제휴카드로 100만원 5개월 할부결제 시 지점손익에서 1만원(1%) 차감
           </span>
           <span className="text-[11px] text-slate-400">
-            ESC 또는 바깥 영역을 클릭하면 닫힙니다
+            표의 셀을 클릭하면 직접 편집 가능 · [📤 무이자 자료 업로드]로 매월 사진/엑셀 자동 반영
           </span>
         </div>
       </div>
