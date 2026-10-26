@@ -3,11 +3,17 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  CheckCircle2,
   Copy,
   ExternalLink,
+  Laptop,
   MessageSquare,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Tv,
+  Wrench,
+  XCircle,
 } from 'lucide-react';
 
 interface AllCareGuideViewProps {
@@ -37,9 +43,13 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
     '■ 가전올케어 핵심 혜택 요약',
     '• 한 줄 안내: 새 가전부터 집에 쓰던 기존 가전까지(구매처·브랜드 무관), 고장 수리비를 통합 보장하는 하이마트 안심 서비스',
     '• 가입 비용: 2년 50,000원 (단일가)',
-    '• 보장 대상: 가전 34종 통합 보장 (대형 8종 · 생활/주방 21종 · IT 5종)',
+    '• 보장 대상(34종): 대형(TV·냉장고·세탁기·에어컨 등 8종), 생활/주방(밥솥·식기세척기·로봇/무선청소기·정수기 등 21종), IT(노트북·PC·태블릿·모니터 등 5종 / Apple·해외직구 제외)',
     '• 보장 한도: 가입 60일 후부터 연간 100만원 한도 (횟수 무제한)',
     '• 자기부담금: 수리 1회당 5,000원 (제조 10년 경과 제품은 5만원)',
+    '',
+    '■ 기본 보장 및 제외 안내',
+    '• 보장 가능: 정상 사용 중 발생한 제품 본연의 기능상·기계적 고장 공식 센터 수리비',
+    '• 보장 제외: 고객 과실·충격 파손(액정 깨짐·낙하·침수), 단순 소모품(배터리·필터) 교체 및 세척, 가입 60일 이내 고장',
     '',
     '※ 사전 등록된 가전에 한해 보장됩니다. (전용 고객센터: 1588-2355)',
   ].join('\n');
@@ -213,9 +223,9 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
         </section>
 
         {/* =================================================================== */}
-        {/* [2-2. 하단: 가전올케어 서비스란? (간단명료 핵심 요약)] */}
+        {/* [2-2. 하단: 가전올케어 서비스란? (핵심 요약 + 34종 품목 상세 + 보장/제외 기준)] */}
         {/* =================================================================== */}
-        <section className="rounded-3xl bg-white border border-slate-200 shadow-lg p-5 sm:p-6 space-y-4">
+        <section className="rounded-3xl bg-white border border-slate-200 shadow-lg p-5 sm:p-6 space-y-5">
           {/* 한 줄 정의 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -283,6 +293,131 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
               </div>
               <div className="text-xs font-bold text-slate-500">
                 (제조 10년 경과 제품은 5만원)
+              </div>
+            </div>
+          </div>
+
+          {/* 1) 보유가전 등록 가능 34종 대상 품목 상세 리스트 (3개 카테고리 박스) */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
+                <Tv className="w-4 h-4 text-sky-600" />
+                <span>보유가전 등록 가능 34종 대상 품목 상세 리스트</span>
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[11px] font-black">
+                구매처 · 브랜드 무관
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {/* 📺 대형가전 (8종) */}
+              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-black text-blue-700 flex items-center gap-1">
+                    <Tv className="w-3.5 h-3.5" />
+                    📺 대형가전 (8종)
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                  TV, 냉장고, 김치냉장고, 세탁기, 의류건조기, 에어컨, 의류관리기, 와인셀러
+                </p>
+              </div>
+
+              {/* 🍳 생활·주방가전 (21종) */}
+              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-black text-emerald-700 flex items-center gap-1">
+                    <Wrench className="w-3.5 h-3.5" />
+                    🍳 생활·주방가전 (21종)
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                  식기세척기, 전기밥솥, 전자레인지/오븐, 인덕션(전기레인지), 가스레인지, 청소기(로봇/무선/다이슨 가능), 공기청정기, 제습기, 선풍기, 안마의자, 정수기, 비데, 원액기/믹서기, 에어프라이어, 커피머신, 헤어용품, 도어락, 겨울계절가전 등
+                </p>
+              </div>
+
+              {/* 💻 IT 기기 (5종) */}
+              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs sm:text-sm font-black text-purple-700 flex items-center gap-1">
+                    <Laptop className="w-3.5 h-3.5" />
+                    💻 IT 기기 (5종)
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                  노트북, 데스크탑PC, 태블릿PC, 모니터, 프린터/복합기
+                  <span className="block text-[11px] font-extrabold text-rose-600 mt-1">
+                    (※ 단, Apple 브랜드 및 해외직구 제품 제외)
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            <div className="px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs font-extrabold text-amber-950">
+              💡 하이마트 구매 가전뿐만 아니라 타사 구매 가전·기존 사용 중인 가전도 제조년월 기준 10년 이내면 등록 가능합니다.
+            </div>
+          </div>
+
+          {/* 2) 기본 보장 기준 및 보상 제외 사항 (좌우 2열 비교 카드) */}
+          <div className="space-y-3 pt-2 border-t border-slate-100">
+            <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-rose-600" />
+              <span>기본 보장 기준 및 보상 제외 사항</span>
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* 🟢 보장 가능 (제품 기능상의 고장) */}
+              <div className="rounded-2xl bg-emerald-50/70 border border-emerald-300 p-4 space-y-2">
+                <div className="text-xs sm:text-sm font-black text-emerald-800 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>🟢 보장 가능 (제품 기능상의 고장)</span>
+                </div>
+                <ul className="space-y-1.5 text-xs font-bold text-slate-800 leading-relaxed">
+                  <li>
+                    • 정상적인 사용 중 발생한{' '}
+                    <strong className="text-emerald-900">
+                      제품 본연의 기능상·기계적·전기적 고장
+                    </strong>
+                    으로 인한 공식 서비스센터 정식 수리비(부품비+공임비)
+                  </li>
+                  <li>
+                    • 가입 60일(면책기간) 경과 후부터 보장 개시 / 연간 총 100만원 한도 내 횟수 무제한
+                  </li>
+                </ul>
+              </div>
+
+              {/* 🔴 보장 제외 (파손 · 소모품 교체 등 불가) */}
+              <div className="rounded-2xl bg-rose-50/70 border border-rose-300 p-4 space-y-2">
+                <div className="text-xs sm:text-sm font-black text-rose-800 flex items-center gap-1.5">
+                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>🔴 보장 제외 (파손 · 소모품 교체 등 불가)</span>
+                </div>
+                <ul className="space-y-1.5 text-xs font-bold text-slate-800 leading-relaxed">
+                  <li>
+                    •{' '}
+                    <strong className="text-rose-700">
+                      고객 과실 및 외부 충격에 의한 파손
+                    </strong>{' '}
+                    (액정 깨짐, 외관 파손, 낙하, 침수 등)
+                  </li>
+                  <li>
+                    •{' '}
+                    <strong className="text-rose-700">
+                      단순 소모품 교체 및 세척
+                    </strong>{' '}
+                    (필터, 배터리, 먼지봉투, 리모컨 등 소모품 교체 및 클리닝)
+                  </li>
+                  <li>
+                    • <strong className="text-rose-700">가입 후 60일 이내</strong>{' '}
+                    발생한 고장, <strong className="text-rose-700">도난·분실</strong>,
+                    제조사 공식 센터 외{' '}
+                    <strong className="text-rose-700">사설 수리</strong>,{' '}
+                    <strong className="text-rose-700">상업/영업용 사용</strong>,{' '}
+                    <strong className="text-rose-700">
+                      해외직구 및 Apple(애플) 제품
+                    </strong>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>

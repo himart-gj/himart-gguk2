@@ -17,6 +17,7 @@ import { InsuranceGuideView } from './components/InsuranceGuideView';
 import { CareTableView } from './components/CareTableView';
 import { LottePlanCalcView } from './components/LottePlanCalcView';
 import { AllCareGuideView } from './components/AllCareGuideView';
+import { CardInstallmentModal } from './components/CardInstallmentModal';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
@@ -176,6 +177,8 @@ export function App() {
     );
   });
   const [isInstallGuideOpen, setIsInstallGuideOpen] = useState<boolean>(false);
+  const [isInstallmentModalOpen, setIsInstallmentModalOpen] =
+    useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -189,6 +192,7 @@ export function App() {
     step,
     isSaveToCrmOpen,
     isInstallGuideOpen,
+    isInstallmentModalOpen,
     isMenuOpen,
   });
 
@@ -197,9 +201,16 @@ export function App() {
       step,
       isSaveToCrmOpen,
       isInstallGuideOpen,
+      isInstallmentModalOpen,
       isMenuOpen,
     };
-  }, [step, isSaveToCrmOpen, isInstallGuideOpen, isMenuOpen]);
+  }, [
+    step,
+    isSaveToCrmOpen,
+    isInstallGuideOpen,
+    isInstallmentModalOpen,
+    isMenuOpen,
+  ]);
 
   // 단계나 메뉴가 바뀔 때마다 드롭다운 닫기 및 히스토리 가드 엔트리 1개 추가
   useEffect(() => {
@@ -236,6 +247,10 @@ export function App() {
       // 1순위: 열려 있는 모달/드롭다운 닫기
       if (current.isMenuOpen) {
         setIsMenuOpen(false);
+        return;
+      }
+      if (current.isInstallmentModalOpen) {
+        setIsInstallmentModalOpen(false);
         return;
       }
       if (current.isSaveToCrmOpen) {
@@ -863,8 +878,8 @@ export function App() {
     <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col">
       {/* ==================== 상단 다크 글로벌 네비게이션 바 (좌: 홈 + 현재화면 배지 / 우: 앱설치 + 햄버거 메뉴) ==================== */}
       <header className="w-full min-h-[44px] bg-slate-900 text-white border-b border-slate-800 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 sticky top-0 z-40 no-print">
-        {/* 좌측: [🏠 홈] 버튼 + 현재 열려 있는 화면 이름 배지 */}
-        <div className="flex items-center gap-2 min-w-0">
+        {/* 좌측: [🏠 홈] 버튼 + [💳 무이자 할부] 상시 버튼 + 현재 열려 있는 화면 이름 배지 */}
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <button
             type="button"
             onClick={() => setStep('home')}
@@ -878,7 +893,16 @@ export function App() {
             <span>🏠 홈</span>
           </button>
 
-          <span className="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
+          <button
+            type="button"
+            onClick={() => setIsInstallmentModalOpen(true)}
+            title="카드사별 무이자 · 부분무이자 할부 행사표 즉시 보기"
+            className="px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 shrink-0 bg-amber-400 hover:bg-amber-300 text-slate-950 border border-amber-300 shadow-xs transition cursor-pointer"
+          >
+            <span>💳 무이자 할부</span>
+          </button>
+
+          <span className="hidden xs:inline-block sm:inline-block px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
             {currentScreenBadgeLabel}
           </span>
         </div>
@@ -1403,6 +1427,12 @@ export function App() {
       {step === 'care-table' && (
         <CareTableView onBackToHome={() => setStep('home')} />
       )}
+
+      {/* ==================== 카드사별 무이자 · 부분무이자 할부 행사 모달 ==================== */}
+      <CardInstallmentModal
+        isOpen={isInstallmentModalOpen}
+        onClose={() => setIsInstallmentModalOpen(false)}
+      />
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
       <SaveToCrmModal
