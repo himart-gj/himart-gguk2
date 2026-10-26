@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BadgeCheck,
   Check,
@@ -90,6 +90,21 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   );
   const activeLotteUrl =
     savedLotteUrl || lotteUrlInput.trim() || DEFAULT_LOTTE_URL;
+
+  // 모달 내부 하위 상태(사번·롯데주소 수정 폼) 뒤로가기 핸들러 등록
+  useEffect(() => {
+    if (!isOpen) return;
+    (window as any).__modalInternalBackHandler = (): boolean => {
+      if (isEditingProfile && Boolean(savedEmpId || savedLotteUrl)) {
+        setIsEditingProfile(false);
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__modalInternalBackHandler;
+    };
+  }, [isOpen, isEditingProfile, savedEmpId, savedLotteUrl]);
 
   const handleSaveProfile = () => {
     const cleanEmp = (empInput.trim() || DEFAULT_EMP_ID).replace(/\s+/g, '');
@@ -309,7 +324,10 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setIsEditingProfile(true)}
+                onClick={() => {
+                  window.history.pushState({ appGuard: true }, '');
+                  setIsEditingProfile(true);
+                }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 text-xs font-black transition cursor-pointer"
               >
                 <Settings className="w-3.5 h-3.5 text-sky-400" />
@@ -918,6 +936,30 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
   );
   const [isTclGuideOpen, setIsTclGuideOpen] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // AS센터 모달 내부 하위 상태 뒤로가기 핸들러 등록:
+  // ① 플럭스 품목(activePluxCategory) ➔ ② 검색어(asSearchQuery) ➔ ③ 대분류 아코디언(activeMainSection)
+  useEffect(() => {
+    if (!isOpen) return;
+    (window as any).__modalInternalBackHandler = (): boolean => {
+      if (activePluxCategory !== null) {
+        setActivePluxCategory(null);
+        return true;
+      }
+      if (asSearchQuery.trim() !== '') {
+        setAsSearchQuery('');
+        return true;
+      }
+      if (activeMainSection !== null) {
+        setActiveMainSection(null);
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__modalInternalBackHandler;
+    };
+  }, [isOpen, activePluxCategory, asSearchQuery, activeMainSection]);
 
   const copyText = async (key: string, text: string) => {
     try {

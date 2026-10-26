@@ -84,6 +84,13 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
 
   // 스마트폰 물리 뒤로가기 연동: 제안서 화면('preview')일 때 뒤로가기를 누르면 조건 입력('input')으로 복귀
   useEffect(() => {
+    if (step === 'preview') {
+      try {
+        window.history.pushState({ appGuard: true, tag: 'lotte-preview' }, '');
+      } catch {
+        // ignore
+      }
+    }
     (window as any).__subViewBackHandler = () => {
       if (step === 'preview') {
         setStep('input');

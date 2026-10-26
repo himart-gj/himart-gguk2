@@ -90,7 +90,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 text-white font-black text-xs shadow-xs">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>8. 가전 올케어 안내·등록</span>
+              <span>7. 가전 올케어 안내·등록</span>
             </div>
           </div>
 

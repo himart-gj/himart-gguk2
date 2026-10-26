@@ -184,6 +184,27 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const isGuideTab =
     activeTab === 'guide-general' || activeTab === 'guide-sub';
 
+  // 프리드 안내서 탭('guide-general' | 'guide-sub')에서 뒤로가기 시 견적 제안서('proposal') 탭으로 먼저 복귀
+  useEffect(() => {
+    if (isGuideTab) {
+      try {
+        window.history.pushState({ appGuard: true, tag: 'guide-tab' }, '');
+      } catch {
+        // ignore
+      }
+    }
+    (window as any).__subViewBackHandler = (): boolean => {
+      if (activeTab === 'guide-general' || activeTab === 'guide-sub') {
+        setActiveTab('proposal');
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__subViewBackHandler;
+    };
+  }, [activeTab, isGuideTab]);
+
   // 2D Auto-Fit 스케일링: 가로폭은 무조건 상수 920 고정! (offsetWidth 측정 절대 금지)
   // 안내서 탭(#sheet-freed-guide)도 고정 1040 대신 실제 렌더링된 전체 높이를 측정하여 하단 문구 잘림 방지
   useEffect(() => {

@@ -200,414 +200,719 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     }
   }, [daysUntilNextOff, mood, userName]);
 
-  // 상황별 커스텀 졸라맨 SVG 렌더링
+  // 상황별 연속 관절(Jointed) 모션 그래픽 졸라맨 SVG 스테이지 렌더링
   const renderStickmanSvg = () => {
+    const stageCls =
+      'w-20 h-16 sm:w-24 sm:h-20 rounded-2xl bg-black/25 border border-white/15 shadow-inner relative overflow-hidden shrink-0 flex items-center justify-center';
+
     switch (mood) {
       case 'holiday-today':
-        // ③ 선글라스(🕶️) 끼고 해먹/비치베드에 누워 콧노래(🎵) 부르는 졸라맨
+        // ③ 휴무 당일: 선글라스(🕶️) 끼고 한 손에 칵테일(🍹)을 든 채 신나게 춤추는 졸라맨
         return (
-          <div className="relative w-16 h-14 sm:w-20 sm:h-16 flex items-center justify-center shrink-0">
-            <span className="absolute -top-1 right-0 text-xs sm:text-sm animate-bounce">
+          <div className={stageCls}>
+            <span
+              className="absolute top-1 left-1.5 text-[11px] sm:text-xs pointer-events-none"
+              style={{ animation: 'floatMusicNote 1.6s ease-in-out infinite' }}
+            >
               🎵
             </span>
-            <span className="absolute top-0 left-0 text-xs animate-pulse">
-              🏖️
-            </span>
-            <svg
-              viewBox="0 0 80 60"
-              className="w-full h-full overflow-visible"
+            <span
+              className="absolute top-1 right-1.5 text-[11px] sm:text-xs pointer-events-none"
+              style={{
+                animation: 'floatMusicNote 1.8s ease-in-out infinite 0.5s',
+              }}
             >
-              {/* 비치베드/해먹 곡선 */}
-              <path
-                d="M8 46 Q40 56 72 40"
-                fill="none"
-                stroke="#34d399"
-                strokeWidth="3"
-                strokeLinecap="round"
+              🎶
+            </span>
+            <span
+              className="absolute bottom-1 left-1 text-[10px] pointer-events-none"
+              style={{
+                animation: 'floatMusicNote 1.4s ease-in-out infinite 0.2s',
+              }}
+            >
+              ✨
+            </span>
+            <span
+              className="absolute bottom-1 right-1 text-xs pointer-events-none"
+              style={{ animation: 'danceBodyGroove 0.7s ease-in-out infinite' }}
+            >
+              🍹
+            </span>
+
+            <svg viewBox="0 0 80 70" className="w-full h-full overflow-visible">
+              {/* 무대 바닥 리듬 링 */}
+              <ellipse
+                cx="40"
+                cy="62"
+                rx="18"
+                ry="3.5"
+                fill="rgba(52, 211, 153, 0.35)"
               />
-              {/* 졸라맨 누운 몸통 */}
-              <circle
-                cx="24"
-                cy="30"
-                r="8"
-                fill="#fef08a"
-                stroke="#ffffff"
-                strokeWidth="2.5"
-              />
-              {/* 선글라스 */}
-              <rect x="20" y="27" width="5" height="3.5" rx="1" fill="#0f172a" />
-              <rect x="26" y="27" width="5" height="3.5" rx="1" fill="#0f172a" />
-              <line
-                x1="18"
-                y1="28.5"
-                x2="32"
-                y2="28.5"
-                stroke="#0f172a"
-                strokeWidth="1.5"
-              />
-              {/* 미소 */}
-              <path
-                d="M22 33 Q25 36 28 33"
-                fill="none"
-                stroke="#0f172a"
-                strokeWidth="1.5"
-              />
-              {/* 누운 몸 & 다리 꼬기 */}
-              <line
-                x1="30"
-                y1="35"
-                x2="48"
-                y2="43"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="48"
-                y1="43"
-                x2="60"
-                y2="34"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="48"
-                y1="43"
-                x2="64"
-                y2="42"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              {/* 머리 뒤로 깍지 낀 팔 */}
-              <path
-                d="M34 37 L20 38 L18 32"
-                fill="none"
-                stroke="#ffffff"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
+
+              {/* 춤추는 상체 그룹 */}
+              <g
+                style={{
+                  transformBox: 'fill-box',
+                  transformOrigin: 'center bottom',
+                  animation: 'danceBodyGroove 0.65s ease-in-out infinite',
+                }}
+              >
+                {/* 머리 */}
+                <circle
+                  cx="40"
+                  cy="18"
+                  r="8.5"
+                  fill="#fef08a"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
+                />
+                {/* 선글라스 */}
+                <rect
+                  x="33"
+                  y="15"
+                  width="6"
+                  height="4"
+                  rx="1"
+                  fill="#0f172a"
+                />
+                <rect
+                  x="41"
+                  y="15"
+                  width="6"
+                  height="4"
+                  rx="1"
+                  fill="#0f172a"
+                />
+                <line
+                  x1="31"
+                  y1="16.5"
+                  x2="49"
+                  y2="16.5"
+                  stroke="#0f172a"
+                  strokeWidth="1.6"
+                />
+                {/* 행복한 웃음 */}
+                <path
+                  d="M36 21.5 Q40 25 44 21.5"
+                  fill="none"
+                  stroke="#e11d48"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+
+                {/* 몸통 */}
+                <line
+                  x1="40"
+                  y1="26.5"
+                  x2="40"
+                  y2="45"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+
+                {/* 왼팔 (어깨 관절 기준 댄스 스윙) */}
+                <g
+                  style={{
+                    transformOrigin: '40px 30px',
+                    animation: 'danceArmLeft 0.55s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="40,30 27,23 22,15"
+                    fill="none"
+                    stroke="#fde047"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+
+                {/* 오른팔 (칵테일 들고 흔드는 팔) */}
+                <g
+                  style={{
+                    transformOrigin: '40px 30px',
+                    animation: 'danceArmRight 0.55s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="40,30 53,24 58,16"
+                    fill="none"
+                    stroke="#fde047"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </g>
+
+              {/* 왼다리 (골반 관절 기준 스텝) */}
+              <g
+                style={{
+                  transformOrigin: '40px 45px',
+                  animation: 'danceLegLeft 0.65s ease-in-out infinite',
+                }}
+              >
+                <polyline
+                  points="40,45 31,53 27,61"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
+
+              {/* 오른다리 (골반 관절 기준 스텝) */}
+              <g
+                style={{
+                  transformOrigin: '40px 45px',
+                  animation: 'danceLegRight 0.65s ease-in-out infinite',
+                }}
+              >
+                <polyline
+                  points="40,45 49,53 53,61"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </g>
             </svg>
           </div>
         );
 
       case 'holiday-eve':
-        // ② 두 팔을 번쩍 들고 폴짝폴짝 점프하며 폭죽/별(🎉🙌✨)이 터지는 졸라맨
+        // ② 휴무 전날 (D-1): 바닥 그림자가 줄었다 커지며 공중으로 폴짝폴짝 점프하고 팔다리를 파닥이는 졸라맨
         return (
-          <div className="relative w-16 h-14 sm:w-20 sm:h-16 flex items-center justify-center shrink-0">
-            <span className="absolute -top-1 left-0 text-xs sm:text-sm animate-ping">
-              ✨
-            </span>
-            <span className="absolute -top-1 right-0 text-xs sm:text-sm animate-bounce">
+          <div className={stageCls}>
+            <span
+              className="absolute top-1 left-1.5 text-xs pointer-events-none"
+              style={{ animation: 'floatMusicNote 1.2s ease-in-out infinite' }}
+            >
               🎉
             </span>
-            <svg
-              viewBox="0 0 70 64"
-              className="w-full h-full animate-bounce overflow-visible"
+            <span
+              className="absolute top-1 right-1.5 text-xs pointer-events-none"
+              style={{
+                animation: 'floatMusicNote 1.2s ease-in-out infinite 0.4s',
+              }}
             >
-              {/* 머리 */}
-              <circle
-                cx="35"
-                cy="16"
-                r="8"
-                fill="#fde047"
-                stroke="#ffffff"
-                strokeWidth="2.5"
+              🙌
+            </span>
+
+            <svg viewBox="0 0 80 70" className="w-full h-full overflow-visible">
+              {/* 점프 높이에 연동되어 수축/확장되는 바닥 그림자 */}
+              <ellipse
+                cx="40"
+                cy="63"
+                rx="16"
+                ry="3.5"
+                fill="rgba(251, 191, 36, 0.45)"
+                style={{
+                  transformOrigin: '40px 63px',
+                  animation: 'eveShadowPulse 0.6s ease-in-out infinite',
+                }}
               />
-              {/* 신난 눈 & 웃는 입 */}
-              <path
-                d="M31 14 L33 12 L34 14 M36 14 L38 12 L39 14"
-                fill="none"
-                stroke="#0f172a"
-                strokeWidth="1.5"
-              />
-              <path
-                d="M31 18 Q35 22 39 18"
-                fill="none"
-                stroke="#e11d48"
-                strokeWidth="2"
-              />
-              {/* 몸통 */}
-              <line
-                x1="35"
-                y1="24"
-                x2="35"
-                y2="42"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              {/* 만세하는 두 팔 */}
-              <line
-                x1="35"
-                y1="29"
-                x2="19"
-                y2="15"
-                stroke="#fde047"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="29"
-                x2="51"
-                y2="15"
-                stroke="#fde047"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              {/* 폴짝 뛰는 두 다리 */}
-              <line
-                x1="35"
-                y1="42"
-                x2="22"
-                y2="54"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="42"
-                x2="48"
-                y2="54"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
+
+              {/* 슈퍼 점프 전신 그룹 */}
+              <g
+                style={{
+                  transformOrigin: '40px 40px',
+                  animation: 'eveSuperJump 0.6s ease-in-out infinite',
+                }}
+              >
+                {/* 머리 */}
+                <circle
+                  cx="40"
+                  cy="18"
+                  r="8.5"
+                  fill="#fde047"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
+                />
+                {/* 반짝이는 눈 & 함박웃음 */}
+                <path
+                  d="M35 16 L37 14 L38.5 16 M41.5 16 L43 14 L45 16"
+                  fill="none"
+                  stroke="#0f172a"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M35.5 20.5 Q40 25 44.5 20.5"
+                  fill="none"
+                  stroke="#e11d48"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+
+                {/* 몸통 */}
+                <line
+                  x1="40"
+                  y1="26.5"
+                  x2="40"
+                  y2="44"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+
+                {/* 만세하며 빠르게 흔드는 두 팔 */}
+                <g
+                  style={{
+                    transformOrigin: '40px 29px',
+                    animation: 'danceArmLeft 0.35s ease-in-out infinite',
+                  }}
+                >
+                  <line
+                    x1="40"
+                    y1="29"
+                    x2="22"
+                    y2="13"
+                    stroke="#fde047"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </g>
+                <g
+                  style={{
+                    transformOrigin: '40px 29px',
+                    animation: 'danceArmRight 0.35s ease-in-out infinite',
+                  }}
+                >
+                  <line
+                    x1="40"
+                    y1="29"
+                    x2="58"
+                    y2="13"
+                    stroke="#fde047"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </g>
+
+                {/* 공중에서 신나게 파닥거리는 두 다리 */}
+                <g
+                  style={{
+                    transformOrigin: '40px 44px',
+                    animation: 'danceLegLeft 0.35s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="40,44 28,51 23,58"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+                <g
+                  style={{
+                    transformOrigin: '40px 44px',
+                    animation: 'danceLegRight 0.35s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="40,44 52,51 57,58"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </g>
             </svg>
           </div>
         );
 
       case 'post-holiday':
-        // ④ 어깨가 축 처진 채 머리 위로 영혼(👻)이 빠져나오며 다리를 질질 끌고 출근하는 졸라맨
+        // ④ 휴무 다음날: 영혼(👻)이 머리 위에서 빠져나갔다 빨려들어가고 다리를 후들거리며 터덜터덜 걷는 졸라맨
         return (
-          <div className="relative w-16 h-14 sm:w-20 sm:h-16 flex items-center justify-center shrink-0">
-            <span className="absolute -top-1.5 right-1 text-xs sm:text-sm animate-bounce">
+          <div className={stageCls}>
+            <span
+              className="absolute top-1 right-1.5 text-xs sm:text-sm pointer-events-none"
+              style={{ animation: 'soulEscapeLoop 2.2s ease-in-out infinite' }}
+            >
               👻
             </span>
-            <span className="absolute top-1 left-0 text-xs animate-pulse">
-              😭
-            </span>
-            <svg
-              viewBox="0 0 70 64"
-              className="w-full h-full overflow-visible"
+            <span
+              className="absolute top-1.5 left-1.5 text-[11px] pointer-events-none"
+              style={{ animation: 'sweatDropFall 1.3s ease-in infinite' }}
             >
-              {/* 푹 숙인 머리 */}
-              <circle
-                cx="42"
-                cy="22"
-                r="7.5"
-                fill="#cbd5e1"
-                stroke="#ffffff"
+              💦
+            </span>
+
+            <svg viewBox="0 0 80 70" className="w-full h-full overflow-visible">
+              {/* 뒤로 흐르는 바닥 트랙 */}
+              <line
+                x1="8"
+                y1="62"
+                x2="72"
+                y2="62"
+                stroke="#64748b"
                 strokeWidth="2.5"
+                strokeDasharray="6 6"
+                style={{ animation: 'treadmillMove 1.1s linear infinite' }}
               />
-              {/* 쾡한 눈 */}
-              <line
-                x1="40"
-                y1="22"
-                x2="45"
-                y2="22"
-                stroke="#0f172a"
-                strokeWidth="2"
-              />
-              {/* 구부정한 몸통 */}
-              <path
-                d="M38 28 Q32 36 30 45"
-                fill="none"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              {/* 축 처진 두 팔 */}
-              <line
-                x1="36"
-                y1="32"
-                x2="44"
-                y2="46"
-                stroke="#94a3b8"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="34"
-                x2="39"
-                y2="48"
-                stroke="#94a3b8"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              {/* 질질 끄는 다리 */}
-              <line
-                x1="30"
-                y1="45"
-                x2="18"
-                y2="58"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="30"
-                y1="45"
-                x2="38"
-                y2="58"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
+
+              {/* 후들거리는 좀비 전신 */}
+              <g
+                style={{
+                  transformOrigin: '40px 45px',
+                  animation: 'zombieTremble 0.9s ease-in-out infinite',
+                }}
+              >
+                {/* 푹 숙인 머리 */}
+                <circle
+                  cx="46"
+                  cy="22"
+                  r="8"
+                  fill="#cbd5e1"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
+                />
+                {/* 쾡한 눈 */}
+                <line
+                  x1="43"
+                  y1="22"
+                  x2="49"
+                  y2="22"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+
+                {/* 구부정한 등 */}
+                <path
+                  d="M42 28 Q35 36 33 46"
+                  fill="none"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+
+                {/* 축 늘어져 흔들리는 두 팔 */}
+                <g
+                  style={{
+                    transformOrigin: '39px 32px',
+                    animation: 'walkArmSwingA 1.1s ease-in-out infinite',
+                  }}
+                >
+                  <line
+                    x1="39"
+                    y1="32"
+                    x2="46"
+                    y2="48"
+                    stroke="#94a3b8"
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                  />
+                </g>
+                <g
+                  style={{
+                    transformOrigin: '37px 34px',
+                    animation: 'walkArmSwingB 1.1s ease-in-out infinite',
+                  }}
+                >
+                  <line
+                    x1="37"
+                    y1="34"
+                    x2="42"
+                    y2="50"
+                    stroke="#94a3b8"
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                  />
+                </g>
+
+                {/* 터덜터덜 질질 끄는 두 다리 */}
+                <g
+                  style={{
+                    transformOrigin: '33px 46px',
+                    animation: 'walkLegStepA 1.1s ease-in-out infinite',
+                  }}
+                >
+                  <line
+                    x1="33"
+                    y1="46"
+                    x2="23"
+                    y2="60"
+                    stroke="#ffffff"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                  />
+                </g>
+                <g
+                  style={{
+                    transformOrigin: '33px 46px',
+                    animation: 'walkLegStepB 1.1s ease-in-out infinite',
+                  }}
+                >
+                  <line
+                    x1="33"
+                    y1="46"
+                    x2="43"
+                    y2="60"
+                    stroke="#ffffff"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                  />
+                </g>
+              </g>
             </svg>
           </div>
         );
 
       case 'unset':
-        // 이름 미설정 시 물음표 띄운 졸라맨
+        // 이름 미설정 시 손을 흔들며 반갑게 인사하는 졸라맨
         return (
-          <div className="relative w-16 h-14 sm:w-20 sm:h-16 flex items-center justify-center shrink-0">
-            <span className="absolute -top-1 right-1 text-xs sm:text-sm font-black text-amber-300 animate-bounce">
+          <div className={stageCls}>
+            <span
+              className="absolute top-1 right-1.5 text-xs font-black text-amber-300 pointer-events-none"
+              style={{ animation: 'eveSuperJump 0.8s ease-in-out infinite' }}
+            >
               ❓
             </span>
-            <svg
-              viewBox="0 0 70 64"
-              className="w-full h-full overflow-visible"
-            >
-              <circle
-                cx="35"
-                cy="18"
-                r="8"
-                fill="#38bdf8"
-                stroke="#ffffff"
-                strokeWidth="2.5"
+            <svg viewBox="0 0 80 70" className="w-full h-full overflow-visible">
+              <ellipse
+                cx="40"
+                cy="62"
+                rx="15"
+                ry="3"
+                fill="rgba(56, 189, 248, 0.3)"
               />
-              <line
-                x1="35"
-                y1="26"
-                x2="35"
-                y2="44"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="31"
-                x2="23"
-                y2="39"
-                stroke="#ffffff"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="31"
-                x2="48"
-                y2="22"
-                stroke="#fde047"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="44"
-                x2="26"
-                y2="58"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="44"
-                x2="44"
-                y2="58"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
+              <g
+                style={{
+                  transformOrigin: '40px 45px',
+                  animation: 'walkTorsoHeavy 0.9s ease-in-out infinite',
+                }}
+              >
+                <circle
+                  cx="40"
+                  cy="19"
+                  r="8"
+                  fill="#38bdf8"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
+                />
+                <line
+                  x1="40"
+                  y1="27"
+                  x2="40"
+                  y2="45"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="40"
+                  y1="32"
+                  x2="27"
+                  y2="41"
+                  stroke="#ffffff"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                />
+                {/* 손 흔드는 오른팔 */}
+                <g
+                  style={{
+                    transformOrigin: '40px 32px',
+                    animation: 'danceArmRight 0.5s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="40,32 53,24 57,15"
+                    fill="none"
+                    stroke="#fde047"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+                <line
+                  x1="40"
+                  y1="45"
+                  x2="30"
+                  y2="60"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+                <line
+                  x1="40"
+                  y1="45"
+                  x2="50"
+                  y2="60"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+              </g>
             </svg>
           </div>
         );
 
       case 'normal-work':
       default:
-        // ① 땀(💦)을 흘리며 영차영차 걸어가는 졸라맨
+        // ① 일반 출근일 (휴무 D-2 이상): 필승 머리띠를 매고 땀(💦)과 거친 숨결(💨)을 뿜으며 러닝머신 위를 영차영차 행군하는 졸라맨
         return (
-          <div className="relative w-16 h-14 sm:w-20 sm:h-16 flex items-center justify-center shrink-0">
-            <span className="absolute top-0 right-0 text-xs sm:text-sm animate-pulse">
+          <div className={stageCls}>
+            {/* 뚝뚝 떨어지는 땀방울 */}
+            <span
+              className="absolute top-1 left-1.5 text-[11px] pointer-events-none"
+              style={{ animation: 'sweatDropFall 0.9s ease-in infinite' }}
+            >
               💦
             </span>
-            <svg
-              viewBox="0 0 70 64"
-              className="w-full h-full overflow-visible"
+            {/* 뿜어져 나오는 거친 숨결 */}
+            <span
+              className="absolute top-2 right-1 text-[11px] pointer-events-none"
+              style={{ animation: 'puffSteam 0.9s ease-out infinite' }}
             >
-              {/* 머리 */}
-              <circle
-                cx="37"
-                cy="17"
-                r="7.5"
-                fill="#38bdf8"
-                stroke="#ffffff"
-                strokeWidth="2.5"
-              />
-              {/* 결의에 찬 눈/머리띠 */}
+              💨
+            </span>
+
+            <svg viewBox="0 0 80 70" className="w-full h-full overflow-visible">
+              {/* 발밑에서 끊임없이 뒤로 흘러가는 러닝머신 트랙 점선 */}
               <line
-                x1="30"
-                y1="14"
-                x2="44"
-                y2="14"
-                stroke="#f43f5e"
-                strokeWidth="2.5"
-              />
-              {/* 앞으로 기울여 걷는 몸통 */}
-              <line
-                x1="36"
-                y1="25"
-                x2="32"
-                y2="43"
-                stroke="#ffffff"
-                strokeWidth="3"
+                x1="6"
+                y1="62"
+                x2="74"
+                y2="62"
+                stroke="#38bdf8"
+                strokeWidth="2.8"
+                strokeDasharray="7 5"
                 strokeLinecap="round"
+                style={{ animation: 'treadmillMove 0.45s linear infinite' }}
               />
-              {/* 힘차게 흔드는 두 팔 */}
-              <line
-                x1="35"
-                y1="30"
-                x2="47"
-                y2="37"
-                stroke="#fde047"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <line
-                x1="35"
-                y1="30"
-                x2="22"
-                y2="36"
-                stroke="#fde047"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              {/* 걸어가는 다리 */}
-              <line
-                x1="32"
-                y1="43"
-                x2="21"
-                y2="57"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
-              <line
-                x1="32"
-                y1="43"
-                x2="45"
-                y2="57"
-                stroke="#ffffff"
-                strokeWidth="3"
-                strokeLinecap="round"
-              />
+
+              {/* 영차영차 상하 반동하며 앞으로 기울어진 상체 + 팔다리 관절 */}
+              <g
+                style={{
+                  transformOrigin: '38px 44px',
+                  animation: 'walkTorsoHeavy 0.45s ease-in-out infinite',
+                }}
+              >
+                {/* 뒤 팔 (교차 스윙 B) */}
+                <g
+                  style={{
+                    transformOrigin: '39px 30px',
+                    animation: 'walkArmSwingB 0.45s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="39,30 27,36 22,32"
+                    fill="none"
+                    stroke="#cbd5e1"
+                    strokeWidth="2.8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+
+                {/* 뒤 다리 (교차 스텝 B) */}
+                <g
+                  style={{
+                    transformOrigin: '35px 44px',
+                    animation: 'walkLegStepB 0.45s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="35,44 26,52 21,60"
+                    fill="none"
+                    stroke="#cbd5e1"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+
+                {/* 앞으로 숙인 몸통 */}
+                <line
+                  x1="41"
+                  y1="25"
+                  x2="35"
+                  y2="44"
+                  stroke="#ffffff"
+                  strokeWidth="3.4"
+                  strokeLinecap="round"
+                />
+
+                {/* 머리 */}
+                <circle
+                  cx="43"
+                  cy="17"
+                  r="8"
+                  fill="#38bdf8"
+                  stroke="#ffffff"
+                  strokeWidth="2.5"
+                />
+                {/* 붉은 필승 머리띠 & 휘날리는 끈 */}
+                <line
+                  x1="35"
+                  y1="14"
+                  x2="51"
+                  y2="14"
+                  stroke="#f43f5e"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M35 14 Q28 11 24 15"
+                  fill="none"
+                  stroke="#f43f5e"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                />
+                {/* 결의에 찬 눈 */}
+                <line
+                  x1="44"
+                  y1="17.5"
+                  x2="49"
+                  y2="16.5"
+                  stroke="#0f172a"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+
+                {/* 앞 다리 (교차 스텝 A) */}
+                <g
+                  style={{
+                    transformOrigin: '35px 44px',
+                    animation: 'walkLegStepA 0.45s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="35,44 45,52 49,60"
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth="3.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+
+                {/* 앞 팔 (교차 스윙 A) */}
+                <g
+                  style={{
+                    transformOrigin: '39px 30px',
+                    animation: 'walkArmSwingA 0.45s ease-in-out infinite',
+                  }}
+                >
+                  <polyline
+                    points="39,30 49,36 54,31"
+                    fill="none"
+                    stroke="#fde047"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </g>
+              </g>
             </svg>
           </div>
         );
@@ -620,8 +925,86 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       onClick={onOpenScheduleModal}
       className={`w-full rounded-2xl sm:rounded-3xl p-3 sm:p-4 text-left text-white border-2 shadow-md hover:shadow-xl transition-all cursor-pointer group ${bannerMeta.bgClass}`}
     >
+      {/* 졸라맨 연속 관절 모션 전용 CSS Keyframes */}
+      <style>{`
+        @keyframes danceBodyGroove {
+          0%, 100% { transform: translateY(0px) rotate(-6deg); }
+          50% { transform: translateY(-4px) rotate(6deg); }
+        }
+        @keyframes danceArmLeft {
+          0%, 100% { transform: rotate(-28deg); }
+          50% { transform: rotate(32deg); }
+        }
+        @keyframes danceArmRight {
+          0%, 100% { transform: rotate(28deg); }
+          50% { transform: rotate(-32deg); }
+        }
+        @keyframes danceLegLeft {
+          0%, 100% { transform: rotate(-18deg); }
+          50% { transform: rotate(22deg); }
+        }
+        @keyframes danceLegRight {
+          0%, 100% { transform: rotate(22deg); }
+          50% { transform: rotate(-18deg); }
+        }
+        @keyframes floatMusicNote {
+          0%, 100% { transform: translateY(0px) scale(0.95); opacity: 0.75; }
+          50% { transform: translateY(-5px) scale(1.15); opacity: 1; }
+        }
+        @keyframes eveSuperJump {
+          0%, 100% { transform: translateY(2px) scaleY(0.94); }
+          50% { transform: translateY(-11px) scaleY(1.04); }
+        }
+        @keyframes eveShadowPulse {
+          0%, 100% { transform: scaleX(1.1); opacity: 0.55; }
+          50% { transform: scaleX(0.55); opacity: 0.2; }
+        }
+        @keyframes walkArmSwingA {
+          0%, 100% { transform: rotate(-34deg); }
+          50% { transform: rotate(34deg); }
+        }
+        @keyframes walkArmSwingB {
+          0%, 100% { transform: rotate(34deg); }
+          50% { transform: rotate(-34deg); }
+        }
+        @keyframes walkLegStepA {
+          0%, 100% { transform: rotate(-30deg); }
+          50% { transform: rotate(30deg); }
+        }
+        @keyframes walkLegStepB {
+          0%, 100% { transform: rotate(30deg); }
+          50% { transform: rotate(-30deg); }
+        }
+        @keyframes walkTorsoHeavy {
+          0%, 100% { transform: translateY(0px) rotate(3deg); }
+          50% { transform: translateY(-3px) rotate(7deg); }
+        }
+        @keyframes treadmillMove {
+          0% { stroke-dashoffset: 0; }
+          100% { stroke-dashoffset: 24; }
+        }
+        @keyframes sweatDropFall {
+          0% { transform: translate(0px, -2px) scale(0.8); opacity: 0; }
+          40% { opacity: 1; }
+          100% { transform: translate(-4px, 10px) scale(1.05); opacity: 0; }
+        }
+        @keyframes puffSteam {
+          0% { transform: translate(0px, 0px) scale(0.7); opacity: 0.9; }
+          100% { transform: translate(7px, -6px) scale(1.25); opacity: 0; }
+        }
+        @keyframes soulEscapeLoop {
+          0%, 100% { transform: translate(0px, 4px) scale(0.85); opacity: 0.55; }
+          50% { transform: translate(4px, -7px) scale(1.15); opacity: 1; }
+        }
+        @keyframes zombieTremble {
+          0%, 100% { transform: translateX(0px) translateY(0px) rotate(2deg); }
+          25% { transform: translateX(-1.5px) translateY(1px) rotate(4deg); }
+          75% { transform: translateX(1.5px) translateY(2px) rotate(1deg); }
+        }
+      `}</style>
+
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        {/* 좌측: 졸라맨 애니메이션 캐릭터 + 말풍선 */}
+        {/* 좌측: 졸라맨 애니메이션 캐릭터 스테이지 + 말풍선 */}
         <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
           {renderStickmanSvg()}
 

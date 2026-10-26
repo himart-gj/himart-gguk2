@@ -82,6 +82,44 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   const [isImageScannerOpen, setIsImageScannerOpen] = useState(false);
   const [scannerInitialImage, setScannerInitialImage] = useState<string | null>(null);
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string | null>(null);
+
+  // 구독 POP 내부 모달 열림 시 뒤로가기로 해당 모달만 먼저 닫기
+  useEffect(() => {
+    if (
+      isImageScannerOpen ||
+      isDataModalOpen ||
+      isSettingsModalOpen ||
+      showIOSGuide
+    ) {
+      try {
+        window.history.pushState({ appGuard: true, tag: 'pop-modal' }, '');
+      } catch {
+        // ignore
+      }
+    }
+    (window as any).__subViewBackHandler = (): boolean => {
+      if (isImageScannerOpen) {
+        setIsImageScannerOpen(false);
+        return true;
+      }
+      if (isDataModalOpen) {
+        setIsDataModalOpen(false);
+        return true;
+      }
+      if (isSettingsModalOpen) {
+        setIsSettingsModalOpen(false);
+        return true;
+      }
+      if (showIOSGuide) {
+        setShowIOSGuide(false);
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__subViewBackHandler;
+    };
+  }, [isImageScannerOpen, isDataModalOpen, isSettingsModalOpen, showIOSGuide]);
   
   // Print Mode
   const [printMode, setPrintMode] = useState<'all' | 'changed' | 'new' | 'allcare' | 'standard'>('all');

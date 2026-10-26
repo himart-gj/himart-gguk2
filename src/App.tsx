@@ -234,11 +234,47 @@ export function App() {
     isMenuOpen,
   ]);
 
+  // 히스토리 가드 주입 헬퍼 (모바일 뒤로가기 시 앱 강제 종료 원천 차단)
+  const pushAppHistoryGuard = useCallback((tag?: string) => {
+    try {
+      window.history.pushState(
+        { appGuard: true, tag: tag || 'nav', ts: Date.now() },
+        ''
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // 단계나 메뉴가 바뀔 때마다 드롭다운 닫기 및 히스토리 가드 엔트리 1개 추가
   useEffect(() => {
     setIsMenuOpen(false);
-    window.history.pushState({ appGuard: true }, '');
-  }, [step, activeMode]);
+    pushAppHistoryGuard(`step-${step}-${activeMode}`);
+  }, [step, activeMode, pushAppHistoryGuard]);
+
+  // 어떤 모달이나 햄버거 메뉴가 열릴 때마다 히스토리 가드 엔트리 1개 추가
+  useEffect(() => {
+    if (
+      isMenuOpen ||
+      isSaveToCrmOpen ||
+      isInstallGuideOpen ||
+      isScheduleModalOpen ||
+      isInstallmentModalOpen ||
+      isCardIssueOpen ||
+      isAsCenterOpen
+    ) {
+      pushAppHistoryGuard('modal-open');
+    }
+  }, [
+    isMenuOpen,
+    isSaveToCrmOpen,
+    isInstallGuideOpen,
+    isScheduleModalOpen,
+    isInstallmentModalOpen,
+    isCardIssueOpen,
+    isAsCenterOpen,
+    pushAppHistoryGuard,
+  ]);
 
   // 드롭다운 바깥 영역 클릭 시 자동 닫기
   useEffect(() => {
@@ -255,73 +291,100 @@ export function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMenuOpen]);
 
-  // 최초 1회만 등록되는 스마트폰 물리/제스처 뒤로가기 인터셉터
+  // 최초 1회만 등록되는 스마트폰 물리/제스처 뒤로가기 인터셉터 (우선순위 0~4순위 계층 처리)
   useEffect(() => {
-    window.history.replaceState({ appGuard: true }, '');
-    window.history.pushState({ appGuard: true }, '');
+    try {
+      window.history.replaceState({ appGuard: true, tag: 'init-base', ts: Date.now() }, '');
+    } catch {
+      // ignore
+    }
+    pushAppHistoryGuard('init');
 
     const handlePopState = () => {
-      // 앱이 절대 종료되지 않도록 즉시 가드 히스토리 재주입
-      window.history.pushState({ appGuard: true }, '');
-
       const current = latestAppStateRef.current;
 
-      // 1순위: 열려 있는 모달/드롭다운 닫기
+      // 0순위: 현재 열려 있는 모달 내부에 하위 뒤로가기 상태가 있으면 그것만 먼저 한 단계 되돌림
+      const modalInternalHandler = (window as any).__modalInternalBackHandler as
+        | (() => boolean)
+        | undefined;
+      if (typeof modalInternalHandler === 'function') {
+        const handledInsideModal = modalInternalHandler();
+        if (handledInsideModal) {
+          pushAppHistoryGuard('modal-sub');
+          return;
+        }
+      }
+
+      // 1순위: 현재 열려 있는 최상위 모달/메뉴 닫기 (현재 화면은 그대로 유지)
       if (current.isMenuOpen) {
         setIsMenuOpen(false);
-        return;
-      }
-      if (current.isScheduleModalOpen) {
-        setIsScheduleModalOpen(false);
-        return;
-      }
-      if (current.isInstallmentModalOpen) {
-        setIsInstallmentModalOpen(false);
-        return;
-      }
-      if (current.isCardIssueOpen) {
-        setIsCardIssueOpen(false);
-        return;
-      }
-      if (current.isAsCenterOpen) {
-        setIsAsCenterOpen(false);
+        pushAppHistoryGuard('modal-close');
         return;
       }
       if (current.isSaveToCrmOpen) {
         setIsSaveToCrmOpen(false);
+        pushAppHistoryGuard('modal-close');
         return;
       }
       if (current.isInstallGuideOpen) {
         setIsInstallGuideOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
+      if (current.isScheduleModalOpen) {
+        setIsScheduleModalOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
+      if (current.isInstallmentModalOpen) {
+        setIsInstallmentModalOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
+      if (current.isCardIssueOpen) {
+        setIsCardIssueOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
+      if (current.isAsCenterOpen) {
+        setIsAsCenterOpen(false);
+        pushAppHistoryGuard('modal-close');
         return;
       }
 
-      // 2순위: 현재 화면(예: 안심케어 조견표) 내부의 하위 폴더/단계 뒤로가기가 있으면 먼저 실행
+      // 2순위: 현재 메인 화면 내부의 하위 뷰/팝업 뒤로가기 핸들러(__subViewBackHandler) 실행
       const subBackHandler = (window as any).__subViewBackHandler as
         | (() => boolean)
         | undefined;
       if (typeof subBackHandler === 'function') {
         const handledBySubView = subBackHandler();
         if (handledBySubView) {
-          return; // 하위 폴더에서 한 단계 뒤로 이동 완료했으므로 메인으로 나가지 않음!
+          pushAppHistoryGuard('subview');
+          return;
         }
       }
 
       // 3순위: 제안서 미리보기('proposal') 화면이면 조건 입력('input') 화면으로 이동
       if (current.step === 'proposal') {
         setStep('input');
+        pushAppHistoryGuard('back-to-input');
         return;
       }
 
       // 4순위: 그 외 메뉴 화면이면 메인 홈('home')으로 이동
       if (current.step !== 'home') {
         setStep('home');
+        pushAppHistoryGuard('back-to-home');
+        return;
       }
+
+      // 홈 화면에서도 절대 앱이 종료되지 않도록 가드 유지
+      pushAppHistoryGuard('home-stay');
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [pushAppHistoryGuard]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -945,7 +1008,10 @@ export function App() {
 
           <button
             type="button"
-            onClick={() => setIsScheduleModalOpen(true)}
+            onClick={() => {
+              pushAppHistoryGuard('open-schedule');
+              setIsScheduleModalOpen(true);
+            }}
             title="경기광주점 오늘 근무자 및 월별 휴무표 보기"
             className="px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 bg-indigo-500 hover:bg-indigo-400 text-white border border-indigo-400 shadow-xs transition cursor-pointer"
           >
@@ -977,7 +1043,12 @@ export function App() {
 
           <button
             type="button"
-            onClick={() => setIsMenuOpen((prev) => !prev)}
+            onClick={() => {
+              setIsMenuOpen((prev) => {
+                if (!prev) pushAppHistoryGuard('open-menu');
+                return !prev;
+              });
+            }}
             className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border transition cursor-pointer ${
               isMenuOpen
                 ? 'bg-amber-500 border-amber-400 text-slate-950'
@@ -1194,6 +1265,7 @@ export function App() {
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
+                    pushAppHistoryGuard('open-installment');
                     setIsInstallmentModalOpen(true);
                   }}
                   className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
@@ -1204,6 +1276,7 @@ export function App() {
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
+                    pushAppHistoryGuard('open-card-issue');
                     setIsCardIssueOpen(true);
                   }}
                   className="py-2 px-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
@@ -1214,6 +1287,7 @@ export function App() {
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
+                    pushAppHistoryGuard('open-as-center');
                     setIsAsCenterOpen(true);
                   }}
                   className="py-2 px-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
@@ -1224,6 +1298,7 @@ export function App() {
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
+                    pushAppHistoryGuard('open-schedule');
                     setIsScheduleModalOpen(true);
                   }}
                   className="py-2 px-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-black text-center truncate cursor-pointer"
@@ -1242,14 +1317,20 @@ export function App() {
           <div className="w-full max-w-3xl flex flex-col gap-2.5 sm:gap-3.5">
             {/* 0-1) 최상단 졸라맨 내 휴무 카운트다운 애니메이션 배너 (클릭 시 휴무표 모달 오픈) */}
             <ScheduleCharacterBanner
-              onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+              onOpenScheduleModal={() => {
+                pushAppHistoryGuard('open-schedule');
+                setIsScheduleModalOpen(true);
+              }}
             />
 
             {/* 0-2) [💳 무이자 할부] | [🪪 카드발급] | [🛠️ AS센터] 3열 상시 퀵 버튼 (통합 고객관리 바로 위) */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <button
                 type="button"
-                onClick={() => setIsInstallmentModalOpen(true)}
+                onClick={() => {
+                  pushAppHistoryGuard('open-installment');
+                  setIsInstallmentModalOpen(true);
+                }}
                 className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 border-2 border-amber-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
               >
                 <span>💳 무이자 할부</span>
@@ -1257,7 +1338,10 @@ export function App() {
 
               <button
                 type="button"
-                onClick={() => setIsCardIssueOpen(true)}
+                onClick={() => {
+                  pushAppHistoryGuard('open-card-issue');
+                  setIsCardIssueOpen(true);
+                }}
                 className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-sky-400 hover:bg-sky-300 text-slate-950 border-2 border-sky-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
               >
                 <span>🪪 카드발급</span>
@@ -1265,7 +1349,10 @@ export function App() {
 
               <button
                 type="button"
-                onClick={() => setIsAsCenterOpen(true)}
+                onClick={() => {
+                  pushAppHistoryGuard('open-as-center');
+                  setIsAsCenterOpen(true);
+                }}
                 className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 border-2 border-emerald-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
               >
                 <span>🛠️ AS센터</span>

@@ -171,14 +171,21 @@ export const InsuranceGuideView: React.FC<InsuranceGuideViewProps> = ({
       <div className="max-w-4xl mx-auto p-3.5 sm:p-6 space-y-4">
         {/* 상단 컨트롤 바 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={onBackToHome}
-            className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs sm:text-sm font-black flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>메인 메뉴로</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={onBackToHome}
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs sm:text-sm font-black flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>메인 메뉴로</span>
+            </button>
+
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 text-white font-black text-xs sm:text-sm shadow-xs">
+              <ShieldCheck className="w-4 h-4" />
+              <span>8. 보험 청구안내</span>
+            </div>
+          </div>
 
           <button
             type="button"

@@ -20,7 +20,7 @@ import {
 } from '../utils/aiImageParser';
 
 export const USER_NAME_STORAGE_KEY = 'himart_gj_user_name';
-export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v3';
+export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v4';
 export const SCHEDULE_UPDATED_EVENT = 'himart_gj_schedule_updated';
 
 const OBSOLETE_FAKE_NAMES = new Set([
@@ -154,354 +154,28 @@ export function isOffDayCode(code?: string): boolean {
   return c === 'O' || c === '연차' || c === 'V' || c === '휴무' || c === '휴가';
 }
 
-export const DEFAULT_2026_10_EMPLOYEES: EmployeeMonthlySchedule[] = [
-  {
-    name: '강석원',
-    role: '점장',
-    days: {
-      1: 'O',
-      6: 'O',
-      8: 'O',
-      9: 'O',
-      14: '연차',
-      15: 'O',
-      20: 'O',
-      21: 'O',
-      23: 'O',
-      28: 'O',
-    },
-  },
-  {
-    name: '김재훈',
-    role: '부점장',
-    days: {
-      2: '연차',
-      7: 'O',
-      10: 'O',
-      12: 'O',
-      16: 'O',
-      19: 'O',
-      22: 'O',
-      23: '연차',
-      25: 'O',
-      26: 'O',
-      27: '회의',
-      29: 'O',
-      31: 'O',
-    },
-  },
-  {
-    name: '국지현',
-    role: 'SCM',
-    days: {
-      1: 'O',
-      5: 'O',
-      6: 'O',
-      11: 'O',
-      13: 'O',
-      14: 'O',
-      17: '연차',
-      21: 'O',
-      26: 'O',
-      28: 'O',
-    },
-  },
-  {
-    name: '심우영',
-    role: '선임/대형',
-    days: {
-      1: 'O',
-      7: 'O',
-      8: 'O',
-      13: 'O',
-      16: 'O',
-      19: 'V',
-      20: 'V',
-      21: 'V',
-      22: 'O',
-      23: 'O',
-      27: 'O',
-      30: 'O',
-    },
-  },
-  {
-    name: '정충영',
-    role: '대형',
-    days: {
-      2: 'O',
-      5: 'O',
-      7: 'O',
-      8: 'O',
-      12: 'O',
-      15: 'O',
-      19: 'O',
-      22: 'O',
-      26: 'O',
-      27: 'O',
-      29: '연차',
-    },
-  },
-  {
-    name: '한세희',
-    role: '대형',
-    days: {
-      1: 'O',
-      5: 'O',
-      8: 'O',
-      12: 'O',
-      14: 'O',
-      17: 'O',
-      18: '연차',
-      20: 'O',
-      24: 'O',
-      27: 'O',
-      30: 'O',
-    },
-  },
-  {
-    name: '김태형',
-    role: '대형',
-    days: {
-      1: 'O',
-      6: 'O',
-      9: 'O',
-      13: 'O',
-      15: 'O',
-      19: 'O',
-      22: 'O',
-      26: 'O',
-      28: 'O',
-      29: 'O',
-    },
-  },
-  {
-    name: '한춘매',
-    role: '대형',
-    days: {
-      1: 'O',
-      5: 'O',
-      7: 'O',
-      9: 'O',
-      12: 'O',
-      16: 'O',
-      20: 'O',
-      21: '연차',
-      23: '연차',
-      27: 'O',
-      28: 'O',
-      29: 'O',
-    },
-  },
-  {
-    name: '손정민',
-    role: '생활',
-    days: {
-      2: '연차',
-      6: 'O',
-      9: 'O',
-      13: 'O',
-      16: 'O',
-      19: 'O',
-      21: 'O',
-      24: 'O',
-      26: 'O',
-      29: 'V',
-      30: 'V',
-      31: 'V',
-    },
-  },
-  {
-    name: '박기복',
-    role: '주방',
-    days: {
-      1: '연차',
-      4: '연차',
-      5: 'V',
-      6: 'V',
-      7: 'V',
-      8: '연차',
-      10: 'O',
-      13: 'O',
-      15: 'O',
-      17: 'O',
-      20: 'O',
-      23: 'O',
-      25: 'O',
-      27: 'O',
-      31: 'O',
-    },
-  },
-  {
-    name: '최문기',
-    role: '쿠쿠',
-    days: {
-      2: '연차',
-      7: 'O',
-      8: 'O',
-      11: 'O',
-      12: 'O',
-      15: 'O',
-      16: 'O',
-      19: 'O',
-      22: '교육',
-      23: 'O',
-      26: 'O',
-      29: 'O',
-    },
-  },
-  {
-    name: '윤현주',
-    role: '쿠쿠',
-    days: {
-      3: 'O',
-      6: 'O',
-      9: 'O',
-      13: 'O',
-      14: 'O',
-      18: 'O',
-      20: '반차',
-      21: 'O',
-      22: '교육',
-      26: 'O',
-      30: 'O',
-    },
-  },
-  {
-    name: '한나라',
-    role: '생활',
-    days: {
-      1: 'O',
-      4: 'O',
-      5: 'O',
-      9: 'O',
-      13: 'O',
-      14: 'O',
-      17: 'O',
-      21: 'O',
-      24: 'O',
-      25: 'O',
-      28: 'O',
-      31: 'O',
-    },
-  },
-  {
-    name: '권지혜',
-    role: 'KBB',
-    days: {
-      2: 'O',
-      6: 'O',
-      7: 'O',
-      10: 'O',
-      12: 'O',
-      16: 'O',
-      18: 'O',
-      19: 'O',
-      20: '교육',
-      22: 'O',
-      23: 'O',
-      26: 'O',
-      27: 'V',
-      28: 'V',
-      29: '연차',
-      30: '연차',
-      31: '연차',
-    },
-  },
-  {
-    name: '서형래',
-    role: '애플',
-    days: {
-      2: 'O',
-      5: 'O',
-      6: 'O',
-      7: 'HP',
-      9: 'O',
-      12: 'O',
-      15: 'O',
-      16: 'O',
-      17: '반차',
-      20: 'O',
-      23: 'O',
-      26: 'O',
-      27: 'O',
-      30: 'O',
-      31: '연차',
-    },
-  },
-  {
-    name: '김지우',
-    role: '모바일',
-    days: {
-      1: 'O',
-      6: 'O',
-      7: 'O',
-      8: 'O',
-      11: '연차',
-      13: 'O',
-      14: 'O',
-      18: '연차',
-      19: '연차',
-      20: 'O',
-      21: 'O',
-      24: 'O',
-      28: 'O',
-      29: 'O',
-    },
-  },
-  {
-    name: '김도인',
-    role: 'SKT',
-    days: {
-      5: 'O',
-      8: 'O',
-      12: 'O',
-      15: 'O',
-      19: 'O',
-      20: 'O',
-      23: 'O',
-      27: 'O',
-      30: 'O',
-    },
-  },
-  {
-    name: '정태일',
-    role: 'LGU',
-    days: {
-      1: 'O',
-      6: 'O',
-      7: 'O',
-      13: 'O',
-      14: 'O',
-      21: 'O',
-      22: 'O',
-      25: 'O',
-      28: 'O',
-      29: 'O',
-    },
-  },
-  {
-    name: '주형남',
-    role: 'KT',
-    days: {
-      2: 'O',
-      9: 'O',
-      12: 'O',
-      15: 'O',
-      16: 'O',
-      23: 'O',
-      26: 'O',
-      27: 'O',
-      30: '연차',
-    },
-  },
+// 경기광주점 기본 직원 명단 (이름 칩 선택 및 OCR 글자 보정용, 하드코딩 날짜 없음)
+const GWANGJU_STAFF_ROSTER: { name: string; role: string }[] = [
+  { name: '강석원', role: '점장' },
+  { name: '김재훈', role: '부점장' },
+  { name: '국지현', role: 'SCM' },
+  { name: '심우영', role: '선임/대형' },
+  { name: '정충영', role: '대형' },
+  { name: '한세희', role: '대형' },
+  { name: '김태형', role: '대형' },
+  { name: '한춘매', role: '대형' },
+  { name: '손정민', role: '생활' },
+  { name: '박기복', role: '주방' },
+  { name: '최문기', role: '쿠쿠' },
+  { name: '윤현주', role: '쿠쿠' },
+  { name: '한나라', role: '생활' },
+  { name: '권지혜', role: 'KBB' },
+  { name: '서형래', role: '애플' },
+  { name: '김지우', role: '모바일' },
+  { name: '김도인', role: 'SKT' },
+  { name: '정태일', role: 'LGU' },
+  { name: '주형남', role: 'KT' },
 ];
-
-export const DEFAULT_2026_10_SCHEDULE: MonthlyScheduleData = {
-  yearMonth: '2026-10',
-  updatedAt: '2026-10-01 09:00',
-  isRegistered: true,
-  employees: DEFAULT_2026_10_EMPLOYEES,
-};
 
 const NAME_TYPO_MAP: Record<string, string> = {
   한춘애: '한춘매',
@@ -543,17 +217,14 @@ export function saveUserName(name: string): void {
 
 export function loadAllSchedules(): SchedulesMap {
   try {
-    // 구버전 키 정리
+    // 구버전 하드코딩 캐시 키 정리
     localStorage.removeItem('himart_gj_schedules_v1');
     localStorage.removeItem('himart_gj_schedules_v2');
+    localStorage.removeItem('himart_gj_schedules_v3');
 
     const raw = localStorage.getItem(SCHEDULES_STORAGE_KEY);
-    // 최초 앱 실행 시 (localStorage에 키 자체가 없을 때만) 기본 2026-10 데이터 1회 주입
-    // 사용자가 삭제한 달은 다시 살아나지 않음
-    if (raw === null) {
-      const initial: SchedulesMap = { '2026-10': DEFAULT_2026_10_SCHEDULE };
-      localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(initial));
-      return initial;
+    if (!raw) {
+      return {};
     }
     const parsed = JSON.parse(raw) as SchedulesMap;
     if (!parsed || typeof parsed !== 'object') {
@@ -610,7 +281,7 @@ export function getOrCreateMonthSchedule(
   const baseRoster =
     sortedKeys.length > 0
       ? schedules[sortedKeys[sortedKeys.length - 1]].employees
-      : DEFAULT_2026_10_EMPLOYEES;
+      : GWANGJU_STAFF_ROSTER;
 
   return {
     yearMonth,
@@ -853,7 +524,7 @@ function finalizeExcelEmployees(
     if (!cleanRawName || OBSOLETE_FAKE_NAMES.has(cleanRawName)) continue;
     const finalName = NAME_TYPO_MAP[cleanRawName] || cleanRawName;
 
-    const stdMatch = DEFAULT_2026_10_EMPLOYEES.find((s) => s.name === finalName);
+    const stdMatch = GWANGJU_STAFF_ROSTER.find((s) => s.name === finalName);
     const rawRole = (item.role || '').trim();
     const finalRole =
       rawRole && rawRole !== '매장'
@@ -894,7 +565,7 @@ function reconcileOcrEmployees(
     const typoCorrected = NAME_TYPO_MAP[rawName] || rawName;
 
     // 1) 정확히 일치하는 기존 직원 확인
-    const exactMatch = DEFAULT_2026_10_EMPLOYEES.find(
+    const exactMatch = GWANGJU_STAFF_ROSTER.find(
       (s) => s.name === typoCorrected
     );
     if (exactMatch) {
@@ -906,7 +577,7 @@ function reconcileOcrEmployees(
     }
 
     // 2) 담당(role)이 같고 이름 3글자 중 2글자가 일치하는 OCR 깨짐(예: 박기복 -> 박기록)만 보정
-    const fuzzyOcrMatch = DEFAULT_2026_10_EMPLOYEES.find((s) => {
+    const fuzzyOcrMatch = GWANGJU_STAFF_ROSTER.find((s) => {
       if (s.name.length !== 3 || typoCorrected.length !== 3) return false;
       let matchChars = 0;
       for (let i = 0; i < 3; i++) {
@@ -1989,6 +1660,33 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   // 휴무표 삭제 및 관리 상태 및 핸들러
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
+  // 모달 내부 하위 상태 뒤로가기 핸들러 등록
+  useEffect(() => {
+    if (!isOpen) return;
+    (window as any).__modalInternalBackHandler = (): boolean => {
+      if (isDeleteModalOpen) {
+        setIsDeleteModalOpen(false);
+        return true;
+      }
+      if (editingCell !== null) {
+        setEditingCell(null);
+        return true;
+      }
+      if (isEditingName && Boolean(savedName)) {
+        setIsEditingName(false);
+        return true;
+      }
+      if (activeView === 'full') {
+        setActiveView('today');
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__modalInternalBackHandler;
+    };
+  }, [isOpen, isDeleteModalOpen, editingCell, isEditingName, savedName, activeView]);
+
   const handleDeleteMonth = (ym: string) => {
     if (!schedules[ym]) return;
     const next = { ...schedules };
@@ -2214,7 +1912,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 <span>👤 {savedName}님</span>
                 <button
                   type="button"
-                  onClick={() => setIsEditingName(true)}
+                  onClick={() => {
+                    window.history.pushState({ appGuard: true }, '');
+                    setIsEditingName(true);
+                  }}
                   className="px-2 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-black transition cursor-pointer"
                 >
                   ⚙️ 이름 수정
@@ -2243,7 +1944,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
             <button
               type="button"
-              onClick={() => setIsDeleteModalOpen(true)}
+              onClick={() => {
+                window.history.pushState({ appGuard: true }, '');
+                setIsDeleteModalOpen(true);
+              }}
               title="저장된 휴무표 삭제 및 관리"
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-rose-300 border border-slate-700 hover:border-rose-700/60 text-xs font-black transition cursor-pointer"
             >
@@ -2335,7 +2039,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
               {(monthData.employees.length > 0
                 ? monthData.employees
-                : DEFAULT_2026_10_EMPLOYEES
+                : GWANGJU_STAFF_ROSTER
               ).map((emp) => (
                 <button
                   key={emp.name}
@@ -2375,7 +2079,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setActiveView('full')}
+                onClick={() => {
+                  if (activeView !== 'full') {
+                    window.history.pushState({ appGuard: true }, '');
+                  }
+                  setActiveView('full');
+                }}
                 className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
                   activeView === 'full'
                     ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
@@ -2495,10 +2204,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 <span className="text-2xl">⚠️</span>
                 <div>
                   <div className="font-black text-sm text-amber-900">
-                    아직 등록된 {currentYear}년 {currentMonth}월 휴무표가 없습니다.
+                    아직 등록된 휴무표가 없습니다. 상단 [📤 휴무표 사진/엑셀 업로드] 버튼으로 등록해 주세요.
                   </div>
                   <div className="text-xs text-amber-800 font-medium">
-                    우측 상단 <span className="font-bold underline text-amber-950">[📤 휴무표 사진/엑셀 업로드]</span> 버튼으로 해당 월 휴무표를 등록해 주세요.
+                    현재 조회 중인 {currentYear}년 {currentMonth}월 휴무표가 등록되지 않았습니다.
                   </div>
                 </div>
               </div>
@@ -2873,14 +2582,15 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                             return (
                               <td
                                 key={`${emp.name}-${d}`}
-                                onClick={() =>
+                                onClick={() => {
+                                  window.history.pushState({ appGuard: true }, '');
                                   setEditingCell({
                                     empName: emp.name,
                                     empRole: emp.role,
                                     day: d,
                                     currentCode: code,
-                                  })
-                                }
+                                  });
+                                }}
                                 className={`px-0.5 py-1 border-r border-slate-200 last:border-r-0 cursor-pointer transition align-middle ${
                                   isTodayCol
                                     ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'

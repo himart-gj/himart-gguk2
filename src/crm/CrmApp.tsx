@@ -83,6 +83,55 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isBriefingOpen, setIsBriefingOpen] = useState<boolean>(false);
 
+  // CRM 내부 모달(문자발송·상세·신규등록·설정·브리핑) 열림 시 뒤로가기로 해당 모달만 먼저 닫기
+  useEffect(() => {
+    if (
+      smsCustomer !== null ||
+      selectedCustomerId !== null ||
+      isNewModalOpen ||
+      isSettingsOpen ||
+      isBriefingOpen
+    ) {
+      try {
+        window.history.pushState({ appGuard: true, tag: 'crm-modal' }, '');
+      } catch {
+        // ignore
+      }
+    }
+    (window as any).__subViewBackHandler = (): boolean => {
+      if (smsCustomer !== null) {
+        setSmsCustomer(null);
+        return true;
+      }
+      if (selectedCustomerId !== null) {
+        setSelectedCustomerId(null);
+        return true;
+      }
+      if (isNewModalOpen) {
+        setIsNewModalOpen(false);
+        return true;
+      }
+      if (isSettingsOpen) {
+        setIsSettingsOpen(false);
+        return true;
+      }
+      if (isBriefingOpen) {
+        setIsBriefingOpen(false);
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__subViewBackHandler;
+    };
+  }, [
+    smsCustomer,
+    selectedCustomerId,
+    isNewModalOpen,
+    isSettingsOpen,
+    isBriefingOpen,
+  ]);
+
   // 상단 토스트 알림
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 

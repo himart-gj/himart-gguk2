@@ -950,7 +950,3 @@ export function calculateHiPlusSummary(
     activePlans,
   };
 }
-
-export function hasThreeYearKeywordInText(_text: string): boolean {
-  return false;
-}

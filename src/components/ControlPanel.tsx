@@ -94,6 +94,27 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [apiKeyInput, setApiKeyInput] = useState(() => getStoredGeminiApiKey());
   const [apiKeySavedToast, setApiKeySavedToast] = useState(false);
 
+  // AI 키 설정 팝업 열림 시 뒤로가기로 팝업만 먼저 닫기
+  useEffect(() => {
+    if (isApiKeyModalOpen) {
+      try {
+        window.history.pushState({ appGuard: true, tag: 'apikey-modal' }, '');
+      } catch {
+        // ignore
+      }
+    }
+    (window as any).__subViewBackHandler = (): boolean => {
+      if (isApiKeyModalOpen) {
+        setIsApiKeyModalOpen(false);
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__subViewBackHandler;
+    };
+  }, [isApiKeyModalOpen]);
+
   const showGeneral =
     state.quoteMode === 'general' || state.quoteMode === 'hybrid';
   const showSubscription =

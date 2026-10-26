@@ -128,6 +128,29 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
       });
   }, [isOpen]);
 
+  // 모달 내부 하위 상태 뒤로가기 핸들러 등록
+  useEffect(() => {
+    if (!isOpen) return;
+    (window as any).__modalInternalBackHandler = (): boolean => {
+      if (editingCell !== null) {
+        setEditingCell(null);
+        return true;
+      }
+      if (isSyncPanelOpen) {
+        setIsSyncPanelOpen(false);
+        return true;
+      }
+      if (activeTab === 'summary') {
+        setActiveTab('table');
+        return true;
+      }
+      return false;
+    };
+    return () => {
+      delete (window as any).__modalInternalBackHandler;
+    };
+  }, [isOpen, editingCell, isSyncPanelOpen, activeTab]);
+
   if (!isOpen) return null;
 
   const applyAndSaveDataset = async (
