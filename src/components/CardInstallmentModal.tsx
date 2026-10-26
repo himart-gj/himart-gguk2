@@ -462,7 +462,14 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
             {/* [☁️ 전 직원 동기화 설정] 버튼 */}
             <button
               type="button"
-              onClick={() => setIsSyncPanelOpen((prev) => !prev)}
+              onClick={() => {
+                setIsSyncPanelOpen((prev) => {
+                  if (!prev) {
+                    window.history.pushState({ appGuard: true }, '');
+                  }
+                  return !prev;
+                });
+              }}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition cursor-pointer ${
                 isSyncPanelOpen
                   ? 'bg-sky-500 text-slate-950 border-sky-400'
@@ -711,7 +718,12 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('summary')}
+                onClick={() => {
+                  if (activeTab !== 'summary') {
+                    window.history.pushState({ appGuard: true }, '');
+                  }
+                  setActiveTab('summary');
+                }}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
                   activeTab === 'summary'
                     ? 'bg-blue-600 text-white shadow-xs'
@@ -816,7 +828,8 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                           return (
                             <td
                               key={`${col.id}-${rowLabel}`}
-                              onClick={() =>
+                              onClick={() => {
+                                window.history.pushState({ appGuard: true }, '');
                                 setEditingCell({
                                   colId: col.id,
                                   brandTitle: `${col.brand} (${col.subName})`,
@@ -824,8 +837,8 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                                   kind: cellData.kind,
                                   main: cellData.main,
                                   sub: cellData.sub || '',
-                                })
-                              }
+                                });
+                              }}
                               title="클릭하여 이 셀 수정"
                               className={`p-0 border-r border-slate-200 last:border-r-0 align-stretch h-12 cursor-pointer transition ${
                                 isSelectedEditing

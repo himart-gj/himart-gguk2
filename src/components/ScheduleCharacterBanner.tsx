@@ -15,6 +15,7 @@ interface ScheduleCharacterBannerProps {
 
 type CharacterMood =
   | 'unset' // 이름 미설정
+  | 'no-schedule' // 이름은 설정했으나 휴무표 미등록
   | 'holiday-today' // ③ 내 휴무 당일
   | 'holiday-eve' // ② 내 휴무 바로 전날
   | 'post-holiday' // ④ 내 휴무 다음날 (어제 쉬고 오늘 출근)
@@ -73,6 +74,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       code: DayScheduleCode;
       isOff: boolean;
       isToday: boolean;
+      isRegistered: boolean;
     }[] = [];
 
     for (let offset = -2; offset <= 4; offset++) {
@@ -80,6 +82,13 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         today.getFullYear(),
         today.getMonth(),
         today.getDate() + offset
+      );
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+        2,
+        '0'
+      )}`;
+      const isRegistered = Boolean(
+        schedules[ym] && schedules[ym].isRegistered !== false
       );
       const code = getEmployeeCodeForDate(schedules, userName, d);
       list.push({
@@ -90,6 +99,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         code,
         isOff: isOffDayCode(code),
         isToday: offset === 0,
+        isRegistered,
       });
     }
     return list;
@@ -112,9 +122,21 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     return null;
   }, [schedules, today, userName]);
 
-  // 4가지 상황별 졸라맨 모션 판별
+  // 상황별 졸라맨 모션 판별
   const mood: CharacterMood = useMemo(() => {
     if (!userName) return 'unset';
+
+    const currentYm = `${today.getFullYear()}-${String(
+      today.getMonth() + 1
+    ).padStart(2, '0')}`;
+    const isCurrentMonthRegistered = Boolean(
+      schedules[currentYm] && schedules[currentYm].isRegistered !== false
+    );
+
+    if (!isCurrentMonthRegistered && daysUntilNextOff === null) {
+      return 'no-schedule';
+    }
+
     const yesterday = new Date(
       today.getFullYear(),
       today.getMonth(),
@@ -144,7 +166,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       return 'post-holiday'; // ④ 내 휴무 다음날
     }
     return 'normal-work'; // ① 일반 출근일
-  }, [schedules, today, userName]);
+  }, [daysUntilNextOff, schedules, today, userName]);
 
   // 말풍선 텍스트 및 테마 색상
   const bannerMeta = useMemo(() => {
@@ -159,6 +181,15 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
           speechText:
             '👆 여기를 눌러 [📅 휴무표] 상단에 내 이름을 한 번만 입력하면, 내 휴무 카운트다운 애니메이션이 작동합니다!',
           subText: '경기광주점 19명 전 직원 스케줄 자동 연동',
+        };
+      case 'no-schedule':
+        return {
+          bgClass:
+            'bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 border-amber-400/80',
+          badgeText: '📤 휴무표 업로드 필요',
+          badgeClass: 'bg-amber-400 text-slate-950',
+          speechText: `📤 ${userName}님, 여기를 눌러 이번 달 휴무표(엑셀/사진)를 업로드하면 휴무 카운트다운이 시작됩니다!`,
+          subText: '매월 엑셀 또는 사진 1회 업로드 시 내 휴무 자동 계산',
         };
       case 'holiday-today':
         return {
@@ -668,14 +699,15 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         );
 
       case 'unset':
-        // 이름 미설정 시 손을 흔들며 반갑게 인사하는 졸라맨
+      case 'no-schedule':
+        // 이름 미설정 또는 휴무표 미등록 시 손을 흔들며 반갑게 인사하는 졸라맨
         return (
           <div className={stageCls}>
             <span
               className="absolute top-1 right-1.5 text-xs font-black text-amber-300 pointer-events-none"
               style={{ animation: 'eveSuperJump 0.8s ease-in-out infinite' }}
             >
-              ❓
+              {mood === 'no-schedule' ? '📤' : '❓'}
             </span>
             <svg viewBox="0 0 80 70" className="w-full h-full overflow-visible">
               <ellipse
@@ -1045,10 +1077,16 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
                   {item.isToday ? '오늘' : `${item.dayNum}(${item.weekday})`}
                 </span>
                 <span className="text-xs sm:text-sm mt-0.5 leading-none">
-                  {item.isOff ? '🏖️' : item.isToday ? '🏃' : '·'}
+                  {!item.isRegistered
+                    ? '📤'
+                    : item.isOff
+                    ? '🏖️'
+                    : item.isToday
+                    ? '🏃'
+                    : '·'}
                 </span>
                 <span className="text-[9px] font-black mt-0.5 leading-none">
-                  {item.code || '출근'}
+                  {!item.isRegistered ? '미등록' : item.code || '출근'}
                 </span>
               </div>
             ))}

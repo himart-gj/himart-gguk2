@@ -2223,6 +2223,38 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
           {/* ==================== [뷰 1: 👥 오늘 근무자] ==================== */}
           {activeView === 'today' && (
+            !isCurrentMonthRegistered ? (
+              <div className="rounded-3xl bg-white border-2 border-dashed border-amber-400 p-8 sm:p-12 text-center shadow-xs flex flex-col items-center justify-center gap-4">
+                <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-700 flex items-center justify-center text-3xl shadow-2xs">
+                  📤
+                </div>
+                <div className="space-y-1.5 max-w-md">
+                  <h3 className="text-base sm:text-xl font-black text-slate-900">
+                    아직 {currentYear}년 {currentMonth}월 휴무표가 등록되지 않았습니다.
+                  </h3>
+                  <p className="text-xs sm:text-sm font-bold text-slate-500 leading-relaxed">
+                    엑셀(.xlsx/.csv) 또는 휴무표 사진을 업로드하시면 오늘 근무자·휴무자 명단과 내 휴무 카운트다운이 자동으로 표시됩니다.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-sm sm:text-base font-black shadow-md hover:shadow-lg transition cursor-pointer"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <Upload className="w-5 h-5" />
+                  )}
+                  <span>
+                    {isUploading
+                      ? '휴무표 분석 중...'
+                      : '📤 지금 휴무표(엑셀/사진) 업로드하기'}
+                  </span>
+                </button>
+              </div>
+            ) : (
             <div className="space-y-4">
               {/* (1) 내 이름이 설정된 경우 최상단 내 스케줄 요약 카드 */}
               {myEmployee && (
@@ -2441,6 +2473,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 </div>
               </div>
             </div>
+            )
           )}
 
           {/* ==================== [뷰 2: 🗓️ 전체 휴무표 (상단 날짜 Sticky 고정 + 셀 내부 날짜 표기)] ==================== */}

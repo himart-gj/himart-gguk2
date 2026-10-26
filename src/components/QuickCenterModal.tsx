@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BadgeCheck,
   Check,
@@ -660,10 +660,10 @@ interface PluxCategoryGroup {
 
 const PLUX_AS_GROUPS: PluxCategoryGroup[] = [
   {
-    category: '냉장고 / 냉동고',
+    category: '냉장고 / 냉동고 / 김치냉장고',
     entries: [
       {
-        partnerName: 'SK네트웍스 (위탁사)',
+        partnerName: '[냉장·냉동고] SK네트웍스 (위탁사)',
         phones: [
           { label: '대표', number: '1588-9030' },
           { label: '직통', number: '02-6923-3863' },
@@ -672,37 +672,28 @@ const PLUX_AS_GROUPS: PluxCategoryGroup[] = [
           'PLX-RF420SL, PLX-SBS604BK, PLX-RF245SL/BG, PLX-RF330BG/SL, PLX-RF630SL, PLX-RF528BG, PLX-RF252BG, PLX-FRF470BG, PLX-RF85DWH, PLX-FRF566WB2, PLX-FF160SL, PLX-FF380SL2, PLX-FF272SL2 등 대다수 플럭스 냉장고/냉동고',
       },
       {
-        partnerName: '씨알케이',
+        partnerName: '[냉장·냉동고] 씨알케이',
         phones: [{ number: '1588-7100' }],
         modelsDesc: 'PLX-FF380SL, PLX-FRF566WB 등',
       },
       {
-        partnerName: '하이얼',
+        partnerName: '[냉장·냉동고 / 김치냉장고] 하이얼',
         phones: [{ number: '1588-6645' }],
-        modelsDesc: 'PLX-FF272SL, PLX-FF120WH 틈새냉동고 등',
+        modelsDesc:
+          'PLX-FF272SL, PLX-FF120WH 틈새냉동고 / PLX-SKR338BG 338L 김치냉장고 등',
       },
       {
-        partnerName: '오리온창홍',
+        partnerName: '[냉장고] 오리온창홍',
         phones: [{ number: '1522-2544' }],
         modelsDesc: 'PLX-RF138DWH 등',
       },
-    ],
-  },
-  {
-    category: '김치냉장고',
-    entries: [
       {
-        partnerName: '디에이치글로벌',
+        partnerName: '[김치냉장고] 디에이치글로벌',
         phones: [{ number: '1660-0286' }],
-        modelsDesc: 'PLX-SKR150BG (150L 초정온 김치냉장고)',
+        modelsDesc: 'PLX-SKR150BG 150L 초정온 김치냉장고',
       },
       {
-        partnerName: '하이얼',
-        phones: [{ number: '1588-6645' }],
-        modelsDesc: 'PLX-SKR338BG (338L 김치냉장고)',
-      },
-      {
-        partnerName: '위니아에이드',
+        partnerName: '[김치냉장고] 위니아에이드',
         phones: [{ number: '1588-9588' }],
         modelsDesc: '하이메이드 김치냉장고 HDKN / HDKR 시리즈',
       },
@@ -911,16 +902,17 @@ const PLUX_AS_GROUPS: PluxCategoryGroup[] = [
 ];
 
 const PLUX_CATEGORY_BUTTON_LABELS: Record<string, string> = {
-  '냉장고 / 냉동고': '🧊 냉장고 / 냉동고',
-  '김치냉장고': '🥬 김치냉장고',
-  '에어컨 / 냉난방기': '❄️ 에어컨 / 냉난방기',
+  '냉장고 / 냉동고 / 김치냉장고': '🧊 냉장고 · 냉동고 · 김치냉장고',
+  '에어컨 / 냉난방기': '❄️ 에어컨 · 냉난방기',
   'TV': '📺 TV',
-  '세탁기 / 건조기': '🫧 세탁기 / 건조기',
-  '실링팬 / 선풍기 / 제습기 / 계절가전': '🌀 실링팬 / 선풍기 / 제습기 / 계절가전',
-  '청소기 / 비데 / 생활가전': '🧹 청소기 / 비데 / 생활가전',
-  '주방가전 (정수기 / 전자레인지 / 밥솥 / 에어프라이어 / 오븐 / 식기세척기)':
+  '세탁기 / 건조기': '🫧 세탁기 · 건조기',
+  '실링팬 / 선풍기 / 제습기 / 가습기 / 계절가전':
+    '🌀 실링팬 · 선풍기 · 제습기 · 계절가전',
+  '청소기 / 비데 / 생활가전': '🧹 청소기 · 비데 · 생활가전',
+  '주방가전 (정수기 / 가스·전기레인지 / 밥솥 / 전자레인지 / 그릴)':
     '🍳 주방가전 (정수기·레인지·밥솥·오븐)',
-  'IT / 모니터 / 음향 / 멀티탭 / 충전기': '💻 IT / 모니터 / 음향 / 멀티탭 / 충전기',
+  'IT / 모니터 / 음향 / 멀티탭 / 모바일충전기':
+    '💻 IT · 모니터 · 음향 · 멀티탭 · 충전기',
 };
 
 export const AsCenterModal: React.FC<AsCenterModalProps> = ({
@@ -937,13 +929,23 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
   const [isTclGuideOpen, setIsTclGuideOpen] = useState<boolean>(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  // 대분류 1·2·3 및 TCL 가이드 자동 시선이동 Ref
+  const majorSectionRef = useRef<HTMLDivElement>(null);
+  const tclSectionRef = useRef<HTMLDivElement>(null);
+  const pluxSectionRef = useRef<HTMLDivElement>(null);
+  const tclGuideRef = useRef<HTMLDivElement>(null);
+
   // AS센터 모달 내부 하위 상태 뒤로가기 핸들러 등록:
-  // ① 플럭스 품목(activePluxCategory) ➔ ② 검색어(asSearchQuery) ➔ ③ 대분류 아코디언(activeMainSection)
+  // ① 플럭스 품목 팝업(activePluxCategory) ➔ ② TCL 리모컨 설정 가이드(isTclGuideOpen) ➔ ③ 검색어(asSearchQuery) ➔ ④ 대분류 아코디언(activeMainSection)
   useEffect(() => {
     if (!isOpen) return;
     (window as any).__modalInternalBackHandler = (): boolean => {
       if (activePluxCategory !== null) {
         setActivePluxCategory(null);
+        return true;
+      }
+      if (isTclGuideOpen) {
+        setIsTclGuideOpen(false);
         return true;
       }
       if (asSearchQuery.trim() !== '') {
@@ -959,7 +961,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
     return () => {
       delete (window as any).__modalInternalBackHandler;
     };
-  }, [isOpen, activePluxCategory, asSearchQuery, activeMainSection]);
+  }, [isOpen, activePluxCategory, isTclGuideOpen, asSearchQuery, activeMainSection]);
 
   const copyText = async (key: string, text: string) => {
     try {
@@ -1135,11 +1137,21 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
               {/* 대분류 1 */}
               <button
                 type="button"
-                onClick={() =>
-                  setActiveMainSection((prev) =>
-                    prev === 'major' ? null : 'major'
-                  )
-                }
+                onClick={() => {
+                  setActiveMainSection((prev) => {
+                    const next = prev === 'major' ? null : 'major';
+                    if (next === 'major') {
+                      window.history.pushState({ appGuard: true }, '');
+                      setTimeout(() => {
+                        majorSectionRef.current?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start',
+                        });
+                      }, 80);
+                    }
+                    return next;
+                  });
+                }}
                 className={`p-3.5 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
                   activeMainSection === 'major'
                     ? 'bg-emerald-600 border-emerald-700 text-white shadow-md'
@@ -1170,11 +1182,21 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
               {/* 대분류 2 */}
               <button
                 type="button"
-                onClick={() =>
-                  setActiveMainSection((prev) =>
-                    prev === 'tcl' ? null : 'tcl'
-                  )
-                }
+                onClick={() => {
+                  setActiveMainSection((prev) => {
+                    const next = prev === 'tcl' ? null : 'tcl';
+                    if (next === 'tcl') {
+                      window.history.pushState({ appGuard: true }, '');
+                      setTimeout(() => {
+                        tclSectionRef.current?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start',
+                        });
+                      }, 80);
+                    }
+                    return next;
+                  });
+                }}
                 className={`p-3.5 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
                   activeMainSection === 'tcl'
                     ? 'bg-indigo-600 border-indigo-700 text-white shadow-md'
@@ -1205,11 +1227,21 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
               {/* 대분류 3 */}
               <button
                 type="button"
-                onClick={() =>
-                  setActiveMainSection((prev) =>
-                    prev === 'plux' ? null : 'plux'
-                  )
-                }
+                onClick={() => {
+                  setActiveMainSection((prev) => {
+                    const next = prev === 'plux' ? null : 'plux';
+                    if (next === 'plux') {
+                      window.history.pushState({ appGuard: true }, '');
+                      setTimeout(() => {
+                        pluxSectionRef.current?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start',
+                        });
+                      }, 80);
+                    }
+                    return next;
+                  });
+                }}
                 className={`p-3.5 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer shadow-2xs ${
                   activeMainSection === 'plux'
                     ? 'bg-blue-600 border-blue-700 text-white shadow-md'
@@ -1227,7 +1259,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                         : 'text-slate-500'
                     }`}
                   >
-                    하이마트 PB 9대 품목 위탁 파트너사
+                    하이마트 PB 8대 품목 위탁 파트너사
                   </div>
                 </div>
                 {activeMainSection === 'plux' ? (
@@ -1263,7 +1295,10 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
 
           {/* 1. 주요 브랜드 A/S 센터 */}
           {isMajorVisible && (
-            <div className="space-y-2.5 rounded-3xl bg-emerald-50/50 border-2 border-emerald-200 p-3.5 sm:p-4">
+            <div
+              ref={majorSectionRef}
+              className="space-y-2.5 rounded-3xl bg-emerald-50/50 border-2 border-emerald-200 p-3.5 sm:p-4 scroll-mt-2"
+            >
               <div className="flex items-center justify-between px-1">
                 <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
                   <BadgeCheck className="w-4 h-4 text-emerald-600" />
@@ -1338,7 +1373,10 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
 
           {/* 2. 📺 TCL TV 전용 A/S 센터 & 통합리모컨 호환 가이드 카드 */}
           {isTclVisible && (
-            <div className="rounded-3xl bg-slate-900 text-white border-2 border-indigo-500/60 p-4 sm:p-5 shadow-md space-y-3.5">
+            <div
+              ref={tclSectionRef}
+              className="rounded-3xl bg-slate-900 text-white border-2 border-indigo-500/60 p-4 sm:p-5 shadow-md space-y-3.5 scroll-mt-2"
+            >
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800 pb-3.5">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1401,7 +1439,21 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => setIsTclGuideOpen((prev) => !prev)}
+                    onClick={() => {
+                      setIsTclGuideOpen((prev) => {
+                        const next = !prev;
+                        if (next) {
+                          window.history.pushState({ appGuard: true }, '');
+                          setTimeout(() => {
+                            tclGuideRef.current?.scrollIntoView({
+                              behavior: 'smooth',
+                              block: 'nearest',
+                            });
+                          }, 80);
+                        }
+                        return next;
+                      });
+                    }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black transition cursor-pointer"
                   >
                     {isTclGuideOpen ? (
@@ -1437,7 +1489,10 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                 </div>
 
                 {isTclGuideOpen && (
-                  <div className="p-4 rounded-2xl bg-slate-800/90 border border-slate-700 space-y-2 text-xs font-bold text-slate-200 leading-relaxed">
+                  <div
+                    ref={tclGuideRef}
+                    className="p-4 rounded-2xl bg-slate-800/90 border border-slate-700 space-y-2 text-xs font-bold text-slate-200 leading-relaxed"
+                  >
                     <p>
                       <strong className="text-amber-300">① 사전 준비:</strong>{' '}
                       셋탑박스를 TV{' '}
@@ -1491,7 +1546,10 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
 
           {/* 3. 🏷️ 하이마트 PB 자체브랜드 플럭스(PLUX) · 하이메이드 품목별 A/S 접수처 */}
           {isPluxVisible && (
-            <div className="space-y-3.5 rounded-3xl bg-blue-50/40 border-2 border-blue-200 p-3.5 sm:p-4">
+            <div
+              ref={pluxSectionRef}
+              className="space-y-3.5 rounded-3xl bg-blue-50/40 border-2 border-blue-200 p-3.5 sm:p-4 scroll-mt-2"
+            >
               <div className="flex items-center justify-between flex-wrap gap-2 px-1">
                 <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
                   <Wrench className="w-4 h-4 text-blue-600" />
@@ -1518,7 +1576,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                   </p>
                   <p>
                     ② <strong className="text-blue-800">파트너사 직접 접수:</strong>{' '}
-                    아래 9개 품목 버튼을 클릭하여 위탁 파트너사 직통 번호로 전화 문의
+                    아래 8개 품목 버튼을 클릭하면 전용 팝업창에서 위탁 파트너사 직통 번호를 즉시 확인하실 수 있습니다.
                   </p>
                 </div>
 
@@ -1545,25 +1603,16 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                 </div>
               </div>
 
-              {/* 검색 중이 아닐 때: 9개 품목 2단계 선택 버튼 그리드 + 선택된 품목만 펼침 */}
+              {/* 검색 중이 아닐 때: 8대 품목 2열/4열 그리드 버튼 (클릭 시 중앙 서브 팝업 오픈) */}
               {!isSearching ? (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between px-1">
                     <span className="text-xs font-black text-blue-950">
-                      👇 조회할 플럭스(PLUX) · 하이메이드 품목을 선택하세요
+                      👇 조회할 플럭스(PLUX) · 하이메이드 품목을 터치하세요 (전용 팝업 오픈)
                     </span>
-                    {activePluxCategory && (
-                      <button
-                        type="button"
-                        onClick={() => setActivePluxCategory(null)}
-                        className="text-[11px] font-black text-blue-700 hover:text-blue-900 underline cursor-pointer"
-                      >
-                        품목 선택 접기
-                      </button>
-                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {PLUX_AS_GROUPS.map((group) => {
                       const isSelected = activePluxCategory === group.category;
                       const btnLabel =
@@ -1573,25 +1622,24 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                         <button
                           key={group.category}
                           type="button"
-                          onClick={() =>
-                            setActivePluxCategory((prev) =>
-                              prev === group.category ? null : group.category
-                            )
-                          }
-                          className={`px-3.5 py-3 rounded-2xl border-2 text-left transition flex items-center justify-between gap-2 cursor-pointer ${
+                          onClick={() => {
+                            window.history.pushState({ appGuard: true }, '');
+                            setActivePluxCategory(group.category);
+                          }}
+                          className={`px-3 py-3 rounded-2xl border-2 text-left transition flex items-center justify-between gap-1.5 cursor-pointer shadow-2xs ${
                             isSelected
                               ? 'bg-slate-900 border-slate-900 text-white shadow-sm'
-                              : 'bg-white hover:bg-blue-50 border-slate-200 hover:border-blue-300 text-slate-900'
+                              : 'bg-white hover:bg-blue-50 border-slate-200 hover:border-blue-400 text-slate-900'
                           }`}
                         >
-                          <span className="text-xs sm:text-sm font-black truncate">
+                          <span className="text-xs sm:text-sm font-black leading-snug break-keep">
                             {btnLabel}
                           </span>
                           <span
                             className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full shrink-0 ${
                               isSelected
                                 ? 'bg-amber-400 text-slate-950'
-                                : 'bg-slate-100 text-slate-600'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
                             }`}
                           >
                             {group.entries.length}곳
@@ -1600,87 +1648,6 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
                       );
                     })}
                   </div>
-
-                  {/* 클릭한 품목의 위탁 파트너사 리스트만 깔끔하게 펼침 */}
-                  {selectedPluxGroupObj && (
-                    <div className="rounded-2xl bg-white border-2 border-slate-800 shadow-sm overflow-hidden">
-                      <div className="bg-slate-900 text-white px-4 py-2.5 text-xs sm:text-sm font-black flex items-center justify-between">
-                        <span>
-                          {PLUX_CATEGORY_BUTTON_LABELS[
-                            selectedPluxGroupObj.category
-                          ] || selectedPluxGroupObj.category}{' '}
-                          위탁 파트너사 ({selectedPluxGroupObj.entries.length}곳)
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setActivePluxCategory(null)}
-                          className="text-[11px] font-bold text-slate-300 hover:text-white cursor-pointer"
-                        >
-                          접기 ✕
-                        </button>
-                      </div>
-
-                      <div className="divide-y divide-slate-100">
-                        {selectedPluxGroupObj.entries.map((entry, idx) => (
-                          <div
-                            key={`${selectedPluxGroupObj.category}-${idx}`}
-                            className="p-3 sm:p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 hover:bg-slate-50/80 transition"
-                          >
-                            <div className="space-y-1 min-w-0 flex-1">
-                              <div className="text-xs sm:text-sm font-black text-slate-900">
-                                • {entry.partnerName}
-                              </div>
-                              <div className="text-xs font-bold text-slate-600 leading-relaxed break-words">
-                                {entry.modelsDesc}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                              {entry.phones.map((ph) => {
-                                const copyId = `plux-${selectedPluxGroupObj.category}-${entry.partnerName}-${ph.number}`;
-                                return (
-                                  <div
-                                    key={ph.number}
-                                    className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1.5 rounded-xl border border-slate-200"
-                                  >
-                                    {ph.label && (
-                                      <span className="text-[10px] font-extrabold text-slate-500">
-                                        [{ph.label}]
-                                      </span>
-                                    )}
-                                    <span className="text-xs font-black text-blue-700 mr-1">
-                                      {ph.number}
-                                    </span>
-                                    <a
-                                      href={`tel:${ph.number}`}
-                                      className="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black flex items-center gap-1 transition cursor-pointer"
-                                    >
-                                      <Phone className="w-3 h-3" />
-                                      <span>전화</span>
-                                    </a>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        copyText(
-                                          copyId,
-                                          `[플럭스/하이메이드 ${selectedPluxGroupObj.category} - ${entry.partnerName}] A/S 센터: ${ph.number}\n대상 모델: ${entry.modelsDesc}`
-                                        )
-                                      }
-                                      className="px-2 py-1 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-[11px] font-black transition cursor-pointer"
-                                    >
-                                      {copiedKey === copyId
-                                        ? '✓ 복사됨'
-                                        : '📋 복사'}
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               ) : (
                 /* 검색어 입력 시: 일치하는 플럭스 품목들을 즉시 펼쳐서 표시 */
@@ -1767,6 +1734,103 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* 플럭스(PLUX) 8대 품목 전용 서브 팝업 모달 */}
+      {selectedPluxGroupObj && (
+        <div
+          className="fixed inset-0 z-[60] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivePluxCategory(null);
+          }}
+        >
+          <div
+            className="w-full max-w-3xl max-h-[86dvh] rounded-3xl bg-white border-2 border-slate-800 shadow-2xl flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 서브 팝업 상단 헤더 */}
+            <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 shrink-0">
+              <div className="min-w-0">
+                <h3 className="text-sm sm:text-lg font-black tracking-tight truncate">
+                  {PLUX_CATEGORY_BUTTON_LABELS[selectedPluxGroupObj.category] ||
+                    selectedPluxGroupObj.category}{' '}
+                  위탁 파트너사 ({selectedPluxGroupObj.entries.length}곳)
+                </h3>
+                <p className="text-[11px] text-slate-300 font-bold">
+                  바깥 배경이나 닫기(✕) 또는 휴대폰 뒤로가기를 누르면 품목 선택으로 돌아갑니다
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActivePluxCategory(null)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-white text-xs font-black transition cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+                <span>✕ 닫기</span>
+              </button>
+            </div>
+
+            {/* 서브 팝업 본문 파트너사 리스트 */}
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-200 bg-slate-50 p-3 sm:p-4 space-y-2.5">
+              {selectedPluxGroupObj.entries.map((entry, idx) => (
+                <div
+                  key={`${selectedPluxGroupObj.category}-modal-${idx}`}
+                  className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-3"
+                >
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="text-xs sm:text-base font-black text-slate-900">
+                      • {entry.partnerName}
+                    </div>
+                    <div className="text-xs font-bold text-slate-600 leading-relaxed break-words">
+                      {entry.modelsDesc}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    {entry.phones.map((ph) => {
+                      const copyId = `plux-modal-${selectedPluxGroupObj.category}-${entry.partnerName}-${ph.number}`;
+                      return (
+                        <div
+                          key={ph.number}
+                          className="inline-flex items-center gap-1.5 bg-slate-100 px-3 py-2 rounded-xl border border-slate-300"
+                        >
+                          {ph.label && (
+                            <span className="text-[11px] font-extrabold text-slate-600">
+                              [{ph.label}]
+                            </span>
+                          )}
+                          <span className="text-xs sm:text-sm font-black text-blue-700 mr-1">
+                            {ph.number}
+                          </span>
+                          <a
+                            href={`tel:${ph.number}`}
+                            className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1 transition cursor-pointer shadow-2xs"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                            <span>📞 전화</span>
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              copyText(
+                                copyId,
+                                `[플럭스/하이메이드 ${selectedPluxGroupObj.category} - ${entry.partnerName}] A/S 센터: ${ph.number}\n대상 모델: ${entry.modelsDesc}`
+                              )
+                            }
+                            className="px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-black transition cursor-pointer"
+                          >
+                            {copiedKey === copyId ? '✓ 복사됨' : '📋 복사'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
