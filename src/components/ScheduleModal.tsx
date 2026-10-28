@@ -155,7 +155,7 @@ export function isOffDayCode(code?: string): boolean {
 }
 
 // 경기광주점 기본 직원 명단 (이름 칩 선택 및 OCR 글자 보정용, 하드코딩 날짜 없음)
-const GWANGJU_STAFF_ROSTER: { name: string; role: string }[] = [
+export const GWANGJU_STAFF_ROSTER: { name: string; role: string }[] = [
   { name: '강석원', role: '점장' },
   { name: '김재훈', role: '부점장' },
   { name: '국지현', role: 'SCM' },
@@ -242,10 +242,22 @@ export function loadAllSchedules(): SchedulesMap {
       }
       cleanedMap[ymKey] = {
         ...monthObj,
-        employees: emps.map((e) => ({
-          ...e,
-          name: NAME_TYPO_MAP[e.name] || e.name,
-        })),
+        employees: emps.map((e) => {
+          const normalizedDays: Record<string, DayScheduleCode> = {};
+          if (e.days && typeof e.days === 'object') {
+            for (const [dKey, rawVal] of Object.entries(e.days)) {
+              const norm = normalizeScheduleCode(String(rawVal || ''));
+              if (norm) {
+                normalizedDays[dKey] = norm;
+              }
+            }
+          }
+          return {
+            ...e,
+            name: NAME_TYPO_MAP[e.name] || e.name,
+            days: normalizedDays,
+          };
+        }),
       };
     }
 
@@ -1348,6 +1360,39 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setEditingCell(null);
   };
 
+  // 특정 직원 행(줄) 삭제 (잘못 생성된 직원 줄 즉시 삭제)
+  const handleDeleteEmployeeRow = (empName: string) => {
+    const now = new Date();
+    const updatedAt = `${now.getFullYear()}-${String(
+      now.getMonth() + 1
+    ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
+      now.getHours()
+    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    const baseMonth = getOrCreateMonthSchedule(schedules, currentYearMonth);
+    const updatedEmployees = baseMonth.employees.filter(
+      (emp) => emp.name !== empName
+    );
+
+    const nextSchedules: SchedulesMap = {
+      ...schedules,
+      [currentYearMonth]: {
+        ...baseMonth,
+        yearMonth: currentYearMonth,
+        updatedAt,
+        employees: updatedEmployees,
+      },
+    };
+
+    setSchedules(nextSchedules);
+    saveAllSchedules(nextSchedules);
+    setEditingCell(null);
+    setNotice({
+      type: 'success',
+      text: `🗑️ 휴무표에서 [${empName}] 직원 줄이 삭제되었습니다.`,
+    });
+  };
+
   // 사진(JPG/PNG) 또는 엑셀(.xlsx) 업로드 처리
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -2185,13 +2230,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 ))}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setEditingCell(null)}
-              className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-black cursor-pointer"
-            >
-              닫기
-            </button>
+            <div className="flex items-center gap-1.5 ml-auto">
+              <button
+                type="button"
+                onClick={() => handleDeleteEmployeeRow(editingCell.empName)}
+                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
+              >
+                <span>🗑️ 이 직원 줄 삭제</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditingCell(null)}
+                className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-black cursor-pointer"
+              >
+                닫기
+              </button>
+            </div>
           </div>
         )}
 
