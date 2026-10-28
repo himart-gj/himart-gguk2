@@ -21,6 +21,7 @@ import { CardInstallmentModal } from './components/CardInstallmentModal';
 import { AsCenterModal, CardIssueModal } from './components/QuickCenterModal';
 import { ScheduleModal } from './components/ScheduleModal';
 import { ScheduleCharacterBanner } from './components/ScheduleCharacterBanner';
+import { AiCommandModal } from './components/AiCommandModal';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
@@ -192,6 +193,8 @@ export function App() {
   const [isAsCenterOpen, setIsAsCenterOpen] = useState<boolean>(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] =
     useState<boolean>(false);
+  const [isAiCommandModalOpen, setIsAiCommandModalOpen] =
+    useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -203,6 +206,7 @@ export function App() {
   // 최신 화면 및 모달 상태를 참조하기 위한 Ref
   const latestAppStateRef = useRef({
     step,
+    isAiCommandModalOpen,
     isSaveToCrmOpen,
     isInstallGuideOpen,
     isInstallmentModalOpen,
@@ -215,6 +219,7 @@ export function App() {
   useEffect(() => {
     latestAppStateRef.current = {
       step,
+      isAiCommandModalOpen,
       isSaveToCrmOpen,
       isInstallGuideOpen,
       isInstallmentModalOpen,
@@ -225,6 +230,7 @@ export function App() {
     };
   }, [
     step,
+    isAiCommandModalOpen,
     isSaveToCrmOpen,
     isInstallGuideOpen,
     isInstallmentModalOpen,
@@ -255,6 +261,7 @@ export function App() {
   // 어떤 모달이나 햄버거 메뉴가 열릴 때마다 히스토리 가드 엔트리 1개 추가
   useEffect(() => {
     if (
+      isAiCommandModalOpen ||
       isMenuOpen ||
       isSaveToCrmOpen ||
       isInstallGuideOpen ||
@@ -266,6 +273,7 @@ export function App() {
       pushAppHistoryGuard('modal-open');
     }
   }, [
+    isAiCommandModalOpen,
     isMenuOpen,
     isSaveToCrmOpen,
     isInstallGuideOpen,
@@ -302,6 +310,13 @@ export function App() {
 
     const handlePopState = () => {
       const current = latestAppStateRef.current;
+
+      // 최우선 순위: AI 비서 모달이 열려 있으면 닫기
+      if (current.isAiCommandModalOpen) {
+        setIsAiCommandModalOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
 
       // 0순위: 현재 열려 있는 모달 내부에 하위 뒤로가기 상태가 있으면 그것만 먼저 한 단계 되돌림
       const modalInternalHandler = (window as any).__modalInternalBackHandler as
@@ -1019,6 +1034,18 @@ export function App() {
             <span>📅 휴무표</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => {
+              pushAppHistoryGuard('open-ai-command');
+              setIsAiCommandModalOpen(true);
+            }}
+            title="자연어·음성 한 줄로 견적 계산 및 고객관리 자동 등록"
+            className="px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border border-violet-400/80 shadow-xs transition cursor-pointer"
+          >
+            <span>🤖 AI 비서</span>
+          </button>
+
           <span className="hidden lg:inline-block px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
             {currentScreenBadgeLabel}
           </span>
@@ -1259,52 +1286,65 @@ export function App() {
                 </span>
               </button>
 
-              {/* 4) 어떤 화면에서든 열 수 있는 퀵 모달 바로가기 (무이자 할부 / 카드발급 / AS센터 / 휴무표) */}
-              <div className="pt-1 border-t border-slate-800 grid grid-cols-4 gap-1.5">
+              {/* 4) 어떤 화면에서든 열 수 있는 퀵 모달 바로가기 (AI 비서 / 무이자 할부 / 카드발급 / AS센터 / 휴무표) */}
+              <div className="pt-1 border-t border-slate-800 space-y-1.5">
                 <button
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
-                    pushAppHistoryGuard('open-installment');
-                    setIsInstallmentModalOpen(true);
+                    pushAppHistoryGuard('open-ai-command');
+                    setIsAiCommandModalOpen(true);
                   }}
-                  className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-black text-center flex items-center justify-center gap-1.5 border border-violet-400/50 shadow-xs cursor-pointer"
                 >
-                  💳 무이자
+                  <span>🤖 AI 비서 (한 줄 견적 · 고객관리 자동등록)</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    pushAppHistoryGuard('open-card-issue');
-                    setIsCardIssueOpen(true);
-                  }}
-                  className="py-2 px-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
-                >
-                  🪪 카드발급
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    pushAppHistoryGuard('open-as-center');
-                    setIsAsCenterOpen(true);
-                  }}
-                  className="py-2 px-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
-                >
-                  🛠️ AS센터
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    pushAppHistoryGuard('open-schedule');
-                    setIsScheduleModalOpen(true);
-                  }}
-                  className="py-2 px-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-black text-center truncate cursor-pointer"
-                >
-                  📅 휴무표
-                </button>
+                <div className="grid grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      pushAppHistoryGuard('open-installment');
+                      setIsInstallmentModalOpen(true);
+                    }}
+                    className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                  >
+                    💳 무이자
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      pushAppHistoryGuard('open-card-issue');
+                      setIsCardIssueOpen(true);
+                    }}
+                    className="py-2 px-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                  >
+                    🪪 카드발급
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      pushAppHistoryGuard('open-as-center');
+                      setIsAsCenterOpen(true);
+                    }}
+                    className="py-2 px-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                  >
+                    🛠️ AS센터
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      pushAppHistoryGuard('open-schedule');
+                      setIsScheduleModalOpen(true);
+                    }}
+                    className="py-2 px-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-black text-center truncate cursor-pointer"
+                  >
+                    📅 휴무표
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1664,6 +1704,41 @@ export function App() {
       <ScheduleModal
         isOpen={isScheduleModalOpen}
         onClose={() => setIsScheduleModalOpen(false)}
+      />
+
+      {/* ==================== AI 비서 (한 줄 견적 · 고객관리 자동등록) 모달 ==================== */}
+      <AiCommandModal
+        isOpen={isAiCommandModalOpen}
+        onClose={() => setIsAiCommandModalOpen(false)}
+        onApplyToQuote={(nextState, targetStep) => {
+          if (nextState.quoteMode === 'general') {
+            setGeneralState(nextState);
+          } else if (nextState.quoteMode === 'subscription') {
+            setSubscriptionState(nextState);
+          } else {
+            setHybridState(nextState);
+          }
+          setActiveMode(nextState.quoteMode);
+          setParseError(null);
+          setParseGeneralError(null);
+          setStep(targetStep);
+        }}
+        onCustomerSaved={(savedCust, nextState) => {
+          setActiveCustomer({
+            id: savedCust.id,
+            name: savedCust.name,
+            phone: savedCust.phone,
+          });
+          setCrmCustomers(getCachedCustomers());
+          if (nextState.quoteMode === 'general') {
+            setGeneralState(nextState);
+          } else if (nextState.quoteMode === 'subscription') {
+            setSubscriptionState(nextState);
+          } else {
+            setHybridState(nextState);
+          }
+          setActiveMode(nextState.quoteMode);
+        }}
       />
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
