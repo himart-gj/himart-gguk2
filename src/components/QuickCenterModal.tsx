@@ -560,14 +560,14 @@ interface AsCenterModalProps {
   onClose: () => void;
 }
 
-interface MajorAsCenterItem {
+export interface MajorAsCenterItem {
   id: string;
   brand: string;
   phones: { label?: string; number: string }[];
   keywords: string;
 }
 
-const MAJOR_AS_CENTERS: MajorAsCenterItem[] = [
+export const MAJOR_AS_CENTERS: MajorAsCenterItem[] = [
   {
     id: 'samsung',
     brand: '삼성전자 서비스',
@@ -641,18 +641,18 @@ const MAJOR_AS_CENTERS: MajorAsCenterItem[] = [
   },
 ];
 
-interface PluxPartnerEntry {
+export interface PluxPartnerEntry {
   partnerName: string;
   phones: { label?: string; number: string }[];
   modelsDesc: string;
 }
 
-interface PluxCategoryGroup {
+export interface PluxCategoryGroup {
   category: string;
   entries: PluxPartnerEntry[];
 }
 
-const PLUX_AS_GROUPS: PluxCategoryGroup[] = [
+export const PLUX_AS_GROUPS: PluxCategoryGroup[] = [
   {
     category: '냉장고 / 냉동고 / 김치냉장고',
     entries: [

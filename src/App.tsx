@@ -1706,7 +1706,7 @@ export function App() {
         onClose={() => setIsScheduleModalOpen(false)}
       />
 
-      {/* ==================== AI 비서 (한 줄 견적 · 고객관리 자동등록) 모달 ==================== */}
+      {/* ==================== AI 비서 (통합 총괄 AI 비서) 모달 ==================== */}
       <AiCommandModal
         isOpen={isAiCommandModalOpen}
         onClose={() => setIsAiCommandModalOpen(false)}
@@ -1738,6 +1738,25 @@ export function App() {
             setHybridState(nextState);
           }
           setActiveMode(nextState.quoteMode);
+        }}
+        onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+        onOpenCareTable={() => setStep('care-table')}
+        onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
+        onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
+        onOpenInsuranceView={() => setStep('insurance')}
+        onOpenCrmScreen={() => setStep('crm')}
+        onLoadCrmCustomerQuote={(cust) => {
+          const latestQuote =
+            Array.isArray(cust.quotes) && cust.quotes.length > 0
+              ? cust.quotes[0]
+              : undefined;
+          applyRestoredProposalState(
+            cust,
+            latestQuote?.proposalState ?? (cust as any).proposalState,
+            latestQuote?.itemSummary ?? cust.items,
+            latestQuote?.paidAmount ?? Number(cust.paidAmount),
+            latestQuote?.quoteMode
+          );
         }}
       />
 

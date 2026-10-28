@@ -3,19 +3,27 @@ import { GoogleGenAI } from '@google/genai';
 import {
   Bot,
   Calendar,
+  Check,
   CheckCircle2,
+  ClipboardList,
+  Copy,
   CreditCard,
+  ExternalLink,
   FileText,
-  Layers,
   Loader2,
+  MessageSquare,
   Mic,
   MicOff,
   Phone,
   RefreshCw,
+  Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   UserCheck,
   UserPlus,
+  Users,
+  Wrench,
   X,
   Zap,
 } from 'lucide-react';
@@ -32,15 +40,44 @@ import {
   SubscriptionPeriod,
 } from '../types/proposal';
 import { extractQuotePayloadFromProposalState } from '../crm/components/SaveToCrmModal';
-import { saveCustomerQuote } from '../crm/services/gasApi';
+import { getCachedCustomers, saveCustomerQuote } from '../crm/services/gasApi';
 import { CustomerItem, CustomerStatus } from '../crm/types/crm';
 import {
   formatCurrency,
   formatPhoneNumber,
   getFridayDateStr,
   getOffsetDateStr,
+  getTodayStr,
+  isUrgentCustomer,
 } from '../crm/utils/date';
 import { GEMINI_MODELS, getEffectiveGeminiApiKey } from '../utils/aiImageParser';
+import {
+  CareTableDataset,
+  CareTableItem,
+  fetchRemoteCareDataset,
+  loadLocalCareDataset,
+} from '../utils/careTableParser';
+import {
+  INSTALLMENT_ROW_LABELS,
+  InstallmentCardColumnDef,
+  InstallmentQuickSummaryCardItem,
+  loadLocalInstallmentDataset,
+} from '../utils/installmentParser';
+
+type InstallmentRowLabel = (typeof INSTALLMENT_ROW_LABELS)[number];
+import {
+  MAJOR_AS_CENTERS,
+  PLUX_AS_GROUPS,
+} from './QuickCenterModal';
+import {
+  DayScheduleCode,
+  getOrCreateMonthSchedule,
+  isOffDayCode,
+  loadAllSchedules,
+  loadSavedUserName,
+  saveAllSchedules,
+  saveUserName,
+} from './ScheduleModal';
 
 export type AiCustomerStatus = '상담진행중' | '결제완료' | '배송대기' | '상담종료';
 
@@ -74,6 +111,7 @@ export interface ParsedAiCommand {
   selectedCardId: AffiliateCardId;
   selectedCardTierId: string;
   hiPlusCounts: HiPlusCounts;
+  shouldOpenProposalDirectly: boolean;
   customer: {
     shouldSaveCrm: boolean;
     name: string;
@@ -84,36 +122,218 @@ export interface ParsedAiCommand {
   };
 }
 
+// ============================================================================
+// 통합 총괄 AI 비서 — 추가 도메인 결과 타입 정의
+// ============================================================================
+
+export interface ScheduleModifyResult {
+  yearMonth: string;
+  monthNum: number;
+  dayNum: number;
+  staffName: string;
+  code: DayScheduleCode;
+  statusLabel: string;
+  message: string;
+  needsUserNameSetup?: boolean;
+}
+
+export interface ScheduleQueryResult {
+  yearMonth: string;
+  monthNum: number;
+  dayNum: number;
+  dateLabel: string;
+  targetStaffName?: string;
+  targetStaffOffDays?: { day: number; label: string }[];
+  offStaff: { name: string; role: string; badge: string }[];
+  workingStaff: { name: string; role: string; note?: string }[];
+}
+
+export interface InstallmentSearchResult {
+  querySummary: string;
+  targetMonthLabel?: InstallmentRowLabel;
+  matchedSummaries: InstallmentQuickSummaryCardItem[];
+  matchedColumns: {
+    col: InstallmentCardColumnDef;
+    highlightRows: { label: InstallmentRowLabel; text: string; subText?: string; status: string }[];
+  }[];
+}
+
+export interface AsSearchResultItem {
+  id: string;
+  categoryBadge: string;
+  title: string;
+  phones: { label?: string; number: string }[];
+  description: string;
+  copyMessage: string;
+}
+
+export interface CrmSearchResult {
+  querySummary: string;
+  customers: CustomerItem[];
+}
+
+export interface InsuranceBriefResult {
+  title: string;
+  phone: string;
+  summaryLines: string[];
+  copyText: string;
+}
+
 interface AiCommandModalProps {
   isOpen: boolean;
   onClose: () => void;
   onApplyToQuote: (state: ProposalState, targetStep: 'input' | 'proposal') => void;
   onCustomerSaved: (customer: CustomerItem, state: ProposalState) => void;
+  onOpenScheduleModal?: () => void;
+  onOpenCareTable?: () => void;
+  onOpenInstallmentModal?: () => void;
+  onOpenAsCenterModal?: () => void;
+  onOpenInsuranceView?: () => void;
+  onOpenCrmScreen?: () => void;
+  onLoadCrmCustomerQuote?: (customer: CustomerItem) => void;
 }
 
+// 상단 빠른 예시 칩 4개 (① 견적+제안서 바로보기 / ② 견적+고객저장 / ③ 휴무표 말로 수정 / ④ 안심케어·무이자·AS 검색)
 const QUICK_EXAMPLES = [
   {
-    id: 'ex-general',
-    badge: '① 일반견적 + 하이프리드 계산',
-    label: 'TV 380만 냉장고 320만 세탁기 250만 롯데제휴카드 즉시할인 45만 엘포인트 15만 하이프리드 300 1개',
+    id: 'ex-quote-proposal',
+    badge: '① 견적 + 제안서 바로보기',
+    label: 'TV 380만 냉장고 320만 롯데카드 즉시할인 40만 하이프리드 300 1개 제안서 바로 보여줘',
     command:
-      'TV 380만 냉장고 320만원 세탁건조기 250만 롯데제휴카드 즉시할인 45만 엘포인트 15만 추가캐시백 10만 하이프리드 300 1개',
+      'TV 380만 냉장고 320만 세탁건조기 250만 롯데제휴카드 즉시할인 40만 엘포인트 15만 하이프리드 300 1개 제안서 바로 보여줘',
   },
   {
-    id: 'ex-sub',
-    badge: '② 구독견적 + 구독플러스 계산',
-    label: '구독 냉장고 월 4.69만 정수기 월 32,900원 60개월 롯데카드 플러스 108 1구좌',
-    command:
-      '구독 냉장고 월 4.69만 정수기 월 32900원 식기세척기 월 2.49만 60개월 롯데제휴카드 플러스 108 1개',
-  },
-  {
-    id: 'ex-crm',
-    badge: '③ 견적 계산 + 고객관리 즉시 저장',
+    id: 'ex-quote-crm',
+    badge: '② 견적 + 고객저장 예시',
     label: '홍길동 010-1234-5678 TV 420만 에어컨 280만 삼성카드 프리드 150 1구좌 금요일 배송 결제완료 고객저장해줘',
     command:
       '홍길동 010-1234-5678 TV 420만 에어컨 280만 즉시할인 30만 삼성제휴카드 하이프리드 150 1구좌 금요일 배송 결제완료 사은품 냄비세트 약속 고객저장해줘',
   },
+  {
+    id: 'ex-schedule-edit',
+    badge: '③ 휴무표 말로 수정 예시',
+    label: '오늘 내 일정 휴무로 바꿔줘 (또는 "15일 홍길동 휴무로 바꿔줘")',
+    command: '오늘 내 일정 휴무로 바꿔줘',
+  },
+  {
+    id: 'ex-multi-search',
+    badge: '④ 안심케어 / 무이자 / AS 검색',
+    label: '에어컨 클리닝 단가랑 삼성카드 무이자 알려줘',
+    command: '에어컨 클리닝 단가랑 삼성카드 무이자 알려줘',
+  },
 ] as const;
+
+// 로컬 캐시가 아직 로드되기 전이라도 즉시 응답할 수 있는 기본 안심케어 핵심 데이터 폴백
+const FALLBACK_CARE_ITEMS: CareTableItem[] = [
+  {
+    id: 'fb-rac-std',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '에어컨',
+    name: '벽걸이 에어컨 클리닝 (일반)',
+    code: 'SET-EV-CLEAN-RAC',
+    price: '85,000원',
+    note: '파트너사: 케이크린 (내)8000-5337',
+  },
+  {
+    id: 'fb-pac-std',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '에어컨',
+    name: '스탠드 에어컨 클리닝 (일반)',
+    code: 'SET-EV-CLEAN-PAC',
+    price: '134,000원',
+    note: '파트너사: 케이크린 (내)8000-5337',
+  },
+  {
+    id: 'fb-rac-prem',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '에어컨',
+    name: '프리미엄 · 벽걸이 에어컨',
+    code: 'SET-V-CLEAN-RAC(P)',
+    price: '117,000원',
+    note: '파트너사: 케이크린',
+  },
+  {
+    id: 'fb-pac-prem',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '에어컨',
+    name: '프리미엄 · 스탠드 에어컨',
+    code: 'SET-V-CLEAN-PAC(P)',
+    price: '189,000원',
+    note: '파트너사: 케이크린',
+  },
+  {
+    id: 'fb-2in1-prem',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '에어컨',
+    name: '프리미엄 · 2IN1 에어컨',
+    code: 'SET-V-CLEAN-2IN1(P)',
+    price: '293,000원',
+    note: '파트너사: 케이크린',
+  },
+  {
+    id: 'fb-sys-2way',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '시스템에어컨',
+    name: '천정형 시스템에어컨 (1,2WAY)',
+    code: 'SET-EV-CLEAN-SYSTEM(2WAY)',
+    price: '118,000원',
+    note: '파트너사: 케이크린',
+  },
+  {
+    id: 'fb-sys-4way',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '시스템에어컨',
+    name: '천정형 시스템에어컨 (4WAY)',
+    code: 'SET-EV-CLEAN-SYSTEM(4WAY)',
+    price: '149,000원',
+    note: '파트너사: 케이크린',
+  },
+  {
+    id: 'fb-wm-top',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '세탁기',
+    name: '일반 통돌이 세탁기 분해세척',
+    code: 'SET-EV-CLEAN-WM',
+    price: '89,000원',
+    note: '완전분해 클리닝',
+  },
+  {
+    id: 'fb-wm-drum',
+    sheetType: '안심케어',
+    folderKey: 'cleaning',
+    folderLabel: '1. 가전청소 · 케어십 · 소모품',
+    section: '가전청소 일회성',
+    category: '세탁기',
+    name: '드럼 세탁기 분해세척',
+    code: 'SET-EV-CLEAN-DRUM',
+    price: '129,000원',
+    note: '완전분해 클리닝',
+  },
+];
 
 function parseKoreanAmount(numStr: string, unitStr?: string): number {
   const cleaned = String(numStr || '').replace(/,/g, '').trim();
@@ -176,6 +396,9 @@ const RESERVED_NON_NAME_WORDS = new Set([
   '삼성카드',
   '신한카드',
   '우리카드',
+  '현대카드',
+  '국민카드',
+  '농협카드',
   '일반카드',
   '제휴카드',
   '고객저장',
@@ -211,14 +434,771 @@ const RESERVED_NON_NAME_WORDS = new Set([
   '노트북',
   '사은품',
   '냄비세트',
+  '휴무표',
+  '안심케어',
+  '무이자',
+  '클리닝',
+  '제안서',
+  '오늘',
+  '내일',
+  '모레',
+  '일정',
+  '휴무',
+  '연차',
+  '교육',
+  '반차',
+  '회의',
+  '휴가',
+  '근무',
+  '근무자',
+  '휴무자',
 ]);
 
+// ============================================================================
+// 1. 휴무표 말로 수정 및 조회 파서/실행기
+// ============================================================================
+
+function parseTargetDateFromCommand(text: string): {
+  yearMonth: string;
+  monthNum: number;
+  dayNum: number;
+  dateLabel: string;
+} {
+  const now = new Date();
+  let targetDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let explicitLabel = '';
+
+  if (/오늘|금일|당일/.test(text)) {
+    explicitLabel = '오늘';
+  } else if (/내일|명일/.test(text)) {
+    targetDate.setDate(targetDate.getDate() + 1);
+    explicitLabel = '내일';
+  } else if (/모레/.test(text)) {
+    targetDate.setDate(targetDate.getDate() + 2);
+    explicitLabel = '모레';
+  } else {
+    const mdMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+    if (mdMatch) {
+      const m = parseInt(mdMatch[1], 10);
+      const d = parseInt(mdMatch[2], 10);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        targetDate = new Date(now.getFullYear(), m - 1, d);
+      }
+    } else {
+      const dOnlyMatch = text.match(/(?:^|\s)(\d{1,2})\s*일/);
+      if (dOnlyMatch) {
+        const d = parseInt(dOnlyMatch[1], 10);
+        if (d >= 1 && d <= 31) {
+          targetDate = new Date(now.getFullYear(), now.getMonth(), d);
+        }
+      }
+    }
+  }
+
+  const yyyy = targetDate.getFullYear();
+  const mm = targetDate.getMonth() + 1;
+  const dd = targetDate.getDate();
+  const yearMonth = `${yyyy}-${String(mm).padStart(2, '0')}`;
+  const dateLabel = explicitLabel
+    ? `${explicitLabel} (${mm}월 ${dd}일)`
+    : `${mm}월 ${dd}일`;
+
+  return { yearMonth, monthNum: mm, dayNum: dd, dateLabel };
+}
+
+function detectScheduleStatusCode(text: string): {
+  code: DayScheduleCode;
+  label: string;
+} | null {
+  if (/연차/.test(text)) return { code: '연차', label: '연차' };
+  if (/반차|오전\s*반차|오후\s*반차/.test(text)) return { code: '반차', label: '반차' };
+  if (/교육|집체|연수/.test(text)) return { code: '교육', label: '교육' };
+  if (/회의|미팅/.test(text)) return { code: '회의', label: '회의' };
+  if (/휴가|하계|동계|리프/.test(text)) return { code: 'V', label: '휴가(V)' };
+  if (/휴무|오프|OFF|쉬는\s*날/i.test(text)) return { code: 'O', label: '휴무' };
+  if (/(?:정상\s*)?근무|출근/.test(text)) return { code: '', label: '근무(출근)' };
+  return null;
+}
+
+export function tryExecuteScheduleCommand(
+  rawText: string,
+  dryRun = false
+): {
+  modifyResult: ScheduleModifyResult | null;
+  queryResult: ScheduleQueryResult | null;
+} {
+  const text = (rawText || '').trim();
+  if (!text) return { modifyResult: null, queryResult: null };
+
+  // 견적용 키워드(만 원 단위 가격 등)만 있고 휴무/근무 관련 단어가 전혀 없으면 패스
+  const hasScheduleTopic =
+    /(?:휴무표|휴무자|근무자|쉬는\s*사람|출근자|누구\s*쉬|일정|휴무로|연차로|반차로|교육으로|회의로|휴가로|근무로|출근으로)/.test(
+      text
+    ) ||
+    (/(?:휴무|연차|반차|교육|회의|휴가|근무)/.test(text) &&
+      /(?:바꿔|변경|수정|넣어|등록|처리|해\s*줘|해줘|누구|알려|언제|보여|조회)/.test(text));
+
+  if (!hasScheduleTopic) {
+    return { modifyResult: null, queryResult: null };
+  }
+
+  const isModifyIntent =
+    /(?:바꿔|변경|수정|넣어|설정|처리|고쳐|적용)/.test(text) &&
+    !/(?:누구|언제|알려|보여\s*줘)/.test(text);
+
+  const schedules = loadAllSchedules();
+  const { yearMonth, monthNum, dayNum, dateLabel } = parseTargetDateFromCommand(text);
+  const monthSchedule = getOrCreateMonthSchedule(schedules, yearMonth);
+
+  // 이름 추출:
+  // 1) '나', '내 일정', '내 휴무', '내가' -> loadSavedUserName()
+  // 2) 현재 휴무표 직원 명단에 있는 이름
+  // 3) 문장 내 2~4글자 한글 인명 (예: 홍길동, 김철수)
+  const isSelfTarget = /(?:^|\s)(?:나|내\s*일정|내\s*휴무|내\s*근무|내가|본인)(?:\s|를|을|은|는|$)/.test(
+    text
+  );
+
+  let targetStaffName = '';
+  let needsUserNameSetup = false;
+
+  if (isSelfTarget) {
+    const savedMe = loadSavedUserName();
+    if (savedMe) {
+      targetStaffName = savedMe;
+    } else {
+      targetStaffName = '내 일정(본인)';
+      needsUserNameSetup = true;
+    }
+  } else {
+    // 명단에 있는 직원 이름 우선 매칭
+    for (const emp of monthSchedule.employees) {
+      if (emp.name && text.includes(emp.name)) {
+        targetStaffName = emp.name;
+        break;
+      }
+    }
+    // 명단에 없는 이름(예: 홍길동, 김철수) 추출
+    if (!targetStaffName) {
+      const cleanedForName = text
+        .replace(/(\d{1,2})\s*월/g, ' ')
+        .replace(/(\d{1,2})\s*일/g, ' ')
+        .replace(
+          /(?:오늘|내일|모레|이번달|이번주|일정|휴무표|휴무자|근무자|휴무|연차|반차|교육|회의|휴가|근무|출근|바꿔줘|바꿔|수정해줘|수정해|수정|변경해줘|변경해|변경|알려줘|알려|누구야|누구|쉬는|사람|언제야|언제)/g,
+          ' '
+        );
+      const tokenMatches = cleanedForName.match(/[가-힣]{2,4}/g) || [];
+      for (const token of tokenMatches) {
+        const stripped = token.replace(/(?:님|씨|은|는|이|가|을|를|로|으로)$/, '');
+        if (
+          stripped.length >= 2 &&
+          stripped.length <= 4 &&
+          !RESERVED_NON_NAME_WORDS.has(stripped)
+        ) {
+          targetStaffName = stripped;
+          break;
+        }
+      }
+    }
+  }
+
+  // (A) 수정 명령 처리
+  if (isModifyIntent) {
+    const statusObj = detectScheduleStatusCode(text);
+    if (statusObj && targetStaffName) {
+      if (!dryRun) {
+        const updatedEmployees = [...monthSchedule.employees];
+        const existingIdx = updatedEmployees.findIndex(
+          (e) => e.name === targetStaffName
+        );
+        if (existingIdx >= 0) {
+          updatedEmployees[existingIdx] = {
+            ...updatedEmployees[existingIdx],
+            days: {
+              ...updatedEmployees[existingIdx].days,
+              [String(dayNum)]: statusObj.code,
+            },
+          };
+        } else {
+          updatedEmployees.push({
+            name: targetStaffName,
+            role: '직원',
+            days: {
+              [String(dayNum)]: statusObj.code,
+            },
+          });
+        }
+
+        const nextSchedules = {
+          ...schedules,
+          [yearMonth]: {
+            ...monthSchedule,
+            updatedAt: `${new Date().toLocaleString('ko-KR')} (AI 비서 수정)`,
+            isRegistered: true,
+            employees: updatedEmployees,
+          },
+        };
+        saveAllSchedules(nextSchedules);
+      }
+
+      return {
+        modifyResult: {
+          yearMonth,
+          monthNum,
+          dayNum,
+          staffName: targetStaffName,
+          code: statusObj.code,
+          statusLabel: statusObj.label,
+          message: `✅ ${targetStaffName}님의 ${monthNum}월 ${dayNum}일 일정이 [${statusObj.label}](으)로 즉시 수정되었습니다!`,
+          needsUserNameSetup,
+        },
+        queryResult: null,
+      };
+    }
+  }
+
+  // (B) 조회 명령 처리 ("내일 쉬는 사람 누구야?", "18일 근무자 알려줘", "홍길동 휴무 언제야?")
+  const offStaff: { name: string; role: string; badge: string }[] = [];
+  const workingStaff: { name: string; role: string; note?: string }[] = [];
+
+  for (const emp of monthSchedule.employees) {
+    const code = (emp.days?.[String(dayNum)] || '').trim() as DayScheduleCode;
+    if (isOffDayCode(code)) {
+      const badge =
+        code === '연차' ? '연차' : code === 'V' ? '휴가(V)' : '정기휴무(O)';
+      offStaff.push({ name: emp.name, role: emp.role, badge });
+    } else {
+      workingStaff.push({
+        name: emp.name,
+        role: emp.role,
+        note: code ? code : undefined,
+      });
+    }
+  }
+
+  let targetStaffOffDays: { day: number; label: string }[] | undefined;
+  if (targetStaffName && !isSelfTarget) {
+    const foundEmp = monthSchedule.employees.find((e) => e.name === targetStaffName);
+    if (foundEmp) {
+      targetStaffOffDays = [];
+      for (let d = 1; d <= 31; d++) {
+        const c = foundEmp.days?.[String(d)];
+        if (c && (isOffDayCode(c) || c === '반차' || c === '교육' || c === '회의')) {
+          targetStaffOffDays.push({
+            day: d,
+            label: c === 'O' ? '휴무' : c === 'V' ? '휴가' : c,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    modifyResult: null,
+    queryResult: {
+      yearMonth,
+      monthNum,
+      dayNum,
+      dateLabel,
+      targetStaffName: targetStaffName || undefined,
+      targetStaffOffDays,
+      offStaff,
+      workingStaff,
+    },
+  };
+}
+
+// ============================================================================
+// 2. 앱 내 4대 데이터베이스 통합 검색기
+// ============================================================================
+
 /**
- * 1차 초고속 한국어 규칙 파서 (API 키 없이도 100% 즉시 작동)
+ * (A) 안심케어 · 가전이사 조견표 검색
  */
+export function searchCareTableFromCommand(
+  rawText: string,
+  dataset: CareTableDataset | null
+): CareTableItem[] {
+  const text = (rawText || '').trim();
+  if (!text) return [];
+
+  const isCareIntent =
+    /(?:안심\s*케어|클리닝|청소|분해\s*세척|세척|케어십|가전\s*이사|이전\s*설치|철거|재설치|타공|사다리차|단가|모델\s*코드|상품\s*코드|코드\s*찾아|코드\s*알려)/.test(
+      text
+    );
+
+  if (!isCareIntent) return [];
+
+  const itemsPool =
+    dataset && Array.isArray(dataset.items) && dataset.items.length > 0
+      ? dataset.items
+      : FALLBACK_CARE_ITEMS;
+
+  // 핵심 키워드 추출
+  const keywordCandidates = [
+    '벽걸이',
+    '스탠드',
+    '2in1',
+    '투인원',
+    '시스템',
+    '천정형',
+    '창문형',
+    '에어컨',
+    '통돌이',
+    '드럼',
+    '세탁기',
+    '건조기',
+    '워시타워',
+    '냉장고',
+    '김치냉장고',
+    '비데',
+    '매트리스',
+    '후드',
+    '주방후드',
+    '공기청정기',
+    '가전이사',
+    '이전설치',
+    '철거',
+    '재설치',
+    '프리미엄',
+  ];
+
+  const matchedKeywords = keywordCandidates.filter((kw) =>
+    text.toLowerCase().includes(kw.toLowerCase())
+  );
+
+  // 투인원 정규화
+  const normalizedKeywords = matchedKeywords.map((kw) =>
+    kw === '투인원' ? '2in1' : kw === '시스템' ? '천정형' : kw
+  );
+
+  if (normalizedKeywords.length === 0) {
+    return itemsPool.slice(0, 8);
+  }
+
+  const scored = itemsPool
+    .map((item) => {
+      const hay = `${item.sheetType} ${item.section} ${item.category} ${item.name} ${item.code} ${item.note}`.toLowerCase();
+      let score = 0;
+      for (const kw of normalizedKeywords) {
+        if (hay.includes(kw.toLowerCase())) {
+          score += 10;
+        }
+      }
+      if (/클리닝|청소|세척/.test(text) && item.folderKey === 'cleaning') {
+        score += 5;
+      }
+      if (/이사|이전|철거|재설치/.test(text) && item.sheetType === '가전이사') {
+        score += 8;
+      }
+      return { item, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, 10).map((s) => s.item);
+}
+
+/**
+ * (B) 카드 무이자 할부 조견표 검색
+ */
+export function searchInstallmentFromCommand(
+  rawText: string
+): InstallmentSearchResult | null {
+  const text = (rawText || '').trim();
+  if (!text) return null;
+
+  const isInstallmentIntent =
+    /(?:무이자|할부|부분\s*무이자|몇\s*개월\s*무이자|\d{1,2}\s*개월\s*무이자)/.test(text);
+
+  if (!isInstallmentIntent) return null;
+
+  const dataset = loadLocalInstallmentDataset();
+
+  const cardBrands = [
+    '롯데',
+    '삼성',
+    '신한',
+    '우리',
+    '현대',
+    '국민',
+    'KB',
+    '농협',
+    'NH',
+    '하나',
+    '비씨',
+    'BC',
+    '광주',
+    '전북',
+  ];
+  const matchedBrands = cardBrands.filter((b) =>
+    text.toUpperCase().includes(b.toUpperCase())
+  );
+
+  // 개월 수 추출 (예: 12개월, 24개월, 36개월, 60개월 등)
+  let targetMonthLabel: InstallmentRowLabel | undefined;
+  const monthMatch = text.match(/(\d{1,2})\s*개월/);
+  if (monthMatch) {
+    const m = parseInt(monthMatch[1], 10);
+    if (m === 48 || m === 60) {
+      targetMonthLabel = '48/60개월(비고)';
+    } else {
+      const foundRow = INSTALLMENT_ROW_LABELS.find((label) =>
+        label.startsWith(`${m}개월`)
+      );
+      if (foundRow) targetMonthLabel = foundRow;
+    }
+  }
+
+  const matchedSummaries = dataset.quickSummaries.filter((qs) => {
+    if (matchedBrands.length > 0) {
+      return matchedBrands.some((b) =>
+        qs.brandTitle
+          .toUpperCase()
+          .includes(b === 'KB' ? '국민' : b === 'NH' ? '농협' : b.toUpperCase())
+      );
+    }
+    if (targetMonthLabel) {
+      const mStr = targetMonthLabel.replace('(비고)', '');
+      return (
+        qs.freeInstallment.includes(mStr.replace('개월', '')) ||
+        qs.partialInstallment.includes(mStr.replace('개월', '')) ||
+        qs.subInstallment.includes(mStr.replace('개월', ''))
+      );
+    }
+    return true;
+  });
+
+  const matchedColumns = dataset.columns
+    .filter((col) => {
+      if (matchedBrands.length > 0) {
+        return matchedBrands.some((b) => {
+          const normalizedB = b === 'KB' ? '국민' : b === 'NH' ? '농협' : b;
+          return (
+            col.brand.toUpperCase().includes(normalizedB.toUpperCase()) ||
+            col.subName.toUpperCase().includes(normalizedB.toUpperCase())
+          );
+        });
+      }
+      if (targetMonthLabel) {
+        const cell = col.rows[targetMonthLabel];
+        return (
+          cell &&
+          (cell.kind === 'free' ||
+            cell.kind === 'partial' ||
+            cell.kind === 'sub-free')
+        );
+      }
+      return true;
+    })
+    .map((col) => {
+      const rowsToInspect: InstallmentRowLabel[] = targetMonthLabel
+        ? [targetMonthLabel, '기타 안내']
+        : [
+            '2개월',
+            '3개월',
+            '5개월',
+            '6개월(비고)',
+            '10개월(비고)',
+            '12개월(비고)',
+            '24개월(비고)',
+            '36개월(비고)',
+            '48/60개월(비고)',
+          ];
+
+      const highlightRows = rowsToInspect
+        .map((rLabel) => {
+          const cell = col.rows[rLabel];
+          if (!cell || cell.kind === 'interest' || cell.kind === 'disabled') {
+            if (rLabel === targetMonthLabel) {
+              return {
+                label: rLabel,
+                text: cell?.main || '무이자 불가 (일반 유이자)',
+                subText: cell?.sub,
+                status: cell?.kind || 'disabled',
+              };
+            }
+            return null;
+          }
+          return {
+            label: rLabel,
+            text: cell.main,
+            subText: cell.sub,
+            status: cell.kind,
+          };
+        })
+        .filter(Boolean) as {
+        label: InstallmentRowLabel;
+        text: string;
+        subText?: string;
+        status: string;
+      }[];
+
+      return { col, highlightRows };
+    });
+
+  return {
+    querySummary:
+      matchedBrands.length > 0
+        ? `${matchedBrands.join('·')}카드 ${targetMonthLabel ? targetMonthLabel.replace('(비고)', '') + ' ' : ''}무이자 할부 조회 결과`
+        : targetMonthLabel
+        ? `${targetMonthLabel.replace('(비고)', '')} 무이자/부분무이자 가능 카드 조회 결과`
+        : '전 카드사 무이자 할부 핵심 요약',
+    targetMonthLabel,
+    matchedSummaries: matchedSummaries.slice(0, 6),
+    matchedColumns: matchedColumns.slice(0, 8),
+  };
+}
+
+/**
+ * (C) 가전 AS센터 · 플럭스(PLUX) · TCL 번호 검색
+ */
+export function searchAsCenterFromCommand(rawText: string): AsSearchResultItem[] {
+  const text = (rawText || '').trim();
+  if (!text) return [];
+
+  const isAsIntent =
+    /(?:AS|A\/S|에이에스|서비스\s*센터|고객\s*센터|수리\s*센터|리모컨\s*페어링|리모컨\s*설정|플럭스|PLUX|하이메이드|TCL|티씨엘|쿠쿠\s*번호|쿠첸\s*번호|다이슨\s*번호|바디프랜드|세라젬|코지마)/i.test(
+      text
+    );
+
+  if (!isAsIntent) return [];
+
+  const results: AsSearchResultItem[] = [];
+  const lower = text.toLowerCase();
+
+  // 1) TCL 검색
+  if (/tcl|티씨엘|리모컨|셋탑|페어링/.test(lower)) {
+    results.push({
+      id: 'as-tcl',
+      categoryBadge: '📺 TCL TV 전담',
+      title: 'TCL TV 공식 고객센터 & 전담 매니저',
+      phones: [
+        { label: 'TCL 고객센터', number: '1660-1870' },
+        { label: 'TCL 정진수 매니저', number: '010-2230-2277' },
+      ],
+      description:
+        '패널 3년 / 일반부품 2년 무상보증 · IPTV 통합리모컨 CEC/페어링 설정 지원',
+      copyMessage:
+        '[롯데하이마트 경기광주점] 📺 TCL TV A/S 및 고객센터 안내\n• TCL 공식 고객센터: 1660-1870 (패널 3년 / 일반부품 2년 무상보증)',
+    });
+  }
+
+  // 2) 플럭스(PLUX) / 하이메이드 검색
+  const isPluxMentioned = /플럭스|plux|하이메이드|pb|plx/i.test(text);
+  for (const group of PLUX_AS_GROUPS) {
+    const groupMatch =
+      isPluxMentioned &&
+      group.category
+        .split(/[/·()\s]+/)
+        .filter((w) => w.length >= 2)
+        .some((w) => lower.includes(w.toLowerCase()));
+
+    for (const entry of group.entries) {
+      const entryMatch =
+        groupMatch ||
+        entry.partnerName.toLowerCase().includes(lower) ||
+        (isPluxMentioned &&
+          entry.modelsDesc
+            .split(/[,/\s()]+/)
+            .filter((w) => w.length >= 2)
+            .some((w) => lower.includes(w.toLowerCase())));
+
+      if (entryMatch) {
+        const phoneSummary = entry.phones
+          .map((p) => `${p.label ? p.label + ' ' : ''}${p.number}`)
+          .join(' / ');
+        results.push({
+          id: `plux-${group.category}-${entry.partnerName}`,
+          categoryBadge: `⚡ PLUX · ${group.category}`,
+          title: entry.partnerName,
+          phones: entry.phones,
+          description: entry.modelsDesc,
+          copyMessage: `[롯데하이마트 경기광주점] ⚡ 플럭스(PLUX) A/S 센터 안내\n• 품목/위탁사: ${entry.partnerName}\n• 전화번호: ${phoneSummary}\n• 대상모델: ${entry.modelsDesc}`,
+        });
+      }
+    }
+  }
+
+  // 만약 '플럭스 AS'라고만 검색해서 세부 품목이 특정되지 않았으면 플럭스 대표 냉장고/TV/세탁기/당사서비스 노출
+  if (isPluxMentioned && results.length === 0) {
+    for (const group of PLUX_AS_GROUPS.slice(0, 4)) {
+      const firstEntry = group.entries[0];
+      if (firstEntry) {
+        const phoneSummary = firstEntry.phones
+          .map((p) => `${p.label ? p.label + ' ' : ''}${p.number}`)
+          .join(' / ');
+        results.push({
+          id: `plux-default-${group.category}`,
+          categoryBadge: `⚡ PLUX · ${group.category}`,
+          title: firstEntry.partnerName,
+          phones: firstEntry.phones,
+          description: firstEntry.modelsDesc,
+          copyMessage: `[롯데하이마트 경기광주점] ⚡ 플럭스(PLUX) A/S 안내\n• ${firstEntry.partnerName}: ${phoneSummary}`,
+        });
+      }
+    }
+  }
+
+  // 3) 주요 대기업/브랜드 A/S 검색
+  for (const major of MAJOR_AS_CENTERS) {
+    const tokens = `${major.brand} ${major.keywords}`
+      .split(/[\s/()·]+/)
+      .filter((w) => w.length >= 2);
+    const matched = tokens.some((tok) => lower.includes(tok.toLowerCase()));
+    if (matched) {
+      const phoneSummary = major.phones
+        .map((p) => `${p.label ? p.label + ' ' : ''}${p.number}`)
+        .join(' / ');
+      results.push({
+        id: `major-${major.id}`,
+        categoryBadge: '🏢 주요 브랜드 공식 A/S',
+        title: major.brand,
+        phones: major.phones,
+        description: `취급 품목: ${major.keywords}`,
+        copyMessage: `[롯데하이마트 경기광주점] 🛠️ ${major.brand} 고객센터 안내\n• 대표번호: ${phoneSummary}`,
+      });
+    }
+  }
+
+  // AS 키워드는 있는데 특정 브랜드가 안 걸렸다면 상위 대표 센터 노출
+  if (results.length === 0) {
+    return MAJOR_AS_CENTERS.slice(0, 4).map((major) => {
+      const phoneSummary = major.phones
+        .map((p) => `${p.label ? p.label + ' ' : ''}${p.number}`)
+        .join(' / ');
+      return {
+        id: `major-fallback-${major.id}`,
+        categoryBadge: '🏢 주요 브랜드 공식 A/S',
+        title: major.brand,
+        phones: major.phones,
+        description: `취급 품목: ${major.keywords}`,
+        copyMessage: `[롯데하이마트 경기광주점] 🛠️ ${major.brand} 고객센터 안내\n• 대표번호: ${phoneSummary}`,
+      };
+    });
+  }
+
+  return results.slice(0, 8);
+}
+
+/**
+ * (D) 기존 통합 고객관리(CRM) 고객 검색
+ */
+export function searchCrmCustomersFromCommand(
+  rawText: string
+): CrmSearchResult | null {
+  const text = (rawText || '').trim();
+  if (!text) return null;
+
+  // 신규 고객 저장 명령이 아닌 '조회/검색/찾기' 의도인지 판별
+  const isSaveCommand = /(?:저장해|등록해|고객\s*저장|고객\s*등록)/.test(text);
+  if (isSaveCommand) return null;
+
+  const isCrmSearchIntent =
+    /(?:고객\s*찾아|고객\s*검색|고객\s*조회|고객\s*보여|고객\s*알려|고객\s*누구|오늘\s*배송\s*고객|내일\s*배송\s*고객|긴급\s*고객|결제\s*완료\s*고객|상담\s*중인?\s*고객)/.test(
+      text
+    );
+
+  if (!isCrmSearchIntent) return null;
+
+  const allCustomers = getCachedCustomers().filter((c) => !c.deletedAt);
+
+  if (/긴급\s*고객/.test(text)) {
+    const urgentList = allCustomers.filter((c) => isUrgentCustomer(c));
+    return {
+      querySummary: `🚨 배송임박 · 미결제 긴급 고객 (${urgentList.length}명)`,
+      customers: urgentList,
+    };
+  }
+
+  if (/오늘\s*배송/.test(text)) {
+    const today = getTodayStr();
+    const list = allCustomers.filter((c) => c.deliveryDate === today);
+    return {
+      querySummary: `🚚 오늘(${today}) 배송 예정 고객 (${list.length}명)`,
+      customers: list,
+    };
+  }
+
+  if (/내일\s*배송/.test(text)) {
+    const tomorrow = getOffsetDateStr(1);
+    const list = allCustomers.filter((c) => c.deliveryDate === tomorrow);
+    return {
+      querySummary: `🚚 내일(${tomorrow}) 배송 예정 고객 (${list.length}명)`,
+      customers: list,
+    };
+  }
+
+  // 특정 고객 이름 또는 전화번호 뒷자리 검색
+  const cleaned = text
+    .replace(
+      /(?:고객님|고객|찾아줘|찾아|검색해줘|검색|조회해줘|조회|보여줘|보여|알려줘|알려|누구야|누구)/g,
+      ' '
+    )
+    .trim();
+
+  const nameTokens = (cleaned.match(/[가-힣]{2,4}/g) || []).filter(
+    (w) => !RESERVED_NON_NAME_WORDS.has(w)
+  );
+  const numTokens = cleaned.match(/\d{3,4}/g) || [];
+
+  const matched = allCustomers.filter((c) => {
+    const nameMatch =
+      nameTokens.length > 0 &&
+      nameTokens.some((tok) => (c.name || '').includes(tok));
+    const phoneMatch =
+      numTokens.length > 0 &&
+      numTokens.some((num) => (c.phone || '').includes(num));
+    if (nameTokens.length === 0 && numTokens.length === 0) return true;
+    return nameMatch || phoneMatch;
+  });
+
+  const targetLabel =
+    nameTokens.length > 0
+      ? `'${nameTokens.join(', ')}' 고객 검색 결과 (${matched.length}명)`
+      : `통합 고객관리(CRM) 조회 결과 (${matched.length}명)`;
+
+  return {
+    querySummary: targetLabel,
+    customers: matched.slice(0, 10),
+  };
+}
+
+/**
+ * (E) 보험 청구 안내 검색
+ */
+export function searchInsuranceFromCommand(
+  rawText: string
+): InsuranceBriefResult | null {
+  const text = (rawText || '').trim();
+  if (!text) return null;
+
+  if (!/(?:보험\s*청구|연장\s*보험|파손\s*보험|수리비\s*청구|보험\s*접수|롯데\s*손해\s*보험)/.test(text)) {
+    return null;
+  }
+
+  return {
+    title: '🛡️ 하이마트 연장보증 · 파손보험 청구 핵심 안내',
+    phone: '1566-4982',
+    summaryLines: [
+      '• 전담 접수처: 롯데손해보험 하이마트 전담센터 (1566-4982)',
+      '• 필수 준비서류: ① 수리비 영수증 ② 수리내역서(부품명·고장원인 기재) ③ 통장사본',
+      '• 접수 절차: 공식 제조사(삼성/LG 등) A/S 기사 방문 수리 및 결제 후 서류 발급 ➔ 전용 URL 또는 콜센터 접수',
+    ],
+    copyText:
+      '[롯데하이마트 경기광주점] 🛡️ 가전 보험 청구 안내\n• 전담 콜센터: 1566-4982 (롯데손해보험)\n• 준비서류: 수리비 영수증, 수리내역서(고장원인/수리부품 명시), 본인 통장사본',
+  };
+}
+
+// ============================================================================
+// 3. 1차 초고속 한국어 견적 규칙 파서 + 2차 Gemini AI 정밀 파서
+// ============================================================================
+
 export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
   const text = (rawText || '').trim();
   let workingText = text;
+
+  const shouldOpenProposalDirectly =
+    /(?:제안서\s*(?:바로\s*)?(?:보여|띄워|열어|이동|직행)|바로\s*제안서)/.test(text);
 
   // 1) 하이프리드 (일반구매용: 75 / 150 / 225 / 300) 추출
   const generalHiPreedCounts: GeneralHiPreedCounts = {
@@ -264,7 +1244,10 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     /(?:즉시\s*할인|즉할|기본\s*할인|특별\s*할인|할인)\s*([0-9]+(?:\.[0-9]+)?(?:,[0-9]{3})*)\s*(천만|백만|십만|만|천)?\s*원?/i;
   const instMatch = workingText.match(instantRegex);
   if (instMatch) {
-    const rawVal = parseKoreanAmount(instMatch[1], instMatch[2] || (parseFloat(instMatch[1]) < 1000 ? '만' : ''));
+    const rawVal = parseKoreanAmount(
+      instMatch[1],
+      instMatch[2] || (parseFloat(instMatch[1]) < 1000 ? '만' : '')
+    );
     instantDiscount = rawVal;
     workingText = workingText.replace(instMatch[0], ' ');
   }
@@ -274,7 +1257,10 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     /(?:포인트\s*사용|포인트\s*차감|사용\s*포인트)\s*([0-9]+(?:\.[0-9]+)?(?:,[0-9]{3})*)\s*(천만|백만|십만|만|천)?\s*(?:원|점|P)?/i;
   const puMatch = workingText.match(pointUsedRegex);
   if (puMatch) {
-    pointUsed = parseKoreanAmount(puMatch[1], puMatch[2] || (parseFloat(puMatch[1]) < 1000 ? '만' : ''));
+    pointUsed = parseKoreanAmount(
+      puMatch[1],
+      puMatch[2] || (parseFloat(puMatch[1]) < 1000 ? '만' : '')
+    );
     workingText = workingText.replace(puMatch[0], ' ');
   }
 
@@ -283,7 +1269,10 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     /(?:적립\s*포인트|엘\s*포인트|L\.?\s*POINT|포인트\s*적립|포인트)\s*([0-9]+(?:\.[0-9]+)?(?:,[0-9]{3})*)\s*(천만|백만|십만|만|천)?\s*(?:원|점|P)?/i;
   const epMatch = workingText.match(earnedRegex);
   if (epMatch) {
-    earnedPoints = parseKoreanAmount(epMatch[1], epMatch[2] || (parseFloat(epMatch[1]) < 1000 ? '만' : ''));
+    earnedPoints = parseKoreanAmount(
+      epMatch[1],
+      epMatch[2] || (parseFloat(epMatch[1]) < 1000 ? '만' : '')
+    );
     workingText = workingText.replace(epMatch[0], ' ');
   }
 
@@ -292,7 +1281,10 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     /(?:추가\s*캐시백|익월\s*캐시백|배송\s*익월\s*캐시백|특별\s*캐시백)\s*([0-9]+(?:\.[0-9]+)?(?:,[0-9]{3})*)\s*(천만|백만|십만|만|천)?\s*원?/i;
   const ecbMatch = workingText.match(extraCbRegex);
   if (ecbMatch) {
-    extraCashback = parseKoreanAmount(ecbMatch[1], ecbMatch[2] || (parseFloat(ecbMatch[1]) < 1000 ? '만' : ''));
+    extraCashback = parseKoreanAmount(
+      ecbMatch[1],
+      ecbMatch[2] || (parseFloat(ecbMatch[1]) < 1000 ? '만' : '')
+    );
     workingText = workingText.replace(ecbMatch[0], ' ');
   }
 
@@ -370,7 +1362,7 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     deliveryDate = getFridayDateStr(false);
   } else {
     const isoDateMatch = text.match(/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/);
-    const mdDateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*배송)?/);
+    const mdDateMatch = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일(?:\s*배송)/);
     if (isoDateMatch) {
       deliveryDate = `${isoDateMatch[1]}-${String(isoDateMatch[2]).padStart(2, '0')}-${String(
         isoDateMatch[3]
@@ -394,7 +1386,6 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     status = '상담종료';
   }
 
-  // 고객명 추출
   let customerName = '';
   const explicitCustomerMatch =
     text.match(/(?:고객명|이름)\s*[:：]?\s*([가-힣]{2,4})/) ||
@@ -402,7 +1393,6 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
   if (explicitCustomerMatch && !RESERVED_NON_NAME_WORDS.has(explicitCustomerMatch[1])) {
     customerName = explicitCustomerMatch[1];
   } else if (phoneMatch) {
-    // 전화번호 바로 앞의 한글 2~4글자 이름 탐색
     const beforePhone = text.slice(0, text.indexOf(phoneMatch[0])).trim();
     const nameBeforePhone = beforePhone.match(/([가-힣]{2,4})\s*$/);
     if (nameBeforePhone && !RESERVED_NON_NAME_WORDS.has(nameBeforePhone[1])) {
@@ -410,7 +1400,6 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     }
   }
   if (!customerName) {
-    // '홍길동님' 또는 문장 맨 앞 2~3글자 이름 + 저장 키워드 조합 탐색
     const nimMatch = text.match(/([가-힣]{2,4})님/);
     if (nimMatch && !RESERVED_NON_NAME_WORDS.has(nimMatch[1])) {
       customerName = nimMatch[1];
@@ -425,7 +1414,6 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
   const hasSaveKeyword = /(?:저장|등록|고객\s*관리|CRM)/i.test(text);
   const shouldSaveCrm = hasSaveKeyword || Boolean(customerName && phone);
 
-  // 메모 추출 (사은품/약속/메모 관련 구문 또는 원본 명령어 요약)
   let memo = '';
   const memoMatch = text.match(/(?:메모|사은품|비고|특이사항)\s*[:：]?\s*([^\n,]+)/);
   if (memoMatch) {
@@ -441,7 +1429,6 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
   const isGlobalSubOnly =
     /(?:^|\s)구독(?:\s*견적)?/.test(text) && !/일반\s*견적|혼합\s*견적/.test(text);
 
-  // 가전 키워드 + (모델명 선택) + (월 여부) + 금액 패턴 매칭
   const itemTokenRegex =
     /(?:(구독)\s*)?(김치\s*냉장고|김냉|시스템\s*에어컨|시스카|세탁\s*건조기|워시\s*타워|워시\s*콤보|원바디|로봇\s*청소기|로청|식기\s*세척기|식세기|공기\s*청정기|공청기|의류\s*관리기|스타일러|에어드레서|얼음\s*정수기|정수기|안마\s*의자|냉장고|양문형|세탁기|드럼\s*세탁기|통돌이|건조기|TV|티비|올레드|OLED|QLED|에어컨|투인원|2in1|청소기|코드제로|인덕션|전기\s*레인지|전자\s*레인지|오븐|큐커|비데|매트리스|침대|와인\s*셀러|노트북|그램|맥북|컴퓨터|PC|아이폰|갤럭시)(?:\s+([A-Za-z0-9][A-Za-z0-9-_]{2,}))?\s*(?:(월)\s*)?([0-9]+(?:\.[0-9]+)?(?:,[0-9]{3})*)\s*(천만|백만|십만|만|천)?\s*원?(?:\s*(\d+)\s*(?:개|대))?/gi;
 
@@ -494,7 +1481,6 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     }
   }
 
-  // 만약 일반/구독 모드가 아직 결정되지 않았으면 결정
   let quoteMode: QuoteMode = 'general';
   const hasHiPlus =
     hiPlusCounts.hi72 + hiPlusCounts.hi90 + hiPlusCounts.hi108 > 0;
@@ -527,6 +1513,7 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
     selectedCardId,
     selectedCardTierId,
     hiPlusCounts,
+    shouldOpenProposalDirectly,
     customer: {
       shouldSaveCrm,
       name: customerName,
@@ -539,7 +1526,7 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
 }
 
 /**
- * 2차 Gemini AI 정밀 파서 (API 키가 있을 때 GEMINI_MODELS 순차 폴백 호출, 실패 시 1차 파서 결과로 안전 복원)
+ * 2차 Gemini AI 정밀 파서
  */
 export async function parseCommandWithHybridAi(
   rawText: string
@@ -547,10 +1534,15 @@ export async function parseCommandWithHybridAi(
   const localResult = parseKoreanCommandLocal(rawText);
   const apiKey = getEffectiveGeminiApiKey();
 
-  if (!apiKey) {
+  // 견적 품목이 없고 휴무표/안심케어/무이자/AS/CRM 검색 전용 명령이면 로컬 엔진으로 즉시 응답
+  const hasQuoteItemsLocally =
+    localResult.generalItems.length > 0 ||
+    localResult.subscriptionItems.length > 0;
+
+  if (!apiKey || !hasQuoteItemsLocally) {
     return {
       parsed: localResult,
-      engineLabel: '⚡ 초고속 한국어 규칙 엔진 (즉시 분석 완료)',
+      engineLabel: '⚡ 초고속 한국어 통합 엔진 (즉시 처리 완료)',
     };
   }
 
@@ -559,29 +1551,23 @@ export async function parseCommandWithHybridAi(
   const tomorrowStr = getOffsetDateStr(1);
   const fridayStr = getFridayDateStr(false);
 
-  const systemPrompt = `당신은 롯데하이마트 경기광주점 가전 견적 및 고객관리(CRM) AI 비서입니다.
+  const systemPrompt = `당신은 롯데하이마트 경기광주점 통합 총괄 AI 비서입니다.
 사용자의 한 줄 자연어 명령을 분석하여 아래 JSON 구조로만 정확히 응답하세요.
 오늘 날짜: ${todayStr}, 내일 날짜: ${tomorrowStr}, 이번주 금요일: ${fridayStr}
 
 [추출 규칙]
 1. quoteMode: 'general' | 'subscription' | 'hybrid'
-   - 일반 일시불 품목만 있으면 'general'
-   - 월 구독료('월 32900원', '월 4.69만' 등) 품목만 있으면 'subscription'
-   - 일반 품목과 구독 품목이 함께 있으면 'hybrid'
-2. generalItems: [{ category, modelName, quantity, unitPrice }]
-   - "TV 380만" -> unitPrice: 3800000, quantity: 1
-   - 만원 단위는 반드시 * 10000 원 단위로 변환
+2. generalItems: [{ category, modelName, quantity, unitPrice }] (만원 단위는 * 10000 원 단위로 변환)
 3. generalCardType: '롯데 제휴카드' | '삼성 제휴카드' | '신한 제휴카드' | '우리 제휴카드' | '일반 카드' | '미정'
-   - 카드 언급이 없으면 기본 '롯데 제휴카드'
 4. instantDiscount(즉시할인), earnedPoints(적립포인트/엘포인트), pointUsed(포인트사용), extraCashback(추가캐시백): 원 단위 숫자
-5. generalHiPreedCounts: { hf75, hf150, hf225, hf300 } (예: "하이프리드 300 1개" -> hf300: 1)
-6. subscriptionItems: [{ category, modelName, monthlyFee, period }] (예: "정수기 월 32900원" -> monthlyFee: 32900, "구독 냉장고 월 4.69만" -> monthlyFee: 46900)
-7. subscriptionPeriod: 36 | 60 (기본 60, 36개월 언급 시 36)
+5. generalHiPreedCounts: { hf75, hf150, hf225, hf300 }
+6. subscriptionItems: [{ category, modelName, monthlyFee, period }]
+7. subscriptionPeriod: 36 | 60
 8. selectedCardId: 'lotte' | 'samsung' | 'shinhan' | 'woori' | 'none'
 9. selectedCardTierId: 롯데 기본 'lotte-30', 삼성 'samsung-30', 신한 'shinhan-50', 우리 'woori-30'
-10. hiPlusCounts: { hi72, hi90, hi108 } (예: "플러스 108 1개" -> hi108: 1)
-11. customer: { shouldSaveCrm: boolean, name: string, phone: string, status: '상담진행중' | '결제완료' | '배송대기' | '상담종료', deliveryDate: string (YYYY-MM-DD), memo: string }
-    - '저장', '등록' 키워드가 있거나 고객명+연락처가 함께 있으면 shouldSaveCrm = true`;
+10. hiPlusCounts: { hi72, hi90, hi108 }
+11. shouldOpenProposalDirectly: boolean ('제안서 보여줘', '제안서 바로 보여줘', '제안서 띄워줘' 포함 시 true)
+12. customer: { shouldSaveCrm: boolean, name: string, phone: string, status: '상담진행중' | '결제완료' | '배송대기' | '상담종료', deliveryDate: string (YYYY-MM-DD), memo: string }`;
 
   for (const modelName of GEMINI_MODELS) {
     try {
@@ -680,6 +1666,10 @@ export async function parseCommandWithHybridAi(
           hi108:
             Number(parsedJson.hiPlusCounts?.hi108) || localResult.hiPlusCounts.hi108,
         },
+        shouldOpenProposalDirectly: Boolean(
+          parsedJson.shouldOpenProposalDirectly ||
+            localResult.shouldOpenProposalDirectly
+        ),
         customer: {
           shouldSaveCrm: Boolean(
             parsedJson.customer?.shouldSaveCrm ?? localResult.customer.shouldSaveCrm
@@ -714,13 +1704,13 @@ export async function parseCommandWithHybridAi(
         engineLabel: `✨ Gemini AI 정밀 분석 완료 (${modelName})`,
       };
     } catch {
-      // 다음 폴백 모델로 재시도
+      // 다음 폴백 모델 재시도
     }
   }
 
   return {
     parsed: localResult,
-    engineLabel: '⚡ 초고속 한국어 규칙 엔진 (AI 폴백 완료)',
+    engineLabel: '⚡ 초고속 한국어 통합 엔진 (AI 폴백 완료)',
   };
 }
 
@@ -877,6 +1867,13 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   onClose,
   onApplyToQuote,
   onCustomerSaved,
+  onOpenScheduleModal,
+  onOpenCareTable,
+  onOpenInstallmentModal,
+  onOpenAsCenterModal,
+  onOpenInsuranceView,
+  onOpenCrmScreen,
+  onLoadCrmCustomerQuote,
 }) => {
   const [commandText, setCommandText] = useState<string>('');
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -884,6 +1881,20 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [engineBadge, setEngineBadge] = useState<string>('');
   const [parsedResult, setParsedResult] = useState<ParsedAiCommand | null>(null);
+
+  // 휴무표 수정/조회 실행 결과 상태
+  const [scheduleModifyResult, setScheduleModifyResult] =
+    useState<ScheduleModifyResult | null>(null);
+  const [scheduleQueryResult, setScheduleQueryResult] =
+    useState<ScheduleQueryResult | null>(null);
+  const [myStaffNameInput, setMyStaffNameInput] = useState<string>(() =>
+    loadSavedUserName()
+  );
+
+  // 안심케어 데이터셋 로드 상태
+  const [careDataset, setCareDataset] = useState<CareTableDataset | null>(() =>
+    loadLocalCareDataset()
+  );
 
   // 모달 내 고객 정보 수정용 상태
   const [customerName, setCustomerName] = useState<string>('');
@@ -893,11 +1904,43 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   const [customerMemo, setCustomerMemo] = useState<string>('');
 
   const [autoSavedBanner, setAutoSavedBanner] = useState<string | null>(null);
+  const [proposalReadyBanner, setProposalReadyBanner] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [copiedCodeKey, setCopiedCodeKey] = useState<string | null>(null);
+
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
 
-  // 실시간 미리보기용 파생 명령 (분석 전이라도 입력창 텍스트로 즉시 프리뷰 계산)
+  // 모달 열릴 때 최신 안심케어 데이터셋 및 내 이름 동기화
+  useEffect(() => {
+    if (!isOpen) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+      setIsListening(false);
+      return;
+    }
+
+    setMyStaffNameInput(loadSavedUserName());
+    const localCare = loadLocalCareDataset();
+    if (localCare) {
+      setCareDataset(localCare);
+    } else {
+      fetchRemoteCareDataset()
+        .then((remote) => {
+          if (remote) setCareDataset(remote);
+        })
+        .catch(() => {
+          // ignore
+        });
+    }
+  }, [isOpen]);
+
+  // 실시간 미리보기용 파생 명령
   const effectiveParsedCommand = useMemo<ParsedAiCommand | null>(() => {
     if (parsedResult) {
       return {
@@ -924,28 +1967,70 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
     customerMemo,
   ]);
 
-  const generatedState = useMemo<ProposalState | null>(() => {
-    if (!effectiveParsedCommand) return null;
-    return buildProposalStateFromAiCommand(effectiveParsedCommand);
+  // 견적 품목이 실제로 존재하는지 여부
+  const hasQuoteItems = useMemo(() => {
+    if (!effectiveParsedCommand) return false;
+    return (
+      effectiveParsedCommand.generalItems.length > 0 ||
+      effectiveParsedCommand.subscriptionItems.length > 0 ||
+      effectiveParsedCommand.generalHiPreedCounts.hf75 +
+        effectiveParsedCommand.generalHiPreedCounts.hf150 +
+        effectiveParsedCommand.generalHiPreedCounts.hf225 +
+        effectiveParsedCommand.generalHiPreedCounts.hf300 >
+        0 ||
+      effectiveParsedCommand.hiPlusCounts.hi72 +
+        effectiveParsedCommand.hiPlusCounts.hi90 +
+        effectiveParsedCommand.hiPlusCounts.hi108 >
+        0
+    );
   }, [effectiveParsedCommand]);
+
+  const generatedState = useMemo<ProposalState | null>(() => {
+    if (!effectiveParsedCommand || !hasQuoteItems) return null;
+    return buildProposalStateFromAiCommand(effectiveParsedCommand);
+  }, [effectiveParsedCommand, hasQuoteItems]);
 
   const quotePayload = useMemo(() => {
     if (!generatedState) return null;
     return extractQuotePayloadFromProposalState(generatedState);
   }, [generatedState]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {
-          // ignore
-        }
-      }
-      setIsListening(false);
+  // 4대 DB + 보험 실시간 검색 결과
+  const careResults = useMemo(
+    () => searchCareTableFromCommand(commandText, careDataset),
+    [commandText, careDataset]
+  );
+
+  const installmentResult = useMemo(
+    () => searchInstallmentFromCommand(commandText),
+    [commandText]
+  );
+
+  const asCenterResults = useMemo(
+    () => searchAsCenterFromCommand(commandText),
+    [commandText]
+  );
+
+  const crmSearchResult = useMemo(
+    () => searchCrmCustomersFromCommand(commandText),
+    [commandText]
+  );
+
+  const insuranceResult = useMemo(
+    () => searchInsuranceFromCommand(commandText),
+    [commandText]
+  );
+
+  // 입력 중일 때 휴무표 조회 프리뷰 (수정은 실행 버튼 클릭 시 실제 반영하거나 즉시 실행)
+  const liveSchedulePreview = useMemo(() => {
+    if (scheduleModifyResult || scheduleQueryResult) {
+      return {
+        modifyResult: scheduleModifyResult,
+        queryResult: scheduleQueryResult,
+      };
     }
-  }, [isOpen]);
+    return tryExecuteScheduleCommand(commandText, true);
+  }, [commandText, scheduleModifyResult, scheduleQueryResult]);
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -953,6 +2038,22 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 3500);
   }, []);
+
+  const handleCopyText = useCallback(
+    async (key: string, textToCopy: string, toastLabel?: string) => {
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        setCopiedCodeKey(key);
+        if (toastLabel) showToast(toastLabel);
+        setTimeout(() => {
+          setCopiedCodeKey((prev) => (prev === key ? null : prev));
+        }, 2000);
+      } catch {
+        // ignore
+      }
+    },
+    [showToast]
+  );
 
   // 음성 인식 토글 (Web Speech API)
   const handleToggleSpeech = useCallback(() => {
@@ -997,6 +2098,8 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         const combined = baseText ? `${baseText} ${transcript}` : transcript;
         setCommandText(combined);
         setParsedResult(null);
+        setScheduleModifyResult(null);
+        setScheduleQueryResult(null);
       };
 
       recognition.onerror = () => {
@@ -1017,20 +2120,29 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
     }
   }, [isListening, commandText]);
 
-  // AI 분석 및 자동 CRM 저장 처리
+  // AI 분석 + 휴무표 즉시 수정 + 자동 CRM 저장 + 제안서 직행 통합 실행
   const handleRunAiCommand = useCallback(
     async (overrideText?: string) => {
       const targetText = (overrideText ?? commandText).trim();
       if (!targetText) {
-        showToast('명령어를 입력하거나 예시 칩을 선택해 주세요!');
+        showToast('명령어를 입력하거나 상단 예시 칩을 선택해 주세요!');
         return;
       }
 
       setIsAnalyzing(true);
       setAutoSavedBanner(null);
+      setProposalReadyBanner(null);
 
       try {
-        // 1단계: 즉시 로컬 규칙 파서 반영
+        // 1) 휴무표 수정/조회 명령 즉시 실행 (localStorage 'himart_gj_schedules_v4' 반영 + 이벤트 발송)
+        const schedExec = tryExecuteScheduleCommand(targetText, false);
+        setScheduleModifyResult(schedExec.modifyResult);
+        setScheduleQueryResult(schedExec.queryResult);
+        if (schedExec.modifyResult) {
+          showToast(schedExec.modifyResult.message);
+        }
+
+        // 2) 1차 로컬 한국어 견적 파서 반영
         const localParsed = parseKoreanCommandLocal(targetText);
         setParsedResult(localParsed);
         setCustomerName(localParsed.customer.name);
@@ -1038,9 +2150,9 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         setCustomerDeliveryDate(localParsed.customer.deliveryDate);
         setCustomerStatus(localParsed.customer.status);
         setCustomerMemo(localParsed.customer.memo);
-        setEngineBadge('⚡ 1차 한국어 규칙 파서 즉시 계산 완료');
+        setEngineBadge('⚡ 초고속 한국어 통합 엔진 실행 완료');
 
-        // 2단계: 하이브리드 AI 정밀 파서 호출
+        // 3) 2차 하이브리드 AI 정밀 파서 호출
         const { parsed: finalParsed, engineLabel } =
           await parseCommandWithHybridAi(targetText);
         setParsedResult(finalParsed);
@@ -1051,51 +2163,76 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         setCustomerMemo(finalParsed.customer.memo);
         setEngineBadge(engineLabel);
 
-        // 만약 사용자가 명령어에 "저장해줘" 등을 포함했고 고객명이 추출되었다면 즉시 CRM 자동 저장 실행
-        if (
-          finalParsed.customer.shouldSaveCrm &&
-          finalParsed.customer.name.trim().length > 0
-        ) {
+        const hasItemsInFinal =
+          finalParsed.generalItems.length > 0 ||
+          finalParsed.subscriptionItems.length > 0 ||
+          finalParsed.generalHiPreedCounts.hf75 +
+            finalParsed.generalHiPreedCounts.hf150 +
+            finalParsed.generalHiPreedCounts.hf225 +
+            finalParsed.generalHiPreedCounts.hf300 >
+            0 ||
+          finalParsed.hiPlusCounts.hi72 +
+            finalParsed.hiPlusCounts.hi90 +
+            finalParsed.hiPlusCounts.hi108 >
+            0;
+
+        if (hasItemsInFinal) {
           const nextState = buildProposalStateFromAiCommand(finalParsed);
-          const payload = extractQuotePayloadFromProposalState(nextState);
-          const statusNote =
-            finalParsed.customer.status === '결제완료' ||
-            finalParsed.customer.status === '배송대기'
-              ? `[${finalParsed.customer.status}] `
-              : '';
-          const mergedMemo =
-            `${statusNote}${finalParsed.customer.memo || ''}`.trim() ||
-            `[AI 비서 자동등록] ${targetText}`;
 
-          const savedRes = await saveCustomerQuote({
-            name: finalParsed.customer.name.trim(),
-            phone: finalParsed.customer.phone.trim(),
-            items: payload.itemsSummary,
-            paidAmount: payload.paidAmount,
-            netAmount: payload.netAmount,
-            expectedBenefit: payload.expectedBenefit,
-            deliveryDate: finalParsed.customer.deliveryDate,
-            status: mapAiStatusToCrmStatus(finalParsed.customer.status),
-            memo: mergedMemo,
-            quoteTitle: payload.defaultQuoteTitle,
-            proposalState: nextState,
-            quoteMode: nextState.quoteMode,
-            plan2Summary: payload.plan2Summary,
-          });
+          // 4) 고객 저장 키워드가 있고 고객명이 추출되었다면 즉시 CRM 자동 저장
+          if (
+            finalParsed.customer.shouldSaveCrm &&
+            finalParsed.customer.name.trim().length > 0
+          ) {
+            const payload = extractQuotePayloadFromProposalState(nextState);
+            const statusNote =
+              finalParsed.customer.status === '결제완료' ||
+              finalParsed.customer.status === '배송대기'
+                ? `[${finalParsed.customer.status}] `
+                : '';
+            const mergedMemo =
+              `${statusNote}${finalParsed.customer.memo || ''}`.trim() ||
+              `[AI 비서 자동등록] ${targetText}`;
 
-          onCustomerSaved(savedRes.savedCustomer, nextState);
-          setAutoSavedBanner(
-            `✅ 명령어 인식과 동시에 통합 고객관리(CRM)에 [${savedRes.savedCustomer.name}] 고객님이 자동 저장되었습니다!`
-          );
-          showToast(
-            `👑 [${savedRes.savedCustomer.name}] 고객님이 CRM에 자동 저장되었습니다!`
-          );
+            const savedRes = await saveCustomerQuote({
+              name: finalParsed.customer.name.trim(),
+              phone: finalParsed.customer.phone.trim(),
+              items: payload.itemsSummary,
+              paidAmount: payload.paidAmount,
+              netAmount: payload.netAmount,
+              expectedBenefit: payload.expectedBenefit,
+              deliveryDate: finalParsed.customer.deliveryDate,
+              status: mapAiStatusToCrmStatus(finalParsed.customer.status),
+              memo: mergedMemo,
+              quoteTitle: payload.defaultQuoteTitle,
+              proposalState: nextState,
+              quoteMode: nextState.quoteMode,
+              plan2Summary: payload.plan2Summary,
+            });
+
+            onCustomerSaved(savedRes.savedCustomer, nextState);
+            setAutoSavedBanner(
+              `✅ 명령어 인식과 동시에 통합 고객관리(CRM)에 [${savedRes.savedCustomer.name}] 고객님이 자동 저장되었습니다!`
+            );
+            showToast(
+              `👑 [${savedRes.savedCustomer.name}] 고객님이 CRM에 자동 저장되었습니다!`
+            );
+          }
+
+          // 5) "제안서 바로 보여줘" / "제안서 띄워줘" 포함 시 견적 상태를 즉시 제안서 화면(step = 'proposal')에 세팅
+          if (finalParsed.shouldOpenProposalDirectly) {
+            onApplyToQuote(nextState, 'proposal');
+            setProposalReadyBanner(
+              '📄 제안서 화면(step = proposal)에 모든 계산 결과가 즉시 세팅되었습니다! 아래 [📄 제안서 화면 바로 확인하기] 버튼을 누르거나 창을 닫으면 바로 제안서가 보입니다.'
+            );
+            showToast('📄 제안서 화면이 배경에 즉시 세팅되었습니다!');
+          }
         }
       } finally {
         setIsAnalyzing(false);
       }
     },
-    [commandText, onCustomerSaved, showToast]
+    [commandText, onApplyToQuote, onCustomerSaved, showToast]
   );
 
   // 하단 버튼 3: 수동/즉시 CRM 저장 + 견적 반영
@@ -1174,13 +2311,18 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
           cls: 'bg-blue-600 text-white border-blue-500',
         };
 
+  const activeModifyCard =
+    scheduleModifyResult || liveSchedulePreview.modifyResult;
+  const activeQueryCard =
+    scheduleQueryResult || liveSchedulePreview.queryResult;
+
   return (
     <div
       className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto no-print"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-3xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden my-auto max-h-[94dvh] flex flex-col"
+        className="w-full max-w-4xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden my-auto max-h-[94dvh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 상단 헤더 */}
@@ -1192,14 +2334,14 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base sm:text-lg font-black tracking-tight">
-                  🤖 AI 비서 (한 줄 견적 계산 · 고객관리 자동 등록)
+                  🤖 통합 총괄 AI 비서 (견적·제안서·고객관리·휴무표·안심케어·무이자·AS)
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 text-[10px] font-black">
-                  음성 · 자연어 지원
+                  음성 · 자연어 만능 실행
                 </span>
               </div>
               <p className="text-xs text-indigo-200 font-medium truncate">
-                품목·금액·할인·프리드·고객명을 말하거나 적으면 매장 공식 수식으로 자동 계산합니다
+                견적 계산·제안서 직행·CRM 고객 저장부터 휴무표 말로 수정, 안심케어 단가, 무이자 할부, AS센터까지 한 줄로 해결합니다
               </p>
             </div>
           </div>
@@ -1237,17 +2379,37 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
             </div>
           )}
 
-          {/* 빠른 예시 칩 3개 */}
+          {/* 제안서 직행 완료 배지 */}
+          {proposalReadyBanner && generatedState && (
+            <div className="p-3.5 rounded-2xl bg-violet-50 border-2 border-violet-500 text-violet-950 text-xs sm:text-sm font-black flex flex-wrap items-center justify-between gap-2 shadow-xs">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-violet-600 shrink-0" />
+                <span>{proposalReadyBanner}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  onApplyToQuote(generatedState, 'proposal');
+                  onClose();
+                }}
+                className="px-3.5 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-black cursor-pointer shrink-0 shadow-xs"
+              >
+                📄 제안서 화면 바로 확인하기
+              </button>
+            </div>
+          )}
+
+          {/* 빠른 예시 칩 4개 */}
           <div className="space-y-1.5">
-            <div className="text-xs font-black text-slate-700 flex items-center justify-between">
-              <span>💡 빠른 예시 칩 (터치하면 즉시 입력 및 자동 계산됩니다)</span>
+            <div className="text-xs font-black text-slate-700 flex items-center justify-between flex-wrap gap-1">
+              <span>💡 빠른 예시 칩 4가지 (터치하면 즉시 입력 및 자동 실행됩니다)</span>
               {engineBadge && (
                 <span className="text-[11px] font-extrabold text-indigo-600">
                   {engineBadge}
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               {QUICK_EXAMPLES.map((ex) => (
                 <button
                   key={ex.id}
@@ -1278,7 +2440,10 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                 onChange={(e) => {
                   setCommandText(e.target.value);
                   setParsedResult(null);
+                  setScheduleModifyResult(null);
+                  setScheduleQueryResult(null);
                   setAutoSavedBanner(null);
+                  setProposalReadyBanner(null);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -1287,7 +2452,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                   }
                 }}
                 rows={3}
-                placeholder="예: 홍길동 010-1234-5678 TV 380만 냉장고 320만 롯데카드 즉시할인 40만 하이프리드 300 1개 금요일 배송 결제완료 저장해줘"
+                placeholder="예: ① TV 380만 냉장고 320만 롯데카드 하이프리드 300 1개 제안서 바로 보여줘 / ② 15일 홍길동 휴무로 바꿔줘 / ③ 에어컨 클리닝 단가랑 삼성카드 무이자 알려줘"
                 className="w-full rounded-2xl border-2 border-indigo-200 focus:border-indigo-600 focus:outline-hidden p-3.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 bg-white resize-none shadow-2xs"
               />
             </div>
@@ -1327,7 +2492,10 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                   onClick={() => {
                     setCommandText('');
                     setParsedResult(null);
+                    setScheduleModifyResult(null);
+                    setScheduleQueryResult(null);
                     setAutoSavedBanner(null);
+                    setProposalReadyBanner(null);
                     setEngineBadge('');
                   }}
                   className="px-3 py-2.5 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer"
@@ -1345,7 +2513,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                 {isAnalyzing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>AI 정밀 계산중...</span>
+                    <span>AI 정밀 실행중...</span>
                   </>
                 ) : (
                   <>
@@ -1357,8 +2525,581 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
             </div>
           </div>
 
-          {/* 실시간 매장 공식 수식 검증 및 미리보기 카드 */}
-          {effectiveParsedCommand && quotePayload && (
+          {/* =====================================================================
+              [결과 섹션 1] 📅 휴무표 말로 즉시 수정 / 근무·휴무자 조회 카드
+             ===================================================================== */}
+          {activeModifyCard && (
+            <div className="rounded-2xl border-2 border-emerald-400 bg-emerald-50/90 p-4 space-y-3 shadow-xs">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="space-y-1">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black">
+                    <Calendar className="w-3.5 h-3.5" />
+                    휴무표 말로 즉시 수정
+                  </span>
+                  <h3 className="text-sm sm:text-base font-black text-emerald-950">
+                    {scheduleModifyResult
+                      ? activeModifyCard.message
+                      : `⚡ [실행 대기] ${activeModifyCard.staffName}님의 ${activeModifyCard.monthNum}월 ${activeModifyCard.dayNum}일 일정을 [${activeModifyCard.statusLabel}](으)로 변경합니다`}
+                  </h3>
+                </div>
+
+                {!scheduleModifyResult && (
+                  <button
+                    type="button"
+                    onClick={() => handleRunAiCommand()}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black cursor-pointer shadow-xs"
+                  >
+                    ✅ 지금 바로 휴무표에 반영하기
+                  </button>
+                )}
+              </div>
+
+              {activeModifyCard.needsUserNameSetup && (
+                <div className="p-3 rounded-xl bg-white border border-emerald-300 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-extrabold text-slate-700">
+                    💡 '나/내 일정'을 인식할 내 직원 이름을 설정하면 해당 이름으로 수정됩니다:
+                  </span>
+                  <input
+                    type="text"
+                    value={myStaffNameInput}
+                    onChange={(e) => setMyStaffNameInput(e.target.value)}
+                    placeholder="예: 국지현"
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-black text-slate-900 w-28"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!myStaffNameInput.trim()) return;
+                      saveUserName(myStaffNameInput.trim());
+                      handleRunAiCommand(commandText);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-black cursor-pointer"
+                  >
+                    내 이름 저장 후 즉시 수정
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!scheduleModifyResult) {
+                      tryExecuteScheduleCommand(commandText, false);
+                    }
+                    onClose();
+                    onOpenScheduleModal?.();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>📅 휴무표 열어서 확인하기</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {activeQueryCard && (
+            <div className="rounded-2xl border-2 border-sky-300 bg-sky-50/80 p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-sky-600 text-white text-xs font-black flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {activeQueryCard.dateLabel} 근무 · 휴무 브리핑
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenScheduleModal?.();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-sky-700 hover:bg-sky-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>📅 휴무표 열기</span>
+                </button>
+              </div>
+
+              {activeQueryCard.targetStaffName &&
+                activeQueryCard.targetStaffOffDays && (
+                  <div className="p-3 rounded-xl bg-white border border-sky-200 space-y-1.5">
+                    <div className="text-xs font-black text-sky-950">
+                      👤 [{activeQueryCard.targetStaffName}]님 {activeQueryCard.monthNum}월 전체 휴무/특근 일정
+                    </div>
+                    {activeQueryCard.targetStaffOffDays.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeQueryCard.targetStaffOffDays.map((d) => (
+                          <span
+                            key={d.day}
+                            className="px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-black"
+                          >
+                            {activeQueryCard.monthNum}/{d.day}일 ({d.label})
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs font-bold text-slate-500">
+                        해당 월에 등록된 휴무 일정이 없습니다.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-3 rounded-xl bg-white border border-rose-200 space-y-1.5">
+                  <div className="text-xs font-black text-rose-700">
+                    🌴 쉬는 직원 (휴무/연차/휴가: {activeQueryCard.offStaff.length}명)
+                  </div>
+                  {activeQueryCard.offStaff.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {activeQueryCard.offStaff.map((st) => (
+                        <span
+                          key={st.name}
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs font-black"
+                        >
+                          {st.name}{' '}
+                          <span className="text-[10px] text-rose-600">
+                            ({st.badge})
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-bold text-slate-400">
+                      등록된 휴무자가 없습니다 (전원 근무 또는 휴무표 미업로드).
+                    </p>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-xl bg-white border border-emerald-200 space-y-1.5">
+                  <div className="text-xs font-black text-emerald-800">
+                    💼 근무 직원 ({activeQueryCard.workingStaff.length}명)
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
+                    {activeQueryCard.workingStaff.map((st) => (
+                      <span
+                        key={st.name}
+                        className="px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-900 border border-emerald-200 text-xs font-bold"
+                      >
+                        {st.name}
+                        {st.note ? `(${st.note})` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              [결과 섹션 2] 📋 안심케어 · 가전이사 조견표 검색 결과 카드
+             ===================================================================== */}
+          {careResults.length > 0 && (
+            <div className="rounded-2xl border-2 border-teal-300 bg-teal-50/70 p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-teal-700 text-white text-xs font-black flex items-center gap-1">
+                    <ClipboardList className="w-3.5 h-3.5" />
+                    안심케어 · 가전이사 조견표 검색 ({careResults.length}건)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenCareTable?.();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ClipboardList className="w-3.5 h-3.5" />
+                  <span>📋 안심케어 조견표 화면 열기</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-teal-200 bg-white">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-teal-900 text-white font-black">
+                      <th className="py-2 px-3">분류 / 상품명</th>
+                      <th className="py-2 px-3">상품코드 (모델코드)</th>
+                      <th className="py-2 px-3 text-right">단가 / 행사가</th>
+                      <th className="py-2 px-3 text-center">코드 복사</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {careResults.map((item) => (
+                      <tr key={item.id} className="hover:bg-teal-50/50">
+                        <td className="py-2 px-3">
+                          <div className="font-black text-slate-900">
+                            [{item.category}] {item.name}
+                          </div>
+                          <div className="text-[11px] font-bold text-slate-500">
+                            {item.section} {item.note ? `· ${item.note}` : ''}
+                          </div>
+                        </td>
+                        <td className="py-2 px-3 font-mono font-black text-teal-800">
+                          {item.code}
+                        </td>
+                        <td className="py-2 px-3 text-right font-black text-rose-600 whitespace-nowrap">
+                          {item.price}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleCopyText(
+                                `care-${item.id}`,
+                                item.code,
+                                `📋 상품코드 [${item.code}] 복사 완료!`
+                              )
+                            }
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-100 hover:bg-teal-200 text-teal-950 font-black text-[11px] cursor-pointer"
+                          >
+                            {copiedCodeKey === `care-${item.id}` ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-700" />
+                                <span>복사됨</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>📋 상품코드 복사</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              [결과 섹션 3] 💳 카드 무이자 할부 조견표 검색 결과 카드
+             ===================================================================== */}
+          {installmentResult && (
+            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/80 p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="px-2.5 py-1 rounded-lg bg-amber-600 text-white text-xs font-black flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5" />
+                  💳 {installmentResult.querySummary}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenInstallmentModal?.();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CreditCard className="w-3.5 h-3.5" />
+                  <span>💳 무이자 할부표 열기</span>
+                </button>
+              </div>
+
+              {installmentResult.matchedSummaries.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {installmentResult.matchedSummaries.map((qs) => (
+                    <div
+                      key={qs.brandKey}
+                      className="p-3 rounded-xl bg-white border border-amber-200 space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs sm:text-sm font-black text-slate-900">
+                          {qs.brandTitle}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[11px] font-black">
+                          핵심 요약
+                        </span>
+                      </div>
+                      <div className="text-xs font-bold text-slate-700 space-y-0.5">
+                        <div>
+                          • <strong className="text-blue-700">무이자:</strong>{' '}
+                          {qs.freeInstallment}
+                        </div>
+                        {qs.partialInstallment &&
+                          qs.partialInstallment !== '없음' && (
+                            <div>
+                              •{' '}
+                              <strong className="text-amber-700">
+                                부분무이자(다이나믹):
+                              </strong>{' '}
+                              {qs.partialInstallment}
+                            </div>
+                          )}
+                        {qs.subInstallment && qs.subInstallment !== '없음' && (
+                          <div>
+                            •{' '}
+                            <strong className="text-emerald-700">
+                              구독전용 무이자:
+                            </strong>{' '}
+                            {qs.subInstallment}
+                          </div>
+                        )}
+                        {Array.isArray(qs.specialNotes) &&
+                          qs.specialNotes.length > 0 && (
+                            <div className="text-[11px] text-slate-500 pt-0.5">
+                              ※ {qs.specialNotes.join(' / ')}
+                            </div>
+                          )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {installmentResult.matchedColumns.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {installmentResult.matchedColumns.map(({ col, highlightRows }) => (
+                    <div
+                      key={col.id}
+                      className="p-2.5 rounded-xl bg-white/90 border border-slate-200 space-y-1"
+                    >
+                      <div className="text-xs font-black text-indigo-950">
+                        [{col.brand}] {col.subName}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {highlightRows.map((hr) => (
+                          <span
+                            key={hr.label}
+                            className={`px-2 py-0.5 rounded-md text-[11px] font-black border ${
+                              hr.status === 'free'
+                                ? 'bg-blue-50 text-blue-800 border-blue-200'
+                                : hr.status === 'partial'
+                                ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                : hr.status === 'sub-free'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
+                            }`}
+                          >
+                            {hr.label.replace('(비고)', '')}: {hr.text}
+                            {hr.subText ? ` (${hr.subText})` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* =====================================================================
+              [결과 섹션 4] 🛠️ 가전 AS센터 · 플럭스(PLUX) · TCL 번호 검색 카드
+             ===================================================================== */}
+          {asCenterResults.length > 0 && (
+            <div className="rounded-2xl border-2 border-emerald-300 bg-emerald-50/70 p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5">
+                  <Wrench className="w-3.5 h-3.5" />
+                  🛠️ 가전 A/S 센터 · 플럭스(PLUX) · TCL 검색 ({asCenterResults.length}건)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenAsCenterModal?.();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>🛠️ AS센터 창 열기</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {asCenterResults.map((asItem) => {
+                  const primaryPhone = asItem.phones[0]?.number || '';
+                  return (
+                    <div
+                      key={asItem.id}
+                      className="p-3 rounded-xl bg-white border border-emerald-200 flex flex-col justify-between gap-2.5"
+                    >
+                      <div className="space-y-1">
+                        <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 text-[10px] font-black">
+                          {asItem.categoryBadge}
+                        </span>
+                        <div className="text-xs sm:text-sm font-black text-slate-900">
+                          {asItem.title}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {asItem.phones.map((p, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-900 text-xs font-black"
+                            >
+                              {p.label ? `${p.label}: ` : ''}
+                              <span className="text-emerald-700">{p.number}</span>
+                            </span>
+                          ))}
+                        </div>
+                        <p className="text-[11px] font-bold text-slate-500 leading-snug">
+                          {asItem.description}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5 pt-1">
+                        <a
+                          href={`tel:${primaryPhone}`}
+                          className="py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span>📞 바로 전화걸기</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopyText(
+                              `as-${asItem.id}`,
+                              asItem.copyMessage,
+                              `💬 [${asItem.title}] 고객 안내문이 복사되었습니다!`
+                            )
+                          }
+                          className="py-1.5 px-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black flex items-center justify-center gap-1 transition cursor-pointer"
+                        >
+                          {copiedCodeKey === `as-${asItem.id}` ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-800" />
+                              <span>복사됨</span>
+                            </>
+                          ) : (
+                            <>
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span>💬 고객 안내문 복사</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              [결과 섹션 5] 👑 기존 통합 고객관리(CRM) 고객 검색 카드
+             ===================================================================== */}
+          {crmSearchResult && (
+            <div className="rounded-2xl border-2 border-purple-300 bg-purple-50/70 p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="px-2.5 py-1 rounded-lg bg-purple-700 text-white text-xs font-black flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5" />
+                  {crmSearchResult.querySummary}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenCrmScreen?.();
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>👑 통합 고객관리 열기</span>
+                </button>
+              </div>
+
+              {crmSearchResult.customers.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {crmSearchResult.customers.map((cust) => (
+                    <div
+                      key={cust.id}
+                      className="p-3 rounded-xl bg-white border border-purple-200 flex flex-col justify-between gap-2"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-black text-slate-900">
+                            {cust.name} 고객님
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 text-[11px] font-black">
+                            {cust.status}
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-600">
+                          📞 {cust.phone || '연락처 미등록'}{' '}
+                          {cust.deliveryDate ? `· 🚚 배송: ${cust.deliveryDate}` : ''}
+                        </div>
+                        <div className="text-xs font-extrabold text-slate-800 truncate">
+                          📦 {cust.items || '품목 미상'}
+                        </div>
+                        <div className="text-xs font-black text-blue-700">
+                          실결제가: {formatCurrency(Number(cust.paidAmount) || 0)}원 / 체감가:{' '}
+                          {formatCurrency(Number(cust.netAmount) || 0)}원
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onLoadCrmCustomerQuote?.(cust);
+                            onClose();
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>📊 이 고객 견적서 불러오기</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-white border border-purple-200 text-xs font-bold text-slate-500">
+                  일치하는 저장 고객이 없습니다. [👑 통합 고객관리 열기]에서 전체 명단을 확인해 주세요.
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* =====================================================================
+              [결과 섹션 6] 🛡️ 보험 청구 안내 요약 카드
+             ===================================================================== */}
+          {insuranceResult && (
+            <div className="rounded-2xl border-2 border-blue-300 bg-blue-50/80 p-4 space-y-2.5 shadow-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs sm:text-sm font-black text-blue-950 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-blue-700" />
+                  {insuranceResult.title}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <a
+                    href={`tel:${insuranceResult.phone}`}
+                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-1"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    <span>📞 {insuranceResult.phone}</span>
+                  </a>
+                  {onOpenInsuranceView && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenInsuranceView();
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black cursor-pointer"
+                    >
+                      🛡️ 보험 청구안내 화면 열기
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-white border border-blue-200 text-xs font-bold text-slate-700 space-y-1">
+                {insuranceResult.summaryLines.map((line, i) => (
+                  <p key={i}>{line}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* =====================================================================
+              [결과 섹션 7] 실시간 매장 공식 수식 견적 검증 및 미리보기 카드
+             ===================================================================== */}
+          {effectiveParsedCommand && hasQuoteItems && quotePayload && (
             <div className="rounded-2xl border-2 border-indigo-200 bg-slate-50/80 p-3.5 sm:p-4 space-y-3.5">
               {/* 상단: 감지된 견적 모드 및 요약 */}
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200">
@@ -1600,17 +3341,15 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                     <label className="block text-[10px] font-extrabold text-slate-600 mb-0.5">
                       연락처
                     </label>
-                    <div className="relative">
-                      <input
-                        type="tel"
-                        value={customerPhone}
-                        onChange={(e) =>
-                          setCustomerPhone(formatPhoneNumber(e.target.value))
-                        }
-                        placeholder="010-0000-0000"
-                        className="w-full px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-xs font-bold text-slate-900 focus:outline-hidden focus:border-amber-600"
-                      />
-                    </div>
+                    <input
+                      type="tel"
+                      value={customerPhone}
+                      onChange={(e) =>
+                        setCustomerPhone(formatPhoneNumber(e.target.value))
+                      }
+                      placeholder="010-0000-0000"
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-xs font-bold text-slate-900 focus:outline-hidden focus:border-amber-600"
+                    />
                   </div>
 
                   <div>
@@ -1645,63 +3384,58 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                 </div>
 
                 <div>
+                  <label className="block text-[10px] font-extrabold text-slate-600 mb-0.5">
+                    상담 메모 / 약속 사은품
+                  </label>
                   <input
                     type="text"
                     value={customerMemo}
                     onChange={(e) => setCustomerMemo(e.target.value)}
-                    placeholder="상담 메모 / 약속 사은품 내역 (선택)"
-                    className="w-full px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-xs font-bold text-slate-800 focus:outline-hidden focus:border-amber-600"
+                    placeholder="예: 금요일 오전 배송 요청, 냄비세트 사은품 약속"
+                    className="w-full px-2.5 py-1.5 rounded-xl border border-amber-300 bg-white text-xs font-bold text-slate-900 focus:outline-hidden focus:border-amber-600"
                   />
                 </div>
               </div>
+
+              {/* 하단 원클릭 실행 버튼 3종 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!generatedState) return;
+                    onApplyToQuote(generatedState, 'input');
+                    onClose();
+                  }}
+                  className="py-3 px-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <SlidersHorizontal className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>📝 조건 입력 화면에 채우기</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!generatedState) return;
+                    onApplyToQuote(generatedState, 'proposal');
+                    onClose();
+                  }}
+                  className="py-3 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-amber-300 shrink-0" />
+                  <span>📄 제안서 바로 보기 (미리보기 직행)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleManualSaveToCrm}
+                  className="py-3 px-3 rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 shadow-sm border border-amber-500 transition cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4 text-slate-950 shrink-0" />
+                  <span>👑 고객관리(CRM)에 즉시 저장 + 견적 반영</span>
+                </button>
+              </div>
             </div>
           )}
-        </div>
-
-        {/* 하단 실행 버튼 3개 */}
-        <div className="p-3.5 sm:p-4 bg-slate-900 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              const targetState =
-                generatedState ||
-                buildProposalStateFromAiCommand(
-                  parseKoreanCommandLocal(commandText)
-                );
-              onApplyToQuote(targetState, 'input');
-              onClose();
-            }}
-            className="w-full py-3 px-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
-          >
-            <SlidersHorizontal className="w-4 h-4 shrink-0" />
-            <span>📊 견적서 입력창으로 열기</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              const targetState =
-                generatedState ||
-                buildProposalStateFromAiCommand(
-                  parseKoreanCommandLocal(commandText)
-                );
-              onApplyToQuote(targetState, 'proposal');
-              onClose();
-            }}
-            className="w-full py-3 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
-          >
-            <FileText className="w-4 h-4 shrink-0" />
-            <span>📄 완성된 제안서 바로 보기</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleManualSaveToCrm}
-            className="w-full py-3 px-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm transition cursor-pointer"
-          >
-            <UserPlus className="w-4 h-4 shrink-0" />
-            <span>👑 고객관리(CRM) 즉시 저장 + 견적 반영</span>
-          </button>
         </div>
       </div>
     </div>
