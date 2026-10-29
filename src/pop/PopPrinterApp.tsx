@@ -75,6 +75,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>(CARD_BENEFITS[0].id);
+  const [popMode, setPopMode] = useState<'standard' | 'preed'>('standard');
   
   // Modals
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
@@ -409,6 +410,32 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
           {/* Bottom Row (모바일/폴드용 상단 설정 바 - lg 이상에서는 좌측 패널에서도 제어 가능) */}
           <div className="flex items-center justify-between gap-1.5 flex-wrap sm:flex-nowrap border-t border-slate-100 pt-2">
             <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+              {/* POP Mode Switch (일반모드 vs 상조모드) */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPopMode('standard')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    popMode === 'standard'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  💳 일반모드 (카드단독)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPopMode('preed')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    popMode === 'preed'
+                      ? 'bg-rose-600 text-yellow-300 shadow-xs'
+                      : 'text-slate-600 hover:text-rose-700 hover:bg-white/60'
+                  }`}
+                >
+                  👑 상조모드 (1안·2안 비교)
+                </button>
+              </div>
+
               {/* Card Selector (Compact Inline Buttons) */}
               <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 max-w-full overflow-x-auto">
                 <CreditCard className="w-3.5 h-3.5 text-slate-500 ml-1.5 shrink-0" />
@@ -580,6 +607,38 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
 
           <div className="space-y-1.5 pt-2 border-t border-slate-100">
             <label className="text-xs font-extrabold text-slate-700 block">
+              POP 출력 레이아웃 모드
+            </label>
+            <div className="grid grid-cols-1 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPopMode('standard')}
+                className={`w-full px-3 py-2 rounded-xl text-xs font-black border text-left flex items-center justify-between transition cursor-pointer ${
+                  popMode === 'standard'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <span>💳 일반모드 (카드단독)</span>
+                {popMode === 'standard' && <span className="text-[10px] text-amber-300">선택됨</span>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPopMode('preed')}
+                className={`w-full px-3 py-2 rounded-xl text-xs font-black border text-left flex items-center justify-between transition cursor-pointer ${
+                  popMode === 'preed'
+                    ? 'bg-rose-600 text-yellow-300 border-rose-600 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-rose-50 hover:text-rose-700'
+                }`}
+              >
+                <span>👑 상조모드 (1안·2안 비교)</span>
+                {popMode === 'preed' && <span className="text-[10px] text-white">선택됨</span>}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <label className="text-xs font-extrabold text-slate-700 block">
               제휴카드 할인 기준 (36개월)
             </label>
             <div className="grid grid-cols-1 gap-1.5">
@@ -673,7 +732,8 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                     imageUrl: '',
                     changeStatus: 'unchanged'
                   }} 
-                  cardBenefit={selectedCard} 
+                  cardBenefit={selectedCard}
+                  popMode={popMode}
                 />
               </div>
             </div>
@@ -689,6 +749,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                     key={product.id} 
                     product={product} 
                     cardBenefit={selectedCard}
+                    popMode={popMode}
                     onToggleAllCare={handleToggleAllCare}
                   />
                 ))}
@@ -710,7 +771,12 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                       <div key={product.id} className="w-[148.5mm] h-[210mm] flex items-center justify-center box-border shrink-0">
                         <div className="w-full h-full flex items-center justify-center print:p-[6mm]">
                           <div className="w-full h-full relative">
-                            <PopCard product={product} cardBenefit={selectedCard} onToggleAllCare={handleToggleAllCare} />
+                            <PopCard
+                              product={product}
+                              cardBenefit={selectedCard}
+                              popMode={popMode}
+                              onToggleAllCare={handleToggleAllCare}
+                            />
                           </div>
                         </div>
                       </div>

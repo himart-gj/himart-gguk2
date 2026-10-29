@@ -40,3 +40,6 @@ export const CARD_BENEFITS: CardBenefit[] = [
     benefitType: '청구할인'
   }
 ];
+
+export type PopMode = 'standard' | 'preed';
+
