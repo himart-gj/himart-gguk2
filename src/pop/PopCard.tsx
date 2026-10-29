@@ -16,9 +16,12 @@ interface PreedPlanInfo {
   monthlyDepositMan: number; // 월 상조 납입금(만원 단위: 4 | 5 | 6)
 }
 
-function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlanInfo {
-  // 1. 60개월 구독은 금액 무관 무조건 플러스90 (월 15,000원 지원) 고정
+function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlanInfo | null {
+  // 1. 60개월 구독: 제휴카드 혜택가가 15,000원 미만이면 일반 구독 POP로 출력, 15,000원 이상이면 무조건 플러스90 고정
   if (period === 60) {
+    if (cardPerceivedPrice < 15000) {
+      return null;
+    }
     return {
       code: '90',
       shortLabel: '플러스90',
@@ -28,8 +31,12 @@ function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlan
     };
   }
 
-  // 2. 36개월 구독: 제휴카드 적용 후 혜택가(cardPerceivedPrice) 기준 자동 분기
-  // - 월 30,000원 초과(이상) -> 플러스 108 (월 30,000원 지원)
+  // 2. 36개월 구독: 제휴카드 혜택가가 20,000원 미만이면 일반 구독 POP로 출력
+  if (cardPerceivedPrice < 20000) {
+    return null;
+  }
+
+  // - 30,000원 이상 (>= 30,000원) -> 플러스 108 (월 30,000원 지원)
   if (cardPerceivedPrice >= 30000) {
     return {
       code: '108',
@@ -39,7 +46,8 @@ function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlan
       monthlyDepositMan: 6,
     };
   }
-  // - 월 25,000원 이상 ~ 30,000원 미만 -> 플러스 90 (월 25,000원 지원)
+
+  // - 25,000원 이상 ~ 30,000원 미만 (>= 25,000원) -> 플러스 90 (월 25,000원 지원)
   if (cardPerceivedPrice >= 25000) {
     return {
       code: '90',
@@ -49,7 +57,8 @@ function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlan
       monthlyDepositMan: 5,
     };
   }
-  // - 월 20,000원 이상 ~ 25,000원 미만 (및 그 이하 기본값) -> 플러스 72 (월 20,000원 지원)
+
+  // - 20,000원 이상 ~ 25,000원 미만 (>= 20,000원) -> 플러스 72 (월 20,000원 지원)
   return {
     code: '72',
     shortLabel: '플러스72',
@@ -100,11 +109,12 @@ export default function PopCard({
   const calculatedDownPayment = product.monthlyFee * product.period;
   const totalBenefitPrice = perceivedPrice * product.period;
 
-  // 상조모드(popMode === 'preed') 전용 1안·2안 계산
+  // 상조모드(popMode === 'preed') 전용 1안·2안 계산 및 기준금액 이하 자동 일반모드 전환
   const plan1Monthly = perceivedPrice;
   const plan1Total = plan1Monthly * product.period;
-  const preedPlan = getAutoPreedPlan(product.period, plan1Monthly);
-  const plan2Monthly = Math.max(0, plan1Monthly - preedPlan.monthlyDiscount);
+  const preedPlan = popMode === 'preed' ? getAutoPreedPlan(product.period, perceivedPrice) : null;
+  const isPreedRender = popMode === 'preed' && preedPlan !== null;
+  const plan2Monthly = preedPlan ? Math.max(0, plan1Monthly - preedPlan.monthlyDiscount) : plan1Monthly;
   const plan2Total = plan2Monthly * product.period;
 
   // 롯데하이마트 구독 가전의 무상 A/S 보증기간은 구독 개월수(36/60개월)와 무관하게 무조건 5년 무상 A/S 고정
@@ -116,7 +126,7 @@ export default function PopCard({
     ? product.careServiceDetail.replace(/3년\s*(무상|A\/?S)/gi, '5년 $1')
     : '';
 
-  if (popMode === 'preed') {
+  if (isPreedRender && preedPlan) {
     return (
       <div ref={containerRef} className="w-full flex justify-center print:w-full print:h-full">
         <div
