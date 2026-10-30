@@ -307,7 +307,7 @@ export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
     }
 
     if (!remoteMap) {
-      const res = await fetch(`/schedule-data.json?t=${Date.now()}`, {
+      const res = await fetch(`./schedule-data.json?t=${Date.now()}`, {
         cache: 'no-store',
       });
       if (res.ok) {
