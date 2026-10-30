@@ -215,7 +215,7 @@ export default function PopCard({
         style={{ width: `${561.26 * scale}px`, height: `${793.7 * scale}px` }}
       >
         <div
-          className="w-[148.5mm] h-[210mm] border-8 border-slate-800 bg-white px-[22px] pt-[18px] pb-[16px] flex flex-col justify-between shadow-lg box-border shrink-0 origin-top-left absolute top-0 left-0 print:!relative print:!transform-none print:w-full print:h-full print:border-[6px] print:shadow-none print:m-0"
+          className="pop-card-print w-[148.5mm] h-[210mm] border-8 border-slate-800 bg-white px-[22px] pt-[18px] pb-[16px] flex flex-col justify-between shadow-lg box-border shrink-0 origin-top-left absolute top-0 left-0 print:!relative print:!transform-none print:w-full print:h-full print:border-[6px] print:shadow-none print:m-0"
           style={{ transform: `scale(${scale})` }}
         >
           {/* [1단] 최상단 바 & 메인 타이틀 영역 */}

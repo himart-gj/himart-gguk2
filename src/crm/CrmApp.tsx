@@ -456,7 +456,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   }, [activeCustomers, activeTab, searchQuery, sortOrder]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900">
+    <div className="min-h-screen flex flex-col bg-[#F4F2ED] text-[#18181B]">
       {/* 상단 고정 헤더 */}
       <CRMHeader
         totalCount={kpiStats.totalCount}
@@ -489,7 +489,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       {/* 메인 컨텐츠 */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
         {/* 검색창 + 정렬 + 필터 탭 바 */}
-        <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
+        <div className="bg-white p-4 rounded-3xl border border-[#E4DFD5] shadow-2xs space-y-3">
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
             {/* 실시간 검색창 */}
             <div className="relative flex-1">
@@ -540,14 +540,14 @@ export const CrmApp: React.FC<CrmAppProps> = ({
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
                     active
                       ? isSpecialUrgent
                         ? 'bg-rose-600 text-white shadow-xs'
-                        : 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-[#18181B] text-white shadow-xs'
                       : isSpecialUrgent
                       ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      : 'bg-[#F4F2ED] hover:bg-[#EAE5DC] text-[#57534E] border border-[#E4DFD5]'
                   }`}
                 >
                   <span>{tab}</span>

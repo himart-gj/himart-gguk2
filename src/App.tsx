@@ -58,6 +58,9 @@ import {
   ShieldCheck,
   Smartphone,
   Users,
+  ChevronRight,
+  Moon,
+  Sun,
   Wrench,
   X,
 } from 'lucide-react';
@@ -197,6 +200,29 @@ export function App() {
     useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
+
+  // UI 테마 상태: 'light' (Apple Bento Warm Ivory 기본값) | 'dark' (Titanium Dark Pro)
+  const [uiTheme, setUiTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'light';
+    const saved = localStorage.getItem('himart_ui_theme');
+    return saved === 'dark' ? 'dark' : 'light';
+  });
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', uiTheme);
+    }
+    try {
+      localStorage.setItem('himart_ui_theme', uiTheme);
+    } catch {
+      // ignore
+    }
+  }, [uiTheme]);
+
+  const toggleUiTheme = useCallback(() => {
+    setUiTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
+  const isDark = uiTheme === 'dark';
 
   // 안심케어 조견표 데이터셋 및 최신 업데이트 월(Month) 자동 감지
   const [careDataset, setCareDataset] = useState<CareTableDataset | null>(() =>
@@ -1008,22 +1034,36 @@ export function App() {
   );
 
   return (
-    <div className="min-h-[100dvh] w-full bg-slate-100 flex flex-col">
-      {/* ==================== 상단 다크 글로벌 네비게이션 바 (좌: [🏠 홈] + [📅 휴무표] / 우: 앱설치 + 햄버거 메뉴) ==================== */}
-      <header className="w-full min-h-[44px] bg-slate-900 text-white border-b border-slate-800 px-2.5 sm:px-4 py-1.5 flex items-center justify-between gap-2 sticky top-0 z-40 no-print">
-        {/* 좌측: 모바일에서 절대 잘리지 않도록 [🏠 홈]과 [📅 휴무표] 딱 2개만 배치 */}
+    <div
+      className={`app-shell-bg min-h-[100dvh] w-full flex flex-col transition-colors duration-200 ${
+        isDark ? 'bg-[#0B0E14] text-slate-100' : 'bg-[#F4F2ED] text-[#18181B]'
+      }`}
+    >
+      {/* ==================== 상단 글로벌 네비게이션 바 (Warm Ivory / Titanium Dark 전환 스위치 탑재) ==================== */}
+      <header
+        className={`w-full min-h-[52px] border-b px-3 sm:px-5 py-2 flex items-center justify-between gap-2 sticky top-0 z-40 backdrop-blur-md transition-colors no-print ${
+          isDark
+            ? 'bg-[#121620]/95 text-white border-white/10'
+            : 'bg-[#FAF8F4]/95 text-[#18181B] border-[#E2DDD3]'
+        }`}
+      >
+        {/* 좌측: 브랜드 로고 + [홈] + [휴무표] + [AI 비서] */}
         <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
           <button
             type="button"
             onClick={() => setStep('home')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
               step === 'home'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-slate-800 text-slate-200 hover:bg-slate-700 hover:text-white border border-slate-700'
+                ? isDark
+                  ? 'bg-[#38BDF8] text-[#0B0E14] shadow-xs'
+                  : 'bg-[#18181B] text-white shadow-xs'
+                : isDark
+                ? 'bg-[#1B2230] text-slate-200 hover:bg-[#232C3D] border border-white/10'
+                : 'bg-white text-[#18181B] hover:bg-[#EAE5DC] border border-[#D6D3CD]'
             }`}
           >
             <Home className="w-3.5 h-3.5" />
-            <span>🏠 홈</span>
+            <span>홈</span>
           </button>
 
           <button
@@ -1033,10 +1073,14 @@ export function App() {
               setIsScheduleModalOpen(true);
             }}
             title="경기광주점 오늘 근무자 및 월별 휴무표 보기"
-            className="px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 bg-indigo-500 hover:bg-indigo-400 text-white border border-indigo-400 shadow-xs transition cursor-pointer"
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 border transition cursor-pointer ${
+              isDark
+                ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
+            }`}
           >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>📅 휴무표</span>
+            <Calendar className="w-3.5 h-3.5 text-[#8C5A32]" />
+            <span>휴무표</span>
           </button>
 
           <button
@@ -1046,30 +1090,68 @@ export function App() {
               setIsAiCommandModalOpen(true);
             }}
             title="자연어·음성 한 줄로 견적 계산 및 고객관리 자동 등록"
-            className="px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shrink-0 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white border border-violet-400/80 shadow-xs transition cursor-pointer"
+            className="px-3.5 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 shrink-0 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-xs transition cursor-pointer"
           >
-            <span>🤖 AI 비서</span>
+            <span>✦ AI 비서</span>
           </button>
 
-          <span className="hidden lg:inline-block px-2.5 py-1 rounded-lg bg-slate-800/90 border border-slate-700 text-xs font-extrabold text-slate-200 truncate">
+          <span
+            className={`hidden lg:inline-block px-3 py-1 rounded-full text-xs font-extrabold truncate border ${
+              isDark
+                ? 'bg-[#1B2230] border-white/10 text-slate-300'
+                : 'bg-[#EAE5DC]/70 border-[#D6D3CD] text-[#57534E]'
+            }`}
+          >
             {currentScreenBadgeLabel}
           </span>
         </div>
 
-        {/* 우측: PWA 앱 설치 버튼 & [☰ 메뉴] 드롭다운 */}
+        {/* 우측: [☀️ 웜아이보리 / 🌙 다크] 테마 전환 스위치 + 앱 설치 + [☰ 전체메뉴] */}
         <div
           ref={menuContainerRef}
-          className="relative flex items-center gap-1.5 shrink-0"
+          className="relative flex items-center gap-1.5 sm:gap-2 shrink-0"
         >
+          {/* 1-Click 테마 전환 스위치 */}
+          <button
+            type="button"
+            onClick={toggleUiTheme}
+            title={
+              isDark
+                ? '웜 아이보리(라이트 모드)로 전환'
+                : '티타늄 다크(다크 모드)로 전환'
+            }
+            className={`px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 border transition cursor-pointer ${
+              isDark
+                ? 'bg-[#38BDF8]/15 hover:bg-[#38BDF8]/25 text-[#38BDF8] border-[#38BDF8]/40'
+                : 'bg-[#EAE5DC] hover:bg-[#DFD9CE] text-[#57534E] border-[#D4CDC0]'
+            }`}
+          >
+            {isDark ? (
+              <>
+                <Moon className="w-3.5 h-3.5 text-[#38BDF8]" />
+                <span className="hidden xs:inline">다크 모드</span>
+              </>
+            ) : (
+              <>
+                <Sun className="w-3.5 h-3.5 text-[#8C5A32]" />
+                <span className="hidden xs:inline">웜 아이보리</span>
+              </>
+            )}
+          </button>
+
           {!isStandalone && (
             <button
               type="button"
               onClick={handleInstallAppClick}
               title="홈 화면에 앱으로 설치하여 주소창 없이 실행"
-              className="px-2.5 py-1.5 rounded-lg text-xs font-black flex items-center gap-1 bg-blue-600 hover:bg-blue-500 text-white border border-blue-500 shadow-xs transition cursor-pointer"
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 border transition cursor-pointer ${
+                isDark
+                  ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                  : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
+              }`}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>📲 앱 설치</span>
+              <span className="hidden sm:inline">앱 설치</span>
             </button>
           )}
 
@@ -1081,10 +1163,14 @@ export function App() {
                 return !prev;
               });
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border transition cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 border transition cursor-pointer ${
               isMenuOpen
-                ? 'bg-amber-500 border-amber-400 text-slate-950'
-                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-white'
+                ? isDark
+                  ? 'bg-[#38BDF8] border-[#38BDF8] text-[#0B0E14]'
+                  : 'bg-[#18181B] border-[#18181B] text-white'
+                : isDark
+                ? 'bg-[#1B2230] hover:bg-[#232C3D] border-white/10 text-white'
+                : 'bg-white hover:bg-[#EAE5DC] border-[#D6D3CD] text-[#18181B]'
             }`}
           >
             {isMenuOpen ? (
@@ -1092,7 +1178,7 @@ export function App() {
             ) : (
               <Menu className="w-4 h-4" />
             )}
-            <span>☰ 메뉴</span>
+            <span>전체메뉴</span>
             {urgentCount >= 1 && (
               <span className="ml-0.5 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black leading-none">
                 {urgentCount}
@@ -1100,38 +1186,43 @@ export function App() {
             )}
           </button>
 
-          {/* [☰ 메뉴] 카드형 드롭다운 메뉴판 */}
+          {/* [☰ 전체메뉴] 벤토 카드형 드롭다운 메뉴판 */}
           {isMenuOpen && (
-            <div className="absolute right-0 top-[calc(100%+8px)] w-[330px] sm:w-[390px] rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-3 space-y-2.5 z-50 text-white">
-              {/* 1) 최상단 단독 버튼: 👑 통합 고객관리 */}
+            <div
+              className={`absolute right-0 top-[calc(100%+10px)] w-[335px] sm:w-[395px] rounded-3xl border shadow-2xl p-3.5 space-y-2.5 z-50 ${
+                isDark
+                  ? 'bg-[#141924] border-white/15 text-white'
+                  : 'bg-[#FAF8F4] border-[#D6D3CD] text-[#18181B]'
+              }`}
+            >
+              {/* 1) 최상단 단독 버튼: 통합 고객관리 */}
               <button
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
                   setStep('crm');
                 }}
-                className={`w-full py-2.5 px-3.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-between border transition cursor-pointer ${
-                  step === 'crm'
-                    ? 'bg-amber-500 text-slate-950 border-amber-400'
-                    : 'bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white border-amber-500/40'
+                className={`w-full py-3 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-between border transition cursor-pointer ${
+                  isDark
+                    ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border-[#38BDF8]/40 hover:border-[#38BDF8]'
+                    : 'bg-[#1C1917] hover:bg-[#292524] text-white border-[#1C1917]'
                 }`}
               >
                 <span className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-amber-400" />
-                  <span>👑 통합 고객관리</span>
+                  <span>VIP 통합 고객관리 (CRM)</span>
                 </span>
                 {urgentCount >= 1 ? (
-                  <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-black">
-                    🔥긴급 {urgentCount}건
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-600 text-white text-[11px] font-black">
+                    긴급 {urgentCount}건
                   </span>
                 ) : (
-                  <span className="text-[11px] font-bold opacity-75">➔</span>
+                  <ChevronRight className="w-4 h-4 opacity-75" />
                 )}
               </button>
 
               {/* 2) 중단 2열 그리드 (좌 1~4 / 우 5~8) */}
               <div className="grid grid-cols-2 gap-1.5">
-                {/* 좌측 열 (1 ~ 4) */}
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
@@ -1139,15 +1230,17 @@ export function App() {
                       setIsMenuOpen(false);
                       handleEnterMode('general');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       (step === 'input' || step === 'proposal') &&
                       activeMode === 'general'
                         ? 'bg-blue-600 text-white border-blue-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <CreditCard className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                    <span className="truncate">1. 일반 견적</span>
+                    <CreditCard className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span className="truncate">01. 일반 견적</span>
                   </button>
 
                   <button
@@ -1156,15 +1249,17 @@ export function App() {
                       setIsMenuOpen(false);
                       handleEnterMode('subscription');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       (step === 'input' || step === 'proposal') &&
                       activeMode === 'subscription'
                         ? 'bg-rose-600 text-white border-rose-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <RefreshCw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                    <span className="truncate">2. 구독 견적</span>
+                    <RefreshCw className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span className="truncate">02. 구독 견적</span>
                   </button>
 
                   <button
@@ -1173,15 +1268,17 @@ export function App() {
                       setIsMenuOpen(false);
                       handleEnterMode('hybrid');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       (step === 'input' || step === 'proposal') &&
                       activeMode === 'hybrid'
                         ? 'bg-indigo-600 text-white border-indigo-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span className="truncate">3. 혼합 견적</span>
+                    <Layers className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span className="truncate">03. 혼합 견적</span>
                   </button>
 
                   <button
@@ -1190,18 +1287,19 @@ export function App() {
                       setIsMenuOpen(false);
                       setStep('lotte-plan');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'lotte-plan'
                         ? 'bg-violet-600 text-white border-violet-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <Calculator className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                    <span className="truncate">4. 플랜 계산기</span>
+                    <Calculator className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                    <span className="truncate">04. 플랜 계산기</span>
                   </button>
                 </div>
 
-                {/* 우측 열 (5 ~ 8 — 7번 가전 올케어, 8번 보험 청구안내 위치 맞교환) */}
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
@@ -1209,14 +1307,16 @@ export function App() {
                       setIsMenuOpen(false);
                       setStep('pop-printer');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'pop-printer'
                         ? 'bg-emerald-600 text-white border-emerald-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <Printer className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="truncate">5. 구독 POP</span>
+                    <Printer className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <span className="truncate">05. 구독 POP</span>
                   </button>
 
                   <button
@@ -1225,14 +1325,16 @@ export function App() {
                       setIsMenuOpen(false);
                       setStep('himobile');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'himobile'
                         ? 'bg-purple-600 text-white border-purple-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <Smartphone className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                    <span className="truncate">6. 하이 모바일</span>
+                    <Smartphone className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                    <span className="truncate">06. 하이 모바일</span>
                   </button>
 
                   <button
@@ -1241,14 +1343,16 @@ export function App() {
                       setIsMenuOpen(false);
                       setStep('allcare-guide');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'allcare-guide'
                         ? 'bg-sky-600 text-white border-sky-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <Wrench className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span className="truncate">7. 가전 올케어</span>
+                    <Wrench className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                    <span className="truncate">07. 가전 올케어</span>
                   </button>
 
                   <button
@@ -1257,19 +1361,21 @@ export function App() {
                       setIsMenuOpen(false);
                       setStep('insurance');
                     }}
-                    className={`w-full py-2.5 px-2.5 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'insurance'
                         ? 'bg-teal-600 text-white border-teal-500'
-                        : 'bg-slate-800/90 hover:bg-slate-800 text-slate-200 border-slate-700'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#E4DFD5]'
                     }`}
                   >
-                    <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
-                    <span className="truncate">8. 보험 청구안내</span>
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                    <span className="truncate">08. 보험 청구안내</span>
                   </button>
                 </div>
               </div>
 
-              {/* 3) 최하단 단독 버튼: 📋 안심케어 조견표 */}
+              {/* 3) 최하단 단독 버튼: 안심케어 조견표 */}
               <button
                 type="button"
                 onClick={() => {
@@ -1277,22 +1383,32 @@ export function App() {
                   setStep('care-table');
                 }}
                 className={`w-full py-2.5 px-3.5 rounded-xl font-black text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
-                  step === 'care-table'
-                    ? 'bg-cyan-600 text-white border-cyan-400'
-                    : 'bg-slate-800 hover:bg-cyan-600 text-white border-cyan-500/40'
+                  isDark
+                    ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-[#34D399]/40'
+                    : 'bg-white hover:bg-[#F4ECE1] text-[#18181B] border-[#8C5A32]'
                 }`}
               >
-                <span className="flex items-center gap-1.5 shrink-0">
-                  <FileSpreadsheet className="w-4 h-4 text-cyan-400" />
-                  <span>📋 안심케어 조견표</span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <FileSpreadsheet className="w-4 h-4 text-[#8C5A32]" />
+                  <span>안심케어 · 가전이사 조견표</span>
                 </span>
-                <span className="px-2 py-0.5 rounded-full bg-cyan-950/90 border border-cyan-400/40 text-cyan-200 text-[10px] font-extrabold truncate">
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold truncate ${
+                    isDark
+                      ? 'bg-[#34D399]/15 text-[#34D399]'
+                      : 'bg-[#F4ECE1] text-[#8C5A32]'
+                  }`}
+                >
                   {careUpdateMonthBadge}
                 </span>
               </button>
 
-              {/* 4) 어떤 화면에서든 열 수 있는 퀵 모달 바로가기 (AI 비서 / 무이자 할부 / 카드발급 / AS센터 / 휴무표) */}
-              <div className="pt-1 border-t border-slate-800 space-y-1.5">
+              {/* 4) 퀵 모달 바로가기 */}
+              <div
+                className={`pt-2 border-t space-y-1.5 ${
+                  isDark ? 'border-white/10' : 'border-[#E4DFD5]'
+                }`}
+              >
                 <button
                   type="button"
                   onClick={() => {
@@ -1300,9 +1416,9 @@ export function App() {
                     pushAppHistoryGuard('open-ai-command');
                     setIsAiCommandModalOpen(true);
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-black text-center flex items-center justify-center gap-1.5 border border-violet-400/50 shadow-xs cursor-pointer"
+                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-black text-center flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  <span>🤖 AI 비서 (한 줄 견적 · 고객관리 자동등록)</span>
+                  <span>✦ AI 비서 (한 줄 견적 · 고객관리 자동등록)</span>
                 </button>
                 <div className="grid grid-cols-4 gap-1.5">
                   <button
@@ -1312,9 +1428,13 @@ export function App() {
                       pushAppHistoryGuard('open-installment');
                       setIsInstallmentModalOpen(true);
                     }}
-                    className="py-2 px-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
+                      isDark
+                        ? 'bg-[#1B2230] text-amber-300 border-white/10'
+                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
+                    }`}
                   >
-                    💳 무이자
+                    무이자
                   </button>
                   <button
                     type="button"
@@ -1323,9 +1443,13 @@ export function App() {
                       pushAppHistoryGuard('open-card-issue');
                       setIsCardIssueOpen(true);
                     }}
-                    className="py-2 px-1.5 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
+                      isDark
+                        ? 'bg-[#1B2230] text-sky-300 border-white/10'
+                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
+                    }`}
                   >
-                    🪪 카드발급
+                    카드발급
                   </button>
                   <button
                     type="button"
@@ -1334,9 +1458,13 @@ export function App() {
                       pushAppHistoryGuard('open-as-center');
                       setIsAsCenterOpen(true);
                     }}
-                    className="py-2 px-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-[11px] font-black text-center truncate cursor-pointer"
+                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
+                      isDark
+                        ? 'bg-[#1B2230] text-emerald-300 border-white/10'
+                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
+                    }`}
                   >
-                    🛠️ AS센터
+                    AS센터
                   </button>
                   <button
                     type="button"
@@ -1345,9 +1473,13 @@ export function App() {
                       pushAppHistoryGuard('open-schedule');
                       setIsScheduleModalOpen(true);
                     }}
-                    className="py-2 px-1.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-black text-center truncate cursor-pointer"
+                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
+                      isDark
+                        ? 'bg-[#1B2230] text-indigo-300 border-white/10'
+                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
+                    }`}
                   >
-                    📅 휴무표
+                    휴무표
                   </button>
                 </div>
               </div>
@@ -1356,11 +1488,11 @@ export function App() {
         </div>
       </header>
 
-      {/* ==================== STEP 0: 메인 홈 화면 ==================== */}
+      {/* ==================== STEP 0: 메인 홈 대시보드 (Apple Bento Warm Ivory & Titanium Dark Pro) ==================== */}
       {step === 'home' && (
         <main className="flex-1 w-full flex items-center justify-center p-3 sm:p-6">
-          <div className="w-full max-w-3xl flex flex-col gap-2.5 sm:gap-3.5">
-            {/* 0-1) 최상단 졸라맨 내 휴무 카운트다운 애니메이션 배너 (클릭 시 휴무표 모달 오픈) */}
+          <div className="w-full max-w-4xl flex flex-col gap-3 sm:gap-3.5">
+            {/* 0-1) 최상단 내 휴무 카운트다운 배너 */}
             <ScheduleCharacterBanner
               onOpenScheduleModal={() => {
                 pushAppHistoryGuard('open-schedule');
@@ -1368,7 +1500,7 @@ export function App() {
               }}
             />
 
-            {/* 0-2) [💳 무이자 할부] | [🪪 카드발급] | [🛠️ AS센터] 3열 상시 퀵 버튼 (통합 고객관리 바로 위) */}
+            {/* 0-2) [무이자 할부] | [제휴카드 발급] | [가전 AS센터] 3열 벤토 퀵 버튼 */}
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               <button
                 type="button"
@@ -1376,9 +1508,14 @@ export function App() {
                   pushAppHistoryGuard('open-installment');
                   setIsInstallmentModalOpen(true);
                 }}
-                className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 border-2 border-amber-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
+                className={`w-full py-3 sm:py-3.5 px-3 sm:px-4 rounded-2xl border shadow-2xs hover:shadow-md transition-all flex items-center justify-between font-black text-xs sm:text-base cursor-pointer ${
+                  isDark
+                    ? 'bg-[#141924] hover:bg-[#1B2230] text-slate-100 border-white/10'
+                    : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E2DDD3]'
+                }`}
               >
-                <span>💳 무이자 할부</span>
+                <span className="truncate">[카드] 무이자 할부</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 ml-1.5" />
               </button>
 
               <button
@@ -1387,9 +1524,14 @@ export function App() {
                   pushAppHistoryGuard('open-card-issue');
                   setIsCardIssueOpen(true);
                 }}
-                className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-sky-400 hover:bg-sky-300 text-slate-950 border-2 border-sky-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
+                className={`w-full py-3 sm:py-3.5 px-3 sm:px-4 rounded-2xl border shadow-2xs hover:shadow-md transition-all flex items-center justify-between font-black text-xs sm:text-base cursor-pointer ${
+                  isDark
+                    ? 'bg-[#141924] hover:bg-[#1B2230] text-slate-100 border-white/10'
+                    : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E2DDD3]'
+                }`}
               >
-                <span>🪪 카드발급</span>
+                <span className="truncate">[발급] 제휴카드 발급</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0 ml-1.5" />
               </button>
 
               <button
@@ -1398,217 +1540,386 @@ export function App() {
                   pushAppHistoryGuard('open-as-center');
                   setIsAsCenterOpen(true);
                 }}
-                className="w-full py-3 sm:py-3.5 px-2 sm:px-4 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 border-2 border-emerald-500 shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-1.5 sm:gap-2 font-black text-xs sm:text-base cursor-pointer"
+                className={`w-full py-3 sm:py-3.5 px-3 sm:px-4 rounded-2xl border shadow-2xs hover:shadow-md transition-all flex items-center justify-between font-black text-xs sm:text-base cursor-pointer ${
+                  isDark
+                    ? 'bg-[#141924] hover:bg-[#1B2230] text-slate-100 border-white/10'
+                    : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E2DDD3]'
+                }`}
               >
-                <span>🛠️ AS센터</span>
+                <span className="truncate">[A/S] 가전 AS센터</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 ml-1.5" />
               </button>
             </div>
 
-            {/* 1) 상단 단독 (가로 전체 Full-width 1칸): 👑 통합 고객관리 */}
+            {/* 1) 상단 단독 Full-width 히어로 카드: VIP 통합 고객관리 (CRM · 스케줄 · 문자) */}
             <button
               type="button"
               onClick={() => setStep('crm')}
-              className="w-full py-4 sm:py-5 px-4 sm:px-6 rounded-2xl sm:rounded-3xl bg-white hover:bg-amber-500 text-slate-900 hover:text-white border-2 border-amber-400 hover:border-amber-500 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+              className={`w-full py-4 sm:py-5 px-4 sm:px-6 rounded-3xl transition-all flex items-center justify-between group cursor-pointer shadow-md hover:shadow-xl ${
+                isDark
+                  ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border-[1.5px] border-[#38BDF8]/40 hover:border-[#38BDF8]'
+                  : 'bg-gradient-to-r from-[#1C1917] to-[#292524] hover:from-[#292524] hover:to-[#1C1917] text-white border border-[#1C1917]'
+              }`}
             >
-              <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-amber-500 group-hover:bg-white text-white group-hover:text-amber-600 flex items-center justify-center transition shrink-0 shadow-xs">
-                  <Users className="w-5 h-5 sm:w-6 sm:h-6" />
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/12 text-amber-300 font-black text-sm sm:text-base flex items-center justify-center shrink-0">
+                  VIP
                 </div>
                 <div className="text-left min-w-0">
                   <div className="text-base sm:text-xl font-black tracking-tight truncate">
-                    👑 통합 고객관리 (CRM · 스케줄 · 문자)
+                    통합 고객관리 (CRM · 스케줄 · 문자)
+                  </div>
+                  <div className="text-xs sm:text-sm text-stone-300 font-medium truncate mt-0.5">
+                    고객별 저장 견적 불러오기 · 배송 D-Day · 사은품 미지급 관리
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0 ml-2">
-                {urgentCount >= 1 && (
-                  <span className="px-2.5 py-1 rounded-full bg-rose-600 text-white text-xs sm:text-sm font-black animate-pulse shadow-xs">
-                    🔥 긴급 {urgentCount}건
+                {urgentCount >= 1 ? (
+                  <span className="px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs sm:text-sm font-black animate-pulse shadow-xs">
+                    긴급 할일 {urgentCount}건 ➔
+                  </span>
+                ) : (
+                  <span className="px-3 py-1.5 rounded-full bg-white/10 text-white text-xs sm:text-sm font-extrabold">
+                    열기 ➔
                   </span>
                 )}
-                <span className="text-sm sm:text-base font-extrabold text-amber-600 group-hover:text-white">
-                  ➔
-                </span>
               </div>
             </button>
 
-            {/* 2) 중앙 양쪽 두 줄 (좌 1~4 / 우 5~8 완벽 2열 대칭) */}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-4">
-              {/* 왼쪽 열 (1 ~ 4번 : 견적 · 계산기) */}
-              <div className="flex flex-col gap-2.5 sm:gap-3.5">
+            {/* 2) 중앙 1~8번 양쪽 2열 대칭 벤토 그리드 */}
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
+              {/* 왼쪽 열 (01 ~ 04 : 견적 · 계산기) */}
+              <div className="flex flex-col gap-2.5 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => handleEnterMode('general')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-blue-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-blue-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-sky-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-600 group-hover:bg-white text-white group-hover:text-blue-600 flex items-center justify-center transition shrink-0">
-                      <CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-sky-500/15 text-sky-400'
+                          : 'bg-blue-50 text-blue-700'
+                      }`}
+                    >
+                      01
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      1. 일반 견적
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        일반 견적
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        즉시할인 · 캐시백 · 하이프리드
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleEnterMode('subscription')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-rose-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-rose-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-rose-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center transition shrink-0">
-                      <RefreshCw className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-rose-500/15 text-rose-400'
+                          : 'bg-rose-50 text-rose-700'
+                      }`}
+                    >
+                      02
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      2. 구독 견적
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        구독 견적
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        36/60개월 · 제휴카드 · 플러스결합
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleEnterMode('hybrid')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-indigo-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-indigo-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-indigo-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-indigo-600 group-hover:bg-white text-white group-hover:text-indigo-600 flex items-center justify-center transition shrink-0">
-                      <Layers className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-indigo-500/15 text-indigo-400'
+                          : 'bg-indigo-50 text-indigo-700'
+                      }`}
+                    >
+                      03
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      3. 혼합 견적
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        혼합 견적
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        일반구매 + 가전구독 통합 설계
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStep('lotte-plan')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-violet-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-violet-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-violet-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-violet-600 group-hover:bg-white text-white group-hover:text-violet-600 flex items-center justify-center transition shrink-0">
-                      <Calculator className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-violet-500/15 text-violet-400'
+                          : 'bg-violet-50 text-violet-700'
+                      }`}
+                    >
+                      04
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      4. 플랜 계산기
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        플랜 계산기
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        롯데 플랜카드 70·120·200만 계산
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
               </div>
 
-              {/* 오른쪽 열 (5 ~ 8번 : 7번 가전 올케어 · 8번 보험 청구안내 위치 교체) */}
-              <div className="flex flex-col gap-2.5 sm:gap-3.5">
+              {/* 오른쪽 열 (05 ~ 08 : 구독POP · 하이모바일 · 가전올케어 · 보험청구) */}
+              <div className="flex flex-col gap-2.5 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => setStep('pop-printer')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-emerald-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-emerald-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-emerald-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-600 group-hover:bg-white text-white group-hover:text-emerald-600 flex items-center justify-center transition shrink-0">
-                      <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-emerald-50 text-emerald-700'
+                      }`}
+                    >
+                      05
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      5. 구독 POP
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        구독 POP
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        견적 사진 스캔 · A4 2-UP 쇼카드
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStep('himobile')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-purple-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-purple-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-purple-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-purple-600 group-hover:bg-white text-white group-hover:text-purple-600 flex items-center justify-center transition shrink-0">
-                      <Smartphone className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-purple-500/15 text-purple-400'
+                          : 'bg-purple-50 text-purple-700'
+                      }`}
+                    >
+                      06
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      6. 하이 모바일
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        하이 모바일
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        알뜰요금제 비교 & 즉시 개통 안내
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStep('allcare-guide')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-sky-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-sky-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-sky-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-sky-600 group-hover:bg-white text-white group-hover:text-sky-600 flex items-center justify-center transition shrink-0">
-                      <Wrench className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-sky-500/15 text-sky-400'
+                          : 'bg-sky-50 text-sky-700'
+                      }`}
+                    >
+                      07
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      7. 가전 올케어
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        가전 올케어
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        보유가전 34종 2년 수리비 보증
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStep('insurance')}
-                  className="w-full py-4 sm:py-5 px-3 sm:px-5 rounded-2xl sm:rounded-3xl bg-white hover:bg-teal-600 text-slate-900 hover:text-white border-2 border-slate-200 hover:border-teal-600 shadow-md hover:shadow-xl transition-all flex items-center justify-between group cursor-pointer"
+                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
+                    isDark
+                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-teal-400/50'
+                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 sm:gap-3.5 min-w-0">
-                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-teal-600 group-hover:bg-white text-white group-hover:text-teal-600 flex items-center justify-center transition shrink-0">
-                      <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
+                        isDark
+                          ? 'bg-teal-500/15 text-teal-400'
+                          : 'bg-teal-50 text-teal-700'
+                      }`}
+                    >
+                      08
                     </div>
-                    <span className="text-sm sm:text-lg lg:text-xl font-black tracking-tight truncate">
-                      8. 보험 청구안내
-                    </span>
+                    <div className="text-left min-w-0">
+                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
+                        보험 청구안내
+                      </div>
+                      <div
+                        className={`text-[11px] sm:text-xs font-medium truncate ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        고객 전달용 서류 · 접수 절차 안내
+                      </div>
+                    </div>
                   </div>
-                  <span className="hidden sm:inline text-xs sm:text-sm font-extrabold text-slate-400 group-hover:text-white shrink-0 ml-1">
-                    ➔
-                  </span>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
                 </button>
               </div>
             </div>
 
-            {/* 3) 최하단 단독 (가로 전체 Full-width 1칸 — 상단 통합고객관리와 대칭되는 배너형 버튼) */}
+            {/* 3) 최하단 단독 Full-width 벤토 배너: 안심케어 · 가전이사 조견표 */}
             <button
               type="button"
               onClick={() => setStep('care-table')}
-              className="w-full py-4 sm:py-5 px-4 sm:px-6 rounded-2xl sm:rounded-3xl bg-white hover:bg-cyan-600 text-slate-900 hover:text-white border-2 border-cyan-500 hover:border-cyan-600 shadow-md hover:shadow-xl transition-all flex flex-wrap items-center justify-between gap-2 group cursor-pointer"
+              className={`w-full py-4 sm:py-4.5 px-4 sm:px-6 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex flex-wrap items-center justify-between gap-2 group cursor-pointer ${
+                isDark
+                  ? 'bg-[#141B29] hover:bg-[#1B2436] text-white border-[#34D399]/45'
+                  : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#8C5A32]'
+              }`}
             >
-              <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-cyan-600 group-hover:bg-white text-white group-hover:text-cyan-600 flex items-center justify-center transition shrink-0 shadow-xs">
-                  <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6" />
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black flex items-center justify-center shrink-0 ${
+                    isDark
+                      ? 'bg-[#34D399]/15 text-[#34D399]'
+                      : 'bg-[#F4ECE1] text-[#8C5A32]'
+                  }`}
+                >
+                  <FileSpreadsheet className="w-5 h-5" />
                 </div>
                 <div className="text-left min-w-0">
-                  <div className="text-base sm:text-xl font-black tracking-tight truncate">
-                    📋 안심케어 · 가전이사 조견표
+                  <div className="text-base sm:text-lg font-black tracking-tight truncate">
+                    안심케어 · 가전이사 조견표
+                  </div>
+                  <div
+                    className={`text-xs font-medium truncate ${
+                      isDark ? 'text-slate-400' : 'text-[#78716C]'
+                    }`}
+                  >
+                    품목별 클리닝 · 이전설치 금액 검색 및 원클릭 복사
                   </div>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0 ml-auto">
-                <span className="px-3 py-1 rounded-full bg-cyan-50 group-hover:bg-cyan-950/90 text-cyan-800 group-hover:text-cyan-200 border border-cyan-300 group-hover:border-cyan-400/50 text-xs sm:text-sm font-black shadow-2xs transition">
-                  {careUpdateMonthBadge}
-                </span>
-                <span className="text-sm sm:text-base font-extrabold text-cyan-600 group-hover:text-white">
-                  ➔
+                <span
+                  className={`px-3 py-1 rounded-full text-xs sm:text-sm font-black ${
+                    isDark
+                      ? 'bg-[#34D399]/15 text-[#34D399]'
+                      : 'bg-[#F4ECE1] text-[#8C5A32]'
+                  }`}
+                >
+                  {careUpdateMonthBadge} ➔
                 </span>
               </div>
             </button>
