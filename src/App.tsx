@@ -1033,9 +1033,32 @@ export function App() {
     [setCurrentState]
   );
 
+  // 홈 화면 우측(폴드 펼침/태블릿/PC) 실시간 CRM 프리뷰용 우선순위 고객 4명 추출
+  const activeCrmCustomers = useMemo(
+    () => crmCustomers.filter((c) => !c.deletedAt),
+    [crmCustomers]
+  );
+  const unpaidGiftCountHome = useMemo(
+    () =>
+      activeCrmCustomers.filter(
+        (c) => Boolean(c.giftItems && c.giftItems.trim()) && !c.giftSent
+      ).length,
+    [activeCrmCustomers]
+  );
+  const priorityPreviewCustomers = useMemo(() => {
+    return [...activeCrmCustomers]
+      .sort((a, b) => {
+        const ua = isUrgentCustomer(a) ? 1 : 0;
+        const ub = isUrgentCustomer(b) ? 1 : 0;
+        if (ua !== ub) return ub - ua;
+        return (b.regDate || '').localeCompare(a.regDate || '');
+      })
+      .slice(0, 4);
+  }, [activeCrmCustomers]);
+
   return (
     <div
-      className={`app-shell-bg min-h-[100dvh] w-full flex flex-col transition-colors duration-200 ${
+      className={`app-shell-bg min-h-[100dvh] w-full flex flex-col pb-[68px] md:pb-0 transition-colors duration-200 ${
         isDark ? 'bg-[#0B0E14] text-slate-100' : 'bg-[#F4F2ED] text-[#18181B]'
       }`}
     >
@@ -1195,7 +1218,6 @@ export function App() {
                   : 'bg-[#FAF8F4] border-[#D6D3CD] text-[#18181B]'
               }`}
             >
-              {/* 1) 최상단 단독 버튼: 통합 고객관리 */}
               <button
                 type="button"
                 onClick={() => {
@@ -1221,7 +1243,6 @@ export function App() {
                 )}
               </button>
 
-              {/* 2) 중단 2열 그리드 (좌 1~4 / 우 5~8) */}
               <div className="grid grid-cols-2 gap-1.5">
                 <div className="flex flex-col gap-1.5">
                   <button
@@ -1375,7 +1396,6 @@ export function App() {
                 </div>
               </div>
 
-              {/* 3) 최하단 단독 버튼: 안심케어 조견표 */}
               <button
                 type="button"
                 onClick={() => {
@@ -1402,601 +1422,881 @@ export function App() {
                   {careUpdateMonthBadge}
                 </span>
               </button>
-
-              {/* 4) 퀵 모달 바로가기 */}
-              <div
-                className={`pt-2 border-t space-y-1.5 ${
-                  isDark ? 'border-white/10' : 'border-[#E4DFD5]'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    pushAppHistoryGuard('open-ai-command');
-                    setIsAiCommandModalOpen(true);
-                  }}
-                  className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-black text-center flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <span>✦ AI 비서 (한 줄 견적 · 고객관리 자동등록)</span>
-                </button>
-                <div className="grid grid-cols-4 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      pushAppHistoryGuard('open-installment');
-                      setIsInstallmentModalOpen(true);
-                    }}
-                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
-                      isDark
-                        ? 'bg-[#1B2230] text-amber-300 border-white/10'
-                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
-                    }`}
-                  >
-                    무이자
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      pushAppHistoryGuard('open-card-issue');
-                      setIsCardIssueOpen(true);
-                    }}
-                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
-                      isDark
-                        ? 'bg-[#1B2230] text-sky-300 border-white/10'
-                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
-                    }`}
-                  >
-                    카드발급
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      pushAppHistoryGuard('open-as-center');
-                      setIsAsCenterOpen(true);
-                    }}
-                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
-                      isDark
-                        ? 'bg-[#1B2230] text-emerald-300 border-white/10'
-                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
-                    }`}
-                  >
-                    AS센터
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      pushAppHistoryGuard('open-schedule');
-                      setIsScheduleModalOpen(true);
-                    }}
-                    className={`py-2 px-1.5 rounded-xl text-[11px] font-black text-center truncate border cursor-pointer ${
-                      isDark
-                        ? 'bg-[#1B2230] text-indigo-300 border-white/10'
-                        : 'bg-white text-[#18181B] border-[#E4DFD5]'
-                    }`}
-                  >
-                    휴무표
-                  </button>
-                </div>
-              </div>
             </div>
           )}
         </div>
       </header>
 
-      {/* ==================== STEP 0: 메인 홈 대시보드 (Apple Bento Warm Ivory & Titanium Dark Pro) ==================== */}
-      {step === 'home' && (
-        <main className="flex-1 w-full flex items-center justify-center p-3 sm:p-6">
-          <div className="w-full max-w-4xl flex flex-col gap-3 sm:gap-3.5">
-            {/* 0-1) 최상단 내 휴무 카운트다운 배너 */}
-            <ScheduleCharacterBanner
-              onOpenScheduleModal={() => {
-                pushAppHistoryGuard('open-schedule');
-                setIsScheduleModalOpen(true);
-              }}
-            />
-
-            {/* 0-2) [무이자 할부] | [제휴카드 발급] | [가전 AS센터] 3열 벤토 퀵 버튼 */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  pushAppHistoryGuard('open-installment');
-                  setIsInstallmentModalOpen(true);
-                }}
-                className={`w-full py-3 sm:py-3.5 px-3 sm:px-4 rounded-2xl border shadow-2xs hover:shadow-md transition-all flex items-center justify-between font-black text-xs sm:text-base cursor-pointer ${
-                  isDark
-                    ? 'bg-[#141924] hover:bg-[#1B2230] text-slate-100 border-white/10'
-                    : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E2DDD3]'
-                }`}
-              >
-                <span className="truncate">[카드] 무이자 할부</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 ml-1.5" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  pushAppHistoryGuard('open-card-issue');
-                  setIsCardIssueOpen(true);
-                }}
-                className={`w-full py-3 sm:py-3.5 px-3 sm:px-4 rounded-2xl border shadow-2xs hover:shadow-md transition-all flex items-center justify-between font-black text-xs sm:text-base cursor-pointer ${
-                  isDark
-                    ? 'bg-[#141924] hover:bg-[#1B2230] text-slate-100 border-white/10'
-                    : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E2DDD3]'
-                }`}
-              >
-                <span className="truncate">[발급] 제휴카드 발급</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0 ml-1.5" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  pushAppHistoryGuard('open-as-center');
-                  setIsAsCenterOpen(true);
-                }}
-                className={`w-full py-3 sm:py-3.5 px-3 sm:px-4 rounded-2xl border shadow-2xs hover:shadow-md transition-all flex items-center justify-between font-black text-xs sm:text-base cursor-pointer ${
-                  isDark
-                    ? 'bg-[#141924] hover:bg-[#1B2230] text-slate-100 border-white/10'
-                    : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E2DDD3]'
-                }`}
-              >
-                <span className="truncate">[A/S] 가전 AS센터</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 shrink-0 ml-1.5" />
-              </button>
+      {/* ==================== 반응형 바디 래퍼: 일반폰(사이드바 숨김) ⇄ 폴드펼침·태블릿·PC(좌측 고정 사이드바 자동 표시) ==================== */}
+      <div className="flex-1 w-full flex min-h-0">
+        {/* [폴드 펼침 / 태블릿 / PC 전용] 좌측 고정 슬림 사이드바 (가로 768px 미만 일반폰에서는 hidden 처리로 화면 잠식 0%) */}
+        <aside
+          className={`hidden md:flex w-[210px] lg:w-[230px] shrink-0 border-r flex-col justify-between p-3.5 select-none no-print ${
+            isDark
+              ? 'bg-[#11151F] border-white/10 text-slate-200'
+              : 'bg-[#18181B] border-[#18181B] text-stone-200'
+          }`}
+        >
+          <div className="space-y-1.5">
+            <div className="px-2.5 py-2 flex items-center justify-between">
+              <span className="text-sm font-black tracking-tight text-white">
+                국지통합앱 PRO
+              </span>
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white/10 text-sky-300">
+                FOLD UI
+              </span>
             </div>
 
-            {/* 1) 상단 단독 Full-width 히어로 카드: VIP 통합 고객관리 (CRM · 스케줄 · 문자) */}
+            <button
+              type="button"
+              onClick={() => setStep('home')}
+              className={`w-full py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-between transition cursor-pointer ${
+                step === 'home'
+                  ? 'bg-[#38BDF8] text-[#0B0E14] shadow-xs'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span className="flex items-center gap-2">
+                <Home className="w-3.5 h-3.5" />
+                <span>홈 커맨드센터</span>
+              </span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-70" />
+            </button>
+
             <button
               type="button"
               onClick={() => setStep('crm')}
-              className={`w-full py-4 sm:py-5 px-4 sm:px-6 rounded-3xl transition-all flex items-center justify-between group cursor-pointer shadow-md hover:shadow-xl ${
-                isDark
-                  ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border-[1.5px] border-[#38BDF8]/40 hover:border-[#38BDF8]'
-                  : 'bg-gradient-to-r from-[#1C1917] to-[#292524] hover:from-[#292524] hover:to-[#1C1917] text-white border border-[#1C1917]'
+              className={`w-full py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-between transition cursor-pointer ${
+                step === 'crm'
+                  ? 'bg-[#38BDF8] text-[#0B0E14] shadow-xs'
+                  : 'hover:bg-white/10 text-stone-300'
               }`}
             >
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/12 text-amber-300 font-black text-sm sm:text-base flex items-center justify-center shrink-0">
-                  VIP
-                </div>
-                <div className="text-left min-w-0">
-                  <div className="text-base sm:text-xl font-black tracking-tight truncate">
-                    통합 고객관리 (CRM · 스케줄 · 문자)
-                  </div>
-                  <div className="text-xs sm:text-sm text-stone-300 font-medium truncate mt-0.5">
-                    고객별 저장 견적 불러오기 · 배송 D-Day · 사은품 미지급 관리
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0 ml-2">
-                {urgentCount >= 1 ? (
-                  <span className="px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs sm:text-sm font-black animate-pulse shadow-xs">
-                    긴급 할일 {urgentCount}건 ➔
-                  </span>
-                ) : (
-                  <span className="px-3 py-1.5 rounded-full bg-white/10 text-white text-xs sm:text-sm font-extrabold">
-                    열기 ➔
-                  </span>
-                )}
-              </div>
+              <span className="flex items-center gap-2">
+                <Users className="w-3.5 h-3.5 text-amber-400" />
+                <span>VIP 고객관리</span>
+              </span>
+              {urgentCount >= 1 ? (
+                <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black">
+                  {urgentCount}
+                </span>
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 opacity-70" />
+              )}
             </button>
 
-            {/* 2) 중앙 1~8번 양쪽 2열 대칭 벤토 그리드 */}
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5">
-              {/* 왼쪽 열 (01 ~ 04 : 견적 · 계산기) */}
-              <div className="flex flex-col gap-2.5 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleEnterMode('general')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-sky-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-sky-500/15 text-sky-400'
-                          : 'bg-blue-50 text-blue-700'
-                      }`}
-                    >
-                      01
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        일반 견적
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        즉시할인 · 캐시백 · 하이프리드
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleEnterMode('subscription')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-rose-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-rose-500/15 text-rose-400'
-                          : 'bg-rose-50 text-rose-700'
-                      }`}
-                    >
-                      02
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        구독 견적
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        36/60개월 · 제휴카드 · 플러스결합
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleEnterMode('hybrid')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-indigo-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-indigo-500/15 text-indigo-400'
-                          : 'bg-indigo-50 text-indigo-700'
-                      }`}
-                    >
-                      03
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        혼합 견적
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        일반구매 + 가전구독 통합 설계
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setStep('lotte-plan')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-violet-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-violet-500/15 text-violet-400'
-                          : 'bg-violet-50 text-violet-700'
-                      }`}
-                    >
-                      04
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        플랜 계산기
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        롯데 플랜카드 70·120·200만 계산
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-              </div>
-
-              {/* 오른쪽 열 (05 ~ 08 : 구독POP · 하이모바일 · 가전올케어 · 보험청구) */}
-              <div className="flex flex-col gap-2.5 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={() => setStep('pop-printer')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-emerald-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-emerald-500/15 text-emerald-400'
-                          : 'bg-emerald-50 text-emerald-700'
-                      }`}
-                    >
-                      05
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        구독 POP
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        견적 사진 스캔 · A4 2-UP 쇼카드
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setStep('himobile')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-purple-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-purple-500/15 text-purple-400'
-                          : 'bg-purple-50 text-purple-700'
-                      }`}
-                    >
-                      06
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        하이 모바일
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        알뜰요금제 비교 & 즉시 개통 안내
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setStep('allcare-guide')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-sky-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-sky-500/15 text-sky-400'
-                          : 'bg-sky-50 text-sky-700'
-                      }`}
-                    >
-                      07
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        가전 올케어
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        보유가전 34종 2년 수리비 보증
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setStep('insurance')}
-                  className={`w-full py-3.5 sm:py-4 px-3.5 sm:px-5 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer ${
-                    isDark
-                      ? 'bg-[#151A25] hover:bg-[#1C2230] text-white border-white/10 hover:border-teal-400/50'
-                      : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:border-[#8C5A32]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-                    <div
-                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black text-sm sm:text-base flex items-center justify-center shrink-0 ${
-                        isDark
-                          ? 'bg-teal-500/15 text-teal-400'
-                          : 'bg-teal-50 text-teal-700'
-                      }`}
-                    >
-                      08
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="text-sm sm:text-lg font-black tracking-tight truncate">
-                        보험 청구안내
-                      </div>
-                      <div
-                        className={`text-[11px] sm:text-xs font-medium truncate ${
-                          isDark ? 'text-slate-400' : 'text-[#78716C]'
-                        }`}
-                      >
-                        고객 전달용 서류 · 접수 절차 안내
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
-                </button>
-              </div>
+            <div className="pt-2 pb-1 px-2.5 text-[10px] font-extrabold tracking-wider text-stone-400 uppercase">
+              견적 · 플랜 설계
             </div>
 
-            {/* 3) 최하단 단독 Full-width 벤토 배너: 안심케어 · 가전이사 조견표 */}
+            <button
+              type="button"
+              onClick={() => handleEnterMode('general')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                (step === 'input' || step === 'proposal') &&
+                activeMode === 'general'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>01. 일반 견적</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleEnterMode('subscription')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                (step === 'input' || step === 'proposal') &&
+                activeMode === 'subscription'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>02. 구독 견적</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleEnterMode('hybrid')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                (step === 'input' || step === 'proposal') &&
+                activeMode === 'hybrid'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>03. 혼합 견적</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep('lotte-plan')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                step === 'lotte-plan'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>04. 플랜 계산기</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
+            <div className="pt-2 pb-1 px-2.5 text-[10px] font-extrabold tracking-wider text-stone-400 uppercase">
+              매장 POP · 케어 · 안내
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setStep('pop-printer')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                step === 'pop-printer'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>05. 구독 POP</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
             <button
               type="button"
               onClick={() => setStep('care-table')}
-              className={`w-full py-4 sm:py-4.5 px-4 sm:px-6 rounded-3xl border-[1.5px] shadow-2xs hover:shadow-md transition-all flex flex-wrap items-center justify-between gap-2 group cursor-pointer ${
-                isDark
-                  ? 'bg-[#141B29] hover:bg-[#1B2436] text-white border-[#34D399]/45'
-                  : 'bg-white hover:bg-[#FAF8F4] text-[#18181B] border-[#8C5A32]'
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                step === 'care-table'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-amber-300'
               }`}
             >
-              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                <div
-                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl font-black flex items-center justify-center shrink-0 ${
-                    isDark
-                      ? 'bg-[#34D399]/15 text-[#34D399]'
-                      : 'bg-[#F4ECE1] text-[#8C5A32]'
-                  }`}
-                >
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <div className="text-left min-w-0">
-                  <div className="text-base sm:text-lg font-black tracking-tight truncate">
-                    안심케어 · 가전이사 조견표
-                  </div>
-                  <div
-                    className={`text-xs font-medium truncate ${
-                      isDark ? 'text-slate-400' : 'text-[#78716C]'
-                    }`}
-                  >
-                    품목별 클리닝 · 이전설치 금액 검색 및 원클릭 복사
-                  </div>
-                </div>
-              </div>
+              <span>📋 안심케어 조견표</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
 
-              <div className="flex items-center gap-2 shrink-0 ml-auto">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs sm:text-sm font-black ${
-                    isDark
-                      ? 'bg-[#34D399]/15 text-[#34D399]'
-                      : 'bg-[#F4ECE1] text-[#8C5A32]'
-                  }`}
-                >
-                  {careUpdateMonthBadge} ➔
-                </span>
-              </div>
+            <button
+              type="button"
+              onClick={() => setStep('himobile')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                step === 'himobile'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>06. 하이 모바일</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep('allcare-guide')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                step === 'allcare-guide'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>07. 가전 올케어</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStep('insurance')}
+              className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                step === 'insurance'
+                  ? 'bg-white text-[#18181B] font-black'
+                  : 'hover:bg-white/10 text-stone-300'
+              }`}
+            >
+              <span>08. 보험 청구안내</span>
+              <ChevronRight className="w-3.5 h-3.5 opacity-60" />
             </button>
           </div>
-        </main>
-      )}
 
-      {/* ==================== STEP 1: 조건 입력 화면 ==================== */}
-      {step === 'input' && (
-        <ControlPanel
-          state={currentState}
-          onChange={setCurrentState}
-          onParseImage={handleParseImage}
-          isParsing={isParsing}
-          parseError={parseError}
-          subScanNotice={subScanNotice}
-          onParseGeneralImage={handleParseGeneralImage}
-          isParsingGeneral={isParsingGeneral}
-          parseGeneralError={parseGeneralError}
-          onShowProposal={() => setStep('proposal')}
-          onBackToHome={() => setStep('home')}
-          activeCustomer={activeCustomer}
-          onClearActiveCustomer={() => setActiveCustomer(null)}
-          onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
-        />
-      )}
+          <button
+            type="button"
+            onClick={() => {
+              pushAppHistoryGuard('open-ai-command');
+              setIsAiCommandModalOpen(true);
+            }}
+            className="w-full py-2.5 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-black text-center shadow-xs transition cursor-pointer"
+          >
+            ✦ AI 한줄 견적 비서
+          </button>
+        </aside>
 
-      {/* ==================== STEP 2: 제안서 / 프리드 안내서 미리보기 화면 ==================== */}
-      {step === 'proposal' && (
-        <ProposalPreview
-          state={currentState}
-          onChange={setCurrentState}
-          onBackToInput={() => setStep('input')}
-          activeCustomer={activeCustomer}
-          onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
-        />
-      )}
+        {/* 우측 메인 뷰포트 영역 */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          {/* ==================== STEP 0: 메인 홈 커맨드센터 (3대 업무 그룹 + 폴드/PC 실시간 CRM 프리뷰) ==================== */}
+          {step === 'home' && (
+            <main className="flex-1 w-full max-w-7xl mx-auto p-3 sm:p-5 lg:p-6 flex flex-col gap-3.5">
+              {/* 최상단 내 휴무 카운트다운 배너 */}
+              <ScheduleCharacterBanner
+                onOpenScheduleModal={() => {
+                  pushAppHistoryGuard('open-schedule');
+                  setIsScheduleModalOpen(true);
+                }}
+              />
 
-      {/* ==================== STEP 3: 4. 롯데 플랜 카드 계산기 & 제안서 화면 ==================== */}
-      {step === 'lotte-plan' && (
-        <LottePlanCalcView onBackToHome={() => setStep('home')} />
-      )}
+              {/* 모바일/작은 화면 전용: 상단 VIP 고객관리 요약 브리핑 바 (lg 이상에서는 우측 실시간 CRM 보드로 확장 표시) */}
+              <button
+                type="button"
+                onClick={() => setStep('crm')}
+                className={`lg:hidden w-full py-3.5 px-4 rounded-2xl transition-all flex items-center justify-between cursor-pointer shadow-sm ${
+                  isDark
+                    ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border border-[#38BDF8]/40'
+                    : 'bg-[#18181B] text-white'
+                }`}
+              >
+                <div className="text-left min-w-0">
+                  <div className="text-[11px] font-extrabold text-amber-300">
+                    VIP 통합 고객관리 · 전체 {activeCrmCustomers.length}명
+                  </div>
+                  <div className="text-sm sm:text-base font-black truncate mt-0.5">
+                    긴급 할일 {urgentCount}건 · 사은품 미지급 {unpaidGiftCountHome}건
+                  </div>
+                </div>
+                <span className="px-3 py-1.5 rounded-full bg-rose-600 text-white text-xs font-black shrink-0 ml-2">
+                  CRM 열기 ➔
+                </span>
+              </button>
 
-      {/* ==================== STEP 4: 5. 구독 POP 자동 출력기 화면 ==================== */}
-      {step === 'pop-printer' && (
-        <PopPrinterApp onBackToHome={() => setStep('home')} />
-      )}
+              {/* 메인 2단 반응형 그리드: 일반폰은 1단(3대 업무 그룹), 폴드 펼침/태블릿/PC(lg 이상)는 [좌: 3대 업무 그룹 + 우: 실시간 CRM 프리뷰] */}
+              <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-3.5 items-stretch flex-1">
+                {/* 좌측 컬럼: 3대 업무 그룹형 커맨드 센터 */}
+                <div className="flex flex-col gap-3.5 justify-between">
+                  {/* GROUP 1: 맞춤 견적 & 카드 플랜 설계 (4종) */}
+                  <section
+                    className={`rounded-3xl border-[1.5px] p-4 sm:p-5 shadow-2xs flex flex-col gap-3 ${
+                      isDark
+                        ? 'bg-[#141923] border-white/10'
+                        : 'bg-white border-[#E4DFD5]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs sm:text-sm font-black tracking-tight ${
+                          isDark ? 'text-[#38BDF8]' : 'text-[#8C5A32]'
+                        }`}
+                      >
+                        STEP 01 · 맞춤 견적 & 카드 플랜 설계
+                      </span>
+                      <span
+                        className={`text-[11px] font-bold ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        전산·견적 사진 AI 스캔 지원
+                      </span>
+                    </div>
 
-      {/* ==================== STEP 5: 통합 고객관리 시스템 화면 ==================== */}
-      {step === 'crm' && (
-        <CrmApp
-          onBackToHome={() => setStep('home')}
-          onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
-          onOpenQuoteRecordInQuoteBuilder={handleOpenQuoteRecordInQuoteBuilder}
-          onCustomersChange={(list) => setCrmCustomers(list)}
-        />
-      )}
+                    <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleEnterMode('general')}
+                        className={`p-3.5 sm:p-4 rounded-2xl text-left flex items-center justify-between transition cursor-pointer shadow-xs ${
+                          isDark
+                            ? 'bg-[#1D2536] hover:bg-[#253047] text-white border border-sky-400/30'
+                            : 'bg-[#18181B] hover:bg-[#292524] text-white'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm sm:text-base font-black truncate">
+                            01. 일반 견적
+                          </div>
+                          <div className="text-[11px] text-stone-300 font-medium truncate mt-0.5">
+                            즉시할인 · 캐시백 · 하이프리드
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-amber-400 shrink-0 ml-1" />
+                      </button>
 
-      {/* ==================== STEP 6: 6. 하이모바일 알뜰요금제 안내 & 즉시 개통 화면 ==================== */}
-      {step === 'himobile' && (
-        <HiMobileView onBackToHome={() => setStep('home')} />
-      )}
+                      <button
+                        type="button"
+                        onClick={() => handleEnterMode('subscription')}
+                        className={`p-3.5 sm:p-4 rounded-2xl text-left flex items-center justify-between transition cursor-pointer shadow-xs ${
+                          isDark
+                            ? 'bg-[#1D2536] hover:bg-[#253047] text-white border border-rose-400/30'
+                            : 'bg-[#18181B] hover:bg-[#292524] text-white'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm sm:text-base font-black truncate">
+                            02. 구독 견적
+                          </div>
+                          <div className="text-[11px] text-stone-300 font-medium truncate mt-0.5">
+                            36/60개월 · 제휴카드 · 플러스
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-rose-400 shrink-0 ml-1" />
+                      </button>
 
-      {/* ==================== STEP 7: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
-      {step === 'insurance' && (
-        <InsuranceGuideView onBackToHome={() => setStep('home')} />
-      )}
+                      <button
+                        type="button"
+                        onClick={() => handleEnterMode('hybrid')}
+                        className={`p-3.5 sm:p-4 rounded-2xl text-left flex items-center justify-between transition cursor-pointer shadow-xs ${
+                          isDark
+                            ? 'bg-[#1D2536] hover:bg-[#253047] text-white border border-indigo-400/30'
+                            : 'bg-[#18181B] hover:bg-[#292524] text-white'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm sm:text-base font-black truncate">
+                            03. 혼합 견적
+                          </div>
+                          <div className="text-[11px] text-stone-300 font-medium truncate mt-0.5">
+                            일반구매 + 가전구독 통합 설계
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-indigo-300 shrink-0 ml-1" />
+                      </button>
 
-      {/* ==================== STEP 8: 8. 가전 올케어 서비스 안내 & 보유가전 등록 화면 ==================== */}
-      {step === 'allcare-guide' && (
-        <AllCareGuideView onBackToHome={() => setStep('home')} />
-      )}
+                      <button
+                        type="button"
+                        onClick={() => setStep('lotte-plan')}
+                        className={`p-3.5 sm:p-4 rounded-2xl text-left flex items-center justify-between border transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm sm:text-base font-black truncate">
+                            04. 플랜 계산기
+                          </div>
+                          <div
+                            className={`text-[11px] font-medium truncate mt-0.5 ${
+                              isDark ? 'text-slate-400' : 'text-[#78716C]'
+                            }`}
+                          >
+                            롯데 플랜카드 최대 -108만
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
+                      </button>
+                    </div>
+                  </section>
 
-      {/* ==================== STEP 9: 안심케어 · 가전이사 조견표 화면 ==================== */}
-      {step === 'care-table' && (
-        <CareTableView onBackToHome={() => setStep('home')} />
-      )}
+                  {/* GROUP 2: 매장 POP 출력 & 안심케어 조견표 (2종) */}
+                  <section
+                    className={`rounded-3xl border-[1.5px] p-4 sm:p-5 shadow-2xs flex flex-col gap-3 ${
+                      isDark
+                        ? 'bg-[#141923] border-white/10'
+                        : 'bg-white border-[#E4DFD5]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs sm:text-sm font-black tracking-tight ${
+                          isDark ? 'text-[#34D399]' : 'text-[#8C5A32]'
+                        }`}
+                      >
+                        STEP 02 · 매장 POP 출력 & 안심케어 조견표
+                      </span>
+                      <span
+                        className={`text-[11px] font-extrabold px-2 py-0.5 rounded-full ${
+                          isDark
+                            ? 'bg-[#34D399]/15 text-[#34D399]'
+                            : 'bg-[#F4ECE1] text-[#8C5A32]'
+                        }`}
+                      >
+                        {careUpdateMonthBadge}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setStep('pop-printer')}
+                        className={`p-3.5 sm:p-4 rounded-2xl text-left flex items-center justify-between border transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm sm:text-base font-black truncate">
+                            05. 구독 POP 자동 출력기
+                          </div>
+                          <div
+                            className={`text-[11px] font-medium truncate mt-0.5 ${
+                              isDark ? 'text-slate-400' : 'text-[#78716C]'
+                            }`}
+                          >
+                            견적서 사진 스캔 · A4 2-UP 쇼카드
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 ml-1" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStep('care-table')}
+                        className={`p-3.5 sm:p-4 rounded-2xl text-left flex items-center justify-between border-[1.5px] transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#16222F] hover:bg-[#1D2D3E] text-white border-[#34D399]/45'
+                            : 'bg-[#FCF9F5] hover:bg-[#F4ECE1] text-[#18181B] border-[#8C5A32]'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div
+                            className={`text-sm sm:text-base font-black truncate ${
+                              isDark ? 'text-[#34D399]' : 'text-[#8C5A32]'
+                            }`}
+                          >
+                            📋 안심케어 · 가전이사 조견표
+                          </div>
+                          <div
+                            className={`text-[11px] font-medium truncate mt-0.5 ${
+                              isDark ? 'text-slate-300' : 'text-[#57534E]'
+                            }`}
+                          >
+                            품목별 클리닝·이전설치 금액 즉시 복사
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-[#8C5A32] shrink-0 ml-1" />
+                      </button>
+                    </div>
+                  </section>
+
+                  {/* GROUP 3: 고객 안내 가이드 & 즉시 조회 (6종: 무이자·카드발급·AS센터 + 모바일·올케어·보험) */}
+                  <section
+                    className={`rounded-3xl border-[1.5px] p-4 sm:p-5 shadow-2xs flex flex-col gap-3 ${
+                      isDark
+                        ? 'bg-[#141923] border-white/10'
+                        : 'bg-white border-[#E4DFD5]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs sm:text-sm font-black tracking-tight ${
+                          isDark ? 'text-slate-200' : 'text-[#8C5A32]'
+                        }`}
+                      >
+                        STEP 03 · 고객 안내 가이드 & 즉시 조회
+                      </span>
+                      <span
+                        className={`text-[11px] font-bold ${
+                          isDark ? 'text-slate-400' : 'text-[#78716C]'
+                        }`}
+                      >
+                        원클릭 팝업 & 안내시트
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushAppHistoryGuard('open-installment');
+                          setIsInstallmentModalOpen(true);
+                        }}
+                        className={`py-3 px-3 rounded-2xl border text-left flex items-center justify-between font-black text-xs sm:text-sm transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-100 border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <span className="truncate">무이자 할부</span>
+                        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 ml-1" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushAppHistoryGuard('open-card-issue');
+                          setIsCardIssueOpen(true);
+                        }}
+                        className={`py-3 px-3 rounded-2xl border text-left flex items-center justify-between font-black text-xs sm:text-sm transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-100 border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <span className="truncate">제휴카드 발급</span>
+                        <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 ml-1" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          pushAppHistoryGuard('open-as-center');
+                          setIsAsCenterOpen(true);
+                        }}
+                        className={`py-3 px-3 rounded-2xl border text-left flex items-center justify-between font-black text-xs sm:text-sm transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-100 border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <span className="truncate">가전 AS센터</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0 ml-1" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStep('himobile')}
+                        className={`py-3 px-3 rounded-2xl border text-left flex items-center justify-between font-black text-xs sm:text-sm transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-100 border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <span className="truncate">06. 하이모바일</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStep('allcare-guide')}
+                        className={`py-3 px-3 rounded-2xl border text-left flex items-center justify-between font-black text-xs sm:text-sm transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-100 border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <span className="truncate">07. 가전올케어</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStep('insurance')}
+                        className={`py-3 px-3 rounded-2xl border text-left flex items-center justify-between font-black text-xs sm:text-sm transition cursor-pointer ${
+                          isDark
+                            ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-100 border-white/10'
+                            : 'bg-[#FAF8F5] hover:bg-[#F3EFE6] text-[#18181B] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <span className="truncate">08. 보험청구</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      </button>
+                    </div>
+                  </section>
+                </div>
+
+                {/* 우측 컬럼 (폴드 펼침 / 태블릿 / PC 전용): 실시간 고객 CRM 프리뷰 보드 */}
+                <aside
+                  className={`hidden lg:flex rounded-3xl border-[1.5px] p-5 shadow-2xs flex-col justify-between gap-4 ${
+                    isDark
+                      ? 'bg-[#141923] border-white/10'
+                      : 'bg-white border-[#E4DFD5]'
+                  }`}
+                >
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span
+                          className={`text-xs font-black tracking-tight ${
+                            isDark ? 'text-[#38BDF8]' : 'text-[#8C5A32]'
+                          }`}
+                        >
+                          LIVE CUSTOMER PIPELINE
+                        </span>
+                        <h3 className="text-lg font-black tracking-tight mt-0.5">
+                          실시간 고객 CRM 프리뷰
+                        </h3>
+                      </div>
+                      {urgentCount >= 1 && (
+                        <span className="px-3 py-1 rounded-full bg-rose-600 text-white text-xs font-black animate-pulse">
+                          긴급 {urgentCount}건
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 3칸 미니 KPI 요약 */}
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setStep('crm')}
+                        className={`p-3 rounded-2xl border text-center cursor-pointer transition ${
+                          isDark
+                            ? 'bg-[#1B2230] border-white/10'
+                            : 'bg-[#FAF8F5] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <div className="text-[11px] font-extrabold text-[#78716C]">
+                          전체 관리 고객
+                        </div>
+                        <div className="text-xl font-black mt-0.5">
+                          {activeCrmCustomers.length}명
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStep('crm')}
+                        className="p-3 rounded-2xl border border-rose-200 bg-rose-50/80 text-center cursor-pointer transition"
+                      >
+                        <div className="text-[11px] font-extrabold text-rose-700">
+                          긴급 · 오늘할일
+                        </div>
+                        <div className="text-xl font-black text-rose-600 mt-0.5">
+                          {urgentCount}건
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStep('crm')}
+                        className={`p-3 rounded-2xl border text-center cursor-pointer transition ${
+                          isDark
+                            ? 'bg-[#1B2230] border-white/10'
+                            : 'bg-[#FAF8F5] border-[#E4DFD5]'
+                        }`}
+                      >
+                        <div className="text-[11px] font-extrabold text-[#78716C]">
+                          사은품 미지급
+                        </div>
+                        <div className="text-xl font-black text-amber-600 mt-0.5">
+                          {unpaidGiftCountHome}건
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* 우선순위 고객 4명 리스트 (원클릭 견적 불러오기) */}
+                    <div className="space-y-2">
+                      {priorityPreviewCustomers.map((cust) => {
+                        const isUrg = isUrgentCustomer(cust);
+                        return (
+                          <div
+                            key={cust.id}
+                            onClick={() => setStep('crm')}
+                            className={`p-3 rounded-2xl border flex items-center justify-between gap-2 cursor-pointer transition ${
+                              isUrg
+                                ? isDark
+                                  ? 'bg-rose-950/30 border-rose-500/40'
+                                  : 'bg-rose-50/60 border-rose-200'
+                                : isDark
+                                ? 'bg-[#1B2230] border-white/10 hover:border-sky-400/40'
+                                : 'bg-[#FAF8F5] border-[#E4DFD5] hover:border-[#8C5A32]'
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-sm font-black truncate">
+                                  {cust.name}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                                    isUrg
+                                      ? 'bg-rose-600 text-white'
+                                      : 'bg-stone-200/80 text-stone-700'
+                                  }`}
+                                >
+                                  {cust.status}
+                                </span>
+                              </div>
+                              <div
+                                className={`text-xs font-medium truncate mt-0.5 ${
+                                  isDark ? 'text-slate-400' : 'text-[#78716C]'
+                                }`}
+                              >
+                                {cust.items || '상담 품목 미입력'}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenCustomerInQuoteBuilder(cust);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-[#18181B] hover:bg-[#292524] text-white text-xs font-black shrink-0 cursor-pointer"
+                            >
+                              견적열기 ➔
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setStep('crm')}
+                    className={`w-full py-3.5 px-4 rounded-2xl font-black text-sm text-center transition cursor-pointer ${
+                      isDark
+                        ? 'bg-[#38BDF8] hover:bg-sky-300 text-[#0B0E14]'
+                        : 'bg-[#18181B] hover:bg-[#292524] text-white'
+                    }`}
+                  >
+                    VIP 통합 고객관리 전체 화면 열기 ➔
+                  </button>
+                </aside>
+              </div>
+            </main>
+          )}
+
+          {/* ==================== STEP 1: 조건 입력 화면 ==================== */}
+          {step === 'input' && (
+            <ControlPanel
+              state={currentState}
+              onChange={setCurrentState}
+              onParseImage={handleParseImage}
+              isParsing={isParsing}
+              parseError={parseError}
+              subScanNotice={subScanNotice}
+              onParseGeneralImage={handleParseGeneralImage}
+              isParsingGeneral={isParsingGeneral}
+              parseGeneralError={parseGeneralError}
+              onShowProposal={() => setStep('proposal')}
+              onBackToHome={() => setStep('home')}
+              activeCustomer={activeCustomer}
+              onClearActiveCustomer={() => setActiveCustomer(null)}
+              onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+            />
+          )}
+
+          {/* ==================== STEP 2: 제안서 / 프리드 안내서 미리보기 화면 ==================== */}
+          {step === 'proposal' && (
+            <ProposalPreview
+              state={currentState}
+              onChange={setCurrentState}
+              onBackToInput={() => setStep('input')}
+              activeCustomer={activeCustomer}
+              onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+            />
+          )}
+
+          {/* ==================== STEP 3: 4. 롯데 플랜 카드 계산기 & 제안서 화면 ==================== */}
+          {step === 'lotte-plan' && (
+            <LottePlanCalcView onBackToHome={() => setStep('home')} />
+          )}
+
+          {/* ==================== STEP 4: 5. 구독 POP 자동 출력기 화면 ==================== */}
+          {step === 'pop-printer' && (
+            <PopPrinterApp onBackToHome={() => setStep('home')} />
+          )}
+
+          {/* ==================== STEP 5: 통합 고객관리 시스템 화면 ==================== */}
+          {step === 'crm' && (
+            <CrmApp
+              onBackToHome={() => setStep('home')}
+              onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
+              onOpenQuoteRecordInQuoteBuilder={
+                handleOpenQuoteRecordInQuoteBuilder
+              }
+              onCustomersChange={(list) => setCrmCustomers(list)}
+            />
+          )}
+
+          {/* ==================== STEP 6: 6. 하이모바일 알뜰요금제 안내 & 즉시 개통 화면 ==================== */}
+          {step === 'himobile' && (
+            <HiMobileView onBackToHome={() => setStep('home')} />
+          )}
+
+          {/* ==================== STEP 7: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
+          {step === 'insurance' && (
+            <InsuranceGuideView onBackToHome={() => setStep('home')} />
+          )}
+
+          {/* ==================== STEP 8: 8. 가전 올케어 서비스 안내 & 보유가전 등록 화면 ==================== */}
+          {step === 'allcare-guide' && (
+            <AllCareGuideView onBackToHome={() => setStep('home')} />
+          )}
+
+          {/* ==================== STEP 9: 안심케어 · 가전이사 조견표 화면 ==================== */}
+          {step === 'care-table' && (
+            <CareTableView onBackToHome={() => setStep('home')} />
+          )}
+        </div>
+      </div>
+
+      {/* ==================== [일반 스마트폰 전용] 하단 엄지손가락 고정 탭바 (폴드 펼침/태블릿 md 이상에서는 자동 숨김) ==================== */}
+      <nav
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t px-2 py-1.5 grid grid-cols-5 gap-1 backdrop-blur-md no-print ${
+          isDark
+            ? 'bg-[#121620]/95 border-white/10 text-slate-300'
+            : 'bg-white/95 border-[#E2DDD3] text-[#57534E]'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setStep('home')}
+          className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-extrabold transition cursor-pointer ${
+            step === 'home'
+              ? isDark
+                ? 'bg-[#38BDF8] text-[#0B0E14] font-black'
+                : 'bg-[#18181B] text-white font-black'
+              : ''
+          }`}
+        >
+          <Home className="w-3.5 h-3.5" />
+          <span className="truncate">홈 대시보드</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStep('crm')}
+          className={`relative py-1.5 px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-extrabold transition cursor-pointer ${
+            step === 'crm'
+              ? isDark
+                ? 'bg-[#38BDF8] text-[#0B0E14] font-black'
+                : 'bg-[#18181B] text-white font-black'
+              : ''
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span className="truncate">고객 CRM</span>
+          {urgentCount >= 1 && (
+            <span className="absolute top-0.5 right-2 px-1 py-0.2 rounded-full bg-rose-600 text-white text-[9px] font-black leading-none">
+              {urgentCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleEnterMode(activeMode)}
+          className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-extrabold transition cursor-pointer ${
+            step === 'input' || step === 'proposal'
+              ? isDark
+                ? 'bg-[#38BDF8] text-[#0B0E14] font-black'
+                : 'bg-[#18181B] text-white font-black'
+              : ''
+          }`}
+        >
+          <Calculator className="w-3.5 h-3.5" />
+          <span className="truncate">견적 설계</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStep('care-table')}
+          className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-extrabold transition cursor-pointer ${
+            step === 'care-table'
+              ? isDark
+                ? 'bg-[#38BDF8] text-[#0B0E14] font-black'
+                : 'bg-[#18181B] text-white font-black'
+              : ''
+          }`}
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5" />
+          <span className="truncate">케어 조견표</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsMenuOpen((prev) => {
+              if (!prev) pushAppHistoryGuard('open-menu');
+              return !prev;
+            });
+          }}
+          className={`py-1.5 px-1 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[10.5px] font-extrabold transition cursor-pointer ${
+            isMenuOpen
+              ? isDark
+                ? 'bg-[#38BDF8] text-[#0B0E14] font-black'
+                : 'bg-[#18181B] text-white font-black'
+              : ''
+          }`}
+        >
+          <Menu className="w-3.5 h-3.5" />
+          <span className="truncate">전체 메뉴</span>
+        </button>
+      </nav>
 
       {/* ==================== 카드사별 무이자 · 부분무이자 할부 행사 모달 ==================== */}
       <CardInstallmentModal
