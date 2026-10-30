@@ -19,7 +19,7 @@ import { LottePlanCalcView } from './components/LottePlanCalcView';
 import { AllCareGuideView } from './components/AllCareGuideView';
 import { CardInstallmentModal } from './components/CardInstallmentModal';
 import { AsCenterModal, CardIssueModal } from './components/QuickCenterModal';
-import { ScheduleModal } from './components/ScheduleModal';
+import { ScheduleModal, fetchRemoteSchedules } from './components/ScheduleModal';
 import { ScheduleCharacterBanner } from './components/ScheduleCharacterBanner';
 import { AiCommandModal } from './components/AiCommandModal';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
@@ -482,6 +482,11 @@ export function App() {
         .catch(() => {
           // ignore
         });
+
+      // 월간 휴무표 전 직원 최신 데이터 자동 동기화
+      fetchRemoteSchedules().catch(() => {
+        // ignore
+      });
     }
   }, [step]);
 

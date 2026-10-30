@@ -18,6 +18,10 @@ import {
   compressImageFile,
   getEffectiveGeminiApiKey,
 } from '../utils/aiImageParser';
+import {
+  GitHubSyncConfig,
+  loadGitHubSyncConfig,
+} from '../utils/careTableParser';
 
 export const USER_NAME_STORAGE_KEY = 'himart_gj_user_name';
 export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v4';
@@ -273,6 +277,131 @@ export function saveAllSchedules(map: SchedulesMap): void {
     window.dispatchEvent(new CustomEvent(SCHEDULE_UPDATED_EVENT));
   } catch {
     // ignore
+  }
+}
+
+/**
+ * [원격 동기화 1] 서버/GitHub에 배포된 최신 휴무표(/schedule-data.json) 자동 가져오기 및 병합
+ */
+export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
+  try {
+    let remoteMap: SchedulesMap | null = null;
+    const gh = loadGitHubSyncConfig();
+    const branch = gh.branch || 'main';
+
+    if (gh.repo) {
+      const ghApiUrl = `https://api.github.com/repos/${gh.repo}/contents/public/schedule-data.json?ref=${branch}`;
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github.v3.raw',
+      };
+      if (gh.token) {
+        headers.Authorization = `Bearer ${gh.token}`;
+      }
+      const ghRes = await fetch(ghApiUrl, {
+        cache: 'no-store',
+        headers,
+      });
+      if (ghRes.ok) {
+        remoteMap = (await ghRes.json()) as SchedulesMap;
+      }
+    }
+
+    if (!remoteMap) {
+      const res = await fetch(`/schedule-data.json?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        remoteMap = (await res.json()) as SchedulesMap;
+      }
+    }
+
+    if (!remoteMap || typeof remoteMap !== 'object') {
+      return null;
+    }
+
+    const localMap = loadAllSchedules();
+    const merged: SchedulesMap = { ...localMap };
+    let hasChanges = false;
+
+    for (const [ym, remoteMonth] of Object.entries(remoteMap)) {
+      if (!remoteMonth || !Array.isArray(remoteMonth.employees)) continue;
+      const localMonth = localMap[ym];
+      if (
+        !localMonth ||
+        localMonth.isRegistered === false ||
+        !localMonth.updatedAt ||
+        (remoteMonth.updatedAt && remoteMonth.updatedAt >= localMonth.updatedAt)
+      ) {
+        merged[ym] = remoteMonth;
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      saveAllSchedules(merged);
+    }
+    return merged;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * [원격 동기화 2] 관리자가 휴무표를 업로드하거나 수정했을 때 GitHub 저장소(public/schedule-data.json)에 자동 배포
+ */
+export async function publishSchedulesToGitHub(
+  schedulesMap: SchedulesMap,
+  config?: GitHubSyncConfig
+): Promise<boolean> {
+  try {
+    const gh = config || loadGitHubSyncConfig();
+    const repo = gh.repo.trim();
+    const token = gh.token.trim();
+    const branch = gh.branch.trim() || 'main';
+    if (!repo || !token) return false;
+
+    const filePath = 'public/schedule-data.json';
+    const apiUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+
+    let currentSha: string | undefined;
+    const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (getRes.ok) {
+      const info = await getRes.json();
+      currentSha = info.sha;
+    }
+
+    const jsonText = JSON.stringify(schedulesMap, null, 2);
+    const bytes = new TextEncoder().encode(jsonText);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64Content = btoa(binary);
+
+    const putRes = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: `chore: 월간 휴무표 데이터 자동 동기화 (${new Date().toISOString().slice(0, 10)})`,
+        content: base64Content,
+        branch,
+        ...(currentSha ? { sha: currentSha } : {}),
+      }),
+    });
+
+    return putRes.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -1252,6 +1381,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setNameInput(loadedName);
     setIsEditingName(!loadedName);
     setSchedules(loadAllSchedules());
+
+    // 원격(GitHub/서버) 최신 휴무표 자동 동기화
+    fetchRemoteSchedules().then((merged) => {
+      if (merged) {
+        setSchedules(merged);
+      }
+    });
   }, [isOpen]);
 
   const monthData = useMemo(
@@ -1358,6 +1494,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setSchedules(nextSchedules);
     saveAllSchedules(nextSchedules);
     setEditingCell(null);
+
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub(nextSchedules, gh);
+    }
   };
 
   // 특정 직원 행(줄) 삭제 (잘못 생성된 직원 줄 즉시 삭제)
@@ -1391,6 +1532,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       type: 'success',
       text: `🗑️ 휴무표에서 [${empName}] 직원 줄이 삭제되었습니다.`,
     });
+
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub(nextSchedules, gh);
+    }
   };
 
   // 사진(JPG/PNG) 또는 엑셀(.xlsx) 업로드 처리
@@ -1686,9 +1832,18 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       const [yStr, mStr] = targetYearMonth.split('-');
       setSelectedDate(new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
 
+      // 관리자의 기기에 GitHub 연동 설정이 되어 있으면 전 직원 자동 배포
+      const gh = loadGitHubSyncConfig();
+      let syncedRemote = false;
+      if (gh.repo && gh.token) {
+        syncedRemote = await publishSchedulesToGitHub(nextSchedules, gh);
+      }
+
       setNotice({
         type: 'success',
-        text: `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 성공적으로 저장되었습니다!`,
+        text: syncedRemote
+          ? `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명) 저장 + 전 직원 자동 업데이트 완료!`
+          : `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 성공적으로 저장되었습니다!`,
       });
     } catch (err: any) {
       setNotice({
@@ -1742,6 +1897,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       type: 'info',
       text: `🗑️ [${ym}] 휴무표 데이터가 삭제되었습니다.`,
     });
+
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub(next, gh);
+    }
   };
 
   const handleDeleteAllSchedules = () => {
@@ -1753,6 +1913,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       text: '🗑️ 저장된 모든 월의 휴무표 데이터가 완전히 삭제되었습니다.',
     });
     setIsDeleteModalOpen(false);
+
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub(next, gh);
+    }
   };
 
   // 저장된 월(Month) 목록 (퀵 배지용)
