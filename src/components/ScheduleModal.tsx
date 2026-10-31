@@ -256,6 +256,16 @@ export function saveUserName(name: string): void {
   }
 }
 
+function parseUpdatedAtMs(val: unknown): number {
+  if (typeof val === 'number' && Number.isFinite(val)) return val;
+  const s = String(val ?? '').trim();
+  if (!s) return 0;
+  if (/^\d{10,15}$/.test(s)) return Number(s);
+  const iso = s.replace(/\./g, '-').replace(/\s+/g, ' ').trim().replace(' ', 'T');
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? t : 0;
+}
+
 export function loadAllSchedules(): SchedulesMap {
   try {
     // 구버전 하드코딩 캐시 키 정리
@@ -286,6 +296,13 @@ export function loadAllSchedules(): SchedulesMap {
         ymY && ymM ? new Date(ymY, ymM, 0).getDate() : 31;
       cleanedMap[ymKey] = {
         ...monthObj,
+        updatedAt:
+          typeof monthObj.updatedAt === 'number'
+            ? new Date(monthObj.updatedAt)
+                .toISOString()
+                .slice(0, 16)
+                .replace('T', ' ')
+            : String(monthObj.updatedAt || ''),
         employees: emps.map((e) => {
           const normalizedDays: Record<string, DayScheduleCode> = {};
           if (e.days && typeof e.days === 'object') {
@@ -317,6 +334,18 @@ export function saveAllSchedules(map: SchedulesMap): void {
   try {
     localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(map));
     window.dispatchEvent(new CustomEvent(SCHEDULE_UPDATED_EVENT));
+  } catch {
+    // ignore
+  }
+}
+
+export function syncSchedulesToDevServer(map: SchedulesMap): void {
+  try {
+    fetch('/api/schedule/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schedules: map }),
+    }).catch(() => {});
   } catch {
     // ignore
   }
@@ -376,7 +405,9 @@ export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
         if (
           !existing ||
           !existing.updatedAt ||
-          (stMonth.updatedAt && stMonth.updatedAt >= existing.updatedAt)
+          (stMonth.updatedAt &&
+            parseUpdatedAtMs(stMonth.updatedAt) >=
+              parseUpdatedAtMs(existing.updatedAt))
         ) {
           remoteMap[ym] = stMonth;
         }
@@ -398,7 +429,9 @@ export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
         !localMonth ||
         localMonth.isRegistered === false ||
         !localMonth.updatedAt ||
-        (remoteMonth.updatedAt && remoteMonth.updatedAt >= localMonth.updatedAt)
+        (remoteMonth.updatedAt &&
+          parseUpdatedAtMs(remoteMonth.updatedAt) >=
+            parseUpdatedAtMs(localMonth.updatedAt))
       ) {
         merged[ym] = remoteMonth;
         hasChanges = true;
@@ -713,8 +746,8 @@ function detectYearMonthFromText(
   if (!text) return null;
   const s = String(text);
 
-  // 2026년 11월, 2026-11, 2026.10 등
-  const ymMatch = s.match(/20(\d{2})\s*[년.\-/_]\s*(0?[1-9]|1[0-2])(?:\s*월|\b)/);
+  // 2026년 11월, 2026년_11월, 2026-11, 2026.10 등
+  const ymMatch = s.match(/20(\d{2})[\s년.\-/_]+(0?[1-9]|1[0-2])(?:\s*월|[^0-9]|$)/);
   if (ymMatch) {
     const y = 2000 + parseInt(ymMatch[1], 10);
     const m = parseInt(ymMatch[2], 10);
@@ -1791,6 +1824,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     ]);
     setSchedules(nextSchedules);
     saveAllSchedules(nextSchedules);
+    syncSchedulesToDevServer(nextSchedules);
     setNotice({
       type: 'success',
       text: toastText,
@@ -1809,6 +1843,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setUndoStack((prev) => prev.slice(0, -1));
     setSchedules(last.schedules);
     saveAllSchedules(last.schedules);
+    syncSchedulesToDevServer(last.schedules);
     setNotice({
       type: 'info',
       text: `↩ 실행 취소됨: ${last.label}`,
@@ -2096,14 +2131,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       let targetYearMonth = currentYearMonth;
       let parsedEmployees: EmployeeMonthlySchedule[] = [];
 
-      const monthMatch = file.name.match(/(\d{1,2})\s*월/);
-      if (monthMatch) {
-        const m = parseInt(monthMatch[1], 10);
-        if (m >= 1 && m <= 12) {
-          const yMatch = file.name.match(/20(\d{2})/);
-          const y = yMatch ? 2000 + parseInt(yMatch[1], 10) : currentYear;
-          targetYearMonth = `${y}-${String(m).padStart(2, '0')}`;
-        }
+      const detectedFromFileName = detectYearMonthFromText(
+        file.name,
+        currentYear
+      );
+      if (detectedFromFileName) {
+        targetYearMonth = detectedFromFileName;
       }
 
       let excelPrevYearMonth: string | undefined;
@@ -2145,6 +2178,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 [2. 표의 열(Column) 구조 및 칸 밀림(Column Shift) 절대 방지 규칙]
 - 좌측 고정열: [사용연차] | [NO] | [성명] | [담당]
 - 중앙 날짜열: [1일]부터 [31일](또는 해당 월 말일)까지의 세로 열 (상단 날짜 숫자 1~31 및 요일 세로줄 기준).
+- ⚠️ 주의 0: 표 왼쪽 앞부분에 첫 번째 '1'일보다 먼저 나오는 25~31일 열들은 전달 말일 열이므로 절대 이번 달 25~31일로 읽지 말고 건너뛰며, 반드시 첫 번째 '1'일 열부터 이번 달 말일 열까지만 읽으세요!
 - ⚠️ 주의 1: 말일 오른쪽 옆에 있는 '1' 열은 다음 달 1일 열이므로 현재 월(1~31일) 날짜와 절대 혼동하거나 앞당겨 읽지 마세요!
 - ⚠️ 주의 2: 셀 주변의 굵은 빨간색 테두리 박스와 표 중앙의 '1 페이지' 반투명 워터마크 글씨는 무시하고 그 아래 실제 셀 기호만 읽으세요!
 - ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하고, 실제 직원 행만 추출하세요!
@@ -2361,29 +2395,55 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       if (
         excelPrevYearMonth &&
         excelPrevMonthPatch &&
-        nextSchedules[excelPrevYearMonth]?.employees
+        Object.keys(excelPrevMonthPatch).length > 0
       ) {
-        const prevMonthData = nextSchedules[excelPrevYearMonth];
-        nextSchedules[excelPrevYearMonth] = {
-          ...prevMonthData,
-          updatedAt,
-          employees: prevMonthData.employees.map((emp) => {
-            const patchForEmp = excelPrevMonthPatch?.[emp.name];
-            if (!patchForEmp) return emp;
-            const nextDays = { ...emp.days };
-            for (const [dKey, codeVal] of Object.entries(patchForEmp)) {
-              if (codeVal) {
-                nextDays[dKey] = codeVal;
-              } else {
-                delete nextDays[dKey];
+        if (
+          nextSchedules[excelPrevYearMonth]?.employees &&
+          nextSchedules[excelPrevYearMonth].employees.length > 0
+        ) {
+          const prevMonthData = nextSchedules[excelPrevYearMonth];
+          nextSchedules[excelPrevYearMonth] = {
+            ...prevMonthData,
+            updatedAt,
+            isRegistered: true,
+            employees: prevMonthData.employees.map((emp) => {
+              const patchForEmp = excelPrevMonthPatch?.[emp.name];
+              if (!patchForEmp) return emp;
+              const nextDays = { ...emp.days };
+              for (const [dKey, codeVal] of Object.entries(patchForEmp)) {
+                if (codeVal) {
+                  nextDays[dKey] = codeVal;
+                } else {
+                  delete nextDays[dKey];
+                }
               }
-            }
-            return {
-              ...emp,
-              days: nextDays,
-            };
-          }),
-        };
+              return {
+                ...emp,
+                days: nextDays,
+              };
+            }),
+          };
+        } else {
+          nextSchedules[excelPrevYearMonth] = {
+            yearMonth: excelPrevYearMonth,
+            updatedAt,
+            isRegistered: true,
+            employees: parsedEmployees.map((emp) => {
+              const patchForEmp = excelPrevMonthPatch?.[emp.name] || {};
+              const cleanPrevDays: Record<string, DayScheduleCode> = {};
+              for (const [dKey, codeVal] of Object.entries(patchForEmp)) {
+                if (codeVal) {
+                  cleanPrevDays[dKey] = codeVal;
+                }
+              }
+              return {
+                name: emp.name,
+                role: emp.role,
+                days: cleanPrevDays,
+              };
+            }),
+          };
+        }
       }
 
       setUndoStack((prev) => [
@@ -2392,6 +2452,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       ]);
       setSchedules(nextSchedules);
       saveAllSchedules(nextSchedules);
+      syncSchedulesToDevServer(nextSchedules);
 
       const [yStr, mStr] = targetYearMonth.split('-');
       setSelectedDate(new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
@@ -2503,22 +2564,17 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       // ignore
     }
     setSchedules({});
+    saveAllSchedules({});
+    syncSchedulesToDevServer({});
     setIsDeleteModalOpen(false);
-    fetchRemoteSchedules().then((reloaded) => {
-      if (reloaded && Object.keys(reloaded).length > 0) {
-        setSchedules(reloaded);
-        setNotice({
-          type: 'success',
-          text: '🔄 기기 캐시를 초기화하고 서버 최신 휴무표(schedule-data.json)를 즉시 다시 불러왔습니다.',
-          canUndo: true,
-        });
-      } else {
-        setNotice({
-          type: 'success',
-          text: '🗑️ 저장된 모든 월의 휴무표 데이터가 초기화되었습니다.',
-          canUndo: true,
-        });
-      }
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub({}, gh);
+    }
+    setNotice({
+      type: 'success',
+      text: '🗑️ 저장된 모든 월의 휴무표 데이터가 초기화되었습니다.',
+      canUndo: true,
     });
   };
 

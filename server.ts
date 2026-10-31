@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -127,6 +128,22 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // 로컬/개발 서버 환경에서 업로드·수정한 휴무표를 public/schedule-data.json에 즉시 반영
+  app.post('/api/schedule/save', (req, res) => {
+    try {
+      const { schedules } = req.body || {};
+      if (!schedules || typeof schedules !== 'object') {
+        res.status(400).json({ error: '유효한 휴무표 데이터가 없습니다.' });
+        return;
+      }
+      const targetPath = path.join(__dirname, 'public', 'schedule-data.json');
+      fs.writeFileSync(targetPath, JSON.stringify(schedules, null, 2), 'utf-8');
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'schedule-data.json 저장 실패' });
+    }
+  });
 
   // 1. 일반구매(general) 및 혼합견적(hybrid)용 '일반전산 사진 자동입력' 엔드포인트
   app.post('/api/ai/parse-general-image', async (req, res) => {
