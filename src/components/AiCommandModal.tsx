@@ -76,7 +76,6 @@ import {
   isOffDayCode,
   loadAllSchedules,
   loadSavedUserName,
-  normalizeStaffName,
   saveAllSchedules,
   saveUserName,
 } from './ScheduleModal';
@@ -751,9 +750,6 @@ function detectScheduleStatusCode(text: string): {
   ) {
     return { code: '', label: '정상 출근(휴무 삭제)', isClear: true };
   }
-  if (/출휴|출산\s*휴가|특별\s*휴가/.test(text)) {
-    return { code: '출휴', label: '출휴' };
-  }
   if (/연차/.test(text)) return { code: '연차', label: '연차' };
   if (/휴가|여름\s*휴가|하계|동계|리프레시|리프/.test(text)) {
     return { code: 'V', label: '휴가(V)' };
@@ -780,9 +776,7 @@ export function tryExecuteScheduleCommand(
   modifyResult: ScheduleModifyResult | null;
   queryResult: ScheduleQueryResult | null;
 } {
-  const text = (rawText || '')
-    .trim()
-    .replace(/한춘애|한춘매|한준매/g, '한준애');
+  const text = (rawText || '').trim();
   if (!text) return { modifyResult: null, queryResult: null };
 
   // 견적 금액(예: 380만)이 포함된 순수 견적 명령이고 휴무 키워드가 없으면 패스
@@ -975,7 +969,7 @@ export function tryExecuteScheduleCommand(
   let needsUserNameSetup = false;
 
   if (overrideStaffName) {
-    matchedStaffName = normalizeStaffName(overrideStaffName);
+    matchedStaffName = overrideStaffName;
   } else {
     // 2) 현재 휴무표 직원 명단 또는 경기광주점 19명 정식 명단(GWANGJU_STAFF_ROSTER)과 일치하는 이름 검색
     for (const emp of validRegisteredEmployees) {
@@ -1007,17 +1001,15 @@ export function tryExecuteScheduleCommand(
         .replace(/(\d{1,2})\s*월/g, ' ')
         .replace(/(\d{1,2})\s*일/g, ' ')
         .replace(
-          /(?:오늘|금일|당일|내일|명일|모레|어제|작일|이번달|다음달|이번주|다음주|나|내꺼|내거|내|내가|본인|일정|스케줄|휴무표|계획표|휴무자|근무자|출근자|정기휴무|정규휴무|휴무|오프|연차|반차|오전반차|오후반차|출휴|출산휴가|교육|집체|연수|회의|미팅|여름휴가|하계휴가|동계휴가|리프레시|휴가|정상근무|정상출근|근무|출근|쉬는날|쉬는|사람|직원|바꿔줘|바꿔|변경해줘|변경해|변경|수정해줘|수정해|수정|옮겨줘|옮겨|이동해줘|이동해|이동|미뤄줘|미뤄|당겨줘|당겨|삭제해줘|삭제해|삭제|없애줘|없애|취소해줘|취소해|취소|지워줘|지워|초기화해줘|초기화|원래대로|돌려줘|돌려|넣어줘|넣어|등록해줘|등록해|등록|처리해줘|처리해|처리|적용해줘|적용해|적용|알려줘|알려|보여줘|보여|조회해줘|조회|누구야|누구|언제야|언제|해줘|해|줘)/g,
+          /(?:오늘|금일|당일|내일|명일|모레|어제|작일|이번달|다음달|이번주|다음주|나|내꺼|내거|내|내가|본인|일정|스케줄|휴무표|계획표|휴무자|근무자|출근자|정기휴무|정규휴무|휴무|오프|연차|반차|오전반차|오후반차|교육|집체|연수|회의|미팅|여름휴가|하계휴가|동계휴가|리프레시|휴가|정상근무|정상출근|근무|출근|쉬는날|쉬는|사람|직원|바꿔줘|바꿔|변경해줘|변경해|변경|수정해줘|수정해|수정|옮겨줘|옮겨|이동해줘|이동해|이동|미뤄줘|미뤄|당겨줘|당겨|삭제해줘|삭제해|삭제|없애줘|없애|취소해줘|취소해|취소|지워줘|지워|초기화해줘|초기화|원래대로|돌려줘|돌려|넣어줘|넣어|등록해줘|등록해|등록|처리해줘|처리해|처리|적용해줘|적용해|적용|알려줘|알려|보여줘|보여|조회해줘|조회|누구야|누구|언제야|언제|해줘|해|줘)/g,
           ' '
         );
 
       const rawTokens = strippedSentence.match(/[가-힣]{2,4}/g) || [];
       for (const tok of rawTokens) {
-        const cleanTok = normalizeStaffName(
-          tok.replace(
-            /(?:에서|부터|까지|으로|한테|에게|께서|이라|라고|이랑|하고|만|도|은|는|이|가|을|를|의|로|와|과|걸|거|님|씨)$/,
-            ''
-          )
+        const cleanTok = tok.replace(
+          /(?:에서|부터|까지|으로|한테|에게|께서|이라|라고|이랑|하고|만|도|은|는|이|가|을|를|의|로|와|과|걸|거|님|씨)$/,
+          ''
         );
         if (
           cleanTok.length >= 2 &&
@@ -1034,7 +1026,7 @@ export function tryExecuteScheduleCommand(
 
       // 제3의 미등록 이름이 명시되지 않았거나, '나/내/내꺼/내 휴무'인 경우 -> 저장된 내 이름(himart_gj_user_name) 사용!
       if (!extractedUnknownName || isExplicitSelf) {
-        const savedMe = normalizeStaffName(loadSavedUserName());
+        const savedMe = loadSavedUserName();
         if (savedMe) {
           // 저장된 내 이름이 실제 명단(또는 19명 정식 명단)에 있는지 확인
           const existsInSchedule =

@@ -125,8 +125,6 @@ const NON_NAME_KEYWORDS = new Set([
   '하계',
   '동계',
   '리프',
-  '출휴',
-  '출산휴가',
 ]);
 
 export type DayScheduleCode =
@@ -136,7 +134,6 @@ export type DayScheduleCode =
   | 'V' // 휴가(Summer/Refresh)
   | '반차' // 반차
   | '교육' // 교육
-  | '출휴' // 출산/육아/특별 휴무(출휴)
   | '회의' // 회의
   | 'HP'; // HP 근무
 
@@ -152,22 +149,13 @@ export interface MonthlyScheduleData {
   updatedAt: string;
   employees: EmployeeMonthlySchedule[];
   isRegistered?: boolean;
-  /** 엑셀/이미지 헤더에서 추출한 일자별 요일 맵 (예: { "1": "목", "2": "금", ... }) */
-  weekdayByDay?: Record<string, string>;
 }
 
 export type SchedulesMap = Record<string, MonthlyScheduleData>;
 
 export function isOffDayCode(code?: string): boolean {
   const c = (code || '').trim().toUpperCase();
-  return (
-    c === 'O' ||
-    c === '연차' ||
-    c === 'V' ||
-    c === '출휴' ||
-    c === '휴무' ||
-    c === '휴가'
-  );
+  return c === 'O' || c === '연차' || c === 'V' || c === '휴무' || c === '휴가';
 }
 
 // 경기광주점 기본 직원 명단 (이름 칩 선택 및 OCR 글자 보정용, 하드코딩 날짜 없음)
@@ -179,7 +167,7 @@ export const GWANGJU_STAFF_ROSTER: { name: string; role: string }[] = [
   { name: '정충영', role: '대형' },
   { name: '한세희', role: '대형' },
   { name: '김태형', role: '대형' },
-  { name: '한준애', role: '대형' },
+  { name: '한춘매', role: '대형' },
   { name: '손정민', role: '생활' },
   { name: '박기복', role: '주방' },
   { name: '최문기', role: '쿠쿠' },
@@ -193,25 +181,10 @@ export const GWANGJU_STAFF_ROSTER: { name: string; role: string }[] = [
   { name: '주형남', role: 'KT' },
 ];
 
-export const NAME_TYPO_MAP: Record<string, string> = {
-  한춘애: '한준애',
-  한춘매: '한준애',
-  한준매: '한준애',
+const NAME_TYPO_MAP: Record<string, string> = {
+  한춘애: '한춘매',
   손경민: '손정민',
 };
-
-export function normalizeStaffName(rawName: string): string {
-  const clean = String(rawName || '')
-    .replace(/\s+/g, '')
-    .replace(/^\d+[.)]?\s*/, '')
-    .trim();
-  if (!clean) return '';
-  if (NAME_TYPO_MAP[clean]) return NAME_TYPO_MAP[clean];
-  if (clean.includes('한춘애') || clean.includes('한춘매') || clean.includes('한준매')) {
-    return '한준애';
-  }
-  return clean;
-}
 
 export function loadSavedUserName(): string {
   try {
@@ -220,12 +193,12 @@ export function loadSavedUserName(): string {
       localStorage.removeItem(USER_NAME_STORAGE_KEY);
       return '';
     }
-    const normalized = normalizeStaffName(raw);
-    if (raw && normalized !== raw) {
-      localStorage.setItem(USER_NAME_STORAGE_KEY, normalized);
-      return normalized;
+    if (raw && NAME_TYPO_MAP[raw]) {
+      const corrected = NAME_TYPO_MAP[raw];
+      localStorage.setItem(USER_NAME_STORAGE_KEY, corrected);
+      return corrected;
     }
-    return normalized;
+    return raw;
   } catch {
     return '';
   }
@@ -233,7 +206,8 @@ export function loadSavedUserName(): string {
 
 export function saveUserName(name: string): void {
   try {
-    const clean = normalizeStaffName(name);
+    const raw = name.trim();
+    const clean = NAME_TYPO_MAP[raw] || raw;
     if (clean) {
       localStorage.setItem(USER_NAME_STORAGE_KEY, clean);
     } else {
@@ -284,7 +258,7 @@ export function loadAllSchedules(): SchedulesMap {
           }
           return {
             ...e,
-            name: normalizeStaffName(e.name),
+            name: NAME_TYPO_MAP[e.name] || e.name,
             days: normalizedDays,
           };
         }),
@@ -358,13 +332,7 @@ export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
         !localMonth.updatedAt ||
         (remoteMonth.updatedAt && remoteMonth.updatedAt >= localMonth.updatedAt)
       ) {
-        merged[ym] = {
-          ...remoteMonth,
-          employees: remoteMonth.employees.map((emp) => ({
-            ...emp,
-            name: normalizeStaffName(emp.name),
-          })),
-        };
+        merged[ym] = remoteMonth;
         hasChanges = true;
       }
     }
@@ -444,19 +412,27 @@ export function getOrCreateMonthSchedule(
   if (schedules[yearMonth]) {
     return {
       ...schedules[yearMonth],
-      employees: (schedules[yearMonth].employees || []).map((emp) => ({
-        ...emp,
-        name: normalizeStaffName(emp.name),
-      })),
       isRegistered: schedules[yearMonth].isRegistered ?? true,
     };
   }
-  // 미등록된 월인 경우 이전 달의 직원 명단이나 잔상을 상속하지 않고 빈 명단으로 반환
+  // 등록되지 않은 월이거나 삭제된 월인 경우 가장 최근 등록된 월의 직원 명단(또는 기본 명단)으로 빈 휴무표 반환
+  const sortedKeys = Object.keys(schedules)
+    .filter((k) => schedules[k]?.employees?.length > 0)
+    .sort();
+  const baseRoster =
+    sortedKeys.length > 0
+      ? schedules[sortedKeys[sortedKeys.length - 1]].employees
+      : GWANGJU_STAFF_ROSTER;
+
   return {
     yearMonth,
     updatedAt: '미등록 (사진/엑셀 업로드로 등록 가능)',
     isRegistered: false,
-    employees: [],
+    employees: baseRoster.map((emp) => ({
+      name: emp.name,
+      role: emp.role,
+      days: {},
+    })),
   };
 }
 
@@ -485,17 +461,6 @@ export function normalizeScheduleCode(raw: string): DayScheduleCode {
     s.includes('정기휴무')
   ) {
     return 'O';
-  }
-
-  // 출휴 ('출휴')
-  if (
-    s === '출휴' ||
-    s === '출산휴가' ||
-    s === '출산' ||
-    s.includes('출휴') ||
-    s.includes('출산휴가')
-  ) {
-    return '출휴';
   }
 
   // 연차 ('연차')
@@ -601,150 +566,58 @@ function isValidKoreanStaffName(raw: string): boolean {
   return /^[가-힣]{2,4}$/.test(clean);
 }
 
-interface ExtractedDateCellInfo {
-  day: number;
-  month?: number;
-  year?: number;
-  weekday?: string;
-}
-
-function normalizeWeekdayChar(raw: any): string | undefined {
-  const s = String(raw ?? '')
-    .replace(/\s+/g, '')
-    .toUpperCase();
-  if (!s) return undefined;
-  if (s === '일' || s === '일요일' || s === 'SUN' || s === '(일)' || s === '（일）') return '일';
-  if (s === '월' || s === '월요일' || s === 'MON' || s === '(월)' || s === '（월）') return '월';
-  if (s === '화' || s === '화요일' || s === 'TUE' || s === '(화)' || s === '（화）') return '화';
-  if (s === '수' || s === '수요일' || s === 'WED' || s === '(수)' || s === '（수）') return '수';
-  if (s === '목' || s === '목요일' || s === 'THU' || s === '(목)' || s === '（목）') return '목';
-  if (s === '금' || s === '금요일' || s === 'FRI' || s === '(금)' || s === '（금）') return '금';
-  if (s === '토' || s === '토요일' || s === 'SAT' || s === '(토)' || s === '（토）') return '토';
-  return undefined;
-}
-
-/**
- * 셀 값(원본 값 및 표시 텍스트)에서 연/월/일/요일 정보를 정밀 추출
- */
-function extractDateCellInfo(
-  cellVal: any,
-  formattedStr?: string
-): ExtractedDateCellInfo | null {
-  if (
-    (cellVal === null || cellVal === undefined || cellVal === '') &&
-    !formattedStr
-  ) {
-    return null;
-  }
-
-  if (cellVal instanceof Date && !isNaN(cellVal.getTime())) {
-    const day = cellVal.getDate();
-    if (day >= 1 && day <= 31) {
-      return {
-        year: cellVal.getFullYear(),
-        month: cellVal.getMonth() + 1,
-        day,
-        weekday: WEEKDAY_KO[cellVal.getDay()],
-      };
-    }
-  }
-
-  if (typeof cellVal === 'number') {
-    if (Number.isInteger(cellVal) && cellVal >= 1 && cellVal <= 31) {
-      return { day: cellVal };
-    }
-    // 엑셀 시리얼 날짜 (예: 2020년~2035년 -> 약 43831 ~ 49675)
-    if (cellVal >= 43000 && cellVal <= 52000) {
-      const parsedCode = (XLSX.SSF as any)?.parse_date_code?.(
-        Math.round(cellVal)
-      );
-      if (
-        parsedCode &&
-        parsedCode.d >= 1 &&
-        parsedCode.d <= 31 &&
-        parsedCode.m >= 1 &&
-        parsedCode.m <= 12
-      ) {
-        const dt = new Date(parsedCode.y, parsedCode.m - 1, parsedCode.d);
-        return {
-          year: parsedCode.y,
-          month: parsedCode.m,
-          day: parsedCode.d,
-          weekday: WEEKDAY_KO[dt.getDay()],
-        };
-      }
-      const utcDays = Math.round(cellVal - 25569);
-      const d = new Date(utcDays * 86400 * 1000);
-      const day = d.getUTCDate();
-      if (day >= 1 && day <= 31) {
-        return {
-          year: d.getUTCFullYear(),
-          month: d.getUTCMonth() + 1,
-          day,
-          weekday: WEEKDAY_KO[d.getUTCDay()],
-        };
-      }
-    }
-  }
-
-  const candidates = [String(cellVal ?? '').trim()];
-  if (formattedStr && formattedStr.trim() && formattedStr.trim() !== candidates[0]) {
-    candidates.push(formattedStr.trim());
-  }
-
-  for (const str of candidates) {
-    if (!str) continue;
-
-    // 1) 단순 숫자 "1" ~ "31" 또는 "1일" ~ "31일" 또는 "1(목)" / "1일(목)" / "26\n(월)"
-    const mSimple = str.match(
-      /^0?([1-9]|[12]\d|3[01])\s*(?:일)?(?:\s*[\r\n]*\s*[(（]?([월화수목금토일])(?:요일)?[)）]?)?$/
-    );
-    if (mSimple) {
-      return {
-        day: parseInt(mSimple[1], 10),
-        weekday: mSimple[2] || undefined,
-      };
-    }
-
-    // 2) YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
-    const mFullDate = str.match(
-      /^(20\d{2})\s*[-./년]\s*0?([1-9]|1[0-2])\s*[-./월]\s*0?([1-9]|[12]\d|3[01])\s*일?(?:\s*[(（]?([월화수목금토일])[)）]?)?/
-    );
-    if (mFullDate) {
-      const y = parseInt(mFullDate[1], 10);
-      const m = parseInt(mFullDate[2], 10);
-      const d = parseInt(mFullDate[3], 10);
-      return {
-        year: y,
-        month: m,
-        day: d,
-        weekday:
-          mFullDate[4] || WEEKDAY_KO[new Date(y, m - 1, d).getDay()],
-      };
-    }
-
-    // 3) MM/DD, MM-DD, MM.DD, MM월 DD일 (예: 10/26, 11/1, 10월 26일)
-    const mMonthDay = str.match(
-      /^0?([1-9]|1[0-2])\s*[-./월]\s*0?([1-9]|[12]\d|3[01])\s*(?:일)?(?:\s*[(（]?([월화수목금토일])[)）]?)?$/
-    );
-    if (mMonthDay) {
-      return {
-        month: parseInt(mMonthDay[1], 10),
-        day: parseInt(mMonthDay[2], 10),
-        weekday: mMonthDay[3] || undefined,
-      };
-    }
-  }
-
-  return null;
-}
-
 /**
  * 셀 값에서 1~31일 날짜 정수를 추출
  */
 function extractDayNumberFromCell(cellVal: any): number | null {
-  const info = extractDateCellInfo(cellVal);
-  return info ? info.day : null;
+  if (cellVal === null || cellVal === undefined || cellVal === '') return null;
+
+  if (cellVal instanceof Date && !isNaN(cellVal.getTime())) {
+    return cellVal.getDate();
+  }
+
+  if (typeof cellVal === 'number') {
+    if (Number.isInteger(cellVal) && cellVal >= 1 && cellVal <= 31) {
+      return cellVal;
+    }
+    // 엑셀 시리얼 날짜 (예: 2020년~2035년 -> 약 43831 ~ 49675)
+    if (cellVal >= 43000 && cellVal <= 52000) {
+      const utcDays = Math.floor(cellVal - 25569);
+      const d = new Date(utcDays * 86400 * 1000);
+      const day = d.getUTCDate();
+      if (day >= 1 && day <= 31) return day;
+    }
+    return null;
+  }
+
+  const str = String(cellVal).trim();
+  if (!str) return null;
+
+  // 1) 단순 숫자 "1" ~ "31" 또는 "1일" ~ "31일" 또는 "1(목)" / "1일(목)"
+  const mSimple = str.match(
+    /^0?([1-9]|[12]\d|3[01])\s*(?:일)?(?:\s*[(（][월화수목금토일][)）])?$/
+  );
+  if (mSimple) {
+    return parseInt(mSimple[1], 10);
+  }
+
+  // 2) YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
+  const mFullDate = str.match(
+    /^20\d{2}\s*[-./년]\s*\d{1,2}\s*[-./월]\s*0?([1-9]|[12]\d|3[01])\s*일?/
+  );
+  if (mFullDate) {
+    return parseInt(mFullDate[1], 10);
+  }
+
+  // 3) MM/DD, MM-DD, MM.DD (예: 10/1, 10-01, 11.1)
+  const mMonthDay = str.match(
+    /^(?:0?[1-9]|1[0-2])\s*[-./월]\s*0?([1-9]|[12]\d|3[01])\s*(?:일)?(?:\s*[(（][월화수목금토일][)）])?$/
+  );
+  if (mMonthDay) {
+    return parseInt(mMonthDay[1], 10);
+  }
+
+  return null;
 }
 
 /**
@@ -778,9 +651,8 @@ function detectYearMonthFromText(
 }
 
 /**
- * 엑셀 업로드 시: 이전 달의 명단이나 잔상을 상속하지 않고,
- * 오직 이번 달 파일에 실제로 이름과 일정이 기재된 임직원만 동적으로 추출하여 등록.
- * ('한춘애', '한춘매' 등은 무조건 정식 명칭 "한준애"로 표준화)
+ * 엑셀 업로드 시: 하드코딩 명단을 강제하지 않고 엑셀에 적힌 직원 명단과 근태(days)를 100% 신뢰하여 반영
+ * (단, 알려진 오타 '한춘애'->'한춘매', '손경민'->'손정민' 교정 및 직책 누락 시 기존 직책 보완)
  */
 function finalizeExcelEmployees(
   rawList: { name: string; role: string; days: Record<string, DayScheduleCode> }[]
@@ -789,9 +661,9 @@ function finalizeExcelEmployees(
   const seenNames = new Set<string>();
 
   for (const item of rawList) {
-    const finalName = normalizeStaffName(item.name);
-    if (!finalName || OBSOLETE_FAKE_NAMES.has(finalName)) continue;
-    if (!isValidKoreanStaffName(finalName)) continue;
+    const cleanRawName = item.name.replace(/\s+/g, '').trim();
+    if (!cleanRawName || OBSOLETE_FAKE_NAMES.has(cleanRawName)) continue;
+    const finalName = NAME_TYPO_MAP[cleanRawName] || cleanRawName;
 
     const stdMatch = GWANGJU_STAFF_ROSTER.find((s) => s.name === finalName);
     const rawRole = (item.role || '').trim();
@@ -800,19 +672,10 @@ function finalizeExcelEmployees(
         ? rawRole
         : stdMatch?.role || rawRole || '매장';
 
-    const cleanDays: Record<string, DayScheduleCode> = {};
-    for (const [dKey, codeVal] of Object.entries(item.days || {})) {
-      const dNum = parseInt(dKey, 10);
-      const normCode = normalizeScheduleCode(String(codeVal || ''));
-      if (dNum >= 1 && dNum <= 31 && normCode) {
-        cleanDays[String(dNum)] = normCode;
-      }
-    }
-
     if (seenNames.has(finalName)) {
       const existing = result.find((e) => e.name === finalName);
       if (existing) {
-        existing.days = { ...existing.days, ...cleanDays };
+        existing.days = { ...existing.days, ...item.days };
         if (existing.role === '매장' && finalRole !== '매장') {
           existing.role = finalRole;
         }
@@ -822,7 +685,7 @@ function finalizeExcelEmployees(
       result.push({
         name: finalName,
         role: finalRole,
-        days: cleanDays,
+        days: { ...item.days },
       });
     }
   }
@@ -832,61 +695,72 @@ function finalizeExcelEmployees(
 
 /**
  * 사진(이미지) AI OCR 업로드 전용:
- * 이전 달의 명단을 강제 상속하거나 덮어쓰지 않고, 이번 달 이미지에 실제로 존재하는 임직원만 추출.
- * ('한춘애', '한춘매' 등은 무조건 정식 명칭 "한준애"로 자동 치환)
+ * 글자 깨짐(예: 한춘애->한춘매, 손경민->손정민 등 1글자 OCR 오인식)만 보정하되,
+ * 새로운 직원 이름이 있으면 누락시키지 않고 그대로 포함하며 날짜별 근태(days)는 100% 그대로 보존합니다.
  */
 function reconcileOcrEmployees(
   rawList: { no?: number; name: string; role: string; days: Record<string, DayScheduleCode> }[]
 ): EmployeeMonthlySchedule[] {
-  return finalizeExcelEmployees(
-    rawList.map((r) => ({
-      name: normalizeStaffName(r.name),
-      role: (r.role || '').trim() || '매장',
+  return rawList.map((r) => {
+    const rawName = r.name.replace(/\s+/g, '').trim();
+    const typoCorrected = NAME_TYPO_MAP[rawName] || rawName;
+
+    // 1) 정확히 일치하는 기존 직원 확인
+    const exactMatch = GWANGJU_STAFF_ROSTER.find(
+      (s) => s.name === typoCorrected
+    );
+    if (exactMatch) {
+      return {
+        name: exactMatch.name,
+        role: r.role && r.role !== '매장' ? r.role : exactMatch.role,
+        days: r.days || {},
+      };
+    }
+
+    // 2) 담당(role)이 같고 이름 3글자 중 2글자가 일치하는 OCR 깨짐(예: 박기복 -> 박기록)만 보정
+    const fuzzyOcrMatch = GWANGJU_STAFF_ROSTER.find((s) => {
+      if (s.name.length !== 3 || typoCorrected.length !== 3) return false;
+      let matchChars = 0;
+      for (let i = 0; i < 3; i++) {
+        if (s.name[i] === typoCorrected[i]) matchChars++;
+      }
+      const sameRole =
+        r.role &&
+        (s.role.includes(r.role) || r.role.includes(s.role));
+      return matchChars >= 2 && sameRole;
+    });
+
+    if (fuzzyOcrMatch) {
+      return {
+        name: fuzzyOcrMatch.name,
+        role: fuzzyOcrMatch.role,
+        days: r.days || {},
+      };
+    }
+
+    // 3) 신규 직원 또는 타 지점 직원은 이름/담당/근태 모두 100% 그대로 유지
+    return {
+      name: typoCorrected,
+      role: r.role || '매장',
       days: r.days || {},
-    }))
-  );
+    };
+  });
 }
 
 /**
- * 날짜 헤더 행의 각 열(Column)이 정확히 몇 월 며칠(year, month, day, weekday)인지 정의하는 1:1 날짜 인덱스 맵 항목
- */
-interface DateColumnIndexEntry {
-  colIdx: number;
-  spanCols: number[];
-  year: number;
-  month: number;
-  yearMonth: string;
-  day: number;
-  weekday: string;
-  isTargetMonth: boolean;
-}
-
-function shiftYearMonth(ym: string, deltaMonths: number): string {
-  const [yStr, mStr] = ym.split('-');
-  const y = parseInt(yStr, 10) || new Date().getFullYear();
-  const m = parseInt(mStr, 10) || 1;
-  const dt = new Date(y, m - 1 + deltaMonths, 1);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
-}
-
-/**
- * [1] 양식이 바뀌어도 절대 실패하지 않는 '날짜 인덱스 맵 1:1 절대 매칭 엑셀/CSV 파서 + AI 자동 폴백'
+ * [1] 양식이 바뀌어도 절대 실패하지 않는 '3중 만능 엑셀/CSV 파서 + AI 자동 폴백'
+ * 1단계(자율 격자 위치 탐색) ➔ 2단계(세로형 Long DB & 요약형 표 호환) ➔ 3단계(Gemini AI 만능 폴백)
  */
 async function parseUniversalExcelSchedule(
   wb: XLSX.WorkBook,
   fileName: string,
   fallbackYearMonth: string
-): Promise<{
-  yearMonth: string;
-  employees: EmployeeMonthlySchedule[];
-  weekdayByDay?: Record<string, string>;
-}> {
+): Promise<{ yearMonth: string; employees: EmployeeMonthlySchedule[] }> {
   const defaultYear =
     parseInt(fallbackYearMonth.split('-')[0], 10) || new Date().getFullYear();
 
-  const explicitYmFromFileName = detectYearMonthFromText(fileName, defaultYear);
-  let detectedYearMonth = explicitYmFromFileName || fallbackYearMonth;
-  let hasExplicitMonthHint = Boolean(explicitYmFromFileName);
+  let detectedYearMonth =
+    detectYearMonthFromText(fileName, defaultYear) || fallbackYearMonth;
 
   const sheetCsvTexts: string[] = [];
 
@@ -897,18 +771,11 @@ async function parseUniversalExcelSchedule(
     const ymFromSheetName = detectYearMonthFromText(sheetName, defaultYear);
     if (ymFromSheetName) {
       detectedYearMonth = ymFromSheetName;
-      hasExplicitMonthHint = true;
     }
 
     const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
       header: 1,
       defval: '',
-      raw: true,
-    });
-    const formattedRows = XLSX.utils.sheet_to_json<any[]>(sheet, {
-      header: 1,
-      defval: '',
-      raw: false,
     });
     if (!rows || rows.length === 0) continue;
 
@@ -918,7 +785,6 @@ async function parseUniversalExcelSchedule(
       const ymFromRow = detectYearMonthFromText(rowText, defaultYear);
       if (ymFromRow) {
         detectedYearMonth = ymFromRow;
-        hasExplicitMonthHint = true;
         break;
       }
     }
@@ -930,70 +796,39 @@ async function parseUniversalExcelSchedule(
     }
 
     // =========================================================================
-    // [1단계] 날짜 헤더(Header) 기준 1:1 날짜 인덱스 맵 생성 및 엄격 동기화 파싱
+    // [1단계] 가로형 격자 표(Matrix) 자율 위치 탐색 (헤더 위치·병합 무관)
     // =========================================================================
-    const scanHeaderLimit = Math.min(rows.length, 25);
-
-    // 1-A) 날짜 숫자들이 연속으로 배치된 진짜 '날짜 헤더 행(bestDateRowIdx)' 탐색
-    // ('총 근무인원', '결원' 등 숫자 요약 행과 혼동하지 않도록 +1 연속 증가 점수로 교차 검증)
     let bestDateRowIdx = -1;
-    let bestRowScore = -1;
-    let bestRowTokens: {
-      colIdx: number;
-      info: ExtractedDateCellInfo;
-    }[] = [];
+    let bestDayColMap: Record<number, number> = {};
+    let maxDayCount = 0;
 
+    // 상단 1~20행 전체를 스캔하여 날짜(1~31일)가 가장 많이 포함된 행 탐색 (절대 중간 break 금지)
+    const scanHeaderLimit = Math.min(rows.length, 20);
     for (let rIdx = 0; rIdx < scanHeaderLimit; rIdx++) {
       const r = rows[rIdx] || [];
-      const fr = formattedRows[rIdx] || [];
-      const rowJoined = r
-        .slice(0, 6)
-        .map((c) => String(c ?? '').replace(/\s+/g, ''))
-        .join(' ');
-      if (
-        rowJoined.includes('근무인원') ||
-        rowJoined.includes('결원') ||
-        rowJoined.includes('합계') ||
-        rowJoined.includes('총계')
-      ) {
-        continue;
-      }
-
-      const tokens: { colIdx: number; info: ExtractedDateCellInfo }[] = [];
+      const foundDays: Record<number, number> = {};
       for (let cIdx = 0; cIdx < r.length; cIdx++) {
-        const info = extractDateCellInfo(r[cIdx], String(fr[cIdx] ?? ''));
-        if (info && info.day >= 1 && info.day <= 31) {
-          tokens.push({ colIdx: cIdx, info });
+        const dayNum = extractDayNumberFromCell(r[cIdx]);
+        if (dayNum !== null && dayNum >= 1 && dayNum <= 31) {
+          // 우측 끝에 나오는 다음 달 1일 열이 기존 1일 열을 덮어쓰지 않도록 보호
+          if (foundDays[dayNum] === undefined) {
+            foundDays[dayNum] = cIdx;
+          }
         }
       }
-
-      if (tokens.length < 7) continue;
-
-      let sequentialTransitions = 0;
-      for (let i = 1; i < tokens.length; i++) {
-        const prev = tokens[i - 1];
-        const curr = tokens[i];
-        const colGap = curr.colIdx - prev.colIdx;
-        if (
-          colGap >= 1 &&
-          colGap <= 3 &&
-          (curr.info.day === prev.info.day + 1 ||
-            (prev.info.day >= 28 && curr.info.day === 1))
-        ) {
-          sequentialTransitions++;
-        }
-      }
-
-      const score = sequentialTransitions * 10 + tokens.length;
-      if (sequentialTransitions >= 5 && score > bestRowScore) {
-        bestRowScore = score;
+      const count = Object.keys(foundDays).length;
+      if (count > maxDayCount) {
+        maxDayCount = count;
         bestDateRowIdx = rIdx;
-        bestRowTokens = tokens;
+        bestDayColMap = foundDays;
       }
     }
 
-    if (bestDateRowIdx !== -1 && bestRowTokens.length >= 7) {
-      // 1-B) 성명 열(nameColIdx) 및 담당/직책 열(roleColIdx) 먼저 확정
+    if (maxDayCount >= 7) {
+      const dateColSet = new Set<number>(Object.values(bestDayColMap));
+
+      // 성명 열(nameColIdx) 및 담당/직책 열(roleColIdx) 자율 탐색
+      // 방법 A: 상단 1~20행에서 키워드 탐색 (날짜 행과 다른 줄이어도 독립 탐색)
       let keywordNameColIdx = -1;
       let keywordRoleColIdx = -1;
 
@@ -1027,14 +862,16 @@ async function parseUniversalExcelSchedule(
         }
       }
 
+      // 방법 B: 데이터 패턴 자율 스캔 (좌측 0~10번 열 중 2~4글자 한글 이름이 가장 많이 등장하는 열 계산)
       let patternNameColIdx = -1;
       let maxNameHits = 0;
       const maxColToScan = 10;
 
       for (let cIdx = 0; cIdx <= maxColToScan; cIdx++) {
         let hits = 0;
-        for (let rIdx = bestDateRowIdx + 1; rIdx < rows.length; rIdx++) {
-          const cellStr = normalizeStaffName(String(rows[rIdx]?.[cIdx] ?? ''));
+        for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+          if (rIdx === bestDateRowIdx) continue;
+          const cellStr = String(rows[rIdx]?.[cIdx] ?? '').trim();
           if (isValidKoreanStaffName(cellStr)) {
             hits++;
           }
@@ -1045,15 +882,13 @@ async function parseUniversalExcelSchedule(
         }
       }
 
+      // 키워드 열에 실제 한글 이름이 2명 이상 있는지 검증, 없으면 패턴 스캔 열 채택
       let nameColIdx = keywordNameColIdx;
       if (nameColIdx !== -1) {
         let keywordHits = 0;
-        for (let rIdx = bestDateRowIdx + 1; rIdx < rows.length; rIdx++) {
-          if (
-            isValidKoreanStaffName(
-              normalizeStaffName(String(rows[rIdx]?.[nameColIdx] ?? ''))
-            )
-          ) {
+        for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+          if (rIdx === bestDateRowIdx) continue;
+          if (isValidKoreanStaffName(String(rows[rIdx]?.[nameColIdx] ?? ''))) {
             keywordHits++;
           }
         }
@@ -1066,52 +901,9 @@ async function parseUniversalExcelSchedule(
         nameColIdx = 0;
       }
 
-      // 1-C) 성명 열 오른쪽에 위치한 연속된 날짜 열만 필터링 (좌측 NO/연차 열 및 우측 합계 열 완벽 배제)
-      const rightTokens = bestRowTokens.filter((t) => t.colIdx > nameColIdx);
-      const seqTokens: { colIdx: number; info: ExtractedDateCellInfo }[] = [];
-
-      for (let i = 0; i < rightTokens.length; i++) {
-        const curr = rightTokens[i];
-        const prev = seqTokens[seqTokens.length - 1];
-        if (!prev) {
-          // 첫 시작 토큰은 다음 토큰과 연속(+1 또는 월말->1일)인지 확인
-          const next = rightTokens[i + 1];
-          if (
-            next &&
-            next.colIdx - curr.colIdx <= 3 &&
-            (next.info.day === curr.info.day + 1 ||
-              (curr.info.day >= 28 && next.info.day === 1))
-          ) {
-            seqTokens.push(curr);
-          }
-        } else {
-          const colGap = curr.colIdx - prev.colIdx;
-          const isNextDay =
-            curr.info.day === prev.info.day + 1 ||
-            (prev.info.day >= 28 && curr.info.day === 1);
-          if (colGap >= 1 && colGap <= 3 && isNextDay) {
-            seqTokens.push(curr);
-          } else if (colGap >= 1 && colGap <= 2) {
-            // 혹시 1칸 오타가 있더라도 다다음 칸이 정상 연속이면 허용
-            const next = rightTokens[i + 1];
-            if (
-              next &&
-              next.info.day === curr.info.day + 1
-            ) {
-              seqTokens.push(curr);
-            }
-          }
-        }
-      }
-
-      const activeDateTokens = seqTokens.length >= 7 ? seqTokens : rightTokens;
-      const dateColSet = new Set<number>(activeDateTokens.map((t) => t.colIdx));
-
-      // roleColIdx 확정
+      // roleColIdx 결정: 키워드로 못 찾았으면 nameColIdx + 1 또는 nameColIdx - 1 중 직책 텍스트가 있는 열 자동 탐색
       let roleColIdx =
-        keywordRoleColIdx !== -1 &&
-        keywordRoleColIdx !== nameColIdx &&
-        !dateColSet.has(keywordRoleColIdx)
+        keywordRoleColIdx !== -1 && keywordRoleColIdx !== nameColIdx
           ? keywordRoleColIdx
           : -1;
 
@@ -1139,209 +931,19 @@ async function parseUniversalExcelSchedule(
         }
       }
 
-      // 1-D) 요일 헤더 행(weekdayRowIdx) 탐색 (날짜 행 바로 아래 또는 바로 위 행)
-      let weekdayRowIdx = -1;
-      let maxWeekdayHits = 0;
-      for (const candRowIdx of [
-        bestDateRowIdx + 1,
-        bestDateRowIdx - 1,
-        bestDateRowIdx + 2,
-      ]) {
-        if (candRowIdx < 0 || candRowIdx >= rows.length) continue;
-        const wr = rows[candRowIdx] || [];
-        let hits = 0;
-        for (const tok of activeDateTokens) {
-          if (normalizeWeekdayChar(wr[tok.colIdx])) {
-            hits++;
-          }
-        }
-        if (hits >= 5 && hits > maxWeekdayHits) {
-          maxWeekdayHits = hits;
-          weekdayRowIdx = candRowIdx;
-        }
-      }
-
-      // 1-E) 엑셀 병합 셀(!merges) 분석:
-      //  - 날짜 헤더가 가로 병합된 경우 spanCols 기록
-      //  - 직원 데이터 행에서 '출휴', '연차', 'V', '교육', 'O' 등이 여러 날짜 열에 걸쳐 가로 병합된 경우 모든 열에 값 복제
-      const merges: XLSX.Range[] = Array.isArray(sheet['!merges'])
-        ? (sheet['!merges'] as XLSX.Range[])
-        : [];
-      const rangeOffset = sheet['!ref']
-        ? XLSX.utils.decode_range(sheet['!ref']).s
-        : { r: 0, c: 0 };
-
-      const headerSpanMap = new Map<number, number[]>();
-      for (const m of merges) {
-        const rStart = m.s.r - rangeOffset.r;
-        const rEnd = m.e.r - rangeOffset.r;
-        const cStart = m.s.c - rangeOffset.c;
-        const cEnd = m.e.c - rangeOffset.c;
-
-        if (bestDateRowIdx >= rStart && bestDateRowIdx <= rEnd && cEnd > cStart) {
-          const span: number[] = [];
-          for (let c = cStart; c <= cEnd; c++) span.push(c);
-          headerSpanMap.set(cStart, span);
-        }
-
-        // 직원 행의 가로 병합 근태 코드(예: 출휴, 연차, V 등)를 병합 범위 내 모든 열에 동일하게 채움
-        if (rStart > bestDateRowIdx && rStart === rEnd && cEnd > cStart) {
-          const rowArr = rows[rStart];
-          if (rowArr && cStart > nameColIdx) {
-            const mergedCode = normalizeScheduleCode(String(rowArr[cStart] ?? ''));
-            if (mergedCode) {
-              for (let c = cStart + 1; c <= cEnd; c++) {
-                if (!rowArr[c]) {
-                  rowArr[c] = mergedCode;
-                }
-              }
-            }
-          }
-        }
-      }
-
-      // 1-F) 날짜 열들을 월별 구간(Segments)으로 분할 (예: [26,27,28,29,30,31] -> [1,2,3...30] -> [1,2])
-      const segments: { colIdx: number; info: ExtractedDateCellInfo }[][] = [];
-      for (const tok of activeDateTokens) {
-        if (segments.length === 0) {
-          segments.push([tok]);
-        } else {
-          const curSeg = segments[segments.length - 1];
-          const prevTok = curSeg[curSeg.length - 1];
-          if (tok.info.day < prevTok.info.day) {
-            segments.push([tok]);
-          } else {
-            curSeg.push(tok);
-          }
-        }
-      }
-
-      // 가장 많은 일수를 가진 구간(1일부터 시작하는 본 월 구간)을 mainSegIdx로 선정
-      let mainSegIdx = 0;
-      let maxSegLen = 0;
-      segments.forEach((seg, idx) => {
-        if (seg.length > maxSegLen) {
-          maxSegLen = seg.length;
-          mainSegIdx = idx;
-        }
-      });
-
-      const mainSeg = segments[mainSegIdx] || [];
-
-      // mainSeg 내부 셀에 명시적 연/월(엑셀 시리얼 날짜 또는 MM/DD)이 있으면 최우선 반영
-      const explicitInMain = mainSeg.find(
-        (t) => t.info.month && t.info.month >= 1 && t.info.month <= 12
-      );
-      if (explicitInMain && explicitInMain.info.month) {
-        const y = explicitInMain.info.year || defaultYear;
-        detectedYearMonth = `${y}-${String(explicitInMain.info.month).padStart(
-          2,
-          '0'
-        )}`;
-        hasExplicitMonthHint = true;
-      }
-
-      // 요일 행 및 전월 말일(28/29/30/31)과 달력을 교차 검증하여 연/월 자동 보정
-      if (!hasExplicitMonthHint && weekdayRowIdx !== -1 && mainSeg.length >= 7) {
-        const wr = rows[weekdayRowIdx] || [];
-        const prevSeg = mainSegIdx > 0 ? segments[mainSegIdx - 1] : null;
-        const prevSegLastDay =
-          prevSeg && prevSeg.length > 0
-            ? prevSeg[prevSeg.length - 1].info.day
-            : null;
-
-        let bestCandYm = detectedYearMonth;
-        let bestMatchRatio = -1;
-
-        for (let delta = -3; delta <= 6; delta++) {
-          const candYm = shiftYearMonth(fallbackYearMonth, delta);
-          const [cyStr, cmStr] = candYm.split('-');
-          const cy = parseInt(cyStr, 10);
-          const cm = parseInt(cmStr, 10);
-
-          if (prevSegLastDay && prevSegLastDay >= 28) {
-            const actualPrevLastDay = new Date(cy, cm - 1, 0).getDate();
-            if (actualPrevLastDay !== prevSegLastDay) continue;
-          }
-
-          let matches = 0;
-          let checked = 0;
-          for (const tok of mainSeg) {
-            const excelWd =
-              normalizeWeekdayChar(wr[tok.colIdx]) || tok.info.weekday;
-            if (!excelWd) continue;
-            checked++;
-            const calWd = WEEKDAY_KO[new Date(cy, cm - 1, tok.info.day).getDay()];
-            if (excelWd === calWd) matches++;
-          }
-
-          if (checked >= 5) {
-            const ratio = matches / checked;
-            if (ratio > bestMatchRatio) {
-              bestMatchRatio = ratio;
-              bestCandYm = candYm;
-            }
-          }
-        }
-
-        if (bestMatchRatio >= 0.8) {
-          detectedYearMonth = bestCandYm;
-        }
-      }
-
-      // 1-G) 각 열(Column)이 정확히 몇 월 며칠을 의미하는지 1:1 '날짜 인덱스 맵(dateIndexMap)' 생성
-      const dateIndexMap: DateColumnIndexEntry[] = [];
-      const wr = weekdayRowIdx !== -1 ? rows[weekdayRowIdx] || [] : [];
-
-      segments.forEach((seg, segIdx) => {
-        const monthOffset = segIdx - mainSegIdx;
-        const segYm = shiftYearMonth(detectedYearMonth, monthOffset);
-        const [syStr, smStr] = segYm.split('-');
-        const sy = parseInt(syStr, 10);
-        const sm = parseInt(smStr, 10);
-        const isTargetMonth = monthOffset === 0;
-
-        for (const tok of seg) {
-          const excelWd =
-            normalizeWeekdayChar(wr[tok.colIdx]) ||
-            tok.info.weekday ||
-            WEEKDAY_KO[new Date(sy, sm - 1, tok.info.day).getDay()];
-
-          dateIndexMap.push({
-            colIdx: tok.colIdx,
-            spanCols: headerSpanMap.get(tok.colIdx) || [tok.colIdx],
-            year: sy,
-            month: sm,
-            yearMonth: segYm,
-            day: tok.info.day,
-            weekday: excelWd,
-            isTargetMonth,
-          });
-        }
-      });
-
-      // 본 월(isTargetMonth === true)에 해당하는 날짜 인덱스 맵만 추출하여
-      // 이전 달(예: 좌측 26일~31일)이나 다음 달(예: 우측 1일~2일)의 데이터 잔상이 절대 섞이지 않도록 차단!
-      const targetMonthColumns = dateIndexMap.filter((d) => d.isTargetMonth);
-      const weekdayByDay: Record<string, string> = {};
-      for (const entry of targetMonthColumns) {
-        weekdayByDay[String(entry.day)] = entry.weekday;
-      }
-
       const matrixEmployees: {
         name: string;
         role: string;
         days: Record<string, DayScheduleCode>;
       }[] = [];
 
-      const startEmployeeRowIdx = Math.max(
-        bestDateRowIdx + 1,
-        weekdayRowIdx > bestDateRowIdx ? weekdayRowIdx + 1 : bestDateRowIdx + 1
-      );
-
-      for (let rIdx = startEmployeeRowIdx; rIdx < rows.length; rIdx++) {
+      for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+        if (rIdx <= bestDateRowIdx) continue;
         const r = rows[rIdx] || [];
-        const rawName = normalizeStaffName(String(r[nameColIdx] ?? ''));
+        const rawName = String(r[nameColIdx] ?? '')
+          .replace(/\s+/g, '')
+          .replace(/^\d+[.)]?\s*/, '')
+          .trim();
 
         if (!isValidKoreanStaffName(rawName)) continue;
 
@@ -1354,30 +956,19 @@ async function parseUniversalExcelSchedule(
           rowJoined.includes('근무인원') ||
           rowJoined.includes('결원') ||
           rowJoined.includes('합계') ||
-          rowJoined.includes('총계') ||
-          rowJoined.includes('소계')
+          rowJoined.includes('총계')
         ) {
           continue;
         }
 
-        // 날짜 인덱스 맵(targetMonthColumns)과 1:1 엄격 동기화하여 셀 좌표 매칭
         const days: Record<string, DayScheduleCode> = {};
-        for (const colEntry of targetMonthColumns) {
-          if (
-            colEntry.colIdx === nameColIdx ||
-            colEntry.colIdx === roleColIdx
-          ) {
-            continue;
-          }
-          let code: DayScheduleCode = '';
-          for (const c of colEntry.spanCols) {
-            code = normalizeScheduleCode(String(r[c] ?? ''));
-            if (code) break;
-          }
+        Object.entries(bestDayColMap).forEach(([dayStr, colIdx]) => {
+          if (colIdx === nameColIdx || colIdx === roleColIdx) return;
+          const code = normalizeScheduleCode(String(r[colIdx] ?? ''));
           if (code) {
-            days[String(colEntry.day)] = code;
+            days[dayStr] = code;
           }
-        }
+        });
 
         const rawRole =
           roleColIdx >= 0 ? String(r[roleColIdx] ?? '').trim() : '';
@@ -1390,11 +981,10 @@ async function parseUniversalExcelSchedule(
       }
 
       const finalizedMatrix = finalizeExcelEmployees(matrixEmployees);
-      if (finalizedMatrix.length >= 2) {
+      if (finalizedMatrix.length >= 3) {
         return {
           yearMonth: detectedYearMonth,
           employees: finalizedMatrix,
-          weekdayByDay,
         };
       }
     }
@@ -1411,10 +1001,11 @@ async function parseUniversalExcelSchedule(
       const r = rows[rIdx] || [];
       if (r.length < 2) continue;
 
+      // 행 안에서 한글 이름 셀 찾기
       let rowName = '';
       let rowNameCol = -1;
       for (let cIdx = 0; cIdx < Math.min(r.length, 8); cIdx++) {
-        const cand = normalizeStaffName(String(r[cIdx] ?? ''));
+        const cand = String(r[cIdx] ?? '').replace(/\s+/g, '').trim();
         if (isValidKoreanStaffName(cand)) {
           rowName = cand;
           rowNameCol = cIdx;
@@ -1428,6 +1019,9 @@ async function parseUniversalExcelSchedule(
       }
       const empEntry = stage2Map.get(rowName)!;
 
+      // 같은 행의 다른 셀들 분석:
+      // 케이스 A: 요약형 문자열 (예: "10/1(O), 10/14(연차)" 또는 "1일(휴무), 6일(O)" 또는 "1, 6, 8, 9")
+      // 케이스 B: 세로형 단일 일자 + 근태상태 (예: 날짜 셀 = "10/14" 또는 14, 상태 셀 = "연차" 또는 "O")
       let singleDayInRow: number | null = null;
       let singleCodeInRow: DayScheduleCode = '';
 
@@ -1437,8 +1031,9 @@ async function parseUniversalExcelSchedule(
         const cellStr = String(cellVal ?? '').trim();
         if (!cellStr) continue;
 
+        // 요약형 패턴 1: "(10/)?14일?\s*[:(（]?\s*(O|연차|V|반차|교육|회의|HP|휴무|휴가)"
         const summaryRegex =
-          /(?:(?:0?[1-9]|1[0-2])\s*[-./월]\s*)?0?([1-9]|[12]\d|3[01])\s*일?\s*[(（:：-]?\s*(O|o|○|휴무|정기휴무|연차|V|v|휴가|반차|오전반차|오후반차|교육|출휴|출산휴가|회의|HP)\s*[)）]?/g;
+          /(?:(?:0?[1-9]|1[0-2])\s*[-./월]\s*)?0?([1-9]|[12]\d|3[01])\s*일?\s*[(（:：-]?\s*(O|o|○|휴무|정기휴무|연차|V|v|휴가|반차|오전반차|오후반차|교육|회의|HP)\s*[)）]?/g;
         let matchSummary: RegExpExecArray | null;
         let matchedAnySummary = false;
         while ((matchSummary = summaryRegex.exec(cellStr)) !== null) {
@@ -1451,6 +1046,7 @@ async function parseUniversalExcelSchedule(
         }
         if (matchedAnySummary) continue;
 
+        // 요약형 패턴 2: 쉼표로 구분된 휴무 일자 나열 (예: "1, 6, 8, 9, 15, 20")
         if (/^\d{1,2}(?:\s*,\s*\d{1,2}){2,}$/.test(cellStr)) {
           cellStr.split(',').forEach((part) => {
             const dNum = parseInt(part.trim(), 10);
@@ -1461,18 +1057,21 @@ async function parseUniversalExcelSchedule(
           continue;
         }
 
+        // 세로형 단일 날짜인지 확인
         const maybeDay = extractDayNumberFromCell(cellVal);
         if (maybeDay !== null && singleDayInRow === null) {
           singleDayInRow = maybeDay;
           continue;
         }
 
+        // 세로형 근태 코드인지 확인
         const maybeCode = normalizeScheduleCode(cellStr);
         if (maybeCode) {
           singleCodeInRow = maybeCode;
           continue;
         }
 
+        // 직책/담당 텍스트 보완
         if (
           empEntry.role === '매장' &&
           cellStr.length >= 2 &&
@@ -1501,7 +1100,7 @@ async function parseUniversalExcelSchedule(
   }
 
   // =========================================================================
-  // [3단계] 초강력 Gemini AI 엑셀 폴백 (날짜 인덱스 맵 1:1 매칭 규칙 적용)
+  // [3단계] 초강력 Gemini AI 엑셀 폴백 (어떤 기상천외한 엑셀 양식도 100% 해결)
   // =========================================================================
   const apiKey = getEffectiveGeminiApiKey();
   if (!apiKey || sheetCsvTexts.length === 0) {
@@ -1513,24 +1112,20 @@ async function parseUniversalExcelSchedule(
   const ai = new GoogleGenAI({ apiKey });
   const combinedCsv = sheetCsvTexts.join('\n\n').slice(0, 60000);
 
-  const aiPrompt = `다음은 매장 월간 휴무표 엑셀/CSV 데이터입니다. 아래 정밀 매칭 원칙을 철저히 지켜 직원별 월간 스케줄 JSON으로 변환하세요.
+  const aiPrompt = `다음은 매장 월간 휴무표 엑셀/CSV 데이터입니다. 양식이 비정형이어도 표의 맥락을 파악하여 직원별 월간 스케줄 JSON으로 정확히 변환하세요.
 
 [변환 규칙]
-1. 날짜 헤더 기준 1:1 절대 매칭:
-   - 날짜 숫자들이 위치한 행(예: 이전 달 26~31일, 이번 달 1일~31일 등)을 먼저 파싱하여 각 열(Column)이 정확히 몇 월 며칠인지 파악하세요.
-   - 표 좌측에 이전 달 날짜(예: 26, 27, 28, 29, 30, 31)가 먼저 나오고 그 뒤에 이번 달 '1'일이 시작되는 경우, 이전 달 26~31일 열의 데이터를 이번 달 26~31일에 넣거나 날짜가 밀리는(Shift) 일이 절대 없도록 오직 이번 달(1일~말일) 열만 1:1로 매칭하세요.
-2. 명단 필터링 및 이름 표준화:
-   - 이번 달 파일에 실제로 이름이 존재하는 임직원만 추출하세요 ('총 근무인원', '결원', '합계' 등 요약 행 제외).
-   - 이름이 '한춘애' 또는 '한춘매'로 되어 있으면 무조건 정식 명칭인 "한준애"로 표준화하세요.
-3. 휴무 코드 정규화:
+1. 파일명("${fileName}") 및 데이터 상단에서 연도(year, 기본 ${defaultYear})와 월(month, 1~12 정수)을 추출하세요.
+2. 실제 직원(2~4글자 성명)과 담당/직책(role, 없으면 "매장")을 모두 추출하세요. ('총 근무인원', '결원', '합계' 등 요약 행은 제외)
+3. 각 직원의 1일~31일 중 휴무/연차/휴가/반차/교육/회의/HP 일자를 찾아 schedule 배열에 { day: 1~31 정수, status: 기호 }로 반환하세요.
    - 정기휴무('O', '○', '0', '휴무', '휴', 'OFF') -> 'O'
    - 연차('연차', '연') -> '연차'
    - 휴가('V', '휴가', '리프', '하계', '동계') -> 'V'
    - 반차('반차', '반', '오전반차', '오후반차') -> '반차'
    - 교육('교육', '교', '출장') -> '교육'
-   - 출휴('출휴', '출산휴가') -> '출휴'
    - 회의('회의', '회') -> '회의'
    - HP -> 'HP'
+   - 정상 출근일은 생략하거나 status를 ''로 설정하세요.
 
 [엑셀/CSV 원문]
 ${combinedCsv}`;
@@ -1628,9 +1223,7 @@ ${combinedCsv}`;
     role: string;
     days: Record<string, DayScheduleCode>;
   }[] = (parsedAi.employees || [])
-    .filter((emp: any) =>
-      isValidKoreanStaffName(normalizeStaffName(String(emp?.name || '')))
-    )
+    .filter((emp: any) => isValidKoreanStaffName(String(emp?.name || '')))
     .map((emp: any) => {
       const days: Record<string, DayScheduleCode> = {};
       if (Array.isArray(emp.schedule)) {
@@ -1645,7 +1238,7 @@ ${combinedCsv}`;
         }
       }
       return {
-        name: normalizeStaffName(String(emp.name || '')),
+        name: String(emp.name || '').trim(),
         role: String(emp.role || '매장').trim(),
         days,
       };
@@ -1720,11 +1313,6 @@ const DAY_CODE_OPTIONS: {
     value: '반차',
     label: '🟡 반차',
     badge: 'bg-yellow-200 text-yellow-950 border-yellow-400',
-  },
-  {
-    value: '출휴',
-    label: '🩷 출휴 (출산/특별휴가)',
-    badge: 'bg-pink-500 text-white border-pink-600',
   },
   {
     value: '교육',
@@ -1813,7 +1401,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   );
 
   const handleSaveUserName = (targetName?: string) => {
-    const clean = normalizeStaffName((targetName ?? nameInput).trim());
+    const clean = (targetName ?? nameInput).trim();
     if (!clean) return;
     saveUserName(clean);
     setSavedName(clean);
@@ -1897,10 +1485,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     const nextSchedules: SchedulesMap = {
       ...schedules,
       [currentYearMonth]: {
-        ...baseMonth,
         yearMonth: currentYearMonth,
         updatedAt,
-        isRegistered: true,
         employees: updatedEmployees,
       },
     };
@@ -1975,7 +1561,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
       let targetYearMonth = currentYearMonth;
       let parsedEmployees: EmployeeMonthlySchedule[] = [];
-      let parsedWeekdayByDay: Record<string, string> | undefined = undefined;
 
       // 파일명에서 월 추출 시도 (예: 11월 휴무표)
       const monthMatch = file.name.match(/(\d{1,2})\s*월/);
@@ -1998,7 +1583,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         );
         targetYearMonth = parsedResult.yearMonth;
         parsedEmployees = parsedResult.employees;
-        parsedWeekdayByDay = parsedResult.weekdayByDay;
       } else {
         // 이미지(JPG/PNG) — 휴무표 전용 고해상도(maxWidth=3000, quality=0.95) 리사이징 및 1~31일 전수 대조 스캔
         const apiKey = getEffectiveGeminiApiKey();
@@ -2017,24 +1601,23 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 반드시 아래 규칙을 지켜 1일부터 말일(31일)까지 모든 날짜 칸(빈칸 포함)을 상단 날짜 헤더와 1:1로 대조하여 순서대로 읽으세요.
 
 [1. 상단 타이틀 연월 추출]
-- 상단 타이틀(예: '3월 휴무 계획표', '10월 휴무 계획표', '11월 휴무 계획표')에서 해당 연도(year, 기본 ${currentYear})와 월(month, 1~12 정수)을 정확히 추출하세요.
+- 상단 타이틀(예: '10월 휴무 계획표', '11월 휴무 계획표')에서 해당 연도(year, 기본 ${currentYear})와 월(month, 1~12 정수)을 정확히 추출하세요.
 
-[2. 날짜 헤더(Header) 기준 1:1 절대 매칭 및 칸 밀림(Column Shift) 방지 규칙]
+[2. 표의 열(Column) 구조 및 칸 밀림(Column Shift) 절대 방지 규칙]
 - 좌측 고정열: [사용연차] | [NO] | [성명] | [담당]
-- 중앙 날짜열: 먼저 날짜 숫자들이 적힌 헤더 행을 파싱하여 각 세로 열(Column)이 정확히 몇 월 며칠인지 '날짜 인덱스 맵'을 먼저 확정하세요.
-- ⚠️ 주의 1 (이전 달/다음 달 날짜 제외): 표 왼쪽에 이전 달 말일 구간(예: 26, 27, 28, 29, 30, 31)이 먼저 나온 뒤 '1'부터 당월 날짜가 시작되거나, 당월 말일 오른쪽 옆에 다음 달 '1, 2' 열이 있는 경우, 반드시 당월(target month)의 1일~말일 세로 열만 1:1로 매칭하고 이전 달/다음 달 열의 데이터 잔상이 당월 날짜로 절대 섞이지 않게 하세요!
+- 중앙 날짜열: [1일]부터 [31일](또는 해당 월 말일)까지의 세로 열 (상단 날짜 숫자 1~31 및 요일 세로줄 기준).
+- ⚠️ 주의 1: 말일 오른쪽 옆에 있는 '1' 열은 다음 달 1일 열이므로 현재 월(1~31일) 날짜와 절대 혼동하거나 앞당겨 읽지 마세요!
 - ⚠️ 주의 2: 셀 주변의 굵은 빨간색 테두리 박스와 표 중앙의 '1 페이지' 반투명 워터마크 글씨는 무시하고 그 아래 실제 셀 기호만 읽으세요!
-- ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하세요!
+- ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하고, 실제 직원 행만 추출하세요!
 
-[3. 명단 필터링 및 이름 표준화 (이전 달 명단 상속 금지)]
-- 이 이미지 파일에 실제로 이름과 휴무 일정이 기재된 임직원만 동적으로 추출하여 리스트업하세요. 이미지에 없는 이전 달 직원 이름을 임의로 추가하거나 상속하지 마세요.
-- 이름 인식 시 '한춘애' 또는 '한춘매'로 보이거나 적힌 이름은 예외 없이 정식 명칭인 "한준애"로 표준화하여 출력하세요.
+[3. 경기광주점 기본 직원 명단 및 담당 (참고용 — 새 직원이 있으면 누락 없이 그대로 포함)]
+1: 강석원(점장), 2: 김재훈(부점장), 3: 국지현(SCM), 4: 심우영(선임/대형), 5: 정충영(대형), 6: 한세희(대형), 7: 김태형(대형), 8: 한춘매(대형), 9: 손정민(생활), 10: 박기복(주방), 11: 최문기(쿠쿠), 12: 윤현주(쿠쿠), 13: 한나라(생활), 14: 권지혜(KBB), 15: 서형래(애플), 16: 김지우(모바일), 17: 김도인(SKT), 18: 정태일(LGU), 19: 주형남(KT)
 
 [4. 기호 정규화 및 1~31일 전수 매핑 규칙]
 - 동그라미('O', 'o', '○', '0', 'ㅇ', '휴무', 'OFF') -> 무조건 대문자 'O'로 통일
 - 빈칸, 공백, '-', '근무', '정상', '출근' -> '' (정상 출근)
-- '연차', 'V'(휴가), '반차', '출휴'(출산/특별휴가), '교육', '회의', 'HP' -> 원문 그대로 유지 (가로로 병합된 연속 휴가/출휴 셀은 해당되는 모든 날짜에 동일 코드를 기입)
-- 각 직원을 읽을 때 빈칸을 건너뛰지 말고 먼저 cellTrace 필드에 "1:O, 2:, 3:, 4:, 5:, 6:O, ... 31:" 형태로 당월 1일부터 말일까지 모든 칸을 날짜 헤더와 1:1로 대조하여 기록한 뒤, schedule 배열에도 day(1~31 정수)와 status('', 'O', '연차', 'V', '반차', '출휴', '교육', '회의', 'HP')를 정확히 출력하세요.`;
+- '연차', 'V'(휴가), '반차', '교육', '회의', 'HP' -> 원문 그대로 유지
+- 각 직원을 읽을 때 빈칸을 건너뛰지 말고 먼저 cellTrace 필드에 "1:O, 2:, 3:, 4:, 5:, 6:O, ... 31:" 형태로 1일부터 31일까지 모든 칸을 순서대로 기록한 뒤, schedule 배열에도 1일부터 31일까지 day(1~31 정수)와 status('', 'O', '연차', 'V', '반차', '교육', '회의', 'HP')를 정확히 출력하세요.`;
 
         const responseSchema = {
           type: Type.OBJECT,
@@ -2155,7 +1738,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         ) {
           const rawExtracted = parsedAi.employees
             .filter((emp: any) => {
-              const nm = normalizeStaffName(String(emp?.name || '').trim());
+              const nm = String(emp?.name || '').trim();
               if (!nm || OBSOLETE_FAKE_NAMES.has(nm)) return false;
               if (
                 nm.includes('근무인원') ||
@@ -2197,7 +1780,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                     if (code) {
                       cleanDays[String(dNum)] = code;
                     } else if (cell?.status === '') {
-                      delete cleanDays[String(dNum)];
+                      // 빈칸 명시 시 유지
                     }
                   }
                 }
@@ -2218,7 +1801,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
               return {
                 no: Number(emp.no) || idx + 1,
-                name: normalizeStaffName(String(emp.name || '').trim()),
+                name: String(emp.name || '').trim(),
                 role: String(emp.role || '매장').trim(),
                 days: cleanDays,
               };
@@ -2239,7 +1822,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           updatedAt,
           isRegistered: true,
           employees: parsedEmployees,
-          ...(parsedWeekdayByDay ? { weekdayByDay: parsedWeekdayByDay } : {}),
         },
       };
 
@@ -2395,7 +1977,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         code === 'O' ||
         code === '연차' ||
         code === 'V' ||
-        code === '출휴' ||
         code === '교육' ||
         code === '회의'
       ) {
@@ -2420,9 +2001,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
   if (!isOpen) return null;
 
-  const selectedWeekday =
-    monthData.weekdayByDay?.[String(currentDay)] ||
-    WEEKDAY_KO[selectedDate.getDay()];
+  const selectedWeekday = WEEKDAY_KO[selectedDate.getDay()];
   const todayReal = new Date();
   const isSelectedToday =
     selectedDate.getFullYear() === todayReal.getFullYear() &&
@@ -2463,11 +2042,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           >
             반차
           </span>
-        );
-        break;
-      case '출휴':
-        badgeEl = (
-          <span className={`${baseCls} bg-pink-500 text-white`}>출휴</span>
         );
         break;
       case '교육':
@@ -2929,15 +2503,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                             ? '🌴 연차 휴무'
                             : myTodayCode === 'V'
                             ? '✈️ 휴가(V)'
-                            : myTodayCode === '출휴'
-                            ? '🩷 출휴(출산/특별휴가)'
                             : myTodayCode
                             ? `📌 ${myTodayCode}`
                             : '💪 정상 근무'}
                         </span>
                       </div>
                       <p className="text-xs font-bold text-slate-300 mt-1">
-                        이번 달 남은 내 휴무(O·연차·V·출휴):{' '}
+                        이번 달 남은 내 휴무(O·연차·V):{' '}
                         <strong className="text-amber-300">
                           총 {myRemainingOffDays.length}일
                         </strong>{' '}
@@ -2994,9 +2566,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   📆 {currentYear}년 {currentMonth}월 {currentDay}일 (
                   <span
                     className={
-                      selectedWeekday === '일' || selectedDate.getDay() === 0
+                      selectedDate.getDay() === 0
                         ? 'text-rose-600'
-                        : selectedWeekday === '토' || selectedDate.getDay() === 6
+                        : selectedDate.getDay() === 6
                         ? 'text-blue-600'
                         : 'text-slate-900'
                     }
@@ -3143,9 +2715,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   <span className="px-2 py-0.5 rounded bg-yellow-200 text-yellow-950 border border-yellow-400">
                     반차
                   </span>
-                  <span className="px-2 py-0.5 rounded bg-pink-500 text-white">
-                    출휴
-                  </span>
                   <span className="px-2 py-0.5 rounded bg-sky-500 text-white">
                     교육
                   </span>
@@ -3171,16 +2740,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                             d
                           );
                           const dow = dateObj.getDay();
-                          const weekdayChar =
-                            monthData.weekdayByDay?.[String(d)] ||
-                            WEEKDAY_KO[dow];
                           const isHoliday = (
                             HOLIDAYS_BY_MONTH[currentYearMonth] || []
                           ).includes(d);
-                          const isSundayCol =
-                            weekdayChar === '일' || dow === 0 || isHoliday;
-                          const isSaturdayCol =
-                            !isSundayCol && (weekdayChar === '토' || dow === 6);
                           const isTodayCol =
                             todayReal.getFullYear() === currentYear &&
                             todayReal.getMonth() + 1 === currentMonth &&
@@ -3194,24 +2756,20 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   new Date(currentYear, currentMonth - 1, d)
                                 )
                               }
-                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b cursor-pointer transition ${
+                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b border-slate-700 cursor-pointer transition ${
                                 isTodayCol
-                                  ? 'bg-amber-400 text-slate-950 border-amber-500'
-                                  : isSundayCol
-                                  ? 'bg-rose-100 hover:bg-rose-200 text-rose-900 border-rose-200'
-                                  : isSaturdayCol
-                                  ? 'bg-blue-100 hover:bg-blue-200 text-blue-900 border-blue-200'
-                                  : 'bg-slate-900 hover:bg-slate-800 text-white border-slate-700'
+                                  ? 'bg-amber-400 text-slate-950'
+                                  : 'bg-slate-900 hover:bg-slate-800'
                               }`}
                             >
                               <div
                                 className={`text-xs font-black ${
                                   isTodayCol
                                     ? 'text-slate-950'
-                                    : isSundayCol
-                                    ? 'text-rose-700'
-                                    : isSaturdayCol
-                                    ? 'text-blue-700'
+                                    : dow === 0 || isHoliday
+                                    ? 'text-rose-400'
+                                    : dow === 6
+                                    ? 'text-sky-400'
                                     : 'text-white'
                                 }`}
                               >
@@ -3221,14 +2779,14 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                 className={`text-[10px] font-bold ${
                                   isTodayCol
                                     ? 'text-slate-900'
-                                    : isSundayCol
-                                    ? 'text-rose-600'
-                                    : isSaturdayCol
-                                    ? 'text-blue-600'
+                                    : dow === 0 || isHoliday
+                                    ? 'text-rose-300'
+                                    : dow === 6
+                                    ? 'text-sky-300'
                                     : 'text-slate-400'
                                 }`}
                               >
-                                {weekdayChar}
+                                {WEEKDAY_KO[dow]}
                               </div>
                             </th>
                           );
@@ -3269,23 +2827,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                             (_, i) => i + 1
                           ).map((d) => {
                             const code = emp.days[String(d)] || '';
-                            const dateObj = new Date(
-                              currentYear,
-                              currentMonth - 1,
-                              d
-                            );
-                            const dow = dateObj.getDay();
-                            const weekdayChar =
-                              monthData.weekdayByDay?.[String(d)] ||
-                              WEEKDAY_KO[dow];
-                            const isHoliday = (
-                              HOLIDAYS_BY_MONTH[currentYearMonth] || []
-                            ).includes(d);
-                            const isSundayCol =
-                              weekdayChar === '일' || dow === 0 || isHoliday;
-                            const isSaturdayCol =
-                              !isSundayCol &&
-                              (weekdayChar === '토' || dow === 6);
                             const isTodayCol =
                               todayReal.getFullYear() === currentYear &&
                               todayReal.getMonth() + 1 === currentMonth &&
@@ -3305,17 +2846,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                 className={`px-0.5 py-1 border-r border-slate-200 last:border-r-0 cursor-pointer transition align-middle ${
                                   isTodayCol
                                     ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
-                                    : isSundayCol
-                                    ? isMe
-                                      ? 'bg-rose-100/85 hover:bg-rose-200/75'
-                                      : 'bg-rose-50/90 hover:bg-rose-100/80'
-                                    : isSaturdayCol
-                                    ? isMe
-                                      ? 'bg-blue-100/85 hover:bg-blue-200/75'
-                                      : 'bg-blue-50/90 hover:bg-blue-100/80'
                                     : isMe
                                     ? 'bg-amber-50/70'
-                                    : 'bg-white hover:bg-slate-50'
+                                    : ''
                                 }`}
                               >
                                 {renderCodeBadge(

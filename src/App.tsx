@@ -1512,6 +1512,7 @@ export function App() {
           <div className="w-full max-w-3xl flex flex-col gap-3 sm:gap-3.5">
             {/* 0-1) 최상단 내 휴무 카운트다운 배너 */}
             <ScheduleCharacterBanner
+              isDark={isDark}
               onOpenScheduleModal={() => {
                 pushAppHistoryGuard('open-schedule');
                 setIsScheduleModalOpen(true);
