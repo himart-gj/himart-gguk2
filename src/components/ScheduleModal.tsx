@@ -145,6 +145,10 @@ const NON_NAME_KEYWORDS = new Set([
   '하계',
   '동계',
   '리프',
+  '생주',
+  '미화',
+  '출휴',
+  '사가',
 ]);
 
 export type DayScheduleCode =
@@ -155,7 +159,9 @@ export type DayScheduleCode =
   | '반차' // 반차
   | '교육' // 교육
   | '회의' // 회의
-  | 'HP'; // HP 근무
+  | 'HP' // HP 근무
+  | '출휴' // 출산휴가
+  | '사가'; // 사규/경조휴가
 
 export interface EmployeeMonthlySchedule {
   name: string;
@@ -175,7 +181,15 @@ export type SchedulesMap = Record<string, MonthlyScheduleData>;
 
 export function isOffDayCode(code?: string): boolean {
   const c = (code || '').trim().toUpperCase();
-  return c === 'O' || c === '연차' || c === 'V' || c === '휴무' || c === '휴가';
+  return (
+    c === 'O' ||
+    c === '연차' ||
+    c === 'V' ||
+    c === '출휴' ||
+    c === '사가' ||
+    c === '휴무' ||
+    c === '휴가'
+  );
 }
 
 // 경기광주점 기본 직원 명단 (이름 칩 선택 및 OCR 글자 보정용, 하드코딩 날짜 없음)
@@ -187,22 +201,25 @@ export const GWANGJU_STAFF_ROSTER: { name: string; role: string }[] = [
   { name: '정충영', role: '대형' },
   { name: '한세희', role: '대형' },
   { name: '김태형', role: '대형' },
-  { name: '한춘매', role: '대형' },
+  { name: '한춘애', role: '대형' },
   { name: '손정민', role: '생활' },
   { name: '박기복', role: '주방' },
+  { name: '임용주', role: '생주' },
   { name: '최문기', role: '쿠쿠' },
   { name: '윤현주', role: '쿠쿠' },
   { name: '한나라', role: '생활' },
   { name: '권지혜', role: 'KBB' },
   { name: '서형래', role: '애플' },
   { name: '김지우', role: '모바일' },
+  { name: '이세빈', role: '모바일' },
   { name: '김도인', role: 'SKT' },
   { name: '정태일', role: 'LGU' },
   { name: '주형남', role: 'KT' },
+  { name: '김흥영', role: '미화' },
 ];
 
 const NAME_TYPO_MAP: Record<string, string> = {
-  한춘애: '한춘매',
+  한춘매: '한춘애',
   손경민: '손정민',
 };
 
@@ -264,15 +281,20 @@ export function loadAllSchedules(): SchedulesMap {
       if (emps.some((e) => OBSOLETE_FAKE_NAMES.has((e?.name || '').trim()))) {
         continue;
       }
+      const [ymY, ymM] = ymKey.split('-').map(Number);
+      const maxDaysForYm =
+        ymY && ymM ? new Date(ymY, ymM, 0).getDate() : 31;
       cleanedMap[ymKey] = {
         ...monthObj,
         employees: emps.map((e) => {
           const normalizedDays: Record<string, DayScheduleCode> = {};
           if (e.days && typeof e.days === 'object') {
             for (const [dKey, rawVal] of Object.entries(e.days)) {
+              const dNum = parseInt(dKey, 10);
+              if (!dNum || dNum < 1 || dNum > maxDaysForYm) continue;
               const norm = normalizeScheduleCode(String(rawVal || ''));
               if (norm) {
-                normalizedDays[dKey] = norm;
+                normalizedDays[String(dNum)] = norm;
               }
             }
           }
@@ -490,6 +512,21 @@ export function normalizeScheduleCode(raw: string): DayScheduleCode {
   if (!rawTrim) return '';
   const s = rawTrim.toUpperCase();
 
+  // 출산휴가 ('출휴')
+  if (s === '출휴' || s.includes('출휴') || s.includes('출산')) {
+    return '출휴';
+  }
+
+  // 사규/경조휴가 ('사가')
+  if (
+    s === '사가' ||
+    s.includes('사가') ||
+    s.includes('사규') ||
+    s.includes('경조')
+  ) {
+    return '사가';
+  }
+
   // 정기 휴무 ('O')
   if (
     s === 'O' ||
@@ -698,7 +735,7 @@ function detectYearMonthFromText(
 
 /**
  * 엑셀 업로드 시: 하드코딩 명단을 강제하지 않고 엑셀에 적힌 직원 명단과 근태(days)를 100% 신뢰하여 반영
- * (단, 알려진 오타 '한춘애'->'한춘매', '손경민'->'손정민' 교정 및 직책 누락 시 기존 직책 보완)
+ * (단, 알려진 오타 '한춘매'->'한춘애', '손경민'->'손정민' 교정 및 직책 누락 시 기존 직책 보완)
  */
 function finalizeExcelEmployees(
   rawList: { name: string; role: string; days: Record<string, DayScheduleCode> }[]
@@ -741,7 +778,7 @@ function finalizeExcelEmployees(
 
 /**
  * 사진(이미지) AI OCR 업로드 전용:
- * 글자 깨짐(예: 한춘애->한춘매, 손경민->손정민 등 1글자 OCR 오인식)만 보정하되,
+ * 글자 깨짐(예: 한춘매->한춘애, 손경민->손정민 등 1글자 OCR 오인식)만 보정하되,
  * 새로운 직원 이름이 있으면 누락시키지 않고 그대로 포함하며 날짜별 근태(days)는 100% 그대로 보존합니다.
  */
 function reconcileOcrEmployees(
@@ -801,7 +838,12 @@ async function parseUniversalExcelSchedule(
   wb: XLSX.WorkBook,
   fileName: string,
   fallbackYearMonth: string
-): Promise<{ yearMonth: string; employees: EmployeeMonthlySchedule[] }> {
+): Promise<{
+  yearMonth: string;
+  employees: EmployeeMonthlySchedule[];
+  prevYearMonth?: string;
+  prevMonthPatch?: Record<string, Record<string, DayScheduleCode>>;
+}> {
   const defaultYear =
     parseInt(fallbackYearMonth.split('-')[0], 10) || new Date().getFullYear();
 
@@ -841,37 +883,85 @@ async function parseUniversalExcelSchedule(
       sheetCsvTexts.push(`[시트: ${sheetName}]\n${csvText}`);
     }
 
+    const [targetY, targetM] = detectedYearMonth.split('-').map(Number);
+    const maxDaysInTargetMonth =
+      targetY && targetM ? new Date(targetY, targetM, 0).getDate() : 31;
+    const prevDateObj = new Date(
+      targetY || defaultYear,
+      (targetM || 1) - 2,
+      1
+    );
+    const prevYearMonth = `${prevDateObj.getFullYear()}-${String(
+      prevDateObj.getMonth() + 1
+    ).padStart(2, '0')}`;
+
     // =========================================================================
     // [1단계] 가로형 격자 표(Matrix) 자율 위치 탐색 (헤더 위치·병합 무관)
     // =========================================================================
     let bestDateRowIdx = -1;
     let bestDayColMap: Record<number, number> = {};
+    let bestPrevMonthDayColMap: Record<number, number> = {};
     let maxDayCount = 0;
 
     // 상단 1~20행 전체를 스캔하여 날짜(1~31일)가 가장 많이 포함된 행 탐색 (절대 중간 break 금지)
     const scanHeaderLimit = Math.min(rows.length, 20);
     for (let rIdx = 0; rIdx < scanHeaderLimit; rIdx++) {
       const r = rows[rIdx] || [];
-      const foundDays: Record<number, number> = {};
+      const dayEntries: { cIdx: number; dayNum: number }[] = [];
       for (let cIdx = 0; cIdx < r.length; cIdx++) {
         const dayNum = extractDayNumberFromCell(r[cIdx]);
         if (dayNum !== null && dayNum >= 1 && dayNum <= 31) {
-          // 우측 끝에 나오는 다음 달 1일 열이 기존 1일 열을 덮어쓰지 않도록 보호
-          if (foundDays[dayNum] === undefined) {
+          dayEntries.push({ cIdx, dayNum });
+        }
+      }
+      if (dayEntries.length < 7) continue;
+
+      const firstOneIdx = dayEntries.findIndex((e) => e.dayNum === 1);
+      const foundDays: Record<number, number> = {};
+      const prevMonthDays: Record<number, number> = {};
+
+      if (firstOneIdx !== -1) {
+        // 첫 번째 1일 이전에 위치한 20~31일 열들은 전월 말일(prevMonthDayColMap)로 분리
+        for (let i = 0; i < firstOneIdx; i++) {
+          const { cIdx, dayNum } = dayEntries[i];
+          if (dayNum >= 20 && dayNum <= 31 && prevMonthDays[dayNum] === undefined) {
+            prevMonthDays[dayNum] = cIdx;
+          }
+        }
+        // 첫 번째 1일부터 오른쪽으로 진행하면서 날짜가 증가하는 구간만 당월에 등록
+        let prevDayNum = 0;
+        for (let i = firstOneIdx; i < dayEntries.length; i++) {
+          const { cIdx, dayNum } = dayEntries[i];
+          if (dayNum < prevDayNum) {
+            break;
+          }
+          if (dayNum <= maxDaysInTargetMonth && foundDays[dayNum] === undefined) {
+            foundDays[dayNum] = cIdx;
+          }
+          prevDayNum = dayNum;
+        }
+      } else {
+        for (const { cIdx, dayNum } of dayEntries) {
+          if (dayNum <= maxDaysInTargetMonth && foundDays[dayNum] === undefined) {
             foundDays[dayNum] = cIdx;
           }
         }
       }
+
       const count = Object.keys(foundDays).length;
       if (count > maxDayCount) {
         maxDayCount = count;
         bestDateRowIdx = rIdx;
         bestDayColMap = foundDays;
+        bestPrevMonthDayColMap = prevMonthDays;
       }
     }
 
     if (maxDayCount >= 7) {
-      const dateColSet = new Set<number>(Object.values(bestDayColMap));
+      const dateColSet = new Set<number>([
+        ...Object.values(bestDayColMap),
+        ...Object.values(bestPrevMonthDayColMap),
+      ]);
 
       // 성명 열(nameColIdx) 및 담당/직책 열(roleColIdx) 자율 탐색
       // 방법 A: 상단 1~20행에서 키워드 탐색 (날짜 행과 다른 줄이어도 독립 탐색)
@@ -982,10 +1072,21 @@ async function parseUniversalExcelSchedule(
         role: string;
         days: Record<string, DayScheduleCode>;
       }[] = [];
+      const prevMonthPatch: Record<string, Record<string, DayScheduleCode>> = {};
 
       for (let rIdx = 0; rIdx < rows.length; rIdx++) {
         if (rIdx <= bestDateRowIdx) continue;
         const r = rows[rIdx] || [];
+
+        const fullRowText = r.map((c) => String(c ?? '')).join(' ');
+        if (
+          fullRowText.includes('연중 휴가계획') ||
+          fullRowText.includes('연중휴가') ||
+          fullRowText.includes('지원현황')
+        ) {
+          break;
+        }
+
         const rawName = String(r[nameColIdx] ?? '')
           .replace(/\s+/g, '')
           .replace(/^\d+[.)]?\s*/, '')
@@ -1016,6 +1117,17 @@ async function parseUniversalExcelSchedule(
           }
         });
 
+        const finalEmpName = NAME_TYPO_MAP[rawName] || rawName;
+        if (Object.keys(bestPrevMonthDayColMap).length > 0) {
+          const prevDaysForEmp: Record<string, DayScheduleCode> = {};
+          Object.entries(bestPrevMonthDayColMap).forEach(([dayStr, colIdx]) => {
+            if (colIdx === nameColIdx || colIdx === roleColIdx) return;
+            const code = normalizeScheduleCode(String(r[colIdx] ?? ''));
+            prevDaysForEmp[dayStr] = code;
+          });
+          prevMonthPatch[finalEmpName] = prevDaysForEmp;
+        }
+
         const rawRole =
           roleColIdx >= 0 ? String(r[roleColIdx] ?? '').trim() : '';
 
@@ -1031,6 +1143,9 @@ async function parseUniversalExcelSchedule(
         return {
           yearMonth: detectedYearMonth,
           employees: finalizedMatrix,
+          ...(Object.keys(prevMonthPatch).length > 0
+            ? { prevYearMonth, prevMonthPatch }
+            : {}),
         };
       }
     }
@@ -1077,16 +1192,16 @@ async function parseUniversalExcelSchedule(
         const cellStr = String(cellVal ?? '').trim();
         if (!cellStr) continue;
 
-        // 요약형 패턴 1: "(10/)?14일?\s*[:(（]?\s*(O|연차|V|반차|교육|회의|HP|휴무|휴가)"
+        // 요약형 패턴 1: "(10/)?14일?\s*[:(（]?\s*(O|연차|V|반차|교육|회의|HP|출휴|사가|휴무|휴가)"
         const summaryRegex =
-          /(?:(?:0?[1-9]|1[0-2])\s*[-./월]\s*)?0?([1-9]|[12]\d|3[01])\s*일?\s*[(（:：-]?\s*(O|o|○|휴무|정기휴무|연차|V|v|휴가|반차|오전반차|오후반차|교육|회의|HP)\s*[)）]?/g;
+          /(?:(?:0?[1-9]|1[0-2])\s*[-./월]\s*)?0?([1-9]|[12]\d|3[01])\s*일?\s*[(（:：-]?\s*(O|o|○|휴무|정기휴무|연차|V|v|휴가|반차|오전반차|오후반차|교육|회의|HP|출휴|출산|사가|사규|경조)\s*[)）]?/g;
         let matchSummary: RegExpExecArray | null;
         let matchedAnySummary = false;
         while ((matchSummary = summaryRegex.exec(cellStr)) !== null) {
           matchedAnySummary = true;
           const dNum = parseInt(matchSummary[1], 10);
           const code = normalizeScheduleCode(matchSummary[2]);
-          if (dNum >= 1 && dNum <= 31 && code) {
+          if (dNum >= 1 && dNum <= maxDaysInTargetMonth && code) {
             empEntry.days[String(dNum)] = code;
           }
         }
@@ -1096,7 +1211,7 @@ async function parseUniversalExcelSchedule(
         if (/^\d{1,2}(?:\s*,\s*\d{1,2}){2,}$/.test(cellStr)) {
           cellStr.split(',').forEach((part) => {
             const dNum = parseInt(part.trim(), 10);
-            if (dNum >= 1 && dNum <= 31 && !empEntry.days[String(dNum)]) {
+            if (dNum >= 1 && dNum <= maxDaysInTargetMonth && !empEntry.days[String(dNum)]) {
               empEntry.days[String(dNum)] = 'O';
             }
           });
@@ -1128,7 +1243,7 @@ async function parseUniversalExcelSchedule(
         }
       }
 
-      if (singleDayInRow !== null) {
+      if (singleDayInRow !== null && singleDayInRow <= maxDaysInTargetMonth) {
         empEntry.days[String(singleDayInRow)] = singleCodeInRow || 'O';
       }
     }
@@ -1264,6 +1379,9 @@ ${combinedCsv}`;
     detectedYearMonth = `${y}-${String(parsedAi.month).padStart(2, '0')}`;
   }
 
+  const [aiY, aiM] = detectedYearMonth.split('-').map(Number);
+  const maxDaysAi = aiY && aiM ? new Date(aiY, aiM, 0).getDate() : 31;
+
   const aiEmployeesRaw: {
     name: string;
     role: string;
@@ -1275,7 +1393,7 @@ ${combinedCsv}`;
       if (Array.isArray(emp.schedule)) {
         for (const item of emp.schedule) {
           const dNum = Number(item?.day);
-          if (dNum >= 1 && dNum <= 31) {
+          if (dNum >= 1 && dNum <= maxDaysAi) {
             const code = normalizeScheduleCode(String(item?.status || ''));
             if (code) {
               days[String(dNum)] = code;
@@ -1303,9 +1421,18 @@ ${combinedCsv}`;
 
 function classifyRoleGroup(role: string): string {
   const r = role.trim().toUpperCase();
-  if (r.includes('점장') || r.includes('SCM')) return '점장·부점장·SCM';
+  if (
+    r.includes('점장') ||
+    r.includes('SCM') ||
+    r.includes('미화') ||
+    r.includes('지원') ||
+    r.includes('시설')
+  ) {
+    return '점장·부점장·SCM';
+  }
   if (r.includes('대형')) return '대형';
   if (
+    r.includes('생주') ||
     r.includes('생활') ||
     r.includes('주방') ||
     r.includes('쿠쿠') ||
@@ -1466,6 +1593,22 @@ const DAY_CODE_OPTIONS: {
     desc: 'HP 지정 근무일',
     chipCls: 'bg-teal-100 text-teal-900 border-teal-300',
     activeRing: 'ring-teal-500',
+  },
+  {
+    value: '출휴',
+    shortLabel: '출휴',
+    label: '출산휴가',
+    desc: '출산전후·배우자 출산휴가',
+    chipCls: 'bg-pink-500 text-white border-pink-600',
+    activeRing: 'ring-pink-500',
+  },
+  {
+    value: '사가',
+    shortLabel: '사가',
+    label: '사규·경조휴가',
+    desc: '사규/경조 특별휴가',
+    chipCls: 'bg-violet-500 text-white border-violet-600',
+    activeRing: 'ring-violet-500',
   },
 ];
 
@@ -1963,6 +2106,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         }
       }
 
+      let excelPrevYearMonth: string | undefined;
+      let excelPrevMonthPatch:
+        | Record<string, Record<string, DayScheduleCode>>
+        | undefined;
+
       if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: 'array', cellDates: false });
@@ -1973,6 +2121,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         );
         targetYearMonth = parsedResult.yearMonth;
         parsedEmployees = parsedResult.employees;
+        excelPrevYearMonth = parsedResult.prevYearMonth;
+        excelPrevMonthPatch = parsedResult.prevMonthPatch;
       } else {
         const apiKey = getEffectiveGeminiApiKey();
         if (!apiKey) {
@@ -2000,13 +2150,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 - ⚠️ 주의 3: 상단 '총 근무인원' 행과 '결원(휴무,교육,지원 등)' 요약 행, 그리고 하단 '대형 / 생활' 합계 행은 직원 명단이 아니므로 반드시 제외하고, 실제 직원 행만 추출하세요!
 
 [3. 경기광주점 기본 직원 명단 및 담당 (참고용 — 새 직원이 있으면 누락 없이 그대로 포함)]
-1: 강석원(점장), 2: 김재훈(부점장), 3: 국지현(SCM), 4: 심우영(선임/대형), 5: 정충영(대형), 6: 한세희(대형), 7: 김태형(대형), 8: 한춘매(대형), 9: 손정민(생활), 10: 박기복(주방), 11: 최문기(쿠쿠), 12: 윤현주(쿠쿠), 13: 한나라(생활), 14: 권지혜(KBB), 15: 서형래(애플), 16: 김지우(모바일), 17: 김도인(SKT), 18: 정태일(LGU), 19: 주형남(KT)
+1: 강석원(점장), 2: 김재훈(부점장), 3: 국지현(SCM), 4: 심우영(선임/대형), 5: 정충영(대형), 6: 한세희(대형), 7: 김태형(대형), 8: 한춘애(대형), 9: 손정민(생활), 10: 박기복(주방), 11: 임용주(생주), 12: 최문기(쿠쿠), 13: 윤현주(쿠쿠), 14: 한나라(생활), 15: 권지혜(KBB), 16: 서형래(애플), 17: 김지우(모바일), 18: 이세빈(모바일), 19: 김도인(SKT), 20: 정태일(LGU), 21: 주형남(KT), 22: 김흥영(미화)
 
 [4. 기호 정규화 및 1~31일 전수 매핑 규칙]
 - 동그라미('O', 'o', '○', '0', 'ㅇ', '휴무', 'OFF') -> 무조건 대문자 'O'로 통일
 - 빈칸, 공백, '-', '근무', '정상', '출근' -> '' (정상 출근)
-- '연차', 'V'(휴가), '반차', '교육', '회의', 'HP' -> 원문 그대로 유지
-- 각 직원을 읽을 때 빈칸을 건너뛰지 말고 먼저 cellTrace 필드에 "1:O, 2:, 3:, 4:, 5:, 6:O, ... 31:" 형태로 1일부터 31일까지 모든 칸을 순서대로 기록한 뒤, schedule 배열에도 1일부터 31일까지 day(1~31 정수)와 status('', 'O', '연차', 'V', '반차', '교육', '회의', 'HP')를 정확히 출력하세요.`;
+- '연차', 'V'(휴가), '반차', '교육', '회의', 'HP', '출휴', '사가' -> 원문 그대로 유지
+- 각 직원을 읽을 때 빈칸을 건너뛰지 말고 먼저 cellTrace 필드에 "1:O, 2:, 3:, 4:, 5:, 6:O, ... 31:" 형태로 1일부터 31일까지 모든 칸을 순서대로 기록한 뒤, schedule 배열에도 1일부터 31일까지 day(1~31 정수)와 status('', 'O', '연차', 'V', '반차', '교육', '회의', 'HP', '출휴', '사가')를 정확히 출력하세요.`;
 
         const responseSchema = {
           type: Type.OBJECT,
@@ -2122,6 +2272,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           Array.isArray(parsedAi.employees) &&
           parsedAi.employees.length > 0
         ) {
+          const [imgY, imgM] = targetYearMonth.split('-').map(Number);
+          const maxDaysImg =
+            imgY && imgM ? new Date(imgY, imgM, 0).getDate() : 31;
+
           const rawExtracted = parsedAi.employees
             .filter((emp: any) => {
               const nm = String(emp?.name || '').trim();
@@ -2145,7 +2299,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 for (const pair of pairs) {
                   const [dStr, valStr] = pair.split(':');
                   const dNum = parseInt(String(dStr || '').trim(), 10);
-                  if (dNum >= 1 && dNum <= 31) {
+                  if (dNum >= 1 && dNum <= maxDaysImg) {
                     const code = normalizeScheduleCode(String(valStr || ''));
                     if (code) {
                       cleanDays[String(dNum)] = code;
@@ -2157,7 +2311,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               if (Array.isArray(emp.schedule)) {
                 for (const cell of emp.schedule) {
                   const dNum = Number(cell?.day);
-                  if (dNum >= 1 && dNum <= 31) {
+                  if (dNum >= 1 && dNum <= maxDaysImg) {
                     const code = normalizeScheduleCode(
                       String(cell?.status || '')
                     );
@@ -2171,7 +2325,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               if (emp.days && typeof emp.days === 'object') {
                 Object.entries(emp.days).forEach(([dKey, val]) => {
                   const dNum = parseInt(dKey, 10);
-                  if (dNum >= 1 && dNum <= 31) {
+                  if (dNum >= 1 && dNum <= maxDaysImg) {
                     const code = normalizeScheduleCode(String(val || ''));
                     if (code) {
                       cleanDays[String(dNum)] = code;
@@ -2203,6 +2357,34 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           employees: parsedEmployees,
         },
       };
+
+      if (
+        excelPrevYearMonth &&
+        excelPrevMonthPatch &&
+        nextSchedules[excelPrevYearMonth]?.employees
+      ) {
+        const prevMonthData = nextSchedules[excelPrevYearMonth];
+        nextSchedules[excelPrevYearMonth] = {
+          ...prevMonthData,
+          updatedAt,
+          employees: prevMonthData.employees.map((emp) => {
+            const patchForEmp = excelPrevMonthPatch?.[emp.name];
+            if (!patchForEmp) return emp;
+            const nextDays = { ...emp.days };
+            for (const [dKey, codeVal] of Object.entries(patchForEmp)) {
+              if (codeVal) {
+                nextDays[dKey] = codeVal;
+              } else {
+                delete nextDays[dKey];
+              }
+            }
+            return {
+              ...emp,
+              days: nextDays,
+            };
+          }),
+        };
+      }
 
       setUndoStack((prev) => [
         ...prev.slice(-19),
@@ -2386,6 +2568,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           code === 'O' ||
           code === '연차' ||
           code === 'V' ||
+          code === '출휴' ||
+          code === '사가' ||
           code === '교육' ||
           code === '회의';
         if (isAway) {
@@ -2432,7 +2616,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       for (let d = 1; d <= daysInMonth; d++) {
         const c = emp.days[String(d)] || '';
         if (c === 'O') offO++;
-        else if (c === '연차' || c === 'V') annualV++;
+        else if (c === '연차' || c === 'V' || c === '출휴' || c === '사가') annualV++;
         else if (c === '반차') half++;
         else if (c === '교육' || c === '회의') eduMeet++;
       }
@@ -2497,7 +2681,13 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         presentGroups.add(g);
         const c = emp.days[String(dayNum)] || '';
         const away =
-          c === 'O' || c === '연차' || c === 'V' || c === '교육' || c === '회의';
+          c === 'O' ||
+          c === '연차' ||
+          c === 'V' ||
+          c === '출휴' ||
+          c === '사가' ||
+          c === '교육' ||
+          c === '회의';
         if (!away) {
           working++;
           gCounts[g] = (gCounts[g] || 0) + 1;
@@ -2548,6 +2738,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         code === 'O' ||
         code === '연차' ||
         code === 'V' ||
+        code === '출휴' ||
+        code === '사가' ||
         code === '교육' ||
         code === '회의'
       ) {
@@ -2910,6 +3102,8 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         교육: `📘 교육/출장 (${emp.name})`,
         회의: `📋 외부회의 (${emp.name})`,
         HP: `⚡ HP근무 (${emp.name})`,
+        출휴: `👶 출산휴가 (${emp.name})`,
+        사가: `🏡 사규/경조휴가 (${emp.name})`,
       };
 
       events.push(
@@ -3005,6 +3199,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       case 'HP':
         colorCls = 'bg-teal-100 text-teal-950 border border-teal-300';
         break;
+      case '출휴':
+        colorCls = 'bg-pink-500 text-white shadow-2xs';
+        break;
+      case '사가':
+        colorCls = 'bg-violet-500 text-white shadow-2xs';
+        break;
       default:
         colorCls = 'bg-slate-200 text-slate-800';
     }
@@ -3062,7 +3262,15 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       if (e.name === editingCell.empName) return false;
       if (classifyRoleGroup(e.role) !== targetGroup) return false;
       const c = e.days[String(editingCell.day)] || '';
-      return !(c === 'O' || c === '연차' || c === 'V' || c === '교육' || c === '회의');
+      return !(
+        c === 'O' ||
+        c === '연차' ||
+        c === 'V' ||
+        c === '출휴' ||
+        c === '사가' ||
+        c === '교육' ||
+        c === '회의'
+      );
     });
     return {
       cornerGroup: targetGroup,
@@ -4194,6 +4402,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                               ? '연차 휴무'
                               : myTodayCode === 'V'
                               ? '휴가(V)'
+                              : myTodayCode === '출휴'
+                              ? '출산 휴가(출휴)'
+                              : myTodayCode === '사가'
+                              ? '사규 휴가(사가)'
                               : myTodayCode
                               ? myTodayCode
                               : '정상 근무'}
@@ -4916,6 +5128,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   </span>
                   <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-950 border border-teal-300">
                     HP
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-pink-500 text-white">
+                    출휴
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-violet-500 text-white">
+                    사가
                   </span>
                 </div>
               </div>
