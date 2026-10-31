@@ -5,6 +5,7 @@ import {
   calculateGeneralHiPreedSummary,
   calculateGeneralPurchaseSummary,
   calculateHiPlusSummary,
+  calculateSubscriptionSummary,
   copyPlan1ToPlan2InState,
   GENERAL_CARD_OPTIONS,
   GENERAL_CATEGORY_PRESETS,
@@ -25,6 +26,7 @@ import {
   SubscriptionPeriod,
   switchGeneralPlanInState,
 } from '../types/proposal';
+import { SpringNumberFlow } from './SpringNumberFlow';
 import {
   getStoredGeminiApiKey,
   setStoredGeminiApiKey,
@@ -62,6 +64,7 @@ interface ControlPanelProps {
   activeCustomer?: { id: string; name: string; phone?: string } | null;
   onClearActiveCustomer?: () => void;
   onOpenSaveToCrm?: () => void;
+  embeddedSplitMode?: boolean;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -79,7 +82,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   activeCustomer,
   onClearActiveCustomer,
   onOpenSaveToCrm,
+  embeddedSplitMode = false,
 }) => {
+  const liveGenSummary = calculateGeneralPurchaseSummary(state);
+  const liveSubSummary = calculateSubscriptionSummary(state);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const generalFileInputRef = useRef<HTMLInputElement>(null);
   const [copiedNotice, setCopiedNotice] = useState(false);
@@ -1858,6 +1864,56 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black shadow-md transition cursor-pointer"
               >
                 저장하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 모바일 엄지 영역 실시간 체감가 요약 & 제안서 바로보기 고정 독 (스플릿 모드가 아닐 때 노출) */}
+      {!embeddedSplitMode && (
+        <div className="fixed bottom-0 inset-x-0 z-30 bg-[#18181B]/95 backdrop-blur-md text-white border-t border-white/15 px-3.5 py-2.5 shadow-2xl md:hidden no-print">
+          <div className="max-w-xl mx-auto flex items-center justify-between gap-2.5">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold text-amber-300 truncate">
+                {state.quoteMode === 'subscription'
+                  ? `실시간 구독 (${liveSubSummary.periodLabel}) 월 체감가`
+                  : state.quoteMode === 'hybrid'
+                  ? '실시간 혼합 견적 체감 요약'
+                  : `실시간 최종 혜택 체감가 (총 -${liveGenSummary.totalDiscountAndBenefit.toLocaleString()}원)`}
+              </div>
+              <div className="text-base font-black text-white font-mono truncate">
+                {state.quoteMode === 'subscription' ? (
+                  <>
+                    월 <SpringNumberFlow value={liveSubSummary.finalMonthlyFee} suffix="원" />
+                  </>
+                ) : state.quoteMode === 'hybrid' ? (
+                  <>
+                    <SpringNumberFlow value={liveGenSummary.rawNet} suffix="원" /> + 월{' '}
+                    <SpringNumberFlow value={liveSubSummary.finalMonthlyFee} suffix="원" />
+                  </>
+                ) : (
+                  <SpringNumberFlow value={liveGenSummary.rawNet} suffix="원" />
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onOpenSaveToCrm && (
+                <button
+                  type="button"
+                  onClick={onOpenSaveToCrm}
+                  className="p-2.5 rounded-2xl bg-amber-400 text-slate-950 font-black text-xs cursor-pointer schedule-tactile"
+                  title="CRM 고객 저장"
+                >
+                  <Save className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onShowProposal}
+                className="px-4 py-2.5 rounded-2xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-xs font-black shadow-md cursor-pointer schedule-tactile whitespace-nowrap"
+              >
+                제안서 보기 ➔
               </button>
             </div>
           </div>

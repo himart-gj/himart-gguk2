@@ -197,6 +197,9 @@ interface AiCommandModalProps {
   onOpenInsuranceView?: () => void;
   onOpenCrmScreen?: () => void;
   onLoadCrmCustomerQuote?: (customer: CustomerItem) => void;
+  initialCommand?: string;
+  onClearInitialCommand?: () => void;
+  currentProposalState?: ProposalState;
 }
 
 // 상단 빠른 예시 칩 4개 (① 견적+제안서 바로보기 / ② 견적+고객저장 / ③ 휴무표 말로 수정 / ④ 안심케어·무이자·AS 검색)
@@ -2522,8 +2525,13 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   onOpenInsuranceView,
   onOpenCrmScreen,
   onLoadCrmCustomerQuote,
+  initialCommand,
+  onClearInitialCommand,
+  currentProposalState,
 }) => {
   const [commandText, setCommandText] = useState<string>('');
+  const [appendToCurrentQuote, setAppendToCurrentQuote] = useState<boolean>(false);
+  const [sessionHistory, setSessionHistory] = useState<string[]>([]);
   const [isListening, setIsListening] = useState<boolean>(false);
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
@@ -2574,6 +2582,15 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
     }
 
     setMyStaffNameInput(loadSavedUserName());
+    if (initialCommand && initialCommand.trim()) {
+      const cmd = initialCommand.trim();
+      setCommandText(cmd);
+      setParsedResult(null);
+      if (/(추가|더해|변경|바꿔|넣어)/.test(cmd)) {
+        setAppendToCurrentQuote(true);
+      }
+      onClearInitialCommand?.();
+    }
     const localCare = loadLocalCareDataset();
     if (localCare) {
       setCareDataset(localCare);
@@ -2635,8 +2652,82 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
 
   const generatedState = useMemo<ProposalState | null>(() => {
     if (!effectiveParsedCommand || !hasQuoteItems) return null;
-    return buildProposalStateFromAiCommand(effectiveParsedCommand);
-  }, [effectiveParsedCommand, hasQuoteItems]);
+    const fresh = buildProposalStateFromAiCommand(effectiveParsedCommand);
+    if (!appendToCurrentQuote || !currentProposalState) {
+      return fresh;
+    }
+
+    // 멀티턴 증분 병합 모드: 기존 작성 중인 품목/혜택 위에 새 지시사항을 이어서 반영
+    const merged: ProposalState = JSON.parse(JSON.stringify(currentProposalState));
+    const existingGenValid = (merged.generalItems || []).filter(
+      (it) => (it.category || '').trim() || (Number(it.unitPrice) || 0) > 0
+    );
+    const freshGenValid = (fresh.generalItems || []).filter(
+      (it) => (it.category || '').trim() || (Number(it.unitPrice) || 0) > 0
+    );
+    if (freshGenValid.length > 0) {
+      merged.generalItems = [...existingGenValid, ...freshGenValid];
+    }
+
+    const existingSubValid = (merged.items || []).filter(
+      (it) => (it.category || '').trim() || (Number(it.monthlyFee) || 0) > 0
+    );
+    const freshSubValid = (fresh.items || []).filter(
+      (it) => (it.category || '').trim() || (Number(it.monthlyFee) || 0) > 0
+    );
+    if (freshSubValid.length > 0) {
+      merged.items = [...existingSubValid, ...freshSubValid];
+    }
+
+    if (merged.generalItems.length > 0 && merged.items.length > 0) {
+      merged.quoteMode = 'hybrid';
+    } else if (merged.items.length > 0 && fresh.quoteMode === 'subscription') {
+      merged.quoteMode = 'subscription';
+    }
+
+    if (fresh.generalCardType && fresh.generalCardType !== '미정') {
+      merged.generalCardType = fresh.generalCardType;
+    }
+    if (fresh.instantDiscount > 0) merged.instantDiscount = fresh.instantDiscount;
+    if (fresh.earnedPoints > 0) merged.earnedPoints = fresh.earnedPoints;
+    if (fresh.extraCashback > 0) merged.extraCashback = fresh.extraCashback;
+
+    const freshFreedTotal =
+      fresh.generalHiPreedCounts.hf75 +
+      fresh.generalHiPreedCounts.hf150 +
+      fresh.generalHiPreedCounts.hf225 +
+      fresh.generalHiPreedCounts.hf300;
+    if (freshFreedTotal > 0) {
+      merged.generalHiPreedCounts = { ...fresh.generalHiPreedCounts };
+    }
+
+    const freshHiPlusTotal =
+      fresh.hiPlusCounts.hi72 +
+      fresh.hiPlusCounts.hi90 +
+      fresh.hiPlusCounts.hi108;
+    if (freshHiPlusTotal > 0) {
+      merged.hiPlusCounts = { ...fresh.hiPlusCounts };
+    }
+
+    if (merged.activeGeneralPlan === 1) {
+      merged.generalPlan1 = { ...merged.generalPlan1, ...merged };
+    } else {
+      merged.generalPlan2 = { ...merged.generalPlan2, ...merged };
+    }
+    return merged;
+  }, [effectiveParsedCommand, hasQuoteItems, appendToCurrentQuote, currentProposalState]);
+
+  const previousQuotePayload = useMemo(() => {
+    if (!currentProposalState) return null;
+    const prevSummary = extractQuotePayloadFromProposalState(currentProposalState);
+    if (
+      prevSummary.primaryGenSummary.sum <= 0 &&
+      prevSummary.primarySubSummary.totalBaseMonthly <= 0
+    ) {
+      return null;
+    }
+    return prevSummary;
+  }, [currentProposalState]);
 
   const quotePayload = useMemo(() => {
     if (!generatedState) return null;
@@ -3078,6 +3169,36 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 멀티턴 이어하기 토글 & 최근 지시 세션 칩 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            {currentProposalState && (
+              <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200 text-xs font-black text-indigo-900 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={appendToCurrentQuote}
+                  onChange={(e) => setAppendToCurrentQuote(e.target.checked)}
+                  className="w-3.5 h-3.5 accent-indigo-600 rounded"
+                />
+                <span>🔗 현재 작성 중인 견적에 이어서 추가·변경하기 (멀티턴 모드)</span>
+              </label>
+            )}
+            {sessionHistory.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap text-[11px]">
+                <span className="font-bold text-slate-400">최근 지시:</span>
+                {sessionHistory.slice(0, 3).map((h, i) => (
+                  <button
+                    key={`${h}-${i}`}
+                    type="button"
+                    onClick={() => setCommandText(h)}
+                    className="px-2 py-0.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold truncate max-w-[180px] cursor-pointer"
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 자연어 입력창 + 음성 인식 + 실행 버튼 */}
@@ -4088,12 +4209,54 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                 </div>
               </div>
 
+              {/* [Generative UI] 기존 견적 대비 변경 전 ➔ 변경 후 비교 승인 카드 */}
+              {previousQuotePayload && quotePayload && (
+                <div className="rounded-2xl bg-indigo-950 text-white p-3.5 border border-indigo-400/40 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-black">
+                    <span className="text-amber-300">
+                      ⚡ AI 변경 전 ➔ 변경 후 체감가 비교 프리뷰
+                    </span>
+                    <span className="text-[11px] text-indigo-200">
+                      아래 버튼을 눌러야 실제 견적기에 반영됩니다
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 text-xs">
+                    <div className="rounded-xl bg-white/10 p-2.5">
+                      <div className="text-[10px] text-indigo-200 font-bold">
+                        변경 전 현재 견적
+                      </div>
+                      <div className="text-sm font-black font-mono mt-0.5">
+                        {previousQuotePayload.primaryGenSummary.sum > 0
+                          ? `체감 ${formatCurrency(previousQuotePayload.primaryGenSummary.rawNet)}원`
+                          : `월 ${formatCurrency(previousQuotePayload.primarySubSummary.finalMonthlyFee)}원`}
+                      </div>
+                    </div>
+                    <div className="rounded-xl bg-amber-400/20 border border-amber-400/50 p-2.5">
+                      <div className="text-[10px] text-amber-200 font-bold">
+                        AI 적용 후 예상 견적
+                      </div>
+                      <div className="text-sm font-black font-mono text-amber-300 mt-0.5">
+                        {quotePayload.primaryGenSummary.sum > 0
+                          ? `체감 ${formatCurrency(quotePayload.primaryGenSummary.rawNet)}원`
+                          : `월 ${formatCurrency(quotePayload.primarySubSummary.finalMonthlyFee)}원`}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 하단 원클릭 실행 버튼 3종 */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     if (!generatedState) return;
+                    if (commandText.trim()) {
+                      setSessionHistory((prev) => [
+                        commandText.trim(),
+                        ...prev.filter((x) => x !== commandText.trim()),
+                      ].slice(0, 6));
+                    }
                     onApplyToQuote(generatedState, 'input');
                     onClose();
                   }}
@@ -4107,6 +4270,12 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                   type="button"
                   onClick={() => {
                     if (!generatedState) return;
+                    if (commandText.trim()) {
+                      setSessionHistory((prev) => [
+                        commandText.trim(),
+                        ...prev.filter((x) => x !== commandText.trim()),
+                      ].slice(0, 6));
+                    }
                     onApplyToQuote(generatedState, 'proposal');
                     onClose();
                   }}

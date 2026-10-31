@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppStep,
   extractGeneralPlanData,
@@ -10,19 +10,67 @@ import {
 } from './types/proposal';
 import { ControlPanel } from './components/ControlPanel';
 import { ProposalPreview } from './components/ProposalPreview';
-import { PopPrinterApp } from './pop/PopPrinterApp';
-import { CrmApp } from './crm/CrmApp';
-import { HiMobileView } from './components/HiMobileView';
-import { InsuranceGuideView } from './components/InsuranceGuideView';
-import { CareTableView } from './components/CareTableView';
-import { LottePlanCalcView } from './components/LottePlanCalcView';
-import { AllCareGuideView } from './components/AllCareGuideView';
-import { CardInstallmentModal } from './components/CardInstallmentModal';
 import { AsCenterModal, CardIssueModal } from './components/QuickCenterModal';
-import { ScheduleModal, fetchRemoteSchedules } from './components/ScheduleModal';
+import { fetchRemoteSchedules } from './components/ScheduleModal';
 import { ScheduleCharacterBanner } from './components/ScheduleCharacterBanner';
-import { AiCommandModal } from './components/AiCommandModal';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
+import {
+  decodeSharedQuoteFromHash,
+  SharedQuotePayload,
+} from './utils/shareQuoteCodec';
+import { useOfflineSyncStatus } from './utils/offlineDbQueue';
+
+// React.lazy 코드 분할: 첫 홈 화면 로딩 번들을 대폭 경량화하고 서브 화면은 진입 즉시 로드
+const PopPrinterApp = lazy(() =>
+  import('./pop/PopPrinterApp').then((m) => ({ default: m.PopPrinterApp }))
+);
+const CrmApp = lazy(() =>
+  import('./crm/CrmApp').then((m) => ({ default: m.CrmApp }))
+);
+const HiMobileView = lazy(() =>
+  import('./components/HiMobileView').then((m) => ({ default: m.HiMobileView }))
+);
+const InsuranceGuideView = lazy(() =>
+  import('./components/InsuranceGuideView').then((m) => ({
+    default: m.InsuranceGuideView,
+  }))
+);
+const CareTableView = lazy(() =>
+  import('./components/CareTableView').then((m) => ({ default: m.CareTableView }))
+);
+const LottePlanCalcView = lazy(() =>
+  import('./components/LottePlanCalcView').then((m) => ({
+    default: m.LottePlanCalcView,
+  }))
+);
+const AllCareGuideView = lazy(() =>
+  import('./components/AllCareGuideView').then((m) => ({
+    default: m.AllCareGuideView,
+  }))
+);
+const CardInstallmentModal = lazy(() =>
+  import('./components/CardInstallmentModal').then((m) => ({
+    default: m.CardInstallmentModal,
+  }))
+);
+const ScheduleModal = lazy(() =>
+  import('./components/ScheduleModal').then((m) => ({ default: m.ScheduleModal }))
+);
+const AiCommandModal = lazy(() =>
+  import('./components/AiCommandModal').then((m) => ({
+    default: m.AiCommandModal,
+  }))
+);
+const CommandOmnibarModal = lazy(() =>
+  import('./components/CommandOmnibarModal').then((m) => ({
+    default: m.CommandOmnibarModal,
+  }))
+);
+const CustomerShareQuoteView = lazy(() =>
+  import('./components/CustomerShareQuoteView').then((m) => ({
+    default: m.CustomerShareQuoteView,
+  }))
+);
 import { CustomerItem, QuoteRecord } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
 import { isUrgentCustomer } from './crm/utils/date';
@@ -61,6 +109,9 @@ import {
   ChevronRight,
   Moon,
   Sun,
+  Columns2,
+  Search,
+  WifiOff,
   Wrench,
   X,
 } from 'lucide-react';
@@ -198,6 +249,14 @@ export function App() {
     useState<boolean>(false);
   const [isAiCommandModalOpen, setIsAiCommandModalOpen] =
     useState<boolean>(false);
+  const [aiInitialCommand, setAiInitialCommand] = useState<string>('');
+  const [isOmnibarOpen, setIsOmnibarOpen] = useState<boolean>(false);
+  const [sharedQuotePayload, setSharedQuotePayload] =
+    useState<SharedQuotePayload | null>(null);
+  const [isSplitConsultation, setIsSplitConsultation] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1180 : false
+  );
+  const { isOnline, pendingCount } = useOfflineSyncStatus();
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
 
@@ -224,14 +283,45 @@ export function App() {
   }, []);
   const isDark = uiTheme === 'dark';
 
-  // 안심케어 조견표 데이터셋 및 최신 업데이트 월(Month) 자동 감지
+  // 안심케어 조견표 & 무이자 데이터셋 (0.01초 ⌘K 옴니바 통합 검색 연동)
   const [careDataset, setCareDataset] = useState<CareTableDataset | null>(() =>
     loadLocalCareDataset()
   );
+  const [installmentDataset, setInstallmentDataset] = useState(() => loadLocalInstallmentDataset());
+
+  // 카톡 공유 링크(#share=...) 감지 및 고객 전용 인터랙티브 비교 뷰 자동 라우팅
+  useEffect(() => {
+    const checkShareHash = () => {
+      const h = window.location.hash || '';
+      if (h.startsWith('#share=')) {
+        decodeSharedQuoteFromHash(h).then((decoded) => {
+          if (decoded) setSharedQuotePayload(decoded);
+        });
+      } else {
+        setSharedQuotePayload(null);
+      }
+    };
+    checkShareHash();
+    window.addEventListener('hashchange', checkShareHash);
+    return () => window.removeEventListener('hashchange', checkShareHash);
+  }, []);
+
+  // 전역 Ctrl+K / Cmd+K 통합 검색 옴니바 단축키
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsOmnibarOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // 최신 화면 및 모달 상태를 참조하기 위한 Ref
   const latestAppStateRef = useRef({
     step,
+    isOmnibarOpen,
     isAiCommandModalOpen,
     isSaveToCrmOpen,
     isInstallGuideOpen,
@@ -245,6 +335,7 @@ export function App() {
   useEffect(() => {
     latestAppStateRef.current = {
       step,
+      isOmnibarOpen,
       isAiCommandModalOpen,
       isSaveToCrmOpen,
       isInstallGuideOpen,
@@ -256,6 +347,7 @@ export function App() {
     };
   }, [
     step,
+    isOmnibarOpen,
     isAiCommandModalOpen,
     isSaveToCrmOpen,
     isInstallGuideOpen,
@@ -287,6 +379,7 @@ export function App() {
   // 어떤 모달이나 햄버거 메뉴가 열릴 때마다 히스토리 가드 엔트리 1개 추가
   useEffect(() => {
     if (
+      isOmnibarOpen ||
       isAiCommandModalOpen ||
       isMenuOpen ||
       isSaveToCrmOpen ||
@@ -299,6 +392,7 @@ export function App() {
       pushAppHistoryGuard('modal-open');
     }
   }, [
+    isOmnibarOpen,
     isAiCommandModalOpen,
     isMenuOpen,
     isSaveToCrmOpen,
@@ -337,7 +431,12 @@ export function App() {
     const handlePopState = () => {
       const current = latestAppStateRef.current;
 
-      // 최우선 순위: AI 비서 모달이 열려 있으면 닫기
+      // 최우선 순위: 통합검색 옴니바 또는 AI 비서 모달이 열려 있으면 닫기
+      if (current.isOmnibarOpen) {
+        setIsOmnibarOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
       if (current.isAiCommandModalOpen) {
         setIsAiCommandModalOpen(false);
         pushAppHistoryGuard('modal-close');
@@ -503,6 +602,7 @@ export function App() {
               remoteInst.updatedAt >= localInst.updatedAt)
           ) {
             saveLocalInstallmentDataset(remoteInst);
+            setInstallmentDataset(remoteInst);
           }
         })
         .catch(() => {
@@ -1055,6 +1155,26 @@ export function App() {
     [activeCrmCustomers]
   );
 
+  if (sharedQuotePayload) {
+    return (
+      <Suspense
+        fallback={
+          <div className="min-h-[100dvh] flex items-center justify-center bg-[#F4F2ED] text-[#18181B] text-sm font-black">
+            맞춤 비교 견적서를 불러오는 중입니다...
+          </div>
+        }
+      >
+        <CustomerShareQuoteView
+          payload={sharedQuotePayload}
+          onExitCustomerView={() => {
+            window.history.replaceState(null, '', window.location.pathname);
+            setSharedQuotePayload(null);
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <div
       className={`app-shell-bg min-h-[100dvh] w-full flex flex-col transition-colors duration-200 ${
@@ -1108,6 +1228,26 @@ export function App() {
           <button
             type="button"
             onClick={() => {
+              pushAppHistoryGuard('open-omnibar');
+              setIsOmnibarOpen(true);
+            }}
+            title="고객·안심케어·무이자·AS·근무자 0.01초 통합검색 (Ctrl+K)"
+            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 border transition cursor-pointer ${
+              isDark
+                ? 'bg-[#1B2230] hover:bg-[#232C3D] text-sky-300 border-sky-400/30'
+                : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>통합검색</span>
+            <kbd className="hidden md:inline-block px-1.5 py-0.2 rounded text-[10px] font-mono opacity-65 bg-black/5">
+              ⌘K
+            </kbd>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
               pushAppHistoryGuard('open-ai-command');
               setIsAiCommandModalOpen(true);
             }}
@@ -1116,6 +1256,18 @@ export function App() {
           >
             <span>✦ AI 비서</span>
           </button>
+
+          {(!isOnline || pendingCount > 0) && (
+            <span
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-400/20 text-amber-600 border border-amber-400/40 text-[11px] font-black shrink-0"
+              title="인터넷 연결이 복구되면 오프라인 저장 내역이 자동 동기화됩니다"
+            >
+              <WifiOff className="w-3 h-3" />
+              <span>
+                {!isOnline ? '오프라인 안전모드' : `동기화 대기 ${pendingCount}건`}
+              </span>
+            </span>
+          )}
 
           <span
             className={`hidden lg:inline-block px-3 py-1 rounded-full text-xs font-extrabold truncate border ${
@@ -1875,24 +2027,106 @@ export function App() {
         </main>
       )}
 
-      {/* ==================== STEP 1: 조건 입력 화면 ==================== */}
+      {/* ==================== STEP 1: 조건 입력 & 폴드/PC 실시간 좌우 스플릿 상담 스테이지 ==================== */}
       {step === 'input' && (
-        <ControlPanel
-          state={currentState}
-          onChange={setCurrentState}
-          onParseImage={handleParseImage}
-          isParsing={isParsing}
-          parseError={parseError}
-          subScanNotice={subScanNotice}
-          onParseGeneralImage={handleParseGeneralImage}
-          isParsingGeneral={isParsingGeneral}
-          parseGeneralError={parseGeneralError}
-          onShowProposal={() => setStep('proposal')}
-          onBackToHome={() => setStep('home')}
-          activeCustomer={activeCustomer}
-          onClearActiveCustomer={() => setActiveCustomer(null)}
-          onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
-        />
+        <div className="flex-1 w-full flex flex-col">
+          {/* 폴드(768px+) · 태블릿 · 데스크톱 전용 실시간 스플릿 상담 모드 토글 바 */}
+          <div
+            className={`hidden md:flex items-center justify-between px-4 py-2 border-b no-print ${
+              isDark
+                ? 'bg-[#151A25] border-white/10 text-slate-200'
+                : 'bg-[#FAF5EC] border-[#E4DFD5] text-[#18181B]'
+            }`}
+          >
+            <div className="flex items-center gap-2 text-xs font-black">
+              <Columns2 className="w-4 h-4 text-amber-500" />
+              <span>
+                폴드·태블릿 실시간 상담 스테이지:{' '}
+                {isSplitConsultation
+                  ? '좌측에서 조건을 바꾸면 우측 제안서 체감가가 실시간으로 롤링됩니다'
+                  : '넓은 단일 입력 화면 모드'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsSplitConsultation((v) => !v)}
+                className={`px-3 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                  isSplitConsultation
+                    ? isDark
+                      ? 'bg-sky-400 text-slate-950 border-sky-300'
+                      : 'bg-[#18181B] text-white border-[#18181B]'
+                    : isDark
+                    ? 'bg-[#1B2230] text-slate-200 border-white/10'
+                    : 'bg-white text-[#18181B] border-[#D6D0C4]'
+                }`}
+              >
+                {isSplitConsultation
+                  ? '✓ 좌우 실시간 스플릿 켜짐'
+                  : '📐 좌우 실시간 스플릿 켜기'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep('proposal')}
+                className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
+              >
+                전체화면 제안서 전환 →
+              </button>
+            </div>
+          </div>
+
+          {isSplitConsultation ? (
+            <div className="flex-1 w-full flex flex-col md:grid md:grid-cols-12 md:h-[calc(100dvh-92px)] md:overflow-hidden">
+              <div className="md:col-span-5 lg:col-span-5 md:h-full md:overflow-y-auto md:border-r border-black/10">
+                <ControlPanel
+                  state={currentState}
+                  onChange={setCurrentState}
+                  onParseImage={handleParseImage}
+                  isParsing={isParsing}
+                  parseError={parseError}
+                  subScanNotice={subScanNotice}
+                  onParseGeneralImage={handleParseGeneralImage}
+                  isParsingGeneral={isParsingGeneral}
+                  parseGeneralError={parseGeneralError}
+                  onShowProposal={() => setStep('proposal')}
+                  onBackToHome={() => setStep('home')}
+                  activeCustomer={activeCustomer}
+                  onClearActiveCustomer={() => setActiveCustomer(null)}
+                  onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+                  embeddedSplitMode
+                />
+              </div>
+              <div className="hidden md:block md:col-span-7 lg:col-span-7 md:h-full md:overflow-y-auto">
+                <ProposalPreview
+                  state={currentState}
+                  onChange={setCurrentState}
+                  onBackToInput={() => setIsSplitConsultation(false)}
+                  activeCustomer={activeCustomer}
+                  onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+                  embeddedSplitMode
+                  isDark={isDark}
+                />
+              </div>
+            </div>
+          ) : (
+            <ControlPanel
+              state={currentState}
+              onChange={setCurrentState}
+              onParseImage={handleParseImage}
+              isParsing={isParsing}
+              parseError={parseError}
+              subScanNotice={subScanNotice}
+              onParseGeneralImage={handleParseGeneralImage}
+              isParsingGeneral={isParsingGeneral}
+              parseGeneralError={parseGeneralError}
+              onShowProposal={() => setStep('proposal')}
+              onBackToHome={() => setStep('home')}
+              activeCustomer={activeCustomer}
+              onClearActiveCustomer={() => setActiveCustomer(null)}
+              onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+            />
+          )}
+        </div>
       )}
 
       {/* ==================== STEP 2: 제안서 / 프리드 안내서 미리보기 화면 ==================== */}
@@ -1903,126 +2137,154 @@ export function App() {
           onBackToInput={() => setStep('input')}
           activeCustomer={activeCustomer}
           onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+          isDark={isDark}
         />
       )}
 
-      {/* ==================== STEP 3: 4. 롯데 플랜 카드 계산기 & 제안서 화면 ==================== */}
-      {step === 'lotte-plan' && (
-        <LottePlanCalcView onBackToHome={() => setStep('home')} />
-      )}
+      {/* ==================== 지연 로딩(React.lazy) 서브 뷰 영역 ==================== */}
+      <Suspense
+        fallback={
+          <div className="flex-1 flex items-center justify-center py-20 text-xs sm:text-sm font-black opacity-70">
+            화면을 준비하고 있습니다...
+          </div>
+        }
+      >
+        {step === 'lotte-plan' && (
+          <LottePlanCalcView onBackToHome={() => setStep('home')} />
+        )}
+        {step === 'pop-printer' && (
+          <PopPrinterApp onBackToHome={() => setStep('home')} />
+        )}
+        {step === 'crm' && (
+          <CrmApp
+            onBackToHome={() => setStep('home')}
+            onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
+            onOpenQuoteRecordInQuoteBuilder={handleOpenQuoteRecordInQuoteBuilder}
+            onCustomersChange={(list) => setCrmCustomers(list)}
+          />
+        )}
+        {step === 'himobile' && (
+          <HiMobileView onBackToHome={() => setStep('home')} />
+        )}
+        {step === 'insurance' && (
+          <InsuranceGuideView onBackToHome={() => setStep('home')} />
+        )}
+        {step === 'allcare-guide' && (
+          <AllCareGuideView onBackToHome={() => setStep('home')} />
+        )}
+        {step === 'care-table' && (
+          <CareTableView onBackToHome={() => setStep('home')} />
+        )}
+      </Suspense>
 
-      {/* ==================== STEP 4: 5. 구독 POP 자동 출력기 화면 ==================== */}
-      {step === 'pop-printer' && (
-        <PopPrinterApp onBackToHome={() => setStep('home')} />
-      )}
-
-      {/* ==================== STEP 5: 통합 고객관리 시스템 화면 ==================== */}
-      {step === 'crm' && (
-        <CrmApp
-          onBackToHome={() => setStep('home')}
-          onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
-          onOpenQuoteRecordInQuoteBuilder={handleOpenQuoteRecordInQuoteBuilder}
-          onCustomersChange={(list) => setCrmCustomers(list)}
-        />
-      )}
-
-      {/* ==================== STEP 6: 6. 하이모바일 알뜰요금제 안내 & 즉시 개통 화면 ==================== */}
-      {step === 'himobile' && (
-        <HiMobileView onBackToHome={() => setStep('home')} />
-      )}
-
-      {/* ==================== STEP 7: 7. 하이마트 보험상품 청구안내 (고객 전달용) 화면 ==================== */}
-      {step === 'insurance' && (
-        <InsuranceGuideView onBackToHome={() => setStep('home')} />
-      )}
-
-      {/* ==================== STEP 8: 8. 가전 올케어 서비스 안내 & 보유가전 등록 화면 ==================== */}
-      {step === 'allcare-guide' && (
-        <AllCareGuideView onBackToHome={() => setStep('home')} />
-      )}
-
-      {/* ==================== STEP 9: 안심케어 · 가전이사 조견표 화면 ==================== */}
-      {step === 'care-table' && (
-        <CareTableView onBackToHome={() => setStep('home')} />
-      )}
-
-      {/* ==================== 카드사별 무이자 · 부분무이자 할부 행사 모달 ==================== */}
-      <CardInstallmentModal
-        isOpen={isInstallmentModalOpen}
-        onClose={() => setIsInstallmentModalOpen(false)}
-      />
-
-      {/* ==================== 제휴카드 간편 발급 전용 모달 ==================== */}
+      {/* ==================== 카드발급 & AS센터 즉시 모달 ==================== */}
       <CardIssueModal
         isOpen={isCardIssueOpen}
         onClose={() => setIsCardIssueOpen(false)}
       />
-
-      {/* ==================== 가전 A/S 센터 & 플럭스·TCL 전용 모달 ==================== */}
       <AsCenterModal
         isOpen={isAsCenterOpen}
         onClose={() => setIsAsCenterOpen(false)}
       />
 
-      {/* ==================== 경기광주점 근무 · 휴무표 전용 모달 ==================== */}
-      <ScheduleModal
-        isOpen={isScheduleModalOpen}
-        onClose={() => setIsScheduleModalOpen(false)}
-      />
+      {/* ==================== 지연 로딩 모달 묶음 (무이자 / 휴무표 / ⌘K 옴니바 / AI 코파일럿) ==================== */}
+      <Suspense fallback={null}>
+        {isInstallmentModalOpen && (
+          <CardInstallmentModal
+            isOpen={isInstallmentModalOpen}
+            onClose={() => setIsInstallmentModalOpen(false)}
+          />
+        )}
 
-      {/* ==================== AI 비서 (통합 총괄 AI 비서) 모달 ==================== */}
-      <AiCommandModal
-        isOpen={isAiCommandModalOpen}
-        onClose={() => setIsAiCommandModalOpen(false)}
-        onApplyToQuote={(nextState, targetStep) => {
-          if (nextState.quoteMode === 'general') {
-            setGeneralState(nextState);
-          } else if (nextState.quoteMode === 'subscription') {
-            setSubscriptionState(nextState);
-          } else {
-            setHybridState(nextState);
-          }
-          setActiveMode(nextState.quoteMode);
-          setParseError(null);
-          setParseGeneralError(null);
-          setStep(targetStep);
-        }}
-        onCustomerSaved={(savedCust, nextState) => {
-          setActiveCustomer({
-            id: savedCust.id,
-            name: savedCust.name,
-            phone: savedCust.phone,
-          });
-          setCrmCustomers(getCachedCustomers());
-          if (nextState.quoteMode === 'general') {
-            setGeneralState(nextState);
-          } else if (nextState.quoteMode === 'subscription') {
-            setSubscriptionState(nextState);
-          } else {
-            setHybridState(nextState);
-          }
-          setActiveMode(nextState.quoteMode);
-        }}
-        onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
-        onOpenCareTable={() => setStep('care-table')}
-        onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
-        onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
-        onOpenInsuranceView={() => setStep('insurance')}
-        onOpenCrmScreen={() => setStep('crm')}
-        onLoadCrmCustomerQuote={(cust) => {
-          const latestQuote =
-            Array.isArray(cust.quotes) && cust.quotes.length > 0
-              ? cust.quotes[0]
-              : undefined;
-          applyRestoredProposalState(
-            cust,
-            latestQuote?.proposalState ?? (cust as any).proposalState,
-            latestQuote?.itemSummary ?? cust.items,
-            latestQuote?.paidAmount ?? Number(cust.paidAmount),
-            latestQuote?.quoteMode
-          );
-        }}
-      />
+        {isScheduleModalOpen && (
+          <ScheduleModal
+            isOpen={isScheduleModalOpen}
+            onClose={() => setIsScheduleModalOpen(false)}
+            isDark={isDark}
+            onToggleTheme={toggleUiTheme}
+          />
+        )}
+
+        {isOmnibarOpen && (
+          <CommandOmnibarModal
+            isOpen={isOmnibarOpen}
+            onClose={() => setIsOmnibarOpen(false)}
+            isDark={isDark}
+            customers={crmCustomers}
+            careDataset={careDataset}
+            installmentDataset={installmentDataset}
+            onNavigateStep={(nextStep) => setStep(nextStep)}
+            onEnterQuoteMode={(mode) => handleEnterMode(mode)}
+            onOpenCustomerQuote={(cust) =>
+              handleOpenCustomerInQuoteBuilder(cust)
+            }
+            onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+            onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
+            onOpenCardIssueModal={() => setIsCardIssueOpen(true)}
+            onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
+            onRunInAiCopilot={(cmd) => {
+              setAiInitialCommand(cmd);
+              setIsAiCommandModalOpen(true);
+            }}
+          />
+        )}
+
+        <AiCommandModal
+          isOpen={isAiCommandModalOpen}
+          onClose={() => setIsAiCommandModalOpen(false)}
+          initialCommand={aiInitialCommand}
+          onClearInitialCommand={() => setAiInitialCommand('')}
+          currentProposalState={currentState}
+          onApplyToQuote={(nextState, targetStep) => {
+            if (nextState.quoteMode === 'general') {
+              setGeneralState(nextState);
+            } else if (nextState.quoteMode === 'subscription') {
+              setSubscriptionState(nextState);
+            } else {
+              setHybridState(nextState);
+            }
+            setActiveMode(nextState.quoteMode);
+            setParseError(null);
+            setParseGeneralError(null);
+            setStep(targetStep);
+          }}
+          onCustomerSaved={(savedCust, nextState) => {
+            setActiveCustomer({
+              id: savedCust.id,
+              name: savedCust.name,
+              phone: savedCust.phone,
+            });
+            setCrmCustomers(getCachedCustomers());
+            if (nextState.quoteMode === 'general') {
+              setGeneralState(nextState);
+            } else if (nextState.quoteMode === 'subscription') {
+              setSubscriptionState(nextState);
+            } else {
+              setHybridState(nextState);
+            }
+            setActiveMode(nextState.quoteMode);
+          }}
+          onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+          onOpenCareTable={() => setStep('care-table')}
+          onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
+          onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
+          onOpenInsuranceView={() => setStep('insurance')}
+          onOpenCrmScreen={() => setStep('crm')}
+          onLoadCrmCustomerQuote={(cust) => {
+            const latestQuote =
+              Array.isArray(cust.quotes) && cust.quotes.length > 0
+                ? cust.quotes[0]
+                : undefined;
+            applyRestoredProposalState(
+              cust,
+              latestQuote?.proposalState ?? (cust as any).proposalState,
+              latestQuote?.itemSummary ?? cust.items,
+              latestQuote?.paidAmount ?? Number(cust.paidAmount),
+              latestQuote?.quoteMode
+            );
+          }}
+        />
+      </Suspense>
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
       <SaveToCrmModal

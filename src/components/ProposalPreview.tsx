@@ -24,12 +24,15 @@ import {
   Printer,
   RefreshCw,
   Save,
+  Share2,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
   User,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import { SpringNumberFlow } from './SpringNumberFlow';
+import { ShareQuoteLinkModal } from './CustomerShareQuoteView';
 
 interface ProposalPreviewProps {
   state: ProposalState;
@@ -37,6 +40,8 @@ interface ProposalPreviewProps {
   onBackToInput: () => void;
   activeCustomer?: { id: string; name: string; phone?: string } | null;
   onOpenSaveToCrm?: () => void;
+  embeddedSplitMode?: boolean;
+  isDark?: boolean;
 }
 
 const SHEET_WIDTH = 920;
@@ -114,7 +119,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   onBackToInput,
   activeCustomer,
   onOpenSaveToCrm,
+  embeddedSplitMode = false,
+  isDark = false,
 }) => {
+  const [isShareLinkOpen, setIsShareLinkOpen] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const proposalSheetRef = useRef<HTMLDivElement>(null);
   const guideSheetRef = useRef<HTMLDivElement>(null);
@@ -408,18 +416,20 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const hybridCombinedNetTotal = generalSummary.rawNet + finalTotal60Fee;
 
   return (
-    <div className="min-h-[calc(100dvh-44px)] w-full flex flex-col bg-slate-200 select-none">
-      {/* ==================== 상단 고정 액션바 (스크롤 시 최상단 바 바로 아래 2단 고정, 폴드 와이드 1줄 100% 수납) ==================== */}
-      <header className="no-print sticky top-[44px] z-30 min-h-[44px] py-1.5 shrink-0 w-full bg-slate-900/95 backdrop-blur-xs border-b border-slate-800 px-2 sm:px-3 flex flex-wrap items-center justify-between gap-1 sm:gap-1.5 shadow-md">
+    <div className={`${embeddedSplitMode ? 'h-full' : 'min-h-[calc(100dvh-44px)]'} w-full flex flex-col ${isDark ? 'bg-[#0E131D]' : 'bg-slate-200'} select-none`}>
+      {/* ==================== 상단 고정 액션바 ==================== */}
+      <header className={`no-print sticky ${embeddedSplitMode ? 'top-0' : 'top-[52px]'} z-30 min-h-[44px] py-1.5 shrink-0 w-full bg-slate-900/95 backdrop-blur-xs border-b border-slate-800 px-2 sm:px-3 flex flex-wrap items-center justify-between gap-1 sm:gap-1.5 shadow-md`}>
         <div className="flex items-center gap-1 flex-wrap">
-          <button
-            type="button"
-            onClick={onBackToInput}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <ArrowLeft className="w-3 h-3" />
-            <span>조건 수정</span>
-          </button>
+          {!embeddedSplitMode && (
+            <button
+              type="button"
+              onClick={onBackToInput}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-extrabold text-[11px] border border-slate-700 transition cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <ArrowLeft className="w-3 h-3" />
+              <span>조건 수정</span>
+            </button>
+          )}
 
           {/* 탭 전환 버튼 */}
           <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700 shrink-0">
@@ -568,6 +578,15 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
+          <button
+            type="button"
+            onClick={() => setIsShareLinkOpen(true)}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] font-black text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
+            title="고객이 스마트폰에서 직접 1안·2안과 혜택을 비교하는 전용 링크 공유"
+          >
+            <Share2 className="w-3 h-3" />
+            <span>카톡 비교링크</span>
+          </button>
           {onOpenSaveToCrm && (
             <button
               type="button"
@@ -835,7 +854,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           </div>
                         </div>
                         <div className="text-3xl font-black text-white tracking-tight">
-                          {generalSummary.payPrice.toLocaleString()}원
+                          <SpringNumberFlow value={generalSummary.payPrice} suffix="원" />
                         </div>
                       </div>
                     </div>
@@ -907,7 +926,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                         🎯 최종 혜택가 (체감 구매가)
                       </div>
                       <div className="text-5xl font-black text-rose-600 tracking-tight py-1">
-                        {generalSummary.rawNet.toLocaleString()}원
+                        <SpringNumberFlow value={generalSummary.rawNet} suffix="원" />
                       </div>
                       {(generalSummary.totalStep2Cashback > 0 ||
                         generalSummary.totalStep2ExtraBenefit > 0) && (
@@ -1158,7 +1177,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       🎯 최종 월 체감가 ({periodLabel} 구독)
                     </div>
                     <div className="text-5xl font-black text-rose-600 tracking-tight py-1">
-                      월 {finalMonthlyFee.toLocaleString()}원
+                      월 <SpringNumberFlow value={finalMonthlyFee} suffix="원" />
                     </div>
                     {finalMonthlyFee < 0 && (
                       <div className="pt-1">
@@ -1179,7 +1198,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     </span>
                     <div className="flex items-baseline gap-2.5">
                       <span className="text-2xl font-black text-white">
-                        {finalTotal60Fee.toLocaleString()}원
+                        <SpringNumberFlow value={finalTotal60Fee} suffix="원" />
                       </span>
                       <span className="text-sm font-bold text-slate-400">
                         (원금 {totalPrincipal.toLocaleString()}원)
@@ -1360,7 +1379,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                             🎯 최종 혜택가 (체감 구매가)
                           </div>
                           <div className="text-2xl font-black text-rose-600">
-                            {generalSummary.rawNet.toLocaleString()}원
+                            <SpringNumberFlow value={generalSummary.rawNet} suffix="원" />
                           </div>
                         </div>
                       </div>
@@ -1957,6 +1976,13 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           )}
         </div>
       </div>
+      <ShareQuoteLinkModal
+        isOpen={isShareLinkOpen}
+        onClose={() => setIsShareLinkOpen(false)}
+        state={state}
+        customerName={activeCustomer?.name || ''}
+        isDark={isDark}
+      />
     </div>
   );
 };

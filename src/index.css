@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 :root,
 html[data-theme="light"] {
@@ -64,7 +65,7 @@ html[data-theme="dark"] div.min-h-screen:not(.print-sheet):not(.pop-card-print) 
   color: #f8fafc !important;
 }
 
-html[data-theme="dark"] div:not(.print-sheet):not(.print-sheet *):not(.pop-card-print):not(.pop-card-print *) > .bg-white:not(.print-sheet):not(.pop-card-print) {
+html[data-theme="dark"] div:not(.print-sheet):not(.print-sheet *):not(.pop-card-print):not(.pop-card-print *):not(.schedule-pro-modal):not(.schedule-pro-modal *) > .bg-white:not(.print-sheet):not(.pop-card-print) {
   background-color: #151a25 !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   color: #f8fafc !important;
@@ -149,5 +150,86 @@ html[data-theme="dark"] textarea:not(.print-sheet *):not(.pop-card-print *) {
     margin: 0 !important;
     box-sizing: border-box !important;
     page-break-inside: avoid !important;
+  }
+}
+
+/* ==================== Schedule Studio Pro GPU Motion & Scrollbar ==================== */
+:root {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-vaul-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+@keyframes scheduleModalReveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes scheduleSheetSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.schedule-modal-enter {
+  animation: scheduleModalReveal 220ms var(--ease-out-strong) both;
+}
+
+.schedule-sheet-enter {
+  animation: scheduleSheetSlideUp 240ms var(--ease-vaul-drawer) both;
+}
+
+.schedule-tactile {
+  transition: transform 130ms var(--ease-out-strong), opacity 130ms var(--ease-out-strong), background-color 140ms ease;
+}
+
+.schedule-tactile:active {
+  transform: scale(0.97);
+}
+
+.schedule-tab-btn {
+  transition: transform 140ms var(--ease-out-strong), background-color 150ms ease, color 150ms ease;
+}
+
+.schedule-tab-btn:active {
+  transform: scale(0.97);
+}
+
+.schedule-matrix-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.schedule-matrix-scroll::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.35);
+  border-radius: 9999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schedule-modal-enter,
+  .schedule-sheet-enter,
+  .schedule-tactile,
+  .schedule-tab-btn {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media print {
+  .no-print-number-anim {
+    display: none !important;
+  }
+  .only-print-number-static {
+    display: inline !important;
   }
 }

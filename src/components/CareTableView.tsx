@@ -63,6 +63,11 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [visibleLimit, setVisibleLimit] = useState<number>(80);
+
+  useEffect(() => {
+    setVisibleLimit(80);
+  }, [selectedFolder, selectedSection, selectedCategory, searchQuery]);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -725,7 +730,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
-                      {displayedItems.map((item) => {
+                      {displayedItems.slice(0, visibleLimit).map((item) => {
                         const isCodeCopied = copiedId === `code-${item.id}`;
                         const isGuideCopied = copiedId === `guide-${item.id}`;
 
@@ -796,6 +801,17 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
                           </div>
                         );
                       })}
+                      {displayedItems.length > visibleLimit && (
+                        <div className="p-4 text-center">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleLimit((prev) => prev + 120)}
+                            className="px-5 py-2.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black cursor-pointer shadow-xs"
+                          >
+                            더 보기 ({visibleLimit} / {displayedItems.length}건)
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

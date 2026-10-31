@@ -1,5 +1,11 @@
 import { CustomerItem, CustomerStatus, QuoteRecord } from '../types/crm';
 import { getNowDateTimeStr } from '../utils/date';
+import {
+  enqueueOfflineMutation,
+  flushPendingOutbox,
+  idbMirrorGet,
+  idbMirrorSet,
+} from '../../utils/offlineDbQueue';
 
 const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
 
@@ -94,8 +100,10 @@ export function setCachedCustomers(customers: CustomerItem[]): CustomerItem[] {
   try {
     localStorage.setItem(STORAGE_KEY_CACHE, JSON.stringify(deduped));
   } catch (e) {
-    console.error('Failed to save local customer cache', e);
+    console.error('localStorage quota warning — relying on IndexedDB mirror', e);
   }
+  // 대용량 다중 견적 데이터를 IndexedDB에도 즉시 비동기 미러링 (5MB 한계 돌파)
+  idbMirrorSet(STORAGE_KEY_CACHE, deduped).catch(() => {});
   return deduped;
 }
 
@@ -103,11 +111,30 @@ export async function fetchCustomersFromGas(): Promise<{
   customers: CustomerItem[];
   fromCloud: boolean;
 }> {
-  return { customers: getCachedCustomers(), fromCloud: false };
+  const local = getCachedCustomers();
+  if (local.length > 0) {
+    idbMirrorSet(STORAGE_KEY_CACHE, local).catch(() => {});
+    await flushPendingOutbox();
+    return { customers: local, fromCloud: false };
+  }
+
+  // localStorage가 비어있거나 용량 초과였을 경우 IndexedDB 미러에서 복구
+  const idbData = await idbMirrorGet<CustomerItem[]>(STORAGE_KEY_CACHE);
+  if (Array.isArray(idbData) && idbData.length > 0) {
+    const deduped = deduplicateCustomers(idbData);
+    try {
+      localStorage.setItem(STORAGE_KEY_CACHE, JSON.stringify(deduped));
+    } catch {
+      // ignore
+    }
+    return { customers: deduped, fromCloud: false };
+  }
+
+  return { customers: [], fromCloud: false };
 }
 
 export async function saveCustomerQuote(payload: {
-  targetCustomerId?: string; // 기존 고객 ID 직접 지정 시
+  targetCustomerId?: string;
   name: string;
   phone: string;
   items: string;
@@ -268,8 +295,15 @@ export async function saveCustomerToSheet(
 }
 
 export async function syncCustomerToGas(
-  _action: 'create' | 'update' | 'delete' | 'upsertCustomer',
-  _customer: Partial<CustomerItem> & { id: string }
+  action: 'create' | 'update' | 'delete' | 'upsertCustomer',
+  customer: Partial<CustomerItem> & { id: string }
 ): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    await enqueueOfflineMutation({
+      domain: 'crm',
+      action,
+      payload: customer,
+    });
+  }
   return true;
 }

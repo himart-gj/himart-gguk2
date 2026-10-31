@@ -1,12 +1,32 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { GoogleGenAI, Type } from '@google/genai';
+import { toPng } from 'html-to-image';
 import {
+  AlertTriangle,
+  ArrowLeftRight,
   Calendar,
+  CalendarDays,
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
+  Download,
+  Edit3,
+  FileSpreadsheet,
+  Image as ImageIcon,
+  Layers,
   Loader2,
+  Moon,
+  Paintbrush,
+  Plus,
+  RotateCcw,
   Save,
+  Search,
+  Share2,
+  Sparkles,
+  Sun,
   Table2,
   Trash2,
   Upload,
@@ -285,37 +305,63 @@ export function saveAllSchedules(map: SchedulesMap): void {
  */
 export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
   try {
-    let remoteMap: SchedulesMap | null = null;
+    let ghMap: SchedulesMap | null = null;
+    let staticMap: SchedulesMap | null = null;
     const gh = loadGitHubSyncConfig();
     const branch = gh.branch || 'main';
 
     if (gh.repo) {
-      const ghApiUrl = `https://api.github.com/repos/${gh.repo}/contents/public/schedule-data.json?ref=${branch}`;
-      const headers: Record<string, string> = {
-        Accept: 'application/vnd.github.v3.raw',
-      };
-      if (gh.token) {
-        headers.Authorization = `Bearer ${gh.token}`;
-      }
-      const ghRes = await fetch(ghApiUrl, {
-        cache: 'no-store',
-        headers,
-      });
-      if (ghRes.ok) {
-        remoteMap = (await ghRes.json()) as SchedulesMap;
+      try {
+        const ghApiUrl = `https://api.github.com/repos/${gh.repo}/contents/public/schedule-data.json?ref=${branch}`;
+        const headers: Record<string, string> = {
+          Accept: 'application/vnd.github.v3.raw',
+        };
+        if (gh.token) {
+          headers.Authorization = `Bearer ${gh.token}`;
+        }
+        const ghRes = await fetch(ghApiUrl, {
+          cache: 'no-store',
+          headers,
+        });
+        if (ghRes.ok) {
+          ghMap = (await ghRes.json()) as SchedulesMap;
+        }
+      } catch {
+        // ignore github fetch error and fallback to static schedule-data.json
       }
     }
 
-    if (!remoteMap) {
+    try {
       const res = await fetch(`./schedule-data.json?t=${Date.now()}`, {
         cache: 'no-store',
       });
       if (res.ok) {
-        remoteMap = (await res.json()) as SchedulesMap;
+        staticMap = (await res.json()) as SchedulesMap;
+      }
+    } catch {
+      // ignore
+    }
+
+    // GitHub 데이터와 로컬 정적 파일(./schedule-data.json)을 모두 확인하여 월별로 더 최신(updatedAt)인 데이터를 채택
+    const remoteMap: SchedulesMap = {};
+    if (ghMap && typeof ghMap === 'object') {
+      Object.assign(remoteMap, ghMap);
+    }
+    if (staticMap && typeof staticMap === 'object') {
+      for (const [ym, stMonth] of Object.entries(staticMap)) {
+        if (!stMonth || !Array.isArray(stMonth.employees)) continue;
+        const existing = remoteMap[ym];
+        if (
+          !existing ||
+          !existing.updatedAt ||
+          (stMonth.updatedAt && stMonth.updatedAt >= existing.updatedAt)
+        ) {
+          remoteMap[ym] = stMonth;
+        }
       }
     }
 
-    if (!remoteMap || typeof remoteMap !== 'object') {
+    if (Object.keys(remoteMap).length === 0) {
       return null;
     }
 
@@ -1274,105 +1320,271 @@ function classifyRoleGroup(role: string): string {
 
 const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
-// 2026년 10월 공휴일 (개천절 3, 한글날 9)
-const HOLIDAYS_BY_MONTH: Record<string, number[]> = {
-  '2026-10': [3, 9],
+const CORNER_GROUP_ORDER = [
+  '점장·부점장·SCM',
+  '대형',
+  '생활·주방·쿠쿠·KBB',
+  '애플·모바일·통신',
+] as const;
+
+// 2026~2027 대한민국 주요 공휴일 매핑 (날짜 헤더 강조 및 개인 달력 표기용)
+const HOLIDAY_NAMES_BY_MONTH: Record<string, Record<number, string>> = {
+  '2026-01': { 1: '신정' },
+  '2026-02': { 16: '설연휴', 17: '설날', 18: '설연휴' },
+  '2026-03': { 1: '삼일절', 2: '대체공휴일' },
+  '2026-05': { 5: '어린이날', 24: '부처님오신날', 25: '대체공휴일' },
+  '2026-06': { 3: '지방선거', 6: '현충일' },
+  '2026-08': { 15: '광복절', 17: '대체공휴일' },
+  '2026-09': { 24: '추석연휴', 25: '추석', 26: '추석연휴' },
+  '2026-10': { 3: '개천절', 5: '대체공휴일', 9: '한글날' },
+  '2026-12': { 25: '성탄절' },
+  '2027-01': { 1: '신정' },
+  '2027-02': { 6: '설연휴', 7: '설날', 8: '설연휴', 9: '대체공휴일' },
+  '2027-03': { 1: '삼일절' },
+  '2027-05': { 5: '어린이날', 13: '부처님오신날' },
+  '2027-06': { 6: '현충일' },
+  '2027-08': { 15: '광복절', 16: '대체공휴일' },
+  '2027-09': { 14: '추석연휴', 15: '추석', 16: '추석연휴' },
+  '2027-10': { 3: '개천절', 4: '대체공휴일', 9: '한글날', 11: '대체공휴일' },
+  '2027-12': { 25: '성탄절', 27: '대체공휴일' },
 };
 
-interface ScheduleModalProps {
+// 한글 초성 검색 지원 유틸 (예: 'ㄱㅅㅇ' -> '강석원', 'ㄷㅎ' -> '대형')
+const CHOSEONG_LIST = [
+  'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
+  'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
+];
+
+function extractChoseong(str: string): string {
+  let out = '';
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 0xac00;
+    if (code >= 0 && code < 11172) {
+      out += CHOSEONG_LIST[Math.floor(code / 588)];
+    } else {
+      out += str[i];
+    }
+  }
+  return out;
+}
+
+function matchesKoreanQuery(target: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const cleanTarget = target.toLowerCase();
+  if (cleanTarget.includes(q)) return true;
+  const choseongTarget = extractChoseong(cleanTarget);
+  return choseongTarget.includes(q);
+}
+
+function formatUpdatedAtNow(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate()
+  ).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(
+    now.getMinutes()
+  ).padStart(2, '0')}`;
+}
+
+export interface ScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isDark?: boolean;
+  onToggleTheme?: () => void;
 }
+
+type ScheduleViewMode = 'today' | 'calendar' | 'week' | 'full';
 
 const DAY_CODE_OPTIONS: {
   value: DayScheduleCode;
+  shortLabel: string;
   label: string;
-  badge: string;
+  desc: string;
+  chipCls: string;
+  activeRing: string;
 }[] = [
   {
     value: '',
-    label: '🟢 정상 출근 (빈칸)',
-    badge: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    shortLabel: '출근',
+    label: '정상 출근',
+    desc: '빈칸 (매장 정상 근무)',
+    chipCls: 'bg-emerald-500 text-slate-950 border-emerald-600',
+    activeRing: 'ring-emerald-500',
   },
   {
     value: 'O',
-    label: '🔴 O (정기 휴무)',
-    badge: 'bg-rose-500 text-white border-rose-600',
+    shortLabel: 'O',
+    label: 'O (정기휴무)',
+    desc: '주간·월간 정기 휴무일',
+    chipCls: 'bg-rose-500 text-white border-rose-600',
+    activeRing: 'ring-rose-500',
   },
   {
     value: '연차',
-    label: '🟠 연차 휴무',
-    badge: 'bg-amber-500 text-slate-950 border-amber-600',
+    shortLabel: '연차',
+    label: '연차 휴무',
+    desc: '개인 연차 사용일',
+    chipCls: 'bg-amber-400 text-slate-950 border-amber-500',
+    activeRing: 'ring-amber-500',
   },
   {
     value: 'V',
-    label: '🟣 V (휴가)',
-    badge: 'bg-purple-600 text-white border-purple-700',
+    shortLabel: 'V',
+    label: 'V (휴가)',
+    desc: '리프레시·하계·동계 휴가',
+    chipCls: 'bg-purple-600 text-white border-purple-700',
+    activeRing: 'ring-purple-500',
   },
   {
     value: '반차',
-    label: '🟡 반차',
-    badge: 'bg-yellow-200 text-yellow-950 border-yellow-400',
+    shortLabel: '반차',
+    label: '반차',
+    desc: '오전/오후 반일 연차',
+    chipCls: 'bg-yellow-200 text-yellow-950 border-yellow-400',
+    activeRing: 'ring-yellow-500',
   },
   {
     value: '교육',
-    label: '🔵 교육',
-    badge: 'bg-sky-500 text-white border-sky-600',
+    shortLabel: '교육',
+    label: '교육·출장',
+    desc: '본사/외부 교육 및 출장',
+    chipCls: 'bg-sky-500 text-white border-sky-600',
+    activeRing: 'ring-sky-500',
   },
   {
     value: '회의',
-    label: '🟣 회의',
-    badge: 'bg-indigo-500 text-white border-indigo-600',
+    shortLabel: '회의',
+    label: '회의',
+    desc: '지점/영업부 외부 회의',
+    chipCls: 'bg-indigo-500 text-white border-indigo-600',
+    activeRing: 'ring-indigo-500',
   },
   {
     value: 'HP',
-    label: '⚡ HP 근무',
-    badge: 'bg-teal-100 text-teal-900 border-teal-300',
+    shortLabel: 'HP',
+    label: 'HP 근무',
+    desc: 'HP 지정 근무일',
+    chipCls: 'bg-teal-100 text-teal-900 border-teal-300',
+    activeRing: 'ring-teal-500',
   },
 ];
+
+interface UndoSnapshot {
+  label: string;
+  schedules: SchedulesMap;
+}
 
 export const ScheduleModal: React.FC<ScheduleModalProps> = ({
   isOpen,
   onClose,
+  isDark: isDarkProp,
+  onToggleTheme,
 }) => {
-  const [schedules, setSchedules] = useState<SchedulesMap>(() =>
-    loadAllSchedules()
+  // DOM 테마 자동 감지 폴백
+  const [domDark, setDomDark] = useState<boolean>(() =>
+    typeof document !== 'undefined'
+      ? document.documentElement.getAttribute('data-theme') === 'dark'
+      : false
   );
+
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    const sync = () => {
+      setDomDark(document.documentElement.getAttribute('data-theme') === 'dark');
+    };
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+
+  const isDark = isDarkProp ?? domDark;
+
+  const handleInternalToggleTheme = () => {
+    if (onToggleTheme) {
+      onToggleTheme();
+      return;
+    }
+    if (typeof document !== 'undefined') {
+      const next = isDark ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try {
+        localStorage.setItem('himart_ui_theme', next);
+      } catch {
+        // ignore
+      }
+      setDomDark(next === 'dark');
+    }
+  };
+
+  const [schedules, setSchedules] = useState<SchedulesMap>(() => loadAllSchedules());
   const [savedName, setSavedName] = useState<string>(() => loadSavedUserName());
   const [nameInput, setNameInput] = useState<string>(() => loadSavedUserName());
-  const [isEditingName, setIsEditingName] = useState<boolean>(
-    () => !loadSavedUserName()
-  );
+  const [isEditingName, setIsEditingName] = useState<boolean>(() => !loadSavedUserName());
 
-  // 메인 탭: 'today' (오늘 근무자) | 'full' (전체 휴무표)
-  const [activeView, setActiveView] = useState<'today' | 'full'>('today');
+  // 4대 뷰 모드: 'today' | 'calendar' | 'week' | 'full'
+  const [activeView, setActiveView] = useState<ScheduleViewMode>('today');
 
-  // 현재 선택된 날짜 & 연월 (기본: 오늘 날짜)
+  // 현재 선택된 기준 날짜
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
 
-  const currentYear = selectedDate.getFullYear();
-  const currentMonth = selectedDate.getMonth() + 1; // 1 ~ 12
-  const currentDay = selectedDate.getDate();
-  const currentYearMonth = `${currentYear}-${String(currentMonth).padStart(
-    2,
-    '0'
-  )}`;
+  // 내 월간 달력 뷰에서 조회 중인 대상 직원 (기본: 내 이름 또는 첫 번째 직원)
+  const [calendarTargetName, setCalendarTargetName] = useState<string>('');
 
-  // 파일 업로드 & AI 파싱 상태
+  // 전체/주간 표 검색 & 코너 필터 & 접힌 그룹
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [selectedCornerFilter, setSelectedCornerFilter] = useState<string>('ALL');
+  const [collapsedCorners, setCollapsedCorners] = useState<Record<string, boolean>>({});
+  const [showHeatmapRow, setShowHeatmapRow] = useState<boolean>(true);
+
+  // 빠른 페인트(도장) 연속 입력 모드
+  const [isPaintMode, setIsPaintMode] = useState<boolean>(false);
+  const [paintCode, setPaintCode] = useState<DayScheduleCode>('O');
+
+  // 동료 비교 & 맞교대(스왑) 시뮬레이터 상태
+  const [isSwapPanelOpen, setIsSwapPanelOpen] = useState<boolean>(false);
+  const [compareNames, setCompareNames] = useState<string[]>([]);
+  const [swapDayA, setSwapDayA] = useState<number | null>(null);
+  const [swapDayB, setSwapDayB] = useState<number | null>(null);
+
+  // 내보내기 드롭다운 & 월 빠른 선택 드롭다운 & 직원 추가 모달
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState<boolean>(false);
+  const [isAddStaffOpen, setIsAddStaffOpen] = useState<boolean>(false);
+  const [newStaffName, setNewStaffName] = useState<string>('');
+  const [newStaffRole, setNewStaffRole] = useState<string>('대형');
+
+  // Undo 스택 (최대 20단계) & Sonner 스타일 하단 토스트
+  const [undoStack, setUndoStack] = useState<UndoSnapshot[]>([]);
+
+  // 파일 업로드 & 알림 상태
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const exportCaptureRef = useRef<HTMLDivElement>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isExportingImage, setIsExportingImage] = useState(false);
   const [notice, setNotice] = useState<{
     type: 'success' | 'error' | 'info';
     text: string;
+    canUndo?: boolean;
   } | null>(null);
 
-  // 전체 휴무표에서 셀 클릭 시 즉시 변경 팝오버
+  // 셀 클릭 시 반응형 바텀시트(모바일) / 컨텍스트 모달(PC)
   const [editingCell, setEditingCell] = useState<{
     empName: string;
     empRole: string;
     day: number;
     currentCode: DayScheduleCode;
   } | null>(null);
+  const [isEditingRoleInSheet, setIsEditingRoleInSheet] = useState<boolean>(false);
+  const [roleDraftInSheet, setRoleDraftInSheet] = useState<string>('');
+
+  // 휴무표 삭제/관리 모달
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const currentYear = selectedDate.getFullYear();
+  const currentMonth = selectedDate.getMonth() + 1;
+  const currentDay = selectedDate.getDate();
+  const currentYearMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1380,9 +1592,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setSavedName(loadedName);
     setNameInput(loadedName);
     setIsEditingName(!loadedName);
+    if (loadedName) {
+      setCalendarTargetName(loadedName);
+    }
     setSchedules(loadAllSchedules());
 
-    // 원격(GitHub/서버) 최신 휴무표 자동 동기화
     fetchRemoteSchedules().then((merged) => {
       if (merged) {
         setSchedules(merged);
@@ -1390,15 +1604,79 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     });
   }, [isOpen]);
 
+  // 토스트 자동 닫힘 타이머 (에러 제외 4.5초)
+  useEffect(() => {
+    if (!notice || notice.type === 'error') return;
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+    }, 4500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const monthData = useMemo(
     () => getOrCreateMonthSchedule(schedules, currentYearMonth),
     [schedules, currentYearMonth]
   );
 
+  // calendarTargetName 자동 보정
+  useEffect(() => {
+    if (savedName && monthData.employees.some((e) => e.name === savedName)) {
+      if (!calendarTargetName) setCalendarTargetName(savedName);
+      return;
+    }
+    if (
+      monthData.employees.length > 0 &&
+      (!calendarTargetName || !monthData.employees.some((e) => e.name === calendarTargetName))
+    ) {
+      setCalendarTargetName(monthData.employees[0].name);
+    }
+  }, [savedName, monthData.employees, calendarTargetName]);
+
   const daysInMonth = useMemo(
     () => new Date(currentYear, currentMonth, 0).getDate(),
     [currentYear, currentMonth]
   );
+
+  const pushUndoAndCommit = (
+    nextSchedules: SchedulesMap,
+    toastText: string,
+    undoLabel: string
+  ) => {
+    setUndoStack((prev) => [
+      ...prev.slice(-19),
+      { label: undoLabel, schedules },
+    ]);
+    setSchedules(nextSchedules);
+    saveAllSchedules(nextSchedules);
+    setNotice({
+      type: 'success',
+      text: toastText,
+      canUndo: true,
+    });
+
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub(nextSchedules, gh);
+    }
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    setSchedules(last.schedules);
+    saveAllSchedules(last.schedules);
+    setNotice({
+      type: 'info',
+      text: `↩ 실행 취소됨: ${last.label}`,
+      canUndo: false,
+    });
+
+    const gh = loadGitHubSyncConfig();
+    if (gh.repo && gh.token) {
+      publishSchedulesToGitHub(last.schedules, gh);
+    }
+  };
 
   const handleSaveUserName = (targetName?: string) => {
     const clean = (targetName ?? nameInput).trim();
@@ -1406,10 +1684,14 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     saveUserName(clean);
     setSavedName(clean);
     setNameInput(clean);
+    setCalendarTargetName(clean);
     setIsEditingName(false);
+    setNotice({
+      type: 'success',
+      text: `👤 내 이름이 [${clean}]님으로 설정되었습니다.`,
+    });
   };
 
-  // 월 이동 [◀] / [▶]
   const handleMoveMonth = (delta: number) => {
     setSelectedDate((prev) => {
       const next = new Date(prev.getFullYear(), prev.getMonth() + delta, 1);
@@ -1423,9 +1705,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       return next;
     });
     setEditingCell(null);
+    setIsMonthPickerOpen(false);
   };
 
-  // 특정 년월로 직접 이동 (퀵 배지 클릭 시)
   const handleSelectYearMonth = (ym: string) => {
     const [yStr, mStr] = ym.split('-');
     const y = parseInt(yStr, 10);
@@ -1439,9 +1721,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       }
     }
     setEditingCell(null);
+    setIsMonthPickerOpen(false);
   };
 
-  // 일자 이동 (◀ 어제 / 오늘 / 내일 ▶)
   const handleMoveDay = (delta: number) => {
     setSelectedDate((prev) => {
       const next = new Date(prev);
@@ -1454,20 +1736,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     setSelectedDate(new Date());
   };
 
-  // 특정 셀 스케줄 코드 변경 저장
+  // 셀 스케줄 코드 변경 저장 (Undo 지원)
   const handleUpdateCellCode = (
     empName: string,
     day: number,
-    newCode: DayScheduleCode
+    newCode: DayScheduleCode,
+    keepSheetOpen = false
   ) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
-      now.getHours()
-    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
+    const updatedAt = formatUpdatedAtNow();
     const baseMonth = getOrCreateMonthSchedule(schedules, currentYearMonth);
+    const prevEmp = baseMonth.employees.find((e) => e.name === empName);
+    const prevCode = prevEmp?.days[String(day)] || '';
+    if (prevCode === newCode) {
+      if (!keepSheetOpen) setEditingCell(null);
+      return;
+    }
+
     const updatedEmployees = baseMonth.employees.map((emp) => {
       if (emp.name !== empName) return emp;
       const nextDays = { ...emp.days };
@@ -1487,29 +1771,94 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       [currentYearMonth]: {
         yearMonth: currentYearMonth,
         updatedAt,
+        isRegistered: true,
         employees: updatedEmployees,
       },
     };
 
-    setSchedules(nextSchedules);
-    saveAllSchedules(nextSchedules);
-    setEditingCell(null);
+    const codeText = newCode || '정상출근';
+    pushUndoAndCommit(
+      nextSchedules,
+      `✏️ ${empName}님 ${currentMonth}/${day} → [${codeText}] 변경됨`,
+      `${empName} ${currentMonth}/${day} 변경`
+    );
 
-    const gh = loadGitHubSyncConfig();
-    if (gh.repo && gh.token) {
-      publishSchedulesToGitHub(nextSchedules, gh);
+    if (!keepSheetOpen) {
+      setEditingCell(null);
     }
   };
 
-  // 특정 직원 행(줄) 삭제 (잘못 생성된 직원 줄 즉시 삭제)
-  const handleDeleteEmployeeRow = (empName: string) => {
-    const now = new Date();
-    const updatedAt = `${now.getFullYear()}-${String(
-      now.getMonth() + 1
-    ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
-      now.getHours()
-    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  // 직원 담당(코너) 변경
+  const handleUpdateEmployeeRole = (empName: string, nextRole: string) => {
+    const cleanRole = nextRole.trim() || '매장';
+    const updatedAt = formatUpdatedAtNow();
+    const baseMonth = getOrCreateMonthSchedule(schedules, currentYearMonth);
+    const updatedEmployees = baseMonth.employees.map((emp) =>
+      emp.name === empName ? { ...emp, role: cleanRole } : emp
+    );
 
+    const nextSchedules: SchedulesMap = {
+      ...schedules,
+      [currentYearMonth]: {
+        ...baseMonth,
+        yearMonth: currentYearMonth,
+        updatedAt,
+        isRegistered: true,
+        employees: updatedEmployees,
+      },
+    };
+
+    pushUndoAndCommit(
+      nextSchedules,
+      `🏷️ ${empName}님의 담당이 [${cleanRole}](으)로 수정되었습니다.`,
+      `${empName} 담당 변경`
+    );
+    setIsEditingRoleInSheet(false);
+    setEditingCell((prev) => (prev ? { ...prev, empRole: cleanRole } : null));
+  };
+
+  // 신규 직원 행 추가
+  const handleAddStaffMember = () => {
+    const cleanName = newStaffName.trim();
+    const cleanRole = newStaffRole.trim() || '대형';
+    if (!cleanName) return;
+
+    const baseMonth = getOrCreateMonthSchedule(schedules, currentYearMonth);
+    if (baseMonth.employees.some((e) => e.name === cleanName)) {
+      setNotice({
+        type: 'error',
+        text: `이미 [${cleanName}] 직원이 명단에 존재합니다.`,
+      });
+      return;
+    }
+
+    const updatedAt = formatUpdatedAtNow();
+    const nextSchedules: SchedulesMap = {
+      ...schedules,
+      [currentYearMonth]: {
+        ...baseMonth,
+        yearMonth: currentYearMonth,
+        updatedAt,
+        isRegistered: true,
+        employees: [
+          ...baseMonth.employees,
+          { name: cleanName, role: cleanRole, days: {} },
+        ],
+      },
+    };
+
+    pushUndoAndCommit(
+      nextSchedules,
+      `➕ [${cleanName} (${cleanRole})] 직원이 ${currentMonth}월 명단에 추가되었습니다.`,
+      `${cleanName} 직원 추가`
+    );
+    setNewStaffName('');
+    setIsAddStaffOpen(false);
+  };
+
+  // 직원 행 삭제
+  const handleDeleteEmployeeRow = (empName: string) => {
+    const updatedAt = formatUpdatedAtNow();
     const baseMonth = getOrCreateMonthSchedule(schedules, currentYearMonth);
     const updatedEmployees = baseMonth.employees.filter(
       (emp) => emp.name !== empName
@@ -1525,21 +1874,69 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
       },
     };
 
-    setSchedules(nextSchedules);
-    saveAllSchedules(nextSchedules);
+    pushUndoAndCommit(
+      nextSchedules,
+      `🗑️ 휴무표에서 [${empName}] 직원 줄이 삭제되었습니다.`,
+      `${empName} 직원 줄 삭제`
+    );
     setEditingCell(null);
-    setNotice({
-      type: 'success',
-      text: `🗑️ 휴무표에서 [${empName}] 직원 줄이 삭제되었습니다.`,
-    });
-
-    const gh = loadGitHubSyncConfig();
-    if (gh.repo && gh.token) {
-      publishSchedulesToGitHub(nextSchedules, gh);
-    }
   };
 
-  // 사진(JPG/PNG) 또는 엑셀(.xlsx) 업로드 처리
+  // 1:1 휴무 맞교대(스왑) 실행
+  const handleExecuteMutualSwap = () => {
+    if (compareNames.length < 2 || !swapDayA || !swapDayB) return;
+    const [nameA, nameB] = compareNames;
+    const baseMonth = getOrCreateMonthSchedule(schedules, currentYearMonth);
+    const empA = baseMonth.employees.find((e) => e.name === nameA);
+    const empB = baseMonth.employees.find((e) => e.name === nameB);
+    if (!empA || !empB) return;
+
+    const codeA_on_dayA = empA.days[String(swapDayA)] || '';
+    const codeA_on_dayB = empA.days[String(swapDayB)] || '';
+    const codeB_on_dayA = empB.days[String(swapDayA)] || '';
+    const codeB_on_dayB = empB.days[String(swapDayB)] || '';
+
+    const updatedEmployees = baseMonth.employees.map((emp) => {
+      if (emp.name === nameA) {
+        const nextDays = { ...emp.days };
+        if (codeB_on_dayA) nextDays[String(swapDayA)] = codeB_on_dayA;
+        else delete nextDays[String(swapDayA)];
+        if (codeB_on_dayB) nextDays[String(swapDayB)] = codeB_on_dayB;
+        else delete nextDays[String(swapDayB)];
+        return { ...emp, days: nextDays };
+      }
+      if (emp.name === nameB) {
+        const nextDays = { ...emp.days };
+        if (codeA_on_dayA) nextDays[String(swapDayA)] = codeA_on_dayA;
+        else delete nextDays[String(swapDayA)];
+        if (codeA_on_dayB) nextDays[String(swapDayB)] = codeA_on_dayB;
+        else delete nextDays[String(swapDayB)];
+        return { ...emp, days: nextDays };
+      }
+      return emp;
+    });
+
+    const nextSchedules: SchedulesMap = {
+      ...schedules,
+      [currentYearMonth]: {
+        ...baseMonth,
+        yearMonth: currentYearMonth,
+        updatedAt: formatUpdatedAtNow(),
+        isRegistered: true,
+        employees: updatedEmployees,
+      },
+    };
+
+    pushUndoAndCommit(
+      nextSchedules,
+      `⇄ [${nameA}] ${swapDayA}일 ↔ [${nameB}] ${swapDayB}일 맞교대가 반영되었습니다!`,
+      `${nameA}·${nameB} 휴무 맞교대`
+    );
+    setSwapDayA(null);
+    setSwapDayB(null);
+  };
+
+  // 사진(JPG/PNG) 또는 엑셀(.xlsx) 업로드 처리 (기존 3중 파서 + Gemini OCR 100% 보존)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1552,17 +1949,10 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     });
 
     try {
-      const now = new Date();
-      const updatedAt = `${now.getFullYear()}-${String(
-        now.getMonth() + 1
-      ).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
-        now.getHours()
-      ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
+      const updatedAt = formatUpdatedAtNow();
       let targetYearMonth = currentYearMonth;
       let parsedEmployees: EmployeeMonthlySchedule[] = [];
 
-      // 파일명에서 월 추출 시도 (예: 11월 휴무표)
       const monthMatch = file.name.match(/(\d{1,2})\s*월/);
       if (monthMatch) {
         const m = parseInt(monthMatch[1], 10);
@@ -1584,7 +1974,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         targetYearMonth = parsedResult.yearMonth;
         parsedEmployees = parsedResult.employees;
       } else {
-        // 이미지(JPG/PNG) — 휴무표 전용 고해상도(maxWidth=3000, quality=0.95) 리사이징 및 1~31일 전수 대조 스캔
         const apiKey = getEffectiveGeminiApiKey();
         if (!apiKey) {
           throw new Error(
@@ -1702,10 +2091,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         }
 
         if (!rawText) {
-          throw (
-            lastError ||
-            new Error('휴무표 이미지 AI 분석에 실패했습니다.')
-          );
+          throw lastError || new Error('휴무표 이미지 AI 분석에 실패했습니다.');
         }
 
         const cleanedJson = rawText
@@ -1754,7 +2140,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
             .map((emp: any, idx: number) => {
               const cleanDays: Record<string, DayScheduleCode> = {};
 
-              // 1) cellTrace ("1:O, 2:, 3:, ...") 파싱
               if (typeof emp.cellTrace === 'string' && emp.cellTrace.trim()) {
                 const pairs = emp.cellTrace.split(',');
                 for (const pair of pairs) {
@@ -1769,7 +2154,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 }
               }
 
-              // 2) schedule 배열 ([{ day, status }]) 파싱
               if (Array.isArray(emp.schedule)) {
                 for (const cell of emp.schedule) {
                   const dNum = Number(cell?.day);
@@ -1779,14 +2163,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                     );
                     if (code) {
                       cleanDays[String(dNum)] = code;
-                    } else if (cell?.status === '') {
-                      // 빈칸 명시 시 유지
                     }
                   }
                 }
               }
 
-              // 3) 구형 days 객체 호환
               if (emp.days && typeof emp.days === 'object') {
                 Object.entries(emp.days).forEach(([dKey, val]) => {
                   const dNum = parseInt(dKey, 10);
@@ -1809,9 +2190,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
           parsedEmployees = reconcileOcrEmployees(rawExtracted);
         } else {
-          throw new Error(
-            '이미지에서 직원별 휴무 데이터를 인식하지 못했습니다.'
-          );
+          throw new Error('이미지에서 직원별 휴무 데이터를 인식하지 못했습니다.');
         }
       }
 
@@ -1825,14 +2204,16 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         },
       };
 
+      setUndoStack((prev) => [
+        ...prev.slice(-19),
+        { label: `${targetYearMonth} 업로드 이전`, schedules },
+      ]);
       setSchedules(nextSchedules);
       saveAllSchedules(nextSchedules);
 
-      // 업로드된 연월로 화면 자동 이동
       const [yStr, mStr] = targetYearMonth.split('-');
       setSelectedDate(new Date(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
 
-      // 관리자의 기기에 GitHub 연동 설정이 되어 있으면 전 직원 자동 배포
       const gh = loadGitHubSyncConfig();
       let syncedRemote = false;
       if (gh.repo && gh.token) {
@@ -1844,6 +2225,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         text: syncedRemote
           ? `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명) 저장 + 전 직원 자동 업데이트 완료!`
           : `✅ [${targetYearMonth}] 휴무표 (${parsedEmployees.length}명)가 성공적으로 저장되었습니다!`,
+        canUndo: true,
       });
     } catch (err: any) {
       setNotice({
@@ -1857,10 +2239,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     }
   };
 
-  // 휴무표 삭제 및 관리 상태 및 핸들러
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-
-  // 모달 내부 하위 상태 뒤로가기 핸들러 등록
+  // 모바일 하드웨어 뒤로가기 보호 핸들러
   useEffect(() => {
     if (!isOpen) return;
     (window as any).__modalInternalBackHandler = (): boolean => {
@@ -1868,15 +2247,36 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         setIsDeleteModalOpen(false);
         return true;
       }
+      if (isAddStaffOpen) {
+        setIsAddStaffOpen(false);
+        return true;
+      }
+      if (isExportMenuOpen) {
+        setIsExportMenuOpen(false);
+        return true;
+      }
+      if (isMonthPickerOpen) {
+        setIsMonthPickerOpen(false);
+        return true;
+      }
       if (editingCell !== null) {
         setEditingCell(null);
+        setIsEditingRoleInSheet(false);
+        return true;
+      }
+      if (isSwapPanelOpen) {
+        setIsSwapPanelOpen(false);
+        return true;
+      }
+      if (isPaintMode) {
+        setIsPaintMode(false);
         return true;
       }
       if (isEditingName && Boolean(savedName)) {
         setIsEditingName(false);
         return true;
       }
-      if (activeView === 'full') {
+      if (activeView !== 'today') {
         setActiveView('today');
         return true;
       }
@@ -1885,53 +2285,165 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     return () => {
       delete (window as any).__modalInternalBackHandler;
     };
-  }, [isOpen, isDeleteModalOpen, editingCell, isEditingName, savedName, activeView]);
+  }, [
+    isOpen,
+    isDeleteModalOpen,
+    isAddStaffOpen,
+    isExportMenuOpen,
+    isMonthPickerOpen,
+    editingCell,
+    isSwapPanelOpen,
+    isPaintMode,
+    isEditingName,
+    savedName,
+    activeView,
+  ]);
 
   const handleDeleteMonth = (ym: string) => {
     if (!schedules[ym]) return;
     const next = { ...schedules };
     delete next[ym];
-    setSchedules(next);
-    saveAllSchedules(next);
-    setNotice({
-      type: 'info',
-      text: `🗑️ [${ym}] 휴무표 데이터가 삭제되었습니다.`,
-    });
-
-    const gh = loadGitHubSyncConfig();
-    if (gh.repo && gh.token) {
-      publishSchedulesToGitHub(next, gh);
-    }
+    pushUndoAndCommit(
+      next,
+      `🗑️ [${ym}] 휴무표 데이터가 삭제되었습니다.`,
+      `${ym} 월간 데이터 삭제`
+    );
   };
 
   const handleDeleteAllSchedules = () => {
-    const next: SchedulesMap = {};
-    setSchedules(next);
-    saveAllSchedules(next);
-    setNotice({
-      type: 'info',
-      text: '🗑️ 저장된 모든 월의 휴무표 데이터가 완전히 삭제되었습니다.',
-    });
-    setIsDeleteModalOpen(false);
-
-    const gh = loadGitHubSyncConfig();
-    if (gh.repo && gh.token) {
-      publishSchedulesToGitHub(next, gh);
+    setUndoStack((prev) => [
+      ...prev.slice(-19),
+      { label: '전체 휴무표 초기화', schedules },
+    ]);
+    try {
+      localStorage.removeItem(SCHEDULES_STORAGE_KEY);
+    } catch {
+      // ignore
     }
+    setSchedules({});
+    setIsDeleteModalOpen(false);
+    fetchRemoteSchedules().then((reloaded) => {
+      if (reloaded && Object.keys(reloaded).length > 0) {
+        setSchedules(reloaded);
+        setNotice({
+          type: 'success',
+          text: '🔄 기기 캐시를 초기화하고 서버 최신 휴무표(schedule-data.json)를 즉시 다시 불러왔습니다.',
+          canUndo: true,
+        });
+      } else {
+        setNotice({
+          type: 'success',
+          text: '🗑️ 저장된 모든 월의 휴무표 데이터가 초기화되었습니다.',
+          canUndo: true,
+        });
+      }
+    });
   };
 
-  // 저장된 월(Month) 목록 (퀵 배지용)
   const savedYearMonths = useMemo(() => {
     return Object.keys(schedules)
-      .filter((ym) => schedules[ym]?.employees && schedules[ym]?.employees.length > 0)
+      .filter(
+        (ym) => schedules[ym]?.employees && schedules[ym]?.employees.length > 0
+      )
       .sort();
   }, [schedules]);
 
   const isCurrentMonthRegistered = Boolean(
-    schedules[currentYearMonth] && schedules[currentYearMonth]?.isRegistered !== false
+    schedules[currentYearMonth] &&
+      schedules[currentYearMonth]?.isRegistered !== false
   );
 
-  // 내 이름에 해당하는 직원 스케줄 정보 및 요약 계산
+  // 일자별 전체 통계 및 코너 공백(0명 근무 코너) 전수 계산
+  const dailySummaryMap = useMemo(() => {
+    const map: Record<
+      number,
+      {
+        workingCount: number;
+        restingCount: number;
+        vacantCorners: string[];
+        cornerCounts: Record<string, number>;
+      }
+    > = {};
+
+    const presentCorners = new Set<string>();
+    monthData.employees.forEach((emp) => {
+      presentCorners.add(classifyRoleGroup(emp.role));
+    });
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const cornerCounts: Record<string, number> = {
+        '점장·부점장·SCM': 0,
+        대형: 0,
+        '생활·주방·쿠쿠·KBB': 0,
+        '애플·모바일·통신': 0,
+      };
+      let workingCount = 0;
+      let restingCount = 0;
+
+      monthData.employees.forEach((emp) => {
+        const code = emp.days[String(d)] || '';
+        const isAway =
+          code === 'O' ||
+          code === '연차' ||
+          code === 'V' ||
+          code === '교육' ||
+          code === '회의';
+        if (isAway) {
+          restingCount++;
+        } else {
+          workingCount++;
+          const g = classifyRoleGroup(emp.role);
+          cornerCounts[g] = (cornerCounts[g] || 0) + 1;
+        }
+      });
+
+      const vacantCorners: string[] = [];
+      if (isCurrentMonthRegistered && monthData.employees.length > 0) {
+        CORNER_GROUP_ORDER.forEach((g) => {
+          if (presentCorners.has(g) && (cornerCounts[g] || 0) === 0) {
+            vacantCorners.push(g);
+          }
+        });
+      }
+
+      map[d] = {
+        workingCount,
+        restingCount,
+        vacantCorners,
+        cornerCounts,
+      };
+    }
+
+    return map;
+  }, [monthData.employees, daysInMonth, isCurrentMonthRegistered]);
+
+  // 직원별 월간 통계 계산 (정기휴무 O, 연차/V, 반차, 출근일)
+  const employeeStatsMap = useMemo(() => {
+    const stats: Record<
+      string,
+      { offO: number; annualV: number; half: number; eduMeet: number; workDays: number }
+    > = {};
+
+    monthData.employees.forEach((emp) => {
+      let offO = 0;
+      let annualV = 0;
+      let half = 0;
+      let eduMeet = 0;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const c = emp.days[String(d)] || '';
+        if (c === 'O') offO++;
+        else if (c === '연차' || c === 'V') annualV++;
+        else if (c === '반차') half++;
+        else if (c === '교육' || c === '회의') eduMeet++;
+      }
+      const workDays = Math.max(0, daysInMonth - offO - annualV - eduMeet);
+      stats[emp.name] = { offO, annualV, half, eduMeet, workDays };
+    });
+
+    return stats;
+  }, [monthData.employees, daysInMonth]);
+
+  // 내 직원 정보 & 남은 휴무일 & 다음 휴무 D-Day
   const myEmployee = useMemo(() => {
     if (!savedName) return null;
     return (
@@ -1958,7 +2470,66 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     return list;
   }, [myEmployee, currentDay, daysInMonth]);
 
-  // 선택된 날짜 기준 🟢 오늘 근무자 vs 🔴 오늘 휴무/연차/교육자 분류
+  // 선택된 날짜 기준 주간(월~일 7일) 날짜 배열 계산
+  const currentWeekDates = useMemo(() => {
+    const base = new Date(currentYear, currentMonth - 1, currentDay);
+    const dow = base.getDay(); // 0(일) ~ 6(토)
+    // 월요일 시작으로 정렬 (일요일이면 -6, 그 외 1 - dow)
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(base);
+    monday.setDate(base.getDate() + diffToMon);
+
+    return Array.from({ length: 7 }, (_, idx) => {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + idx);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const mSched = getOrCreateMonthSchedule(schedules, ym);
+      const isReg = Boolean(schedules[ym] && schedules[ym]?.isRegistered !== false);
+      const dayNum = d.getDate();
+
+      let working = 0;
+      let vacant = false;
+      const presentGroups = new Set<string>();
+      const gCounts: Record<string, number> = {};
+
+      mSched.employees.forEach((emp) => {
+        const g = classifyRoleGroup(emp.role);
+        presentGroups.add(g);
+        const c = emp.days[String(dayNum)] || '';
+        const away =
+          c === 'O' || c === '연차' || c === 'V' || c === '교육' || c === '회의';
+        if (!away) {
+          working++;
+          gCounts[g] = (gCounts[g] || 0) + 1;
+        }
+      });
+
+      if (isReg && mSched.employees.length > 0) {
+        presentGroups.forEach((g) => {
+          if ((gCounts[g] || 0) === 0) vacant = true;
+        });
+      }
+
+      const myEmpInDate = savedName
+        ? mSched.employees.find((e) => e.name === savedName)
+        : null;
+      const myCodeInDate = myEmpInDate?.days[String(dayNum)] || '';
+
+      return {
+        date: d,
+        yearMonth: ym,
+        day: dayNum,
+        dow: d.getDay(),
+        isSameMonth: d.getMonth() + 1 === currentMonth,
+        isRegistered: isReg,
+        workingCount: working,
+        hasVacancy: vacant,
+        myCode: myCodeInDate,
+      };
+    });
+  }, [currentYear, currentMonth, currentDay, schedules, savedName]);
+
+  // 오늘 근무자 vs 휴무자 분류
   const { workingByGroup, restingList } = useMemo(() => {
     const groups: Record<
       string,
@@ -1991,13 +2562,400 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     return { workingByGroup: groups, restingList: resting };
   }, [monthData, currentDay]);
 
-  // 전체 휴무표에서 내 이름이 있으면 최상단 첫 번째 행으로 고정/강조 배치
-  const sortedEmployeesForTable = useMemo(() => {
-    if (!savedName) return monthData.employees;
-    const me = monthData.employees.filter((e) => e.name === savedName);
-    const others = monthData.employees.filter((e) => e.name !== savedName);
-    return [...me, ...others];
-  }, [monthData.employees, savedName]);
+  // 검색어 + 코너 필터 + 비교선택 반영된 직원 목록 (코너별 그룹 유지 & 내 이름 상단 강조)
+  const filteredEmployeesByCorner = useMemo(() => {
+    const filtered = monthData.employees.filter((emp) => {
+      if (selectedCornerFilter === 'COMPARE') {
+        return compareNames.includes(emp.name);
+      }
+      if (
+        selectedCornerFilter !== 'ALL' &&
+        classifyRoleGroup(emp.role) !== selectedCornerFilter
+      ) {
+        return false;
+      }
+      if (searchQuery.trim()) {
+        return (
+          matchesKoreanQuery(emp.name, searchQuery) ||
+          matchesKoreanQuery(emp.role, searchQuery)
+        );
+      }
+      return true;
+    });
+
+    const grouped: {
+      corner: string;
+      employees: EmployeeMonthlySchedule[];
+    }[] = CORNER_GROUP_ORDER.map((corner) => ({
+      corner,
+      employees: filtered
+        .filter((e) => classifyRoleGroup(e.role) === corner)
+        .sort((a, b) => {
+          if (a.name === savedName) return -1;
+          if (b.name === savedName) return 1;
+          return 0;
+        }),
+    })).filter((g) => g.employees.length > 0);
+
+    return grouped;
+  }, [monthData.employees, selectedCornerFilter, searchQuery, compareNames, savedName]);
+
+  // 내 월간 달력 뷰용 데이터 (선택된 직원 1명의 7열 달력 셀 & 연속 휴무 계산)
+  const personalCalendarData = useMemo(() => {
+    const targetEmp =
+      monthData.employees.find((e) => e.name === calendarTargetName) ||
+      myEmployee ||
+      monthData.employees[0] ||
+      null;
+
+    const firstDow = new Date(currentYear, currentMonth - 1, 1).getDay();
+    const cells: (null | {
+      day: number;
+      dow: number;
+      code: DayScheduleCode;
+      holidayName?: string;
+      isStreakStart?: boolean;
+      isStreakEnd?: boolean;
+      inStreak?: boolean;
+    })[] = [];
+
+    for (let i = 0; i < firstDow; i++) {
+      cells.push(null);
+    }
+
+    // 연속 휴무(2일 이상 O/연차/V) 구간 탐색
+    const streaks: { start: number; end: number; length: number }[] = [];
+    if (targetEmp) {
+      let s = -1;
+      for (let d = 1; d <= daysInMonth + 1; d++) {
+        const off = d <= daysInMonth && isOffDayCode(targetEmp.days[String(d)]);
+        if (off && s === -1) {
+          s = d;
+        } else if (!off && s !== -1) {
+          const len = d - s;
+          if (len >= 2) {
+            streaks.push({ start: s, end: d - 1, length: len });
+          }
+          s = -1;
+        }
+      }
+    }
+
+    const monthHolidays = HOLIDAY_NAMES_BY_MONTH[currentYearMonth] || {};
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dow = new Date(currentYear, currentMonth - 1, d).getDay();
+      const code = targetEmp?.days[String(d)] || '';
+      const matchedStreak = streaks.find((st) => d >= st.start && d <= st.end);
+      cells.push({
+        day: d,
+        dow,
+        code,
+        holidayName: monthHolidays[d],
+        inStreak: Boolean(matchedStreak),
+        isStreakStart: matchedStreak?.start === d,
+        isStreakEnd: matchedStreak?.end === d,
+      });
+    }
+
+    return {
+      targetEmp,
+      cells,
+      streaks,
+      stats: targetEmp ? employeeStatsMap[targetEmp.name] : null,
+    };
+  }, [
+    monthData.employees,
+    calendarTargetName,
+    myEmployee,
+    currentYear,
+    currentMonth,
+    currentYearMonth,
+    daysInMonth,
+    employeeStatsMap,
+  ]);
+
+  // 동료 2명 휴무 겹침 & 맞교대 가능일 분석
+  const swapComparisonAnalysis = useMemo(() => {
+    if (compareNames.length < 2) return null;
+    const [nameA, nameB] = compareNames;
+    const empA = monthData.employees.find((e) => e.name === nameA);
+    const empB = monthData.employees.find((e) => e.name === nameB);
+    if (!empA || !empB) return null;
+
+    const overlapOffDays: number[] = [];
+    const onlyAOffDays: number[] = [];
+    const onlyBOffDays: number[] = [];
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const offA = isOffDayCode(empA.days[String(d)]);
+      const offB = isOffDayCode(empB.days[String(d)]);
+      if (offA && offB) overlapOffDays.push(d);
+      else if (offA && !offB) onlyAOffDays.push(d);
+      else if (!offA && offB) onlyBOffDays.push(d);
+    }
+
+    return {
+      empA,
+      empB,
+      overlapOffDays,
+      onlyAOffDays,
+      onlyBOffDays,
+    };
+  }, [compareNames, monthData.employees, daysInMonth]);
+
+  const toggleCompareEmployee = (name: string) => {
+    setCompareNames((prev) => {
+      if (prev.includes(name)) {
+        return prev.filter((n) => n !== name);
+      }
+      if (prev.length >= 2) {
+        return [prev[1], name];
+      }
+      return [...prev, name];
+    });
+    setSwapDayA(null);
+    setSwapDayB(null);
+  };
+
+  // [내보내기 1] 카카오톡 오픈 단톡방 브리핑 텍스트 원터치 복사
+  const handleCopyKakaoBriefing = async () => {
+    const weekday = WEEKDAY_KO[selectedDate.getDay()];
+    const totalWork = monthData.employees.length - restingList.length;
+    const lines: string[] = [
+      `📅 [롯데하이마트 경기광주점] ${currentMonth}월 ${currentDay}일(${weekday}) 근무 브리핑`,
+      `━━━━━━━━━━━━━━`,
+      `🟢 근무 인원: 총 ${totalWork}명`,
+    ];
+
+    CORNER_GROUP_ORDER.forEach((corner) => {
+      const list = workingByGroup[corner] || [];
+      const names =
+        list.length > 0
+          ? list
+              .map((e) =>
+                e.code ? `${e.name}(${e.code})` : e.name
+              )
+              .join(', ')
+          : '⚠️ 전원 휴무(공백)';
+      lines.push(`• ${corner}: ${names}`);
+    });
+
+    lines.push(`━━━━━━━━━━━━━━`);
+    if (restingList.length === 0) {
+      lines.push(`🔴 휴무·연차·교육: 없음 (전원 근무)`);
+    } else {
+      const restText = restingList
+        .map((e) => `${e.name}(${e.code})`)
+        .join(', ');
+      lines.push(`🔴 휴무·연차·교육(${restingList.length}명): ${restText}`);
+    }
+
+    const vacancy = dailySummaryMap[currentDay]?.vacantCorners || [];
+    if (vacancy.length > 0) {
+      lines.push(`⚠️ 코너 공백 주의: ${vacancy.join(', ')}`);
+    }
+
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setIsExportMenuOpen(false);
+      setNotice({
+        type: 'success',
+        text: `💬 ${currentMonth}/${currentDay}(${weekday}) 단톡방 근무 브리핑이 클립보드에 복사되었습니다!`,
+      });
+    } catch {
+      setNotice({
+        type: 'error',
+        text: '클립보드 복사에 실패했습니다. 브라우저 권한을 확인해 주세요.',
+      });
+    }
+  };
+
+  // [내보내기 2] 현재 월 휴무표 엑셀(.xlsx) 다운로드
+  const handleExportExcel = () => {
+    const headerRow = [
+      'NO',
+      '성명',
+      '담당',
+      '정기휴무(O)',
+      '연차·휴가',
+      ...Array.from({ length: daysInMonth }, (_, i) => {
+        const d = i + 1;
+        const dow = WEEKDAY_KO[new Date(currentYear, currentMonth - 1, d).getDay()];
+        return `${d}(${dow})`;
+      }),
+    ];
+
+    const bodyRows = monthData.employees.map((emp, idx) => {
+      const st = employeeStatsMap[emp.name] || { offO: 0, annualV: 0 };
+      return [
+        idx + 1,
+        emp.name,
+        emp.role,
+        st.offO,
+        st.annualV,
+        ...Array.from(
+          { length: daysInMonth },
+          (_, i) => emp.days[String(i + 1)] || ''
+        ),
+      ];
+    });
+
+    const summaryWorkRow = [
+      '',
+      '총 근무인원',
+      '합계',
+      '',
+      '',
+      ...Array.from(
+        { length: daysInMonth },
+        (_, i) => dailySummaryMap[i + 1]?.workingCount ?? 0
+      ),
+    ];
+
+    const summaryRestRow = [
+      '',
+      '결원(휴무·연차·교육)',
+      '합계',
+      '',
+      '',
+      ...Array.from(
+        { length: daysInMonth },
+        (_, i) => dailySummaryMap[i + 1]?.restingCount ?? 0
+      ),
+    ];
+
+    const ws = XLSX.utils.aoa_to_sheet([
+      [`롯데하이마트 경기광주점 ${currentYear}년 ${currentMonth}월 근무·휴무 계획표`],
+      [],
+      headerRow,
+      ...bodyRows,
+      [],
+      summaryWorkRow,
+      summaryRestRow,
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `${currentMonth}월_휴무표`);
+    XLSX.writeFile(
+      wb,
+      `롯데하이마트_경기광주점_${currentYearMonth}_휴무표.xlsx`
+    );
+    setIsExportMenuOpen(false);
+    setNotice({
+      type: 'success',
+      text: `📊 [${currentYearMonth}] 휴무표 엑셀(.xlsx) 파일이 다운로드되었습니다.`,
+    });
+  };
+
+  // [내보내기 3] 현재 화면 고화질 이미지(.png) 다운로드
+  const handleExportPng = async () => {
+    if (!exportCaptureRef.current) return;
+    setIsExportingImage(true);
+    setIsExportMenuOpen(false);
+    try {
+      const dataUrl = await toPng(exportCaptureRef.current, {
+        pixelRatio: 2,
+        cacheBust: true,
+        backgroundColor: isDark ? '#0B0E14' : '#F4F2ED',
+      });
+      const link = document.createElement('a');
+      link.download = `경기광주점_휴무표_${currentYearMonth}_${activeView}.png`;
+      link.href = dataUrl;
+      link.click();
+      setNotice({
+        type: 'success',
+        text: `🖼️ 현재 휴무표 화면이 고화질 이미지(.png)로 저장되었습니다.`,
+      });
+    } catch {
+      setNotice({
+        type: 'error',
+        text: '이미지 저장 중 오류가 발생했습니다.',
+      });
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
+  // [내보내기 4] 개인 휴무일 스마트폰 기본 캘린더(.ics) 일괄 등록 파일 생성
+  const handleDownloadIcs = (targetEmpName?: string) => {
+    const targetName = targetEmpName || calendarTargetName || savedName;
+    const emp = monthData.employees.find((e) => e.name === targetName);
+    if (!emp) {
+      setNotice({
+        type: 'error',
+        text: '캘린더로 내보낼 직원을 먼저 선택해 주세요.',
+      });
+      return;
+    }
+
+    const events: string[] = [];
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const code = emp.days[String(d)];
+      if (!code) continue;
+      const startDate = new Date(currentYear, currentMonth - 1, d);
+      const endDate = new Date(currentYear, currentMonth - 1, d + 1);
+      const fmt = (dt: Date) =>
+        `${dt.getFullYear()}${String(dt.getMonth() + 1).padStart(2, '0')}${String(
+          dt.getDate()
+        ).padStart(2, '0')}`;
+
+      const titleMap: Record<string, string> = {
+        O: `🏖️ 정기휴무 (${emp.name})`,
+        연차: `🌴 연차휴무 (${emp.name})`,
+        V: `✈️ 휴가 (${emp.name})`,
+        반차: `🌤️ 반차 (${emp.name})`,
+        교육: `📘 교육/출장 (${emp.name})`,
+        회의: `📋 외부회의 (${emp.name})`,
+        HP: `⚡ HP근무 (${emp.name})`,
+      };
+
+      events.push(
+        [
+          'BEGIN:VEVENT',
+          `UID:himart-gj-${currentYearMonth}-${d}-${encodeURIComponent(emp.name)}@himart.local`,
+          `DTSTAMP:${stamp}`,
+          `DTSTART;VALUE=DATE:${fmt(startDate)}`,
+          `DTEND;VALUE=DATE:${fmt(endDate)}`,
+          `SUMMARY:${titleMap[code] || `[${code}] ${emp.name}`}`,
+          `DESCRIPTION:롯데하이마트 경기광주점 ${currentYear}년 ${currentMonth}월 근태 일정 (${emp.name} / ${emp.role})`,
+          'END:VEVENT',
+        ].join('\r\n')
+      );
+    }
+
+    if (events.length === 0) {
+      setNotice({
+        type: 'info',
+        text: `${emp.name}님의 ${currentMonth}월 등록된 휴무/일정이 없습니다.`,
+      });
+      return;
+    }
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Lotte Hi-Mart Gwangju//Schedule Pro//KO',
+      'CALSCALE:GREGORIAN',
+      ...events,
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${emp.name}_${currentYearMonth}_휴무일정.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setIsExportMenuOpen(false);
+    setNotice({
+      type: 'success',
+      text: `📱 [${emp.name}]님의 ${currentMonth}월 일정(${events.length}건) 캘린더(.ics) 파일이 저장되었습니다!`,
+    });
+  };
 
   if (!isOpen) return null;
 
@@ -2008,70 +2966,60 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     selectedDate.getMonth() === todayReal.getMonth() &&
     selectedDate.getDate() === todayReal.getDate();
 
+  const todayVacancies = dailySummaryMap[currentDay]?.vacantCorners || [];
+
+  // 기호 배지 렌더러 (고대비 + 컴팩트 대응)
   const renderCodeBadge = (
     code: DayScheduleCode,
-    compact = false,
+    size: 'xs' | 'sm' | 'md' = 'sm',
     dayNumberForCell?: number
   ) => {
     if (!code) return null;
-    const baseCls = compact
-      ? 'px-1 py-0.5 rounded text-[10px] font-black leading-none inline-block'
-      : 'px-2 py-0.5 rounded-md text-xs font-black inline-block';
+    const sizeCls =
+      size === 'xs'
+        ? 'px-1 py-0.5 rounded text-[10px] font-black leading-none inline-flex items-center justify-center'
+        : size === 'sm'
+        ? 'px-1.5 py-0.5 rounded-md text-[11px] font-black leading-tight inline-flex items-center justify-center'
+        : 'px-2.5 py-1 rounded-lg text-xs font-black inline-flex items-center justify-center';
 
-    let badgeEl: React.ReactNode;
+    let colorCls = '';
     switch (code) {
       case 'O':
-        badgeEl = (
-          <span className={`${baseCls} bg-rose-500 text-white`}>O</span>
-        );
+        colorCls = 'bg-rose-500 text-white shadow-2xs';
         break;
       case '연차':
-        badgeEl = (
-          <span className={`${baseCls} bg-amber-400 text-slate-950`}>연차</span>
-        );
+        colorCls = 'bg-amber-400 text-slate-950 shadow-2xs';
         break;
       case 'V':
-        badgeEl = (
-          <span className={`${baseCls} bg-purple-600 text-white`}>V</span>
-        );
+        colorCls = 'bg-purple-600 text-white shadow-2xs';
         break;
       case '반차':
-        badgeEl = (
-          <span
-            className={`${baseCls} bg-yellow-200 text-yellow-950 border border-yellow-400`}
-          >
-            반차
-          </span>
-        );
+        colorCls = 'bg-yellow-200 text-yellow-950 border border-yellow-400';
         break;
       case '교육':
-        badgeEl = (
-          <span className={`${baseCls} bg-sky-500 text-white`}>교육</span>
-        );
+        colorCls = 'bg-sky-500 text-white';
         break;
       case '회의':
-        badgeEl = (
-          <span className={`${baseCls} bg-indigo-500 text-white`}>회의</span>
-        );
+        colorCls = 'bg-indigo-500 text-white';
         break;
       case 'HP':
-        badgeEl = (
-          <span
-            className={`${baseCls} bg-teal-100 text-teal-900 border border-teal-300`}
-          >
-            HP
-          </span>
-        );
+        colorCls = 'bg-teal-100 text-teal-950 border border-teal-300';
         break;
       default:
-        badgeEl = <span className={baseCls}>{code}</span>;
+        colorCls = 'bg-slate-200 text-slate-800';
     }
+
+    const badgeEl = <span className={`${sizeCls} ${colorCls}`}>{code}</span>;
 
     if (dayNumberForCell !== undefined) {
       return (
         <div className="flex flex-col items-center justify-center leading-none gap-0.5">
-          <span className="text-[9px] font-extrabold text-slate-500 leading-none">
-            {dayNumberForCell}일
+          <span
+            className={`text-[9px] font-extrabold leading-none font-mono ${
+              isDark ? 'text-slate-400' : 'text-stone-500'
+            }`}
+          >
+            {dayNumberForCell}
           </span>
           {badgeEl}
         </div>
@@ -2081,16 +3029,104 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     return badgeEl;
   };
 
+  // 셀 클릭 시 공통 처리 (페인트 모드면 즉시 도장 찍기, 아니면 시트 오픈)
+  const handleCellInteraction = (
+    emp: EmployeeMonthlySchedule,
+    dayNum: number
+  ) => {
+    if (isPaintMode) {
+      const current = emp.days[String(dayNum)] || '';
+      // 같은 코드가 이미 찍혀 있으면 지우개처럼 토글 해제 가능
+      const nextToApply = current === paintCode ? '' : paintCode;
+      handleUpdateCellCode(emp.name, dayNum, nextToApply, true);
+      return;
+    }
+
+    window.history.pushState({ appGuard: true }, '');
+    const currentCode = emp.days[String(dayNum)] || '';
+    setIsEditingRoleInSheet(false);
+    setRoleDraftInSheet(emp.role);
+    setEditingCell({
+      empName: emp.name,
+      empRole: emp.role,
+      day: dayNum,
+      currentCode,
+    });
+  };
+
+  // 편집 시트 내 같은 코너 동료 근무 현황 계산
+  const editingCellPeerInfo = useMemo(() => {
+    if (!editingCell) return null;
+    const targetGroup = classifyRoleGroup(editingCell.empRole);
+    const workingPeers = monthData.employees.filter((e) => {
+      if (e.name === editingCell.empName) return false;
+      if (classifyRoleGroup(e.role) !== targetGroup) return false;
+      const c = e.days[String(editingCell.day)] || '';
+      return !(c === 'O' || c === '연차' || c === 'V' || c === '교육' || c === '회의');
+    });
+    return {
+      cornerGroup: targetGroup,
+      workingPeers,
+    };
+  }, [editingCell, monthData.employees]);
+
+  // 테마별 공통 서피스 클래스
+  const shellBg = isDark
+    ? 'bg-[#0B0E14] text-slate-100 border-white/10'
+    : 'bg-[#F4F2ED] text-[#18181B] border-[#D6D0C4]';
+  const headerBg = isDark
+    ? 'bg-[#121722]/95 border-white/10 text-slate-100'
+    : 'bg-[#FAF8F4]/95 border-[#E4DFD5] text-[#18181B]';
+  const cardBg = isDark
+    ? 'bg-[#151A25] border-white/10 text-slate-100'
+    : 'bg-white border-[#E4DFD5] text-[#18181B]';
+  const subtleBg = isDark
+    ? 'bg-[#1B2230] border-white/10 text-slate-200'
+    : 'bg-[#FAF8F4] border-[#E4DFD5] text-[#18181B]';
+  const mutedText = isDark ? 'text-slate-400' : 'text-[#78716C]';
+
+  const VIEW_TABS: {
+    id: ScheduleViewMode;
+    label: string;
+    shortLabel: string;
+    icon: React.ReactNode;
+  }[] = [
+    {
+      id: 'today',
+      label: '일일 브리핑',
+      shortLabel: '일일',
+      icon: <Users className="w-3.5 h-3.5" />,
+    },
+    {
+      id: 'calendar',
+      label: '내 월간 달력',
+      shortLabel: '내 달력',
+      icon: <CalendarDays className="w-3.5 h-3.5" />,
+    },
+    {
+      id: 'week',
+      label: '주간(7일) 표',
+      shortLabel: '주간표',
+      icon: <Layers className="w-3.5 h-3.5" />,
+    },
+    {
+      id: 'full',
+      label: '전체 매트릭스',
+      shortLabel: '전체표',
+      icon: <Table2 className="w-3.5 h-3.5" />,
+    },
+  ];
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 no-print"
+      className="schedule-pro-modal fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-3 no-print"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1440px] max-h-[94dvh] rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
+        className={`w-full max-w-[1460px] h-[96dvh] sm:h-auto sm:max-h-[94dvh] rounded-t-3xl sm:rounded-3xl border shadow-2xl flex flex-col overflow-hidden schedule-modal-enter ${shellBg}`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 숨김 파일 input */}
+        {/* 숨김 파일 업로드 input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -2099,128 +3135,496 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           className="hidden"
         />
 
-        {/* 1) 모달 상단 헤더 */}
-        <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-indigo-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-              <Calendar className="w-5 h-5" />
+        {/* ==================== 1) 슬림 2단 커맨드 헤더 ==================== */}
+        <div className={`px-3.5 sm:px-6 pt-3 pb-2.5 border-b shrink-0 ${headerBg}`}>
+          {/* Row 1: 타이틀 + 월 선택기 + 내 이름 칩 + 액션 도구 모음 */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* 좌측: 브랜드 아이콘 + 타이틀 + 월 네비게이터 */}
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-wrap">
+              <div
+                className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                  isDark
+                    ? 'bg-sky-500/20 text-sky-300 border border-sky-400/30'
+                    : 'bg-[#8C5A32] text-white'
+                }`}
+              >
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
+              </div>
+
+              <div className="min-w-0 mr-1">
+                <div className="flex items-center gap-1.5">
+                  <h2 className="text-sm sm:text-base font-black tracking-tight truncate">
+                    경기광주점 근무·휴무 스튜디오
+                  </h2>
+                  {isCurrentMonthRegistered && (
+                    <span
+                      className={`hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                        isDark
+                          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/25'
+                          : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      }`}
+                    >
+                      {monthData.employees.length}명 등록됨
+                    </span>
+                  )}
+                </div>
+                <p className={`text-[11px] font-medium hidden lg:block ${mutedText}`}>
+                  주간 브리핑 · 개인 달력(.ics) · 빠른 페인트 편집 · 맞교대 시뮬레이터
+                </p>
+              </div>
+
+              {/* 컴팩트 월 선택기 ([◀] 2026.11 ▼ [▶]) */}
+              <div className="relative">
+                <div
+                  className={`inline-flex items-center rounded-xl border p-0.5 ${
+                    isDark
+                      ? 'bg-[#1B2230] border-white/10'
+                      : 'bg-white border-[#D6D0C4] shadow-2xs'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleMoveMonth(-1)}
+                    title="이전 달"
+                    className={`p-1.5 rounded-lg cursor-pointer schedule-tactile ${
+                      isDark ? 'hover:bg-white/10 text-slate-200' : 'hover:bg-[#F4F2ED] text-stone-700'
+                    }`}
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsMonthPickerOpen((v) => !v)}
+                    className="px-2 sm:px-2.5 py-1 text-xs sm:text-sm font-black font-mono flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>
+                      {currentYear}.{String(currentMonth).padStart(2, '0')}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 opacity-65" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveMonth(1)}
+                    title="다음 달"
+                    className={`p-1.5 rounded-lg cursor-pointer schedule-tactile ${
+                      isDark ? 'hover:bg-white/10 text-slate-200' : 'hover:bg-[#F4F2ED] text-stone-700'
+                    }`}
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 저장된 달 빠른 선택 팝오버 */}
+                {isMonthPickerOpen && (
+                  <div
+                    className={`absolute left-0 mt-1.5 w-60 rounded-2xl border p-3 shadow-xl z-50 ${cardBg}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-black">📂 저장된 휴무표 월 선택</span>
+                      <button
+                        type="button"
+                        onClick={() => setIsMonthPickerOpen(false)}
+                        className={`p-0.5 rounded cursor-pointer ${mutedText}`}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {savedYearMonths.length === 0 ? (
+                      <p className={`text-xs py-2 ${mutedText}`}>
+                        아직 업로드된 휴무표가 없습니다.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {savedYearMonths.map((ym) => {
+                          const active = ym === currentYearMonth;
+                          return (
+                            <button
+                              key={ym}
+                              type="button"
+                              onClick={() => handleSelectYearMonth(ym)}
+                              className={`px-2.5 py-1.5 rounded-xl text-xs font-black font-mono border flex items-center justify-between cursor-pointer schedule-tactile ${
+                                active
+                                  ? isDark
+                                    ? 'bg-sky-500 text-slate-950 border-sky-400'
+                                    : 'bg-[#8C5A32] text-white border-[#8C5A32]'
+                                  : isDark
+                                  ? 'bg-[#1B2230] border-white/10 hover:bg-white/10'
+                                  : 'bg-[#FAF8F4] border-[#E4DFD5] hover:bg-[#EAE5DC]'
+                              }`}
+                            >
+                              <span>{ym.replace('-', '.')}</span>
+                              {active && <Check className="w-3 h-3" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleJumpToToday();
+                        setIsMonthPickerOpen(false);
+                      }}
+                      className={`mt-2 w-full py-1.5 rounded-xl text-xs font-black border cursor-pointer ${
+                        isDark
+                          ? 'bg-white/5 hover:bg-white/10 border-white/10 text-sky-300'
+                          : 'bg-[#F4ECE1] hover:bg-[#EAE0D0] border-[#D6C7B2] text-[#8C5A32]'
+                      }`}
+                    >
+                      오늘 날짜로 즉시 이동
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-sm sm:text-lg font-black tracking-tight truncate">
-                📅 경기광주점 근무 · 휴무표 ({currentYear}년 {currentMonth}월)
-              </h2>
-              <p className="text-[11px] text-slate-300 font-bold hidden sm:block">
-                내 이름 1회 저장 시 내 휴무 카운트다운 연동 · 사진/엑셀 업로드 시 내 기기에 월별 영구 저장
-              </p>
+
+            {/* 우측: 내 이름 칩 + 테마 토글 + 업로드 + 내보내기 + 삭제 + 닫기 */}
+            <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+              {/* 내 이름 프로필 칩 */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({ appGuard: true }, '');
+                  setIsEditingName((v) => !v);
+                }}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                  savedName
+                    ? isDark
+                      ? 'bg-amber-400/15 text-amber-300 border-amber-400/30'
+                      : 'bg-[#F4ECE1] text-[#6E4423] border-[#D8C3A8]'
+                    : 'bg-amber-400 text-slate-950 border-amber-500'
+                }`}
+              >
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>{savedName ? `${savedName}님` : '내 이름 설정'}</span>
+              </button>
+
+              {/* Undo 되돌리기 버튼 (히스토리 있을 때 노출) */}
+              {undoStack.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleUndo}
+                  title={`되돌리기 (${undoStack[undoStack.length - 1].label})`}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                    isDark
+                      ? 'bg-[#1B2230] hover:bg-[#242E42] text-sky-300 border-sky-400/30'
+                      : 'bg-white hover:bg-[#F4F2ED] text-[#18181B] border-[#D6D0C4]'
+                  }`}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">되돌리기</span>
+                </button>
+              )}
+
+              {/* 사진/엑셀 업로드 */}
+              <button
+                type="button"
+                disabled={isUploading}
+                onClick={() => fileInputRef.current?.click()}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black shadow-2xs cursor-pointer schedule-tactile disabled:opacity-60 ${
+                  isDark
+                    ? 'bg-sky-400 hover:bg-sky-300 text-slate-950'
+                    : 'bg-[#18181B] hover:bg-stone-800 text-white'
+                }`}
+              >
+                {isUploading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5" />
+                )}
+                <span>{isUploading ? '분석 중...' : '업로드'}</span>
+              </button>
+
+              {/* 내보내기 / 공유 드롭다운 */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsExportMenuOpen((v) => !v)}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                    isDark
+                      ? 'bg-[#1B2230] hover:bg-[#242E42] text-slate-200 border-white/10'
+                      : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D0C4]'
+                  }`}
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">공유·내보내기</span>
+                </button>
+
+                {isExportMenuOpen && (
+                  <div
+                    className={`absolute right-0 mt-1.5 w-64 rounded-2xl border p-2 shadow-2xl z-50 space-y-1 ${cardBg}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleCopyKakaoBriefing}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-black flex items-center gap-2.5 cursor-pointer ${
+                        isDark ? 'hover:bg-white/10' : 'hover:bg-[#F4F2ED]'
+                      }`}
+                    >
+                      <Copy className="w-4 h-4 text-amber-500 shrink-0" />
+                      <div>
+                        <div>카톡 일일 근무브리핑 복사</div>
+                        <div className={`text-[10px] font-medium ${mutedText}`}>
+                          {currentMonth}/{currentDay} 코너별 근무·휴무 명단
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadIcs()}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-black flex items-center gap-2.5 cursor-pointer ${
+                        isDark ? 'hover:bg-white/10' : 'hover:bg-[#F4F2ED]'
+                      }`}
+                    >
+                      <CalendarDays className="w-4 h-4 text-emerald-500 shrink-0" />
+                      <div>
+                        <div>스마트폰 캘린더(.ics) 등록</div>
+                        <div className={`text-[10px] font-medium ${mutedText}`}>
+                          아이폰·갤럭시 기본 달력에 휴무 추가
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExportExcel}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-black flex items-center gap-2.5 cursor-pointer ${
+                        isDark ? 'hover:bg-white/10' : 'hover:bg-[#F4F2ED]'
+                      }`}
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-teal-500 shrink-0" />
+                      <div>
+                        <div>엑셀(.xlsx) 파일 다운로드</div>
+                        <div className={`text-[10px] font-medium ${mutedText}`}>
+                          연차합계·일자별 근무인원 포함
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isExportingImage}
+                      onClick={handleExportPng}
+                      className={`w-full px-3 py-2 rounded-xl text-left text-xs font-black flex items-center gap-2.5 cursor-pointer disabled:opacity-50 ${
+                        isDark ? 'hover:bg-white/10' : 'hover:bg-[#F4F2ED]'
+                      }`}
+                    >
+                      <ImageIcon className="w-4 h-4 text-sky-500 shrink-0" />
+                      <div>
+                        <div>현재 화면 이미지(.png) 저장</div>
+                        <div className={`text-[10px] font-medium ${mutedText}`}>
+                          단톡방 공유용 고해상도 캡처
+                        </div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 라이트/다크 테마 전환 */}
+              <button
+                type="button"
+                onClick={handleInternalToggleTheme}
+                title={isDark ? '라이트 모드로 보기' : '다크 모드로 보기'}
+                className={`p-2 rounded-xl border cursor-pointer schedule-tactile ${
+                  isDark
+                    ? 'bg-[#1B2230] hover:bg-[#242E42] text-amber-300 border-white/10'
+                    : 'bg-white hover:bg-[#EAE5DC] text-stone-700 border-[#D6D0C4]'
+                }`}
+              >
+                {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              </button>
+
+              {/* 관리/삭제 모달 열기 */}
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({ appGuard: true }, '');
+                  setIsDeleteModalOpen(true);
+                }}
+                title="저장된 휴무표 관리 및 초기화"
+                className={`p-2 rounded-xl border cursor-pointer schedule-tactile ${
+                  isDark
+                    ? 'bg-[#1B2230] hover:bg-rose-950/60 text-rose-400 border-white/10'
+                    : 'bg-white hover:bg-rose-50 text-rose-600 border-[#D6D0C4]'
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* 닫기 */}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="휴무표 닫기"
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                  isDark
+                    ? 'bg-white/10 hover:bg-rose-600 text-white border-white/10'
+                    : 'bg-stone-200/80 hover:bg-rose-600 hover:text-white text-stone-800 border-stone-300'
+                }`}
+              >
+                <X className="w-4 h-4" />
+                <span className="hidden sm:inline">닫기</span>
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {/* 저장된 내 이름 표시 & [⚙️ 이름 수정] 버튼 */}
-            {savedName && !isEditingName && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-black text-amber-300">
-                <span>👤 {savedName}님</span>
+          {/* Row 2: 4대 뷰 슬라이딩 세그먼트 탭 + 우측 보조 실행 버튼 */}
+          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+            <div
+              className={`grid grid-cols-4 sm:inline-flex p-1 rounded-2xl border w-full sm:w-auto ${
+                isDark
+                  ? 'bg-[#0B0E14] border-white/10'
+                  : 'bg-[#EAE5DC]/75 border-[#D6D0C4]'
+              }`}
+            >
+              {VIEW_TABS.map((tab) => {
+                const active = activeView === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      if (tab.id !== 'today' && activeView === 'today') {
+                        window.history.pushState({ appGuard: true }, '');
+                      }
+                      setActiveView(tab.id);
+                    }}
+                    className={`px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer schedule-tab-btn ${
+                      active
+                        ? isDark
+                          ? 'bg-[#1E2738] text-sky-300 shadow-sm border border-sky-400/30'
+                          : 'bg-white text-[#18181B] shadow-xs border border-[#D6D0C4]'
+                        : isDark
+                        ? 'text-slate-400 hover:text-slate-200'
+                        : 'text-[#68625D] hover:text-[#18181B]'
+                    }`}
+                  >
+                    {tab.icon}
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 우측 퀵 유틸리티 (주간표 / 전체표 활성 시 빠른 페인트 & 맞교대 비교 & 직원 추가) */}
+            <div className="flex items-center gap-1.5 flex-wrap w-full sm:w-auto justify-end">
+              {(activeView === 'full' || activeView === 'week') && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPaintMode((v) => !v);
+                      setEditingCell(null);
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                      isPaintMode
+                        ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-xs'
+                        : isDark
+                        ? 'bg-[#1B2230] text-slate-200 border-white/10 hover:bg-white/10'
+                        : 'bg-white text-[#18181B] border-[#D6D0C4] hover:bg-[#FAF8F4]'
+                    }`}
+                  >
+                    <Paintbrush className="w-3.5 h-3.5" />
+                    <span>{isPaintMode ? '페인트 입력 켜짐' : '빠른 페인트 편집'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsSwapPanelOpen((v) => !v)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                      isSwapPanelOpen || compareNames.length > 0
+                        ? isDark
+                          ? 'bg-indigo-500/25 text-indigo-200 border-indigo-400/40'
+                          : 'bg-indigo-600 text-white border-indigo-700'
+                        : isDark
+                        ? 'bg-[#1B2230] text-slate-200 border-white/10 hover:bg-white/10'
+                        : 'bg-white text-[#18181B] border-[#D6D0C4] hover:bg-[#FAF8F4]'
+                    }`}
+                  >
+                    <ArrowLeftRight className="w-3.5 h-3.5" />
+                    <span>
+                      맞교대·비교{compareNames.length > 0 ? `(${compareNames.length})` : ''}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAddStaffOpen(true)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                      isDark
+                        ? 'bg-[#1B2230] text-emerald-300 border-white/10 hover:bg-white/10'
+                        : 'bg-white text-emerald-800 border-[#D6D0C4] hover:bg-emerald-50'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>직원 추가</span>
+                  </button>
+                </>
+              )}
+
+              {activeView === 'today' && isCurrentMonthRegistered && (
                 <button
                   type="button"
-                  onClick={() => {
-                    window.history.pushState({ appGuard: true }, '');
-                    setIsEditingName(true);
-                  }}
-                  className="px-2 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 text-[11px] font-black transition cursor-pointer"
+                  onClick={handleCopyKakaoBriefing}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                    isDark
+                      ? 'bg-amber-400/15 text-amber-300 border-amber-400/30 hover:bg-amber-400/25'
+                      : 'bg-[#F4ECE1] text-[#6E4423] border-[#D8C3A8] hover:bg-[#EAE0D0]'
+                  }`}
                 >
-                  ⚙️ 이름 수정
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>단톡방 근무브리핑 복사</span>
                 </button>
-              </div>
-            )}
-
-            {/* [📤 휴무표 사진/엑셀 업로드] 버튼 */}
-            <button
-              type="button"
-              disabled={isUploading}
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-xs font-black shadow-xs transition cursor-pointer"
-            >
-              {isUploading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Upload className="w-3.5 h-3.5" />
               )}
-              <span>
-                {isUploading
-                  ? '휴무표 분석 중...'
-                  : '📤 휴무표 사진/엑셀 업로드'}
-              </span>
-            </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({ appGuard: true }, '');
-                setIsDeleteModalOpen(true);
-              }}
-              title="저장된 휴무표 삭제 및 관리"
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/60 text-rose-300 border border-slate-700 hover:border-rose-700/60 text-xs font-black transition cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span className="hidden sm:inline">🗑️ 휴무표 삭제</span>
-              <span className="sm:hidden">삭제</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-600 text-white text-xs font-black transition cursor-pointer shrink-0"
-            >
-              <X className="w-4 h-4" />
-              <span>닫기</span>
-            </button>
+              {activeView === 'calendar' && isCurrentMonthRegistered && (
+                <button
+                  type="button"
+                  onClick={() => handleDownloadIcs(personalCalendarData.targetEmp?.name)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                    isDark
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30 hover:bg-emerald-500/30'
+                      : 'bg-emerald-700 text-white border-emerald-800 hover:bg-emerald-800'
+                  }`}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>내 폰 캘린더(.ics)에 휴무 넣기</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* 알림 배너 */}
-        {notice && (
+        {/* ==================== 내 이름 원터치 설정 드로어 바 ==================== */}
+        {isEditingName && (
           <div
-            className={`px-4 py-2 text-xs font-black flex items-center justify-between gap-2 shrink-0 ${
-              notice.type === 'success'
-                ? 'bg-emerald-600 text-white'
-                : notice.type === 'error'
-                ? 'bg-rose-600 text-white'
-                : 'bg-sky-600 text-white'
+            className={`px-4 sm:px-6 py-3 border-b space-y-2.5 shrink-0 ${
+              isDark
+                ? 'bg-[#161D2B] border-amber-400/40 text-slate-100'
+                : 'bg-[#FAF5EC] border-[#D8C3A8] text-[#18181B]'
             }`}
           >
-            <span>{notice.text}</span>
-            <button
-              type="button"
-              onClick={() => setNotice(null)}
-              className="p-0.5 rounded hover:bg-black/20 cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-
-        {/* 상단 내 이름 1회 입력 바 (미설정 또는 [⚙️ 이름 수정] 클릭 시에만 노출, 저장 시 자동 숨김) */}
-        {isEditingName && (
-          <div className="bg-slate-900 text-white px-4 sm:px-6 py-3.5 border-b-2 border-amber-400 space-y-2.5 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-black text-amber-300">
-                <UserCheck className="w-4 h-4" />
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-black">
+                <Sparkles className="w-4 h-4 text-amber-500" />
                 <span>
-                  내 이름 1회 설정 (저장 시 입력창이 자동으로 숨겨지며 메인 홈 졸라맨 카운트다운이 작동합니다)
+                  내 이름 1회 선택 (메인 홈 휴무 카운트다운·내 달력·표 상단 고정에 자동 연동됩니다)
                 </span>
               </div>
               {savedName && (
                 <button
                   type="button"
                   onClick={() => setIsEditingName(false)}
-                  className="text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
+                  className={`text-xs font-bold cursor-pointer ${mutedText}`}
                 >
                   닫기
                 </button>
               )}
             </div>
 
-            {/* 직접 입력 + 저장 버튼 */}
             <div className="flex items-center gap-2 flex-wrap">
               <input
                 type="text"
@@ -2229,478 +3633,1267 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleSaveUserName();
                 }}
-                placeholder="내 이름 입력 (예: 강석원)"
-                className="px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-600 text-xs sm:text-sm font-black text-white placeholder:text-slate-400 focus:outline-none focus:border-amber-400 w-48 sm:w-60"
+                placeholder="직원 이름 입력 (예: 강석원)"
+                className={`px-3.5 py-1.5 rounded-xl border text-base sm:text-xs font-black w-48 sm:w-56 focus:outline-none ${
+                  isDark
+                    ? 'bg-[#0B0E14] border-white/15 text-white placeholder:text-slate-500'
+                    : 'bg-white border-[#D6D0C4] text-[#18181B] placeholder:text-stone-400'
+                }`}
               />
               <button
                 type="button"
                 onClick={() => handleSaveUserName()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs sm:text-sm font-black shadow-xs transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black cursor-pointer schedule-tactile"
               >
-                <Save className="w-4 h-4" />
+                <Save className="w-3.5 h-3.5" />
                 <span>저장</span>
               </button>
-              <span className="text-[11px] font-bold text-slate-400">
-                또는 아래 경기광주점 직원 이름을 터치하면 즉시 저장됩니다 👇
+              <span className={`text-[11px] font-bold ${mutedText}`}>
+                아래 명단 칩을 누르면 즉시 반영됩니다:
               </span>
             </div>
 
-            {/* 직원 원터치 선택 칩 (현재 월 직원 명단 반영) */}
-            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {(monthData.employees.length > 0
                 ? monthData.employees
                 : GWANGJU_STAFF_ROSTER
-              ).map((emp) => (
-                <button
-                  key={emp.name}
-                  type="button"
-                  onClick={() => handleSaveUserName(emp.name)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-black border transition cursor-pointer ${
-                    savedName === emp.name
-                      ? 'bg-amber-400 text-slate-950 border-amber-300'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                  }`}
-                >
-                  {emp.name}{' '}
-                  <span className="text-[10px] opacity-75">({emp.role})</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 2) 2개 메인 뷰 버튼 ([👥 오늘 근무자] / [🗓️ 전체 휴무표]) + 월 이동 화살표 ([◀] 2026년 10월 [▶]) */}
-        <div className="bg-slate-100 border-b border-slate-200 px-3 sm:px-6 py-2.5 space-y-2 shrink-0">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* 좌측: 2개 메인 뷰 전환 버튼 */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveView('today')}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
-                  activeView === 'today'
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
-                }`}
-              >
-                <Users className="w-4 h-4 text-emerald-400" />
-                <span>👥 오늘 근무자</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (activeView !== 'full') {
-                    window.history.pushState({ appGuard: true }, '');
-                  }
-                  setActiveView('full');
-                }}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-black border transition cursor-pointer ${
-                  activeView === 'full'
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300'
-                }`}
-              >
-                <Table2 className="w-4 h-4 text-amber-300" />
-                <span>🗓️ 전체 휴무표</span>
-              </button>
-            </div>
-
-            {/* 우측: 월 이동 화살표 [◀] 2026년 10월 [▶] */}
-            <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-slate-300 shadow-2xs">
-              <button
-                type="button"
-                onClick={() => handleMoveMonth(-1)}
-                title="이전 달 휴무표"
-                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
-              <span className="px-2 text-xs sm:text-sm font-black text-slate-900">
-                {currentYear}년 {currentMonth}월
-              </span>
-              <button
-                type="button"
-                onClick={() => handleMoveMonth(1)}
-                title="다음 달 휴무표"
-                className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 transition cursor-pointer"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* 저장된 휴무표 월(Month) 퀵 배지 바 */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-200/80 text-xs">
-            <span className="font-bold text-slate-500 shrink-0 flex items-center gap-1">
-              📂 저장된 달:
-            </span>
-            {savedYearMonths.length === 0 ? (
-              <span className="text-slate-400 font-semibold text-[11px]">
-                (등록된 휴무표 없음 - 우측 상단 업로드 필요)
-              </span>
-            ) : (
-              savedYearMonths.map((ym) => {
-                const isSelected = ym === currentYearMonth;
+              ).map((emp) => {
+                const selected = savedName === emp.name;
                 return (
                   <button
-                    key={ym}
+                    key={emp.name}
                     type="button"
-                    onClick={() => handleSelectYearMonth(ym)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition cursor-pointer border ${
-                      isSelected
-                        ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-2xs'
-                        : 'bg-white hover:bg-slate-200 text-slate-700 border-slate-300'
+                    onClick={() => handleSaveUserName(emp.name)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                      selected
+                        ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-2xs'
+                        : isDark
+                        ? 'bg-[#0B0E14] hover:bg-white/10 text-slate-200 border-white/10'
+                        : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#DFD9CE]'
                     }`}
                   >
-                    {ym.replace('-', '.')}
-                    {isSelected && (
-                      <span className="ml-1 text-[10px] font-extrabold text-amber-950">✓</span>
-                    )}
+                    {emp.name}{' '}
+                    <span className="text-[10px] opacity-70">({emp.role})</span>
                   </button>
                 );
-              })
-            )}
-          </div>
-        </div>
-
-        {/* 셀 클릭 즉시 편집 바 (전체 휴무표에서 셀 클릭 시) */}
-        {editingCell && (
-          <div className="bg-amber-50 border-b-2 border-amber-400 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="px-2.5 py-1 rounded-lg bg-slate-900 text-amber-300 text-xs font-black">
-                ✏️ {editingCell.empName} ({editingCell.empRole}) · {currentMonth}월{' '}
-                {editingCell.day}일 상태 변경:
-              </span>
-              <div className="flex items-center gap-1 flex-wrap">
-                {DAY_CODE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value || 'work'}
-                    type="button"
-                    onClick={() =>
-                      handleUpdateCellCode(
-                        editingCell.empName,
-                        editingCell.day,
-                        opt.value
-                      )
-                    }
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black border transition cursor-pointer ${
-                      editingCell.currentCode === opt.value
-                        ? 'ring-2 ring-slate-950 ' + opt.badge
-                        : opt.badge + ' opacity-85 hover:opacity-100'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 ml-auto">
-              <button
-                type="button"
-                onClick={() => handleDeleteEmployeeRow(editingCell.empName)}
-                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition cursor-pointer shadow-2xs flex items-center gap-1"
-              >
-                <span>🗑️ 이 직원 줄 삭제</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingCell(null)}
-                className="px-2.5 py-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-black cursor-pointer"
-              >
-                닫기
-              </button>
+              })}
             </div>
           </div>
         )}
 
-        {/* 3) 본문 영역 */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-50 space-y-4">
-          {/* 미등록 월 안내 배너 */}
-          {!isCurrentMonthRegistered && (
-            <div className="rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl">⚠️</span>
-                <div>
-                  <div className="font-black text-sm text-amber-900">
-                    아직 등록된 휴무표가 없습니다. 상단 [📤 휴무표 사진/엑셀 업로드] 버튼으로 등록해 주세요.
+        {/* ==================== 빠른 페인트(연속 입력) 툴바 ==================== */}
+        {isPaintMode && (activeView === 'full' || activeView === 'week') && (
+          <div
+            className={`px-4 sm:px-6 py-2.5 border-b flex flex-wrap items-center justify-between gap-2 shrink-0 ${
+              isDark
+                ? 'bg-amber-500/15 border-amber-400/35 text-amber-100'
+                : 'bg-amber-50 border-amber-300 text-amber-950'
+            }`}
+          >
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 text-xs font-black">
+                <Paintbrush className="w-3.5 h-3.5" />
+                도장 선택 후 표의 날짜 칸을 터치하세요:
+              </span>
+              <div className="flex items-center gap-1 flex-wrap">
+                {DAY_CODE_OPTIONS.map((opt) => {
+                  const active = paintCode === opt.value;
+                  return (
+                    <button
+                      key={opt.value || 'work'}
+                      type="button"
+                      onClick={() => setPaintCode(opt.value)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                        opt.chipCls
+                      } ${
+                        active
+                          ? (isDark ? 'ring-2 ring-offset-1 ring-white scale-105' : 'ring-2 ring-offset-1 ring-slate-900 scale-105')
+                          : 'opacity-75 hover:opacity-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPaintMode(false)}
+              className="px-3 py-1 rounded-xl bg-slate-900 text-white text-xs font-black cursor-pointer"
+            >
+              페인트 종료
+            </button>
+          </div>
+        )}
+
+        {/* ==================== 동료 휴무 비교 & 맞교대 시뮬레이터 패널 ==================== */}
+        {isSwapPanelOpen && (activeView === 'full' || activeView === 'week') && (
+          <div
+            className={`px-4 sm:px-6 py-3 border-b space-y-2.5 shrink-0 ${
+              isDark
+                ? 'bg-[#161D2E] border-indigo-400/30 text-slate-100'
+                : 'bg-indigo-50/75 border-indigo-200 text-slate-900'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-xs font-black">
+                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                  동료 휴무 비교 & 1:1 맞교대 시뮬레이터
+                </span>
+                <span className={`text-xs font-bold ${mutedText}`}>
+                  비교할 직원 2명을 선택하면 겹치는 휴무일과 맞교대 가능한 날짜를 자동 추출합니다.
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {compareNames.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompareNames([]);
+                      setSwapDayA(null);
+                      setSwapDayB(null);
+                      if (selectedCornerFilter === 'COMPARE') {
+                        setSelectedCornerFilter('ALL');
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/15 text-rose-500 cursor-pointer"
+                  >
+                    선택 초기화
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsSwapPanelOpen(false)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer ${mutedText}`}
+                >
+                  접기
+                </button>
+              </div>
+            </div>
+
+            {/* 직원 2명 빠른 토글 칩 */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {monthData.employees.map((emp) => {
+                const pickedIdx = compareNames.indexOf(emp.name);
+                const picked = pickedIdx !== -1;
+                return (
+                  <button
+                    key={emp.name}
+                    type="button"
+                    onClick={() => toggleCompareEmployee(emp.name)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                      picked
+                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-2xs'
+                        : isDark
+                        ? 'bg-[#0B0E14] text-slate-300 border-white/10 hover:bg-white/10'
+                        : 'bg-white text-slate-800 border-indigo-200 hover:bg-indigo-100/50'
+                    }`}
+                  >
+                    {picked && <span className="mr-1 font-mono">{pickedIdx + 1}</span>}
+                    {emp.name}
+                    <span className="text-[10px] opacity-70 ml-0.5">({emp.role})</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 2명 선택 완료 시 비교 결과 & 원터치 맞교대 컨트롤 */}
+            {swapComparisonAnalysis && (
+              <div
+                className={`rounded-2xl border p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3 ${cardBg}`}
+              >
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-2 flex-wrap font-black">
+                    <span className="text-indigo-500">
+                      ① {swapComparisonAnalysis.empA.name} ({swapComparisonAnalysis.empA.role})
+                    </span>
+                    <span>↔</span>
+                    <span className="text-emerald-500">
+                      ② {swapComparisonAnalysis.empB.name} ({swapComparisonAnalysis.empB.role})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedCornerFilter((prev) =>
+                          prev === 'COMPARE' ? 'ALL' : 'COMPARE'
+                        )
+                      }
+                      className={`px-2 py-0.5 rounded-lg text-[11px] font-black border cursor-pointer ${
+                        selectedCornerFilter === 'COMPARE'
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : isDark
+                          ? 'bg-white/5 border-white/15 text-slate-200'
+                          : 'bg-stone-100 border-stone-300 text-stone-800'
+                      }`}
+                    >
+                      {selectedCornerFilter === 'COMPARE'
+                        ? '전체 명단 다시 보기'
+                        : '표에서 이 2명만 모아보기'}
+                    </button>
                   </div>
-                  <div className="text-xs text-amber-800 font-medium">
-                    현재 조회 중인 {currentYear}년 {currentMonth}월 휴무표가 등록되지 않았습니다.
+                  <div className={`flex flex-wrap gap-x-4 gap-y-1 font-bold ${mutedText}`}>
+                    <span>
+                      🔴 함께 쉬는 날({swapComparisonAnalysis.overlapOffDays.length}일):{' '}
+                      <strong className={isDark ? 'text-rose-300' : 'text-rose-600'}>
+                        {swapComparisonAnalysis.overlapOffDays.length > 0
+                          ? swapComparisonAnalysis.overlapOffDays.map((d) => `${d}일`).join(', ')
+                          : '없음'}
+                      </strong>
+                    </span>
+                    <span>
+                      🔵 {swapComparisonAnalysis.empA.name} 단독 휴무:{' '}
+                      {swapComparisonAnalysis.onlyAOffDays.map((d) => `${d}일`).join(', ') || '없음'}
+                    </span>
+                    <span>
+                      🟢 {swapComparisonAnalysis.empB.name} 단독 휴무:{' '}
+                      {swapComparisonAnalysis.onlyBOffDays.map((d) => `${d}일`).join(', ') || '없음'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 날짜 맞교대 선택 셀렉터 */}
+                <div className="flex items-center gap-2 flex-wrap shrink-0">
+                  <select
+                    value={swapDayA ?? ''}
+                    onChange={(e) =>
+                      setSwapDayA(e.target.value ? Number(e.target.value) : null)
+                    }
+                    className={`px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-black ${subtleBg}`}
+                  >
+                    <option value="">
+                      {swapComparisonAnalysis.empA.name} 휴무일 선택
+                    </option>
+                    {swapComparisonAnalysis.onlyAOffDays.map((d) => (
+                      <option key={d} value={d}>
+                        {currentMonth}/{d}일 ({swapComparisonAnalysis.empA.days[String(d)]})
+                      </option>
+                    ))}
+                  </select>
+
+                  <span className="text-xs font-black">⇄</span>
+
+                  <select
+                    value={swapDayB ?? ''}
+                    onChange={(e) =>
+                      setSwapDayB(e.target.value ? Number(e.target.value) : null)
+                    }
+                    className={`px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-black ${subtleBg}`}
+                  >
+                    <option value="">
+                      {swapComparisonAnalysis.empB.name} 휴무일 선택
+                    </option>
+                    {swapComparisonAnalysis.onlyBOffDays.map((d) => (
+                      <option key={d} value={d}>
+                        {currentMonth}/{d}일 ({swapComparisonAnalysis.empB.days[String(d)]})
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={!swapDayA || !swapDayB}
+                    onClick={handleExecuteMutualSwap}
+                    className="px-3.5 py-2 sm:py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-black cursor-pointer schedule-tactile"
+                  >
+                    ⇄ 맞교대 즉시 적용
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ==================== 3) 메인 본문 스크롤 스테이지 ==================== */}
+        <div
+          ref={exportCaptureRef}
+          className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4"
+        >
+          {/* 미등록 월 안내 배너 (일일 브리핑 외 뷰 상단) */}
+          {!isCurrentMonthRegistered && activeView !== 'today' && (
+            <div
+              className={`rounded-2xl border p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                isDark
+                  ? 'bg-amber-500/10 border-amber-400/30 text-amber-200'
+                  : 'bg-amber-50 border-amber-300 text-amber-950'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                <div>
+                  <div className="font-black text-xs sm:text-sm">
+                    {currentYear}년 {currentMonth}월 휴무표가 아직 업로드되지 않았습니다.
+                  </div>
+                  <div className="text-[11px] opacity-80 font-medium">
+                    상단 [업로드] 버튼으로 엑셀이나 사진을 올리거나, 아래 빈 칸을 직접 터치해 새 스케줄을 작성할 수 있습니다.
                   </div>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shrink-0 transition shadow-xs cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs shrink-0 cursor-pointer schedule-tactile"
               >
-                📤 지금 업로드하기
+                지금 업로드하기
               </button>
             </div>
           )}
 
-          {/* ==================== [뷰 1: 👥 오늘 근무자] ==================== */}
-          {activeView === 'today' && (
-            !isCurrentMonthRegistered ? (
-              <div className="rounded-3xl bg-white border-2 border-dashed border-amber-400 p-8 sm:p-12 text-center shadow-xs flex flex-col items-center justify-center gap-4">
-                <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-700 flex items-center justify-center text-3xl shadow-2xs">
-                  📤
+          {/* ===================================================================== */}
+          {/* [VIEW 1] 👥 일일 브리핑 (7일 미니 날짜 스트립 + 코너 공백 감지 + 카드) */}
+          {/* ===================================================================== */}
+          {activeView === 'today' &&
+            (!isCurrentMonthRegistered ? (
+              <div
+                className={`rounded-3xl border-2 border-dashed p-8 sm:p-14 text-center flex flex-col items-center justify-center gap-4 ${
+                  isDark
+                    ? 'bg-[#151A25] border-sky-400/30'
+                    : 'bg-white border-[#D6C7B2]'
+                }`}
+              >
+                <div
+                  className={`w-16 h-16 rounded-3xl flex items-center justify-center shadow-xs ${
+                    isDark
+                      ? 'bg-sky-500/15 text-sky-300'
+                      : 'bg-[#F4ECE1] text-[#8C5A32]'
+                  }`}
+                >
+                  <Upload className="w-8 h-8" />
                 </div>
                 <div className="space-y-1.5 max-w-md">
-                  <h3 className="text-base sm:text-xl font-black text-slate-900">
-                    아직 {currentYear}년 {currentMonth}월 휴무표가 등록되지 않았습니다.
+                  <h3 className="text-base sm:text-xl font-black">
+                    {currentYear}년 {currentMonth}월 휴무표가 아직 비어 있습니다
                   </h3>
-                  <p className="text-xs sm:text-sm font-bold text-slate-500 leading-relaxed">
-                    엑셀(.xlsx/.csv) 또는 휴무표 사진을 업로드하시면 오늘 근무자·휴무자 명단과 내 휴무 카운트다운이 자동으로 표시됩니다.
+                  <p className={`text-xs sm:text-sm font-medium leading-relaxed ${mutedText}`}>
+                    매장 휴무표 엑셀(.xlsx/.csv) 또는 촬영 사진을 올려주시면 AI가 19명 전 직원의 월간 일정을 자동 분석해 전 기기에 동기화합니다.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={isUploading}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-slate-950 text-sm sm:text-base font-black shadow-md hover:shadow-lg transition cursor-pointer"
-                >
-                  {isUploading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Upload className="w-5 h-5" />
-                  )}
-                  <span>
-                    {isUploading
-                      ? '휴무표 분석 중...'
-                      : '📤 지금 휴무표(엑셀/사진) 업로드하기'}
-                  </span>
-                </button>
-              </div>
-            ) : (
-            <div className="space-y-4">
-              {/* (1) 내 이름이 설정된 경우 최상단 내 스케줄 요약 카드 */}
-              {myEmployee && (
-                <div className="rounded-2xl bg-slate-900 text-white p-4 border-2 border-amber-400/80 shadow-md flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center text-lg font-black shrink-0">
-                      👤
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm sm:text-base font-black text-amber-300">
-                          {myEmployee.name}님 ({myEmployee.role})
-                        </span>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
-                            isOffDayCode(myTodayCode)
-                              ? 'bg-rose-500 text-white'
-                              : myTodayCode
-                              ? 'bg-sky-500 text-white'
-                              : 'bg-emerald-500 text-slate-950'
-                          }`}
-                        >
-                          {currentMonth}/{currentDay}({selectedWeekday}) 상태:{' '}
-                          {myTodayCode === 'O'
-                            ? '🏖️ 정기 휴무(O)'
-                            : myTodayCode === '연차'
-                            ? '🌴 연차 휴무'
-                            : myTodayCode === 'V'
-                            ? '✈️ 휴가(V)'
-                            : myTodayCode
-                            ? `📌 ${myTodayCode}`
-                            : '💪 정상 근무'}
-                        </span>
-                      </div>
-                      <p className="text-xs font-bold text-slate-300 mt-1">
-                        이번 달 남은 내 휴무(O·연차·V):{' '}
-                        <strong className="text-amber-300">
-                          총 {myRemainingOffDays.length}일
-                        </strong>{' '}
-                        {myRemainingOffDays.length > 0 && (
-                          <span className="text-slate-400">
-                            (
-                            {myRemainingOffDays
-                              .map((d) => `${d.day}일(${d.code})`)
-                              .join(', ')}
-                            )
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* (2) 날짜 네비게이터 (◀ 어제 / 오늘 / 내일 ▶) */}
-              <div className="rounded-2xl bg-white border border-slate-200 p-3 sm:p-4 shadow-2xs flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-center">
                   <button
                     type="button"
-                    onClick={() => handleMoveDay(-1)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black transition cursor-pointer"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span>어제</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleJumpToToday}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
-                      isSelectedToday
-                        ? 'bg-blue-600 text-white shadow-2xs'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    disabled={isUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`inline-flex items-center gap-2 px-6 py-3 rounded-2xl text-sm font-black shadow-md cursor-pointer schedule-tactile ${
+                      isDark
+                        ? 'bg-sky-400 hover:bg-sky-300 text-slate-950'
+                        : 'bg-[#18181B] hover:bg-stone-800 text-white'
                     }`}
                   >
-                    오늘로 이동
+                    <Upload className="w-4 h-4" />
+                    <span>엑셀 · 사진 업로드하기</span>
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => handleMoveDay(1)}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black transition cursor-pointer"
+                    onClick={() => setActiveView('full')}
+                    className={`inline-flex items-center gap-1.5 px-4 py-3 rounded-2xl text-xs sm:text-sm font-black border cursor-pointer schedule-tactile ${subtleBg}`}
                   >
-                    <span>내일</span>
-                    <ChevronRight className="w-4 h-4" />
+                    <Table2 className="w-4 h-4" />
+                    <span>빈 표에서 직접 입력하기</span>
                   </button>
                 </div>
-
-                <div className="text-sm sm:text-base font-black text-slate-900">
-                  📆 {currentYear}년 {currentMonth}월 {currentDay}일 (
-                  <span
-                    className={
-                      selectedDate.getDay() === 0
-                        ? 'text-rose-600'
-                        : selectedDate.getDay() === 6
-                        ? 'text-blue-600'
-                        : 'text-slate-900'
-                    }
-                  >
-                    {selectedWeekday}요일
-                  </span>
-                  )
-                </div>
-
-                <div className="flex items-center gap-2 text-xs font-black">
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300">
-                    🟢 근무 {monthData.employees.length - restingList.length}명
-                  </span>
-                  <span className="px-2.5 py-1 rounded-full bg-rose-100 text-rose-900 border border-rose-300">
-                    🔴 휴무·연차·교육 {restingList.length}명
-                  </span>
-                </div>
               </div>
-
-              {/* (3) 🟢 오늘 근무자 명단 & 🔴 오늘 휴무·연차·교육자 명단 */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                {/* 좌측 7칸: 🟢 오늘 근무자 명단 (파트별 분류) */}
-                <div className="lg:col-span-7 rounded-2xl bg-white border-2 border-emerald-200 p-4 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                    <h3 className="text-sm sm:text-base font-black text-emerald-950 flex items-center gap-1.5">
-                      <span>🟢 오늘 근무자 명단</span>
-                    </h3>
-                    <span className="text-xs font-black text-emerald-700">
-                      총 {monthData.employees.length - restingList.length}명 근무
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Object.entries(workingByGroup).map(([groupTitle, list]) => (
-                      <div
-                        key={groupTitle}
-                        className="rounded-xl bg-emerald-50/60 border border-emerald-200/80 p-3 space-y-2"
+            ) : (
+              <div className="space-y-4">
+                {/* (1) 7일 인터랙티브 주간 날짜 스트립 (월~일 원터치 조회) */}
+                <div className={`rounded-2xl border p-3 sm:p-4 shadow-2xs space-y-3 ${cardBg}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveDay(-7)}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${subtleBg}`}
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-emerald-950">
-                            ▪ {groupTitle}
-                          </span>
-                          <span className="text-[11px] font-extrabold text-emerald-700">
-                            {list.length}명
-                          </span>
-                        </div>
-                        {list.length === 0 ? (
-                          <p className="text-xs font-bold text-slate-400">
-                            근무자 없음 (전원 휴무)
-                          </p>
-                        ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {list.map((emp) => {
-                              const isMe = emp.name === savedName;
-                              return (
-                                <span
-                                  key={emp.name}
-                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-black border ${
-                                    isMe
-                                      ? 'bg-amber-300 text-slate-950 border-amber-500 shadow-2xs'
-                                      : 'bg-white text-slate-900 border-emerald-200'
-                                  }`}
-                                >
-                                  <span>{emp.name}</span>
-                                  <span className="text-[10px] font-bold text-slate-500">
-                                    ({emp.role})
-                                  </span>
-                                  {emp.code && renderCodeBadge(emp.code, true)}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 우측 5칸: 🔴 오늘 휴무·연차·교육자 명단 */}
-                <div className="lg:col-span-5 rounded-2xl bg-white border-2 border-rose-200 p-4 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                    <h3 className="text-sm sm:text-base font-black text-rose-950 flex items-center gap-1.5">
-                      <span>🔴 오늘 휴무 · 연차 · 교육자 명단</span>
-                    </h3>
-                    <span className="text-xs font-black text-rose-700">
-                      총 {restingList.length}명
-                    </span>
-                  </div>
-
-                  {restingList.length === 0 ? (
-                    <div className="py-8 text-center text-xs font-bold text-slate-400">
-                      선택하신 날짜에는 휴무·연차·교육자가 없습니다.
+                        ◀ 지난주
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleJumpToToday}
+                        className={`px-3 py-1 rounded-xl text-xs font-black cursor-pointer schedule-tactile ${
+                          isSelectedToday
+                            ? isDark
+                              ? 'bg-sky-400 text-slate-950'
+                              : 'bg-[#8C5A32] text-white'
+                            : `${subtleBg} border`
+                        }`}
+                      >
+                        오늘 ({todayReal.getMonth() + 1}/{todayReal.getDate()})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveDay(7)}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${subtleBg}`}
+                      >
+                        다음주 ▶
+                      </button>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {restingList.map((emp) => {
-                        const isMe = emp.name === savedName;
-                        return (
-                          <div
-                            key={emp.name}
-                            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
-                              isMe
-                                ? 'bg-amber-100 border-amber-400'
-                                : 'bg-rose-50/60 border-rose-200'
+
+                    <div className="flex items-center gap-2 text-xs font-black">
+                      <span className={`px-2.5 py-1 rounded-full border font-mono ${isDark ? "bg-emerald-500/15 text-emerald-300 border-emerald-400/30" : "bg-emerald-50 text-emerald-800 border-emerald-200"}`}>
+                        근무 {monthData.employees.length - restingList.length}명
+                      </span>
+                      <span className={`px-2.5 py-1 rounded-full border font-mono ${isDark ? "bg-rose-500/15 text-rose-300 border-rose-400/30" : "bg-rose-50 text-rose-800 border-rose-200"}`}>
+                        휴무·연차·교육 {restingList.length}명
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 월~일 7개 날짜 카드 그리드 */}
+                  <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
+                    {currentWeekDates.map((item) => {
+                      const isSelected =
+                        item.date.getFullYear() === currentYear &&
+                        item.date.getMonth() + 1 === currentMonth &&
+                        item.date.getDate() === currentDay;
+                      const isTodayItem =
+                        item.date.getFullYear() === todayReal.getFullYear() &&
+                        item.date.getMonth() === todayReal.getMonth() &&
+                        item.date.getDate() === todayReal.getDate();
+                      const holidayName =
+                        HOLIDAY_NAMES_BY_MONTH[item.yearMonth]?.[item.day];
+                      const isRedDay = item.dow === 0 || Boolean(holidayName);
+
+                      return (
+                        <button
+                          key={item.date.toISOString()}
+                          type="button"
+                          onClick={() => setSelectedDate(new Date(item.date))}
+                          className={`relative rounded-2xl p-2 sm:p-2.5 border text-center flex flex-col items-center justify-between gap-1 cursor-pointer schedule-tactile ${
+                            isSelected
+                              ? isDark
+                                ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-md'
+                                : 'bg-[#18181B] text-white border-[#18181B] shadow-md'
+                              : isDark
+                              ? 'bg-[#1B2230]/80 hover:bg-[#232C3E] border-white/10'
+                              : 'bg-[#FAF8F4] hover:bg-[#EAE5DC] border-[#E4DFD5]'
+                          } ${!item.isSameMonth ? 'opacity-60' : ''}`}
+                        >
+                          <span
+                            className={`text-[10px] sm:text-xs font-extrabold ${
+                              isSelected
+                                ? 'opacity-90'
+                                : isRedDay
+                                ? 'text-rose-500'
+                                : item.dow === 6
+                                ? 'text-sky-500'
+                                : mutedText
                             }`}
                           >
-                            <div className="min-w-0">
-                              <div className="text-xs sm:text-sm font-black text-slate-900 truncate">
-                                {emp.name}
-                              </div>
-                              <div className="text-[11px] font-bold text-slate-500 truncate">
-                                {emp.role}
-                              </div>
+                            {WEEKDAY_KO[item.dow]}
+                            {isTodayItem && '·오늘'}
+                          </span>
+
+                          <span className="text-sm sm:text-lg font-black font-mono leading-none">
+                            {item.day}
+                          </span>
+
+                          <div className="flex items-center justify-center gap-1 flex-wrap">
+                            {item.isRegistered ? (
+                              <span
+                                className={`text-[10px] font-black font-mono px-1.5 py-0.5 rounded-full ${
+                                  isSelected
+                                    ? isDark
+                                      ? 'bg-slate-950/15 text-slate-950'
+                                      : 'bg-white/20 text-white'
+                                    : isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {item.workingCount}명
+                              </span>
+                            ) : (
+                              <span className="text-[10px] opacity-50">-</span>
+                            )}
+                            {item.hasVacancy && (
+                              <span
+                                title="코너 공백 주의"
+                                className="w-2 h-2 rounded-full bg-rose-500 inline-block"
+                              />
+                            )}
+                            {isOffDayCode(item.myCode) && (
+                              <span
+                                title={`내 휴무 (${item.myCode})`}
+                                className="w-2 h-2 rounded-full bg-amber-400 inline-block"
+                              />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* (2) 코너 공백 자동 감지 경고 배너 */}
+                {todayVacancies.length > 0 && (
+                  <div
+                    className={`rounded-2xl border px-4 py-3 flex flex-wrap items-center justify-between gap-2 ${
+                      isDark
+                        ? 'bg-rose-500/15 border-rose-400/35 text-rose-200'
+                        : 'bg-rose-50 border-rose-300 text-rose-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-xs sm:text-sm font-black">
+                      <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                      <span>
+                        코너 공백 알림: {currentMonth}월 {currentDay}일({selectedWeekday})에{' '}
+                        <u className="underline-offset-4">
+                          [{todayVacancies.join(', ')}]
+                        </u>{' '}
+                        근무자가 0명입니다.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveView('full');
+                        setIsSwapPanelOpen(true);
+                      }}
+                      className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black cursor-pointer schedule-tactile"
+                    >
+                      맞교대 시뮬레이터 열기
+                    </button>
+                  </div>
+                )}
+
+                {/* (3) 내 스케줄 브리핑 스트립 (내 이름 설정 시) */}
+                {myEmployee && (
+                  <div
+                    className={`rounded-2xl border p-3.5 sm:p-4 flex flex-wrap items-center justify-between gap-3 ${
+                      isDark
+                        ? 'bg-gradient-to-r from-[#172033] to-[#151A25] border-amber-400/35'
+                        : 'bg-gradient-to-r from-[#FAF4EA] to-white border-[#DFC9AC]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 ${
+                          isDark
+                            ? 'bg-amber-400 text-slate-950'
+                            : 'bg-[#8C5A32] text-white'
+                        }`}
+                      >
+                        {myEmployee.name.slice(0, 1)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-black">
+                            {myEmployee.name}님 ({myEmployee.role})
+                          </span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                              isOffDayCode(myTodayCode)
+                                ? 'bg-rose-500 text-white'
+                                : myTodayCode
+                                ? 'bg-sky-500 text-white'
+                                : 'bg-emerald-500 text-slate-950'
+                            }`}
+                          >
+                            {currentMonth}/{currentDay}({selectedWeekday}):{' '}
+                            {myTodayCode === 'O'
+                              ? '정기 휴무(O)'
+                              : myTodayCode === '연차'
+                              ? '연차 휴무'
+                              : myTodayCode === 'V'
+                              ? '휴가(V)'
+                              : myTodayCode
+                              ? myTodayCode
+                              : '정상 근무'}
+                          </span>
+                        </div>
+                        <div className={`text-xs font-bold mt-1 flex items-center gap-1.5 flex-wrap ${mutedText}`}>
+                          <span>
+                            남은 이번 달 휴무{' '}
+                            <strong className={isDark ? 'text-amber-300' : 'text-[#8C5A32]'}>
+                              {myRemainingOffDays.length}일
+                            </strong>
+                          </span>
+                          {myRemainingOffDays.slice(0, 6).map((d) => (
+                            <button
+                              key={d.day}
+                              type="button"
+                              onClick={() =>
+                                setSelectedDate(
+                                  new Date(currentYear, currentMonth - 1, d.day)
+                                )
+                              }
+                              className={`px-2 py-0.5 rounded-lg text-[11px] font-black font-mono border cursor-pointer ${
+                                d.day === currentDay
+                                  ? 'bg-amber-400 text-slate-950 border-amber-500'
+                                  : subtleBg
+                              }`}
+                            >
+                              {d.day}일({d.code})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCalendarTargetName(myEmployee.name);
+                        setActiveView('calendar');
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${subtleBg}`}
+                    >
+                      내 월간 달력 보기 →
+                    </button>
+                  </div>
+                )}
+
+                {/* (4) 좌측 7칸 오늘 근무자(코너별) + 우측 5칸 오늘 휴무·연차·교육자 */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                  <div className={`lg:col-span-7 rounded-2xl border p-4 space-y-3 ${cardBg}`}>
+                    <div className={`flex items-center justify-between border-b pb-2.5 ${isDark ? "border-white/10" : "border-[#E4DFD5]"}`}>
+                      <h3 className="text-sm sm:text-base font-black flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                        <span>
+                          {currentMonth}월 {currentDay}일({selectedWeekday}) 근무자 명단
+                        </span>
+                      </h3>
+                      <span className={`text-xs font-bold ${mutedText}`}>
+                        이름 터치 시 상태 즉시 변경
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {CORNER_GROUP_ORDER.map((groupTitle) => {
+                        const list = workingByGroup[groupTitle] || [];
+                        const isEmptyCorner = list.length === 0;
+                        return (
+                          <div
+                            key={groupTitle}
+                            className={`rounded-2xl border p-3 space-y-2 ${
+                              isEmptyCorner
+                                ? isDark
+                                  ? 'bg-rose-950/30 border-rose-500/40'
+                                  : 'bg-rose-50/70 border-rose-300'
+                                : subtleBg
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-black">{groupTitle}</span>
+                              <span
+                                className={`text-[11px] font-black font-mono px-2 py-0.5 rounded-full ${
+                                  isEmptyCorner
+                                    ? 'bg-rose-500 text-white'
+                                    : isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-800'
+                                }`}
+                              >
+                                {isEmptyCorner ? '0명 공백' : `${list.length}명`}
+                              </span>
                             </div>
-                            {renderCodeBadge(emp.code)}
+
+                            {isEmptyCorner ? (
+                              <p className="text-xs font-bold text-rose-500">
+                                해당 코너 근무자가 없습니다.
+                              </p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {list.map((emp) => {
+                                  const isMe = emp.name === savedName;
+                                  const fullEmp = monthData.employees.find(
+                                    (e) => e.name === emp.name
+                                  );
+                                  return (
+                                    <button
+                                      key={emp.name}
+                                      type="button"
+                                      onClick={() =>
+                                        fullEmp &&
+                                        handleCellInteraction(fullEmp, currentDay)
+                                      }
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                                        isMe
+                                          ? 'bg-amber-400 text-slate-950 border-amber-500 shadow-2xs'
+                                          : isDark
+                                          ? 'bg-[#121722] hover:bg-white/10 text-slate-100 border-white/10'
+                                          : 'bg-white hover:bg-[#F4ECE1] text-[#18181B] border-[#E4DFD5]'
+                                      }`}
+                                    >
+                                      <span>{emp.name}</span>
+                                      <span className="text-[10px] opacity-65">
+                                        ({emp.role})
+                                      </span>
+                                      {emp.code && renderCodeBadge(emp.code, 'xs')}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                     </div>
+                  </div>
+
+                  {/* 우측 5칸: 휴무·연차·교육자 명단 */}
+                  <div className={`lg:col-span-5 rounded-2xl border p-4 space-y-3 ${cardBg}`}>
+                    <div className={`flex items-center justify-between border-b pb-2.5 ${isDark ? "border-white/10" : "border-[#E4DFD5]"}`}>
+                      <h3 className="text-sm sm:text-base font-black flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block" />
+                        <span>휴무 · 연차 · 교육 명단</span>
+                      </h3>
+                      <span className="text-xs font-black font-mono text-rose-500">
+                        총 {restingList.length}명
+                      </span>
+                    </div>
+
+                    {restingList.length === 0 ? (
+                      <div className={`py-10 text-center text-xs font-bold ${mutedText}`}>
+                        선택하신 날짜에는 휴무·연차·교육자가 없습니다 (전원 출근).
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {restingList.map((emp) => {
+                          const isMe = emp.name === savedName;
+                          const fullEmp = monthData.employees.find(
+                            (e) => e.name === emp.name
+                          );
+                          return (
+                            <button
+                              key={emp.name}
+                              type="button"
+                              onClick={() =>
+                                fullEmp && handleCellInteraction(fullEmp, currentDay)
+                              }
+                              className={`p-2.5 rounded-2xl border text-left flex items-center justify-between gap-2 cursor-pointer schedule-tactile ${
+                                isMe
+                                  ? 'bg-amber-400/20 border-amber-400'
+                                  : subtleBg
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <div className="text-xs sm:text-sm font-black truncate">
+                                  {emp.name}
+                                </div>
+                                <div className={`text-[11px] font-bold truncate ${mutedText}`}>
+                                  {emp.role}
+                                </div>
+                              </div>
+                              {renderCodeBadge(emp.code, 'md')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+          {/* ===================================================================== */}
+          {/* [VIEW 2] 📅 내 월간 달력 (가로 스크롤 제로 7열 개인/동료 달력 + 연휴 감지) */}
+          {/* ===================================================================== */}
+          {activeView === 'calendar' && (
+            <div className="space-y-4">
+              {/* 상단 조회 대상 직원 원터치 선택 바 */}
+              <div className={`rounded-2xl border p-3 sm:p-4 space-y-3 ${cardBg}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs sm:text-sm font-black flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4 text-amber-500" />
+                    <span>직원별 월간 달력 조회</span>
+                    <span className={`text-[11px] font-medium ${mutedText}`}>
+                      (날짜 칸을 누르면 해당일 근무 상태를 바로 수정합니다)
+                    </span>
+                  </div>
+                  {personalCalendarData.streaks.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] font-black text-amber-500">
+                        ✨ 연속 휴무:
+                      </span>
+                      {personalCalendarData.streaks.map((st) => (
+                        <span
+                          key={st.start}
+                          className={`px-2 py-0.5 rounded-full text-[11px] font-black font-mono ${
+                            isDark
+                              ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30'
+                              : 'bg-amber-100 text-amber-950 border border-amber-300'
+                          }`}
+                        >
+                          {currentMonth}/{st.start}~{st.end}일 ({st.length}일 연속)
+                        </span>
+                      ))}
+                    </div>
                   )}
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {monthData.employees.map((emp) => {
+                    const active =
+                      personalCalendarData.targetEmp?.name === emp.name;
+                    const isMe = emp.name === savedName;
+                    return (
+                      <button
+                        key={emp.name}
+                        type="button"
+                        onClick={() => setCalendarTargetName(emp.name)}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                          active
+                            ? isDark
+                              ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-xs'
+                              : 'bg-[#18181B] text-white border-[#18181B] shadow-xs'
+                            : isDark
+                            ? 'bg-[#1B2230] text-slate-300 border-white/10 hover:bg-white/10'
+                            : 'bg-[#FAF8F4] text-[#18181B] border-[#E4DFD5] hover:bg-[#EAE5DC]'
+                        }`}
+                      >
+                        {isMe ? `⭐ ${emp.name}` : emp.name}
+                        <span className="text-[10px] opacity-70 ml-1">
+                          ({emp.role})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 월간 4대 요약 지표 미니 카드 */}
+                {personalCalendarData.stats && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                    <div className={`rounded-xl border p-2.5 ${subtleBg}`}>
+                      <div className={`text-[11px] font-bold ${mutedText}`}>
+                        정상 출근 예정
+                      </div>
+                      <div className="text-base sm:text-lg font-black font-mono text-emerald-500">
+                        {personalCalendarData.stats.workDays}일
+                      </div>
+                    </div>
+                    <div className={`rounded-xl border p-2.5 ${subtleBg}`}>
+                      <div className={`text-[11px] font-bold ${mutedText}`}>
+                        정기 휴무 (O)
+                      </div>
+                      <div className="text-base sm:text-lg font-black font-mono text-rose-500">
+                        {personalCalendarData.stats.offO}일
+                      </div>
+                    </div>
+                    <div className={`rounded-xl border p-2.5 ${subtleBg}`}>
+                      <div className={`text-[11px] font-bold ${mutedText}`}>
+                        연차 · 휴가 (V)
+                      </div>
+                      <div className="text-base sm:text-lg font-black font-mono text-amber-500">
+                        {personalCalendarData.stats.annualV}일
+                        {personalCalendarData.stats.half > 0 &&
+                          ` (+반차 ${personalCalendarData.stats.half})`}
+                      </div>
+                    </div>
+                    <div className={`rounded-xl border p-2.5 ${subtleBg}`}>
+                      <div className={`text-[11px] font-bold ${mutedText}`}>
+                        교육 · 외부회의
+                      </div>
+                      <div className="text-base sm:text-lg font-black font-mono text-sky-500">
+                        {personalCalendarData.stats.eduMeet}일
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 7열 월간 달력 그리드 (바형 스마트폰 390px 완벽 대응) */}
+              <div className={`rounded-2xl border overflow-hidden shadow-xs ${cardBg}`}>
+                <div
+                  className={`grid grid-cols-7 border-b text-center py-2 text-xs font-black ${
+                    isDark
+                      ? 'bg-[#1B2230] border-white/10'
+                      : 'bg-[#FAF8F4] border-[#E4DFD5]'
+                  }`}
+                >
+                  {WEEKDAY_KO.map((w, idx) => (
+                    <div
+                      key={w}
+                      className={
+                        idx === 0
+                          ? 'text-rose-500'
+                          : idx === 6
+                          ? 'text-sky-500'
+                          : ''
+                      }
+                    >
+                      {w}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-7">
+                  {personalCalendarData.cells.map((cell, idx) => {
+                    if (!cell) {
+                      return (
+                        <div
+                          key={`empty-${idx}`}
+                          className={`min-h-[68px] sm:min-h-[86px] border-b border-r border-current/5 ${
+                            isDark ? 'bg-[#0E121B]/50' : 'bg-stone-100/40'
+                          }`}
+                        />
+                      );
+                    }
+
+                    const isTodayCell =
+                      todayReal.getFullYear() === currentYear &&
+                      todayReal.getMonth() + 1 === currentMonth &&
+                      todayReal.getDate() === cell.day;
+                    const isRed = cell.dow === 0 || Boolean(cell.holidayName);
+                    const off = isOffDayCode(cell.code);
+                    const dayWorkCount = dailySummaryMap[cell.day]?.workingCount ?? 0;
+
+                    return (
+                      <button
+                        key={cell.day}
+                        type="button"
+                        onClick={() => {
+                          if (personalCalendarData.targetEmp) {
+                            handleCellInteraction(
+                              personalCalendarData.targetEmp,
+                              cell.day
+                            );
+                          }
+                        }}
+                        className={`min-h-[68px] sm:min-h-[88px] p-1.5 sm:p-2.5 border-b border-r border-current/10 flex flex-col justify-between text-left cursor-pointer transition-colors ${
+                          off
+                            ? isDark
+                              ? 'bg-rose-500/10 hover:bg-rose-500/20'
+                              : 'bg-rose-50/70 hover:bg-rose-100/70'
+                            : isDark
+                            ? 'hover:bg-white/5'
+                            : 'hover:bg-[#FAF8F4]'
+                        } ${
+                          isTodayCell
+                            ? 'ring-2 ring-inset ring-amber-400'
+                            : ''
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-1 w-full">
+                          <span
+                            className={`text-xs sm:text-sm font-black font-mono leading-none ${
+                              isRed
+                                ? 'text-rose-500'
+                                : cell.dow === 6
+                                ? 'text-sky-500'
+                                : ''
+                            }`}
+                          >
+                            {cell.day}
+                          </span>
+                          {cell.inStreak && (
+                            <span className={`text-[9px] font-black px-1 rounded hidden sm:inline ${isDark ? "bg-amber-400/25 text-amber-300" : "bg-amber-100 text-amber-900"}`}>
+                              연휴
+                            </span>
+                          )}
+                        </div>
+
+                        {cell.holidayName && (
+                          <div className="text-[9px] sm:text-[10px] font-bold text-rose-500 truncate w-full">
+                            {cell.holidayName}
+                          </div>
+                        )}
+
+                        <div className="mt-auto flex items-center justify-between gap-1 w-full">
+                          {cell.code ? (
+                            renderCodeBadge(cell.code, 'sm')
+                          ) : (
+                            <span
+                              className={`text-[10px] font-semibold ${mutedText}`}
+                            >
+                              출근
+                            </span>
+                          )}
+                          <span
+                            className={`text-[9px] font-mono hidden sm:inline ${mutedText}`}
+                          >
+                            매장 {dayWorkCount}명
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
-            )
           )}
 
-          {/* ==================== [뷰 2: 🗓️ 전체 휴무표 (상단 날짜 Sticky 고정 + 셀 내부 날짜 표기)] ==================== */}
+          {/* ===================================================================== */}
+          {/* [VIEW 3 & VIEW 4 공통 필터 바] 검색(초성 지원) + 코너 필터 칩 */}
+          {/* ===================================================================== */}
+          {(activeView === 'week' || activeView === 'full') && (
+            <div className={`rounded-2xl border p-3 flex flex-wrap items-center justify-between gap-2.5 ${cardBg}`}>
+              {/* 초성/이름/담당 검색창 */}
+              <div className="relative flex-1 min-w-[190px] max-w-xs">
+                <Search
+                  className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${mutedText}`}
+                />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="이름·담당·초성 검색 (예: ㄱㅅㅇ, 대형)"
+                  className={`w-full pl-9 pr-8 py-1.5 rounded-xl border text-base sm:text-xs font-bold focus:outline-none ${subtleBg}`}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer ${mutedText}`}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* 코너 필터 칩 */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: 'ALL', label: `전체 (${monthData.employees.length})` },
+                  ...CORNER_GROUP_ORDER.map((c) => ({ id: c, label: c })),
+                ].map((chip) => {
+                  const active = selectedCornerFilter === chip.id;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setSelectedCornerFilter(chip.id)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
+                        active
+                          ? isDark
+                            ? 'bg-sky-400 text-slate-950 border-sky-300'
+                            : 'bg-[#18181B] text-white border-[#18181B]'
+                          : subtleBg
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  );
+                })}
+
+                {activeView === 'full' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowHeatmapRow((v) => !v)}
+                    className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer ${
+                      showHeatmapRow
+                        ? isDark
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : subtleBg
+                    }`}
+                  >
+                    {showHeatmapRow ? '✓ 근무인원 합계행' : '근무인원 합계행'}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ===================================================================== */}
+          {/* [VIEW 3] 📆 주간(7일) 포커스 표 (가로 스크롤 부담 제로 주간 타임라인) */}
+          {/* ===================================================================== */}
+          {activeView === 'week' && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleMoveDay(-7)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${cardBg}`}
+                  >
+                    ◀ 이전 7일
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleJumpToToday}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${subtleBg}`}
+                  >
+                    이번 주
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveDay(7)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${cardBg}`}
+                  >
+                    다음 7일 ▶
+                  </button>
+                </div>
+                <span className="text-xs sm:text-sm font-black font-mono">
+                  {currentWeekDates[0].date.getMonth() + 1}/
+                  {currentWeekDates[0].day}(월) ~{' '}
+                  {currentWeekDates[6].date.getMonth() + 1}/
+                  {currentWeekDates[6].day}(일)
+                </span>
+              </div>
+
+              <div className={`w-full overflow-x-auto rounded-2xl border shadow-xs ${cardBg}`}>
+                <table className="w-full border-collapse min-w-[620px] text-center">
+                  <thead>
+                    <tr
+                      className={
+                        isDark
+                          ? 'bg-[#1B2230] text-slate-100 border-b border-white/10'
+                          : 'bg-[#18181B] text-white border-b border-stone-700'
+                      }
+                    >
+                      <th className="sticky left-0 z-20 bg-inherit w-36 min-w-[140px] px-3 py-2.5 text-left text-xs font-black border-r border-white/10">
+                        성명 · 코너 (월합계)
+                      </th>
+                      {currentWeekDates.map((wd) => {
+                        const isTodayCol =
+                          wd.date.getFullYear() === todayReal.getFullYear() &&
+                          wd.date.getMonth() === todayReal.getMonth() &&
+                          wd.date.getDate() === wd.day;
+                        const holiday =
+                          HOLIDAY_NAMES_BY_MONTH[wd.yearMonth]?.[wd.day];
+                        const isRed = wd.dow === 0 || Boolean(holiday);
+                        return (
+                          <th
+                            key={wd.date.toISOString()}
+                            onClick={() => setSelectedDate(new Date(wd.date))}
+                            className={`px-2 py-2 border-r last:border-r-0 border-white/10 cursor-pointer ${
+                              isTodayCol ? 'bg-amber-400 text-slate-950' : ''
+                            }`}
+                          >
+                            <div
+                              className={`text-xs font-black font-mono ${
+                                isTodayCol
+                                  ? 'text-slate-950'
+                                  : isRed
+                                  ? 'text-rose-400'
+                                  : wd.dow === 6
+                                  ? 'text-sky-400'
+                                  : ''
+                              }`}
+                            >
+                              {wd.date.getMonth() + 1}/{wd.day} ({WEEKDAY_KO[wd.dow]})
+                            </div>
+                            <div
+                              className={`text-[10px] font-bold font-mono mt-0.5 ${
+                                isTodayCol ? 'text-slate-900' : 'opacity-75'
+                              }`}
+                            >
+                              근무 {wd.workingCount}명
+                              {wd.hasVacancy && ' ⚠️'}
+                            </div>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {filteredEmployeesByCorner.map((group) => (
+                      <React.Fragment key={group.corner}>
+                        <tr
+                          className={
+                            isDark
+                              ? 'bg-[#111622] text-sky-300 border-b border-white/10'
+                              : 'bg-[#F4ECE1]/80 text-[#6E4423] border-b border-[#E4DFD5]'
+                          }
+                        >
+                          <td
+                            colSpan={8}
+                            className="px-3 py-1.5 text-left text-[11px] font-black"
+                          >
+                            ▪ {group.corner} ({group.employees.length}명)
+                          </td>
+                        </tr>
+                        {group.employees.map((emp) => {
+                          const isMe = emp.name === savedName;
+                          const st = employeeStatsMap[emp.name];
+                          return (
+                            <tr
+                              key={emp.name}
+                              className={`border-b last:border-b-0 ${
+                                isDark ? 'border-white/5' : 'border-[#E4DFD5]'
+                              } ${
+                                isMe
+                                  ? isDark
+                                    ? 'bg-amber-400/10'
+                                    : 'bg-amber-50/80'
+                                  : ''
+                              }`}
+                            >
+                              <td
+                                className={`sticky left-0 z-10 px-3 py-2 text-left border-r whitespace-nowrap ${
+                                  isMe
+                                    ? 'bg-amber-300 text-slate-950 border-amber-400 font-black'
+                                    : isDark
+                                    ? 'bg-[#151A25] border-white/10'
+                                    : 'bg-white border-[#E4DFD5]'
+                                }`}
+                              >
+                                <div className="text-xs font-black flex items-center justify-between gap-1">
+                                  <span>
+                                    {isMe ? `⭐ ${emp.name}` : emp.name}{' '}
+                                    <span className="text-[10px] opacity-65">
+                                      ({emp.role})
+                                    </span>
+                                  </span>
+                                  {st && (
+                                    <span className="text-[10px] font-mono opacity-75">
+                                      휴{st.offO}·연{st.annualV}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {currentWeekDates.map((wd) => {
+                                const mSched =
+                                  wd.yearMonth === currentYearMonth
+                                    ? monthData
+                                    : getOrCreateMonthSchedule(
+                                        schedules,
+                                        wd.yearMonth
+                                      );
+                                const targetEmpInDay = mSched.employees.find(
+                                  (e) => e.name === emp.name
+                                );
+                                const code =
+                                  targetEmpInDay?.days[String(wd.day)] || '';
+                                const canEdit = wd.yearMonth === currentYearMonth;
+
+                                return (
+                                  <td
+                                    key={wd.date.toISOString()}
+                                    onClick={() => {
+                                      if (!canEdit) {
+                                        setSelectedDate(new Date(wd.date));
+                                        return;
+                                      }
+                                      handleCellInteraction(emp, wd.day);
+                                    }}
+                                    className={`px-1.5 py-2 border-r last:border-r-0 cursor-pointer ${
+                                      isDark
+                                        ? 'border-white/5 hover:bg-white/5'
+                                        : 'border-[#EDE9E0] hover:bg-[#FAF8F4]'
+                                    } ${!canEdit ? 'opacity-50' : ''}`}
+                                  >
+                                    {code ? (
+                                      renderCodeBadge(code, 'sm')
+                                    ) : (
+                                      <span
+                                        className={`text-[11px] font-semibold ${mutedText}`}
+                                      >
+                                        ·
+                                      </span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ===================================================================== */}
+          {/* [VIEW 4] 🗓️ 전체 매트릭스 (코너 접기/펼치기 + 합계 고정열 + 근무인원 히트맵) */}
+          {/* ===================================================================== */}
           {activeView === 'full' && (
             <div className="space-y-2.5">
+              {/* 상단 기호 범례 & 안내 */}
               <div className="flex flex-wrap items-center justify-between gap-2 px-1">
-                <p className="text-xs font-black text-slate-700">
-                  💡 아래로 내려도 상단 날짜가 항상 고정됩니다 · 날짜 칸을 터치하면 즉시 상태를 수정할 수 있습니다.
+                <p className={`text-xs font-bold ${mutedText}`}>
+                  💡 좌측 이름과 상단 날짜가 고정됩니다 · 이름 옆 체크박스로 동료 휴무를 비교하거나 칸을 터치해 수정하세요.
                 </p>
                 <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-black">
                   <span className="px-2 py-0.5 rounded bg-rose-500 text-white">
@@ -2721,32 +4914,56 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   <span className="px-2 py-0.5 rounded bg-indigo-500 text-white">
                     회의
                   </span>
+                  <span className="px-2 py-0.5 rounded bg-teal-100 text-teal-950 border border-teal-300">
+                    HP
+                  </span>
                 </div>
               </div>
 
-              {/* 고정 높이 스크롤 래퍼: 상단 날짜 행(sticky top-0)과 좌측 성명 열(sticky left-0) 동시 고정 */}
-              <div className="w-full max-h-[56dvh] overflow-auto relative rounded-2xl border border-slate-300 bg-white shadow-sm">
-                <table className="w-full border-collapse min-w-[1200px] text-center">
+              {/* 매트릭스 스크롤 컨테이너 */}
+              <div
+                className={`w-full max-h-[60dvh] overflow-auto relative rounded-2xl border shadow-sm schedule-matrix-scroll ${cardBg}`}
+              >
+                <table className="w-full border-collapse min-w-[1220px] text-center">
                   <thead>
-                    <tr className="sticky top-0 z-20 bg-slate-900 text-white shadow-sm">
-                      <th className="sticky top-0 left-0 z-30 bg-slate-900 w-32 min-w-[128px] px-2 py-2 text-xs font-black border-r border-b border-slate-700">
-                        성명 (담당)
+                    {/* Row 1: 날짜 헤더 */}
+                    <tr
+                      className={`sticky top-0 z-20 ${
+                        isDark
+                          ? 'bg-[#161D2B] text-slate-100'
+                          : 'bg-[#18181B] text-white'
+                      }`}
+                    >
+                      <th
+                        className={`sticky top-0 left-0 z-30 w-44 min-w-[176px] px-2.5 py-2 text-left text-xs font-black border-r border-b border-white/15 ${
+                          isDark ? 'bg-[#161D2B]' : 'bg-[#18181B]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span>성명 (담당)</span>
+                          <span className="text-[10px] font-mono opacity-75">
+                            휴무·연차
+                          </span>
+                        </div>
                       </th>
                       {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(
                         (d) => {
-                          const dateObj = new Date(
+                          const dow = new Date(
                             currentYear,
                             currentMonth - 1,
                             d
-                          );
-                          const dow = dateObj.getDay();
-                          const isHoliday = (
-                            HOLIDAYS_BY_MONTH[currentYearMonth] || []
-                          ).includes(d);
+                          ).getDay();
+                          const holidayName =
+                            HOLIDAY_NAMES_BY_MONTH[currentYearMonth]?.[d];
+                          const isRed = dow === 0 || Boolean(holidayName);
                           const isTodayCol =
                             todayReal.getFullYear() === currentYear &&
                             todayReal.getMonth() + 1 === currentMonth &&
                             todayReal.getDate() === d;
+                          const hasVacancy =
+                            (dailySummaryMap[d]?.vacantCorners.length || 0) > 0;
+                          const isOverlapDay =
+                            swapComparisonAnalysis?.overlapOffDays.includes(d);
 
                           return (
                             <th
@@ -2756,30 +4973,39 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   new Date(currentYear, currentMonth - 1, d)
                                 )
                               }
-                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b border-slate-700 cursor-pointer transition ${
+                              title={
+                                holidayName
+                                  ? `${d}일 (${holidayName})`
+                                  : hasVacancy
+                                  ? `코너 공백: ${dailySummaryMap[d]?.vacantCorners.join(', ')}`
+                                  : `${d}일 일일 브리핑 기준일로 선택`
+                              }
+                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b border-white/10 cursor-pointer ${
                                 isTodayCol
                                   ? 'bg-amber-400 text-slate-950'
-                                  : 'bg-slate-900 hover:bg-slate-800'
+                                  : isOverlapDay
+                                  ? 'bg-indigo-600 text-white'
+                                  : ''
                               }`}
                             >
                               <div
-                                className={`text-xs font-black ${
+                                className={`text-xs font-black font-mono leading-tight ${
                                   isTodayCol
                                     ? 'text-slate-950'
-                                    : dow === 0 || isHoliday
+                                    : isRed
                                     ? 'text-rose-400'
                                     : dow === 6
                                     ? 'text-sky-400'
-                                    : 'text-white'
+                                    : ''
                                 }`}
                               >
-                                {d}일
+                                {d}
                               </div>
                               <div
-                                className={`text-[10px] font-bold ${
+                                className={`text-[10px] font-bold leading-tight ${
                                   isTodayCol
                                     ? 'text-slate-900'
-                                    : dow === 0 || isHoliday
+                                    : isRed
                                     ? 'text-rose-300'
                                     : dow === 6
                                     ? 'text-sky-300'
@@ -2788,136 +5014,577 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                               >
                                 {WEEKDAY_KO[dow]}
                               </div>
+                              {hasVacancy && (
+                                <div className="text-[9px] leading-none mt-0.5 text-rose-400 font-black">
+                                  ⚠️
+                                </div>
+                              )}
                             </th>
                           );
                         }
                       )}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {sortedEmployeesForTable.map((emp) => {
-                      const isMe = emp.name === savedName;
-                      return (
-                        <tr
-                          key={emp.name}
-                          className={`border-b border-slate-200 last:border-b-0 ${
-                            isMe
-                              ? 'bg-amber-50/95 font-black'
-                              : 'hover:bg-slate-50'
+
+                    {/* Row 2: 일자별 총 근무 인원 히트맵 요약 행 */}
+                    {showHeatmapRow && isCurrentMonthRegistered && (
+                      <tr
+                        className={
+                          isDark
+                            ? 'bg-[#111622] border-b border-white/10 text-[10px]'
+                            : 'bg-[#FAF5EC] border-b border-[#E4DFD5] text-[10px]'
+                        }
+                      >
+                        <th
+                          className={`sticky left-0 z-20 px-2.5 py-1 text-left font-black border-r ${
+                            isDark
+                              ? 'bg-[#111622] border-white/10 text-emerald-300'
+                              : 'bg-[#FAF5EC] border-[#E4DFD5] text-[#6E4423]'
                           }`}
                         >
-                          <td
-                            className={`sticky left-0 z-10 px-2 py-2 text-xs font-black border-r border-slate-300 whitespace-nowrap ${
-                              isMe
-                                ? 'bg-amber-300 text-slate-950 shadow-2xs'
-                                : 'bg-slate-100 text-slate-900'
-                            }`}
-                          >
-                            <span>{isMe ? `⭐${emp.name}` : emp.name}</span>
-                            <span
-                              className={`ml-1 text-[10px] font-bold ${
-                                isMe ? 'text-slate-800' : 'text-slate-500'
-                              }`}
-                            >
-                              ({emp.role})
-                            </span>
-                          </td>
-                          {Array.from(
-                            { length: daysInMonth },
-                            (_, i) => i + 1
-                          ).map((d) => {
-                            const code = emp.days[String(d)] || '';
-                            const isTodayCol =
-                              todayReal.getFullYear() === currentYear &&
-                              todayReal.getMonth() + 1 === currentMonth &&
-                              todayReal.getDate() === d;
+                          일자별 총 근무 인원
+                        </th>
+                        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(
+                          (d) => {
+                            const summary = dailySummaryMap[d];
+                            const work = summary?.workingCount ?? 0;
+                            const vacant =
+                              (summary?.vacantCorners.length || 0) > 0;
+                            const lowStaff = work <= Math.floor(monthData.employees.length * 0.55);
+
                             return (
                               <td
-                                key={`${emp.name}-${d}`}
-                                onClick={() => {
-                                  window.history.pushState({ appGuard: true }, '');
-                                  setEditingCell({
-                                    empName: emp.name,
-                                    empRole: emp.role,
-                                    day: d,
-                                    currentCode: code,
-                                  });
-                                }}
-                                className={`px-0.5 py-1 border-r border-slate-200 last:border-r-0 cursor-pointer transition align-middle ${
-                                  isTodayCol
-                                    ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
-                                    : isMe
-                                    ? 'bg-amber-50/70'
-                                    : ''
+                                key={`sum-${d}`}
+                                className={`py-1 font-mono font-black border-r last:border-r-0 ${
+                                  isDark ? 'border-white/5' : 'border-[#E4DFD5]'
+                                } ${
+                                  vacant
+                                    ? 'bg-rose-500/20 text-rose-500'
+                                    : lowStaff
+                                    ? (isDark ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-900')
+                                    : (isDark ? 'text-emerald-400' : 'text-emerald-700')
                                 }`}
                               >
-                                {renderCodeBadge(
-                                  code,
-                                  true,
-                                  code ? d : undefined
-                                )}
+                                {work}
                               </td>
                             );
-                          })}
-                        </tr>
-                      );
-                    })}
+                          }
+                        )}
+                      </tr>
+                    )}
+                  </thead>
+
+                  <tbody>
+                    {filteredEmployeesByCorner.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={daysInMonth + 1}
+                          className={`py-12 text-center text-xs font-bold ${mutedText}`}
+                        >
+                          검색 조건에 일치하는 직원이 없습니다.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredEmployeesByCorner.map((group) => {
+                        const isCollapsed = Boolean(collapsedCorners[group.corner]);
+                        return (
+                          <React.Fragment key={group.corner}>
+                            {/* 코너 그룹 접기/펼치기 헤더 행 */}
+                            <tr
+                              onClick={() =>
+                                setCollapsedCorners((prev) => ({
+                                  ...prev,
+                                  [group.corner]: !prev[group.corner],
+                                }))
+                              }
+                              className={`cursor-pointer border-b ${
+                                isDark
+                                  ? 'bg-[#1B2230]/90 hover:bg-[#222B3D] border-white/10 text-sky-300'
+                                  : 'bg-[#F4ECE1]/90 hover:bg-[#EAE0D0] border-[#DFD6C7] text-[#6E4423]'
+                              }`}
+                            >
+                              <td
+                                className={`sticky left-0 z-10 px-2.5 py-1.5 text-left text-[11px] font-black border-r ${
+                                  isDark
+                                    ? 'bg-[#1B2230] border-white/10'
+                                    : 'bg-[#F4ECE1] border-[#DFD6C7]'
+                                }`}
+                              >
+                                <span>{isCollapsed ? '▶' : '▼'} </span>
+                                <span>{group.corner}</span>
+                                <span className="ml-1 font-mono opacity-80">
+                                  ({group.employees.length})
+                                </span>
+                              </td>
+                              <td colSpan={daysInMonth} />
+                            </tr>
+
+                            {!isCollapsed &&
+                              group.employees.map((emp) => {
+                                const isMe = emp.name === savedName;
+                                const isCompared = compareNames.includes(emp.name);
+                                const st = employeeStatsMap[emp.name] || {
+                                  offO: 0,
+                                  annualV: 0,
+                                };
+
+                                return (
+                                  <tr
+                                    key={emp.name}
+                                    className={`border-b last:border-b-0 ${
+                                      isDark
+                                        ? 'border-white/5 hover:bg-white/[0.03]'
+                                        : 'border-[#EDE9E0] hover:bg-[#FAF8F4]'
+                                    } ${
+                                      isMe
+                                        ? isDark
+                                          ? 'bg-amber-400/10'
+                                          : 'bg-amber-50/75'
+                                        : isCompared
+                                        ? isDark
+                                          ? 'bg-indigo-500/15'
+                                          : 'bg-indigo-50/70'
+                                        : ''
+                                    }`}
+                                  >
+                                    {/* 좌측 고정 성명 + 비교 체크 + 월간 휴무/연차 배지 */}
+                                    <td
+                                      className={`sticky left-0 z-10 px-2 py-1.5 text-xs font-black border-r whitespace-nowrap ${
+                                        isMe
+                                          ? 'bg-amber-300 text-slate-950 border-amber-400'
+                                          : isCompared
+                                          ? 'bg-indigo-600 text-white border-indigo-700'
+                                          : isDark
+                                          ? 'bg-[#151A25] text-slate-100 border-white/10'
+                                          : 'bg-white text-[#18181B] border-[#E4DFD5]'
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-1">
+                                        <div className="flex items-center gap-1.5 min-w-0">
+                                          <input
+                                            type="checkbox"
+                                            checked={isCompared}
+                                            onChange={() => {
+                                              toggleCompareEmployee(emp.name);
+                                              if (!isSwapPanelOpen) {
+                                                setIsSwapPanelOpen(true);
+                                              }
+                                            }}
+                                            title="동료 휴무 비교/맞교대 선택"
+                                            className="w-3.5 h-3.5 rounded accent-indigo-600 cursor-pointer shrink-0"
+                                          />
+                                          <span className="truncate">
+                                            {isMe ? `⭐${emp.name}` : emp.name}
+                                          </span>
+                                          <span className="text-[10px] font-bold opacity-70">
+                                            ({emp.role})
+                                          </span>
+                                        </div>
+                                        <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded shrink-0 ${isDark ? "bg-white/10" : "bg-black/8"}`}>
+                                          {st.offO}/{st.annualV}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* 1일 ~ 말일 셀 */}
+                                    {Array.from(
+                                      { length: daysInMonth },
+                                      (_, i) => i + 1
+                                    ).map((d) => {
+                                      const code = emp.days[String(d)] || '';
+                                      const isTodayCol =
+                                        todayReal.getFullYear() === currentYear &&
+                                        todayReal.getMonth() + 1 === currentMonth &&
+                                        todayReal.getDate() === d;
+                                      const isOverlapCell =
+                                        isCompared &&
+                                        Boolean(
+                                          swapComparisonAnalysis?.overlapOffDays.includes(
+                                            d
+                                          )
+                                        );
+
+                                      return (
+                                        <td
+                                          key={`${emp.name}-${d}`}
+                                          onClick={() =>
+                                            handleCellInteraction(emp, d)
+                                          }
+                                          className={`px-0.5 py-1 border-r last:border-r-0 cursor-pointer align-middle ${
+                                            isDark
+                                              ? 'border-white/5'
+                                              : 'border-[#EDE9E0]'
+                                          } ${
+                                            isTodayCol
+                                              ? isDark
+                                                ? 'bg-amber-400/15 ring-1 ring-inset ring-amber-400/60'
+                                                : 'bg-amber-100/75 ring-1 ring-inset ring-amber-400'
+                                              : isOverlapCell
+                                              ? 'bg-rose-500/20 ring-1 ring-inset ring-rose-400'
+                                              : ''
+                                          }`}
+                                        >
+                                          {renderCodeBadge(
+                                            code,
+                                            'xs',
+                                            code ? d : undefined
+                                          )}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
+                          </React.Fragment>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
         </div>
+
+        {/* ==================== Sonner 스타일 플로팅 토스트 (Undo 지원) ==================== */}
+        {notice && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-70 w-[92vw] max-w-md pointer-events-auto schedule-sheet-enter">
+            <div
+              className={`rounded-2xl px-4 py-3 shadow-2xl border flex items-center justify-between gap-3 text-xs font-black ${
+                notice.type === 'error'
+                  ? 'bg-rose-600 text-white border-rose-500'
+                  : isDark
+                  ? 'bg-[#1E2738] text-slate-100 border-sky-400/35'
+                  : 'bg-[#18181B] text-white border-stone-700'
+              }`}
+            >
+              <span className="leading-snug">{notice.text}</span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {notice.canUndo && undoStack.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleUndo}
+                    className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black cursor-pointer"
+                  >
+                    ↩ 되돌리기
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setNotice(null)}
+                  className="p-1 rounded-lg hover:bg-white/15 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* 휴무표 삭제 / 관리 모달 */}
+      {/* ==================== Vaul 스타일 반응형 바텀시트(모바일) / 센터 시트(PC) 셀 편집기 ==================== */}
+      {editingCell && (
+        <div
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => {
+            setEditingCell(null);
+            setIsEditingRoleInSheet(false);
+          }}
+        >
+          <div
+            className={`w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl border p-5 shadow-2xl space-y-4 schedule-sheet-enter ${cardBg}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 모바일 드래그 핸들 바 */}
+            <div className="w-10 h-1.5 rounded-full bg-slate-400/40 mx-auto sm:hidden" />
+
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-base font-black">
+                    {editingCell.empName}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-lg text-xs font-bold border ${subtleBg}`}
+                  >
+                    {editingCell.empRole}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingRoleInSheet((v) => !v)}
+                    className={`text-[11px] font-bold inline-flex items-center gap-0.5 cursor-pointer ${mutedText}`}
+                  >
+                    <Edit3 className="w-3 h-3" /> 담당변경
+                  </button>
+                </div>
+                <p className={`text-xs font-bold mt-1 ${mutedText}`}>
+                  {currentYear}년 {currentMonth}월 {editingCell.day}일 (
+                  {
+                    WEEKDAY_KO[
+                      new Date(
+                        currentYear,
+                        currentMonth - 1,
+                        editingCell.day
+                      ).getDay()
+                    ]
+                  }
+                  요일) 근태 상태 선택
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingCell(null);
+                  setIsEditingRoleInSheet(false);
+                }}
+                className={`p-1.5 rounded-xl border cursor-pointer ${subtleBg}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 담당(코너) 인라인 수정창 */}
+            {isEditingRoleInSheet && (
+              <div className={`p-3 rounded-2xl border flex items-center gap-2 ${subtleBg}`}>
+                <input
+                  type="text"
+                  value={roleDraftInSheet}
+                  onChange={(e) => setRoleDraftInSheet(e.target.value)}
+                  placeholder="담당 입력 (예: 대형, 생활, 쿠쿠, 모바일)"
+                  className={`flex-1 px-3 py-1.5 rounded-xl border text-base sm:text-xs font-black ${cardBg}`}
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleUpdateEmployeeRole(
+                      editingCell.empName,
+                      roleDraftInSheet
+                    )
+                  }
+                  className="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 text-xs font-black cursor-pointer"
+                >
+                  저장
+                </button>
+              </div>
+            )}
+
+            {/* 같은 코너 동료 근무 현황 실시간 가이드 */}
+            {editingCellPeerInfo && (
+              <div
+                className={`rounded-2xl border p-3 text-xs space-y-1 ${
+                  editingCellPeerInfo.workingPeers.length === 0
+                    ? isDark
+                      ? 'bg-rose-500/15 border-rose-400/35 text-rose-200'
+                      : 'bg-rose-50 border-rose-200 text-rose-900'
+                    : subtleBg
+                }`}
+              >
+                <div className="font-black flex items-center justify-between">
+                  <span>
+                    같은 [{editingCellPeerInfo.cornerGroup}] 코너 근무 동료
+                  </span>
+                  <span className="font-mono">
+                    {editingCellPeerInfo.workingPeers.length}명 근무
+                  </span>
+                </div>
+                <div className={mutedText}>
+                  {editingCellPeerInfo.workingPeers.length > 0
+                    ? editingCellPeerInfo.workingPeers
+                        .map((p) => `${p.name}(${p.role})`)
+                        .join(', ')
+                    : '⚠️ 이 직원이 쉬면 해당 코너 근무자가 0명이 됩니다!'}
+                </div>
+              </div>
+            )}
+
+            {/* 2x4 근태 상태 선택 그리드 */}
+            <div className="grid grid-cols-2 gap-2">
+              {DAY_CODE_OPTIONS.map((opt) => {
+                const selected = editingCell.currentCode === opt.value;
+                return (
+                  <button
+                    key={opt.value || 'work'}
+                    type="button"
+                    onClick={() =>
+                      handleUpdateCellCode(
+                        editingCell.empName,
+                        editingCell.day,
+                        opt.value
+                      )
+                    }
+                    className={`p-3 rounded-2xl border text-left flex flex-col gap-0.5 cursor-pointer schedule-tactile ${
+                      selected
+                        ? `ring-2 ${opt.activeRing} ${
+                            isDark ? 'bg-white/10 border-white/30' : 'bg-[#FAF5EC] border-[#8C5A32]'
+                          }`
+                        : subtleBg
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-xs font-black border ${opt.chipCls}`}
+                      >
+                        {opt.shortLabel}
+                      </span>
+                      {selected && <Check className="w-4 h-4 text-amber-500" />}
+                    </div>
+                    <span className="text-xs font-black mt-1">{opt.label}</span>
+                    <span className={`text-[10px] font-medium ${mutedText}`}>
+                      {opt.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 하단 부가 액션 (동료 비교 담기 / 직원 줄 삭제) */}
+            <div className={`pt-2 border-t flex items-center justify-between gap-2 ${isDark ? "border-white/10" : "border-[#E4DFD5]"}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleCompareEmployee(editingCell.empName);
+                  setIsSwapPanelOpen(true);
+                  setEditingCell(null);
+                  if (activeView === 'today' || activeView === 'calendar') {
+                    setActiveView('full');
+                  }
+                }}
+                className={`px-3 py-2 rounded-xl text-xs font-black border flex items-center gap-1.5 cursor-pointer ${subtleBg}`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
+                <span>맞교대 비교 대상에 담기</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDeleteEmployeeRow(editingCell.empName)}
+                className="px-3 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-black flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>직원 줄 삭제</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 신규 직원 추가 모달 ==================== */}
+      {isAddStaffOpen && (
+        <div
+          className="fixed inset-0 z-60 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setIsAddStaffOpen(false)}
+        >
+          <div
+            className={`w-full max-w-sm rounded-3xl border p-5 shadow-2xl space-y-4 schedule-sheet-enter ${cardBg}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black flex items-center gap-2">
+                <Plus className="w-4 h-4 text-emerald-500" />
+                <span>{currentMonth}월 신규 직원 행 추가</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAddStaffOpen(false)}
+                className={`p-1 rounded-lg cursor-pointer ${mutedText}`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-black mb-1">성명</label>
+                <input
+                  type="text"
+                  value={newStaffName}
+                  onChange={(e) => setNewStaffName(e.target.value)}
+                  placeholder="예: 홍길동"
+                  className={`w-full px-3.5 py-2 rounded-xl border text-base sm:text-xs font-black ${subtleBg}`}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-black mb-1">담당 코너/직책</label>
+                <input
+                  type="text"
+                  value={newStaffRole}
+                  onChange={(e) => setNewStaffRole(e.target.value)}
+                  placeholder="예: 대형, 생활, 주방, 쿠쿠, 모바일, 점장"
+                  className={`w-full px-3.5 py-2 rounded-xl border text-base sm:text-xs font-black ${subtleBg}`}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsAddStaffOpen(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-black border cursor-pointer ${subtleBg}`}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleAddStaffMember}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black cursor-pointer"
+              >
+                명단에 추가
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== 저장된 휴무표 삭제 / 관리 모달 ==================== */}
       {isDeleteModalOpen && (
         <div
-          className="fixed inset-0 z-60 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+          className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
           onClick={() => setIsDeleteModalOpen(false)}
         >
           <div
-            className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-300 overflow-hidden animate-in fade-in zoom-in duration-150"
+            className={`w-full max-w-lg rounded-3xl shadow-2xl border overflow-hidden schedule-sheet-enter ${cardBg}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+            <div
+              className={`px-5 py-4 border-b flex items-center justify-between ${headerBg}`}
+            >
               <div className="flex items-center gap-2">
-                <Trash2 className="w-5 h-5 text-rose-400" />
-                <h3 className="font-black text-base">🗑️ 저장된 휴무표 관리 및 삭제</h3>
+                <Trash2 className="w-5 h-5 text-rose-500" />
+                <h3 className="font-black text-base">저장된 휴무표 관리 및 삭제</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDeleteModalOpen(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                className={`p-1 rounded-lg cursor-pointer ${mutedText}`}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="p-5 space-y-5">
-              {/* 1. 현재 보고 있는 월 삭제 */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
-                <div className="text-xs font-bold text-slate-500">
+              <div className={`p-4 rounded-2xl border space-y-2.5 ${subtleBg}`}>
+                <div className={`text-xs font-bold ${mutedText}`}>
                   현재 조회 중인 월 ({currentYearMonth.replace('-', '.')})
                 </div>
                 <button
                   type="button"
                   disabled={!schedules[currentYearMonth]}
                   onClick={() => handleDeleteMonth(currentYearMonth)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 disabled:opacity-40 text-xs font-black transition cursor-pointer"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-500 border border-rose-500/30 disabled:opacity-40 text-xs font-black cursor-pointer transition-colors"
                 >
                   현재 보고 있는 {currentYear}년 {currentMonth}월 휴무표 삭제
                 </button>
               </div>
 
-              {/* 2. 등록된 월별 개별 삭제 목록 */}
               <div className="space-y-2">
-                <div className="text-xs font-black text-slate-700 flex items-center justify-between">
+                <div className="text-xs font-black flex items-center justify-between">
                   <span>저장된 월별 목록 ({savedYearMonths.length}개)</span>
-                  <span className="text-[11px] text-slate-400 font-normal">개별 삭제 가능</span>
+                  <span className={`text-[11px] font-normal ${mutedText}`}>
+                    개별 삭제 가능
+                  </span>
                 </div>
                 {savedYearMonths.length === 0 ? (
-                  <div className="text-xs text-slate-400 text-center py-4 bg-slate-50 rounded-xl">
+                  <div className={`text-xs text-center py-4 rounded-xl ${subtleBg} ${mutedText}`}>
                     저장된 휴무표가 없습니다.
                   </div>
                 ) : (
@@ -2925,18 +5592,18 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                     {savedYearMonths.map((ym) => (
                       <div
                         key={ym}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs"
+                        className={`flex items-center justify-between p-2.5 rounded-xl border text-xs ${subtleBg}`}
                       >
-                        <div className="font-black text-slate-800 flex items-center gap-2">
+                        <div className="font-black flex items-center gap-2 font-mono">
                           <span>📅 {ym.replace('-', '.')}</span>
-                          <span className="text-[11px] font-medium text-slate-500">
+                          <span className={`text-[11px] font-sans font-medium ${mutedText}`}>
                             ({schedules[ym]?.employees?.length || 0}명 등록)
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleDeleteMonth(ym)}
-                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 hover:border-rose-300 text-xs font-bold transition cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500 hover:text-white text-rose-500 text-xs font-bold cursor-pointer transition-colors"
                         >
                           삭제
                         </button>
@@ -2946,26 +5613,15 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 )}
               </div>
 
-              {/* 3. 전체 초기화 / 삭제 */}
-              <div className="pt-3 border-t border-slate-200">
+              <div className={`pt-3 border-t ${isDark ? "border-white/10" : "border-[#E4DFD5]"}`}>
                 <button
                   type="button"
                   onClick={handleDeleteAllSchedules}
-                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition cursor-pointer shadow-xs"
+                  className="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs cursor-pointer shadow-xs"
                 >
-                  ⚠️ 저장된 전체 휴무표 초기화
+                  저장된 전체 휴무표 초기화
                 </button>
               </div>
-            </div>
-
-            <div className="bg-slate-100 px-5 py-3 text-right">
-              <button
-                type="button"
-                onClick={() => setIsDeleteModalOpen(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-black text-xs transition cursor-pointer"
-              >
-                닫기
-              </button>
             </div>
           </div>
         </div>

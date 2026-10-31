@@ -1,8 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpDown,
+  Calendar,
   CheckCircle2,
   FolderOpen,
+  Kanban,
+  LayoutGrid,
+  RotateCcw,
   Search,
   Sparkles,
 } from 'lucide-react';
@@ -31,6 +35,11 @@ import { SMSModal } from './components/SMSModal';
 import { NewCustomerModal } from './components/NewCustomerModal';
 import { SettingsModal } from './components/SettingsModal';
 import { MorningBriefingModal } from './components/MorningBriefingModal';
+import {
+  CrmAnalyticsStrip,
+  CrmDeliveryCalendar,
+  CrmKanbanBoard,
+} from './components/CrmKanbanAndAnalytics';
 
 const FILTER_TABS: FilterTab[] = [
   '전체',
@@ -46,6 +55,8 @@ const FILTER_TABS: FilterTab[] = [
 ];
 
 const BRIEFING_SHOWN_SESSION_KEY = 'gookji_crm_briefing_shown_session';
+
+type CrmViewMode = 'grid' | 'kanban' | 'calendar';
 
 interface CrmAppProps {
   onBackToHome: () => void;
@@ -63,14 +74,41 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   onOpenQuoteRecordInQuoteBuilder,
   onCustomersChange,
 }) => {
+  // 앱 다크모드 실시간 동기화
+  const [isDark, setIsDark] = useState<boolean>(() =>
+    typeof document !== 'undefined'
+      ? document.documentElement.getAttribute('data-theme') === 'dark'
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return;
+    const sync = () => {
+      setIsDark(document.documentElement.getAttribute('data-theme') === 'dark');
+    };
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    });
+    return () => obs.disconnect();
+  }, []);
+
   const [customers, setCustomers] = useState<CustomerItem[]>(() =>
     getCachedCustomers()
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
+  const [viewMode, setViewMode] = useState<CrmViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<FilterTab>('전체');
   const [sortOrder, setSortOrder] = useState<SortOrder>('urgentFirst');
+
+  // Undo 실행 취소 히스토리 스택 (최대 15단계)
+  const [undoHistory, setUndoHistory] = useState<
+    { label: string; snapshot: CustomerItem[] }[]
+  >([]);
 
   // 모달 상태
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
@@ -83,7 +121,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isBriefingOpen, setIsBriefingOpen] = useState<boolean>(false);
 
-  // CRM 내부 모달(문자발송·상세·신규등록·설정·브리핑) 열림 시 뒤로가기로 해당 모달만 먼저 닫기
   useEffect(() => {
     if (
       smsCustomer !== null ||
@@ -119,6 +156,10 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         setIsBriefingOpen(false);
         return true;
       }
+      if (viewMode !== 'grid') {
+        setViewMode('grid');
+        return true;
+      }
       return false;
     };
     return () => {
@@ -130,26 +171,47 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     isNewModalOpen,
     isSettingsOpen,
     isBriefingOpen,
+    viewMode,
   ]);
 
-  // 상단 토스트 알림
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // Sonner 스타일 플로팅 토스트 (Undo 지원)
+  const [toastState, setToastState] = useState<{
+    msg: string;
+    canUndo?: boolean;
+  } | null>(null);
 
-  const showToast = useCallback((msg: string) => {
-    setToastMsg(msg);
+  const showToast = useCallback((msg: string, canUndo = false) => {
+    setToastState({ msg, canUndo });
     setTimeout(() => {
-      setToastMsg((prev) => (prev === msg ? null : prev));
-    }, 3500);
+      setToastState((prev) => (prev?.msg === msg ? null : prev));
+    }, 4200);
   }, []);
 
-  // 부모(App.tsx)에 최신 고객 목록 동기화
+  const pushUndoSnapshot = useCallback(
+    (label: string) => {
+      setUndoHistory((prev) => [
+        ...prev.slice(-14),
+        { label, snapshot: customers },
+      ]);
+    },
+    [customers]
+  );
+
+  const handleUndoLastAction = useCallback(() => {
+    if (undoHistory.length === 0) return;
+    const last = undoHistory[undoHistory.length - 1];
+    setUndoHistory((prev) => prev.slice(0, -1));
+    const deduped = setCachedCustomers(last.snapshot);
+    setCustomers(deduped);
+    showToast(`↩ 실행 취소됨: ${last.label}`, false);
+  }, [undoHistory, showToast]);
+
   useEffect(() => {
     if (onCustomersChange) {
       onCustomersChange(customers);
     }
   }, [customers, onCustomersChange]);
 
-  // 1. 초기 데이터 로드 + 출근 모닝 브리핑 자동 팝업/알림
   const loadCustomers = useCallback(async () => {
     setIsLoading(true);
     const { customers: loaded } = await fetchCustomersFromGas();
@@ -170,7 +232,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     loadCustomers();
   }, [loadCustomers]);
 
-  // 활성 고객(휴지통 제외) 및 휴지통 고객 분리
   const activeCustomers = useMemo(
     () => customers.filter((c) => !c.deletedAt),
     [customers]
@@ -180,26 +241,30 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     [customers]
   );
 
-  // 현재 상세 모달에 띄울 고객 객체
   const selectedCustomer = useMemo(
     () => activeCustomers.find((c) => c.id === selectedCustomerId) || null,
     [activeCustomers, selectedCustomerId]
   );
 
-  // 2. 고객 상태 변경
   const handleStatusChange = async (
     id: string,
     nextStatus: CustomerStatus
   ) => {
+    const target = customers.find((c) => c.id === id);
+    if (target && target.status === nextStatus) return;
+    pushUndoSnapshot(`${target?.name || '고객'} 상태 변경`);
     const updated = customers.map((c) =>
       c.id === id ? { ...c, status: nextStatus } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    showToast(
+      `📌 [${target?.name || '고객'}] 상태 → [${nextStatus}]`,
+      true
+    );
     await syncCustomerToGas('update', { id, status: nextStatus });
   };
 
-  // 3. 고객 메모 변경
   const handleMemoChange = async (id: string, nextMemo: string) => {
     const updated = customers.map((c) =>
       c.id === id ? { ...c, memo: nextMemo } : c
@@ -209,24 +274,40 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     await syncCustomerToGas('update', { id, memo: nextMemo });
   };
 
-  // 4. 물류확정 / 사은품지급 / 전표번호 등 필드 업데이트
   const handleFieldChange = async (
     id: string,
     patch: Partial<CustomerItem>
   ) => {
+    const target = customers.find((c) => c.id === id);
+    pushUndoSnapshot(`${target?.name || '고객'} 정보 수정`);
     const updated = customers.map((c) =>
       c.id === id ? { ...c, ...patch } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    if ('logisticsConfirmed' in patch) {
+      showToast(
+        `🚚 [${target?.name || '고객'}] ${
+          patch.logisticsConfirmed ? '물류확정 완료' : '물류대기로 변경'
+        }`,
+        true
+      );
+    } else if ('giftSent' in patch) {
+      showToast(
+        `🎁 [${target?.name || '고객'}] ${
+          patch.giftSent ? '사은품 지급완료' : '사은품 미지급으로 변경'
+        }`,
+        true
+      );
+    }
     await syncCustomerToGas('update', { id, ...patch });
   };
 
-  // 5. 고객별 견적 보관함에서 특정 견적 삭제
   const handleDeleteQuoteRecord = async (
     customerId: string,
     quoteId: string
   ) => {
+    pushUndoSnapshot('보관 견적 삭제');
     const updated = customers.map((c) => {
       if (c.id !== customerId) return c;
       const nextQuotes = (c.quotes || []).filter((q) => q.id !== quoteId);
@@ -234,6 +315,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     });
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    showToast('🗑️ 선택한 견적이 보관함에서 삭제되었습니다.', true);
     const target = deduped.find((c) => c.id === customerId);
     if (target) {
       await syncCustomerToGas('update', {
@@ -243,11 +325,11 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     }
   };
 
-  // 6. 보관함의 특정 견적을 대표 견적으로 적용
   const handleApplyQuoteAsPrimary = async (
     customerId: string,
     quote: QuoteRecord
   ) => {
+    pushUndoSnapshot('대표 견적 변경');
     const updated = customers.map((c) => {
       if (c.id !== customerId) return c;
       return {
@@ -260,7 +342,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     });
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
-    showToast(`📌 [${quote.title}] 견적이 대표 견적으로 적용되었습니다.`);
+    showToast(`📌 [${quote.title}] 견적이 대표 견적으로 적용되었습니다.`, true);
     await syncCustomerToGas('update', {
       id: customerId,
       items: quote.itemSummary,
@@ -270,24 +352,22 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     });
   };
 
-  // 7. 고객 삭제 (소프트 삭제: 휴지통으로 이동하여 30일간 보관)
   const handleDeleteCustomer = async (id: string) => {
     const deletedAt = Date.now();
     const target = customers.find((c) => c.id === id);
+    pushUndoSnapshot(`${target?.name || '고객'} 휴지통 이동`);
     const updated = customers.map((c) =>
       c.id === id ? { ...c, deletedAt } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
     showToast(
-      `🗑️ [${
-        target?.name || '고객'
-      }]님이 휴지통으로 이동되었습니다. (설정 ➔ 휴지통에서 30일 내 복원 가능)`
+      `🗑️ [${target?.name || '고객'}]님이 휴지통으로 이동되었습니다.`,
+      true
     );
     await syncCustomerToGas('update', { id, deletedAt });
   };
 
-  // 7-1. 휴지통에서 고객 복원
   const handleRestoreCustomer = async (id: string) => {
     const target = customers.find((c) => c.id === id);
     const updated = customers.map((c) =>
@@ -299,7 +379,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     await syncCustomerToGas('update', { id, deletedAt: undefined });
   };
 
-  // 7-2. 휴지통에서 영구 삭제
   const handlePermanentDeleteCustomer = async (id: string) => {
     const updated = customers.filter((c) => c.id !== id);
     const deduped = setCachedCustomers(updated);
@@ -307,7 +386,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     await syncCustomerToGas('delete', { id });
   };
 
-  // 7-3. 휴지통 전체 비우기
   const handleEmptyTrash = () => {
     const updated = customers.filter((c) => !c.deletedAt);
     const deduped = setCachedCustomers(updated);
@@ -315,7 +393,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     showToast('🗑️ 휴지통을 모두 비웠습니다.');
   };
 
-  // 8. 신규 고객 등록
   const handleAddNewCustomer = async (newCustomer: CustomerItem) => {
     const updated = [newCustomer, ...customers];
     const deduped = setCachedCustomers(updated);
@@ -324,13 +401,11 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     await syncCustomerToGas('create', newCustomer);
   };
 
-  // 9. 백업 파일에서 전체 고객 복원
   const handleImportCustomers = (imported: CustomerItem[]) => {
     const merged = setCachedCustomers([...imported, ...customers]);
     setCustomers(merged);
   };
 
-  // 10. 문자 발송 시 상태 자동 변경 ('신규/미발송' -> '발송완료')
   const handleMarkSmsSent = async (customerId: string) => {
     const target = customers.find((c) => c.id === customerId);
     if (target && target.status === '신규/미발송') {
@@ -338,7 +413,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     }
   };
 
-  // KPI 통계 계산 (휴지통 제외 활성 고객 기준)
   const kpiStats = useMemo(() => {
     const briefing = getBriefingSummary(activeCustomers);
     const urgentCount = activeCustomers.filter((c) =>
@@ -373,7 +447,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     };
   }, [activeCustomers]);
 
-  // 탭별 카운트 (휴지통 제외 활성 고객 기준)
   const tabCounts = useMemo(() => {
     const map: Record<string, number> = {
       전체: activeCustomers.length,
@@ -399,28 +472,29 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     return map;
   }, [activeCustomers]);
 
-  // 검색 + 탭 필터 + 정렬된 리스트 (휴지통 제외 활성 고객 기준)
   const filteredCustomers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
     const filtered = activeCustomers.filter((c) => {
-      if (activeTab === '🔥긴급/오늘할일') {
-        if (!isUrgentCustomer(c)) return false;
-      } else if (activeTab === '🚚물류/배송대기') {
-        if (c.status === '취소/보류') return false;
-        const diff = getDeliveryDDay(c.deliveryDate).diff;
-        if (diff === null || diff < 0 || c.logisticsConfirmed) return false;
-      } else if (activeTab === '🎁사은품미지급') {
-        if (
-          c.status === '취소/보류' ||
-          !c.giftItems ||
-          !c.giftItems.trim() ||
-          c.giftSent
-        ) {
-          return false;
+      if (viewMode === 'grid') {
+        if (activeTab === '🔥긴급/오늘할일') {
+          if (!isUrgentCustomer(c)) return false;
+        } else if (activeTab === '🚚물류/배송대기') {
+          if (c.status === '취소/보류') return false;
+          const diff = getDeliveryDDay(c.deliveryDate).diff;
+          if (diff === null || diff < 0 || c.logisticsConfirmed) return false;
+        } else if (activeTab === '🎁사은품미지급') {
+          if (
+            c.status === '취소/보류' ||
+            !c.giftItems ||
+            !c.giftItems.trim() ||
+            c.giftSent
+          ) {
+            return false;
+          }
+        } else if (activeTab !== '전체') {
+          if (c.status !== activeTab) return false;
         }
-      } else if (activeTab !== '전체') {
-        if (c.status !== activeTab) return false;
       }
 
       if (!q) return true;
@@ -453,10 +527,14 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       }
       return b.regDate.localeCompare(a.regDate);
     });
-  }, [activeCustomers, activeTab, searchQuery, sortOrder]);
+  }, [activeCustomers, activeTab, searchQuery, sortOrder, viewMode]);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F4F2ED] text-[#18181B]">
+    <div
+      className={`min-h-screen flex flex-col ${
+        isDark ? 'bg-[#0B0E14] text-slate-100' : 'bg-[#F4F2ED] text-[#18181B]'
+      }`}
+    >
       {/* 상단 고정 헤더 */}
       <CRMHeader
         totalCount={kpiStats.totalCount}
@@ -474,160 +552,305 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         }}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenBriefing={() => setIsBriefingOpen(true)}
-        onQuickFilter={(tab) => setActiveTab(tab)}
+        onQuickFilter={(tab) => {
+          setViewMode('grid');
+          setActiveTab(tab);
+        }}
         onBackToHome={onBackToHome}
       />
 
-      {/* 상단 토스트 알림 */}
-      {toastMsg && (
-        <div className="fixed bottom-5 right-5 z-50 max-w-md bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-2.5 text-xs font-extrabold">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-          <span>{toastMsg}</span>
+      {/* Sonner 스타일 하단 플로팅 토스트 (Undo 되돌리기 버튼 내장) */}
+      {toastState && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 w-[92vw] max-w-md bg-[#18181B] text-white px-4 py-3 rounded-2xl shadow-2xl border border-white/15 flex items-center justify-between gap-2.5 text-xs font-extrabold schedule-sheet-enter">
+          <div className="flex items-center gap-2 min-w-0">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="truncate">{toastState.msg}</span>
+          </div>
+          {toastState.canUndo && undoHistory.length > 0 && (
+            <button
+              type="button"
+              onClick={handleUndoLastAction}
+              className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 text-[11px] font-black shrink-0 cursor-pointer"
+            >
+              ↩ 되돌리기
+            </button>
+          )}
         </div>
       )}
 
       {/* 메인 컨텐츠 */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
-        {/* 검색창 + 정렬 + 필터 탭 바 */}
-        <div className="bg-white p-4 rounded-3xl border border-[#E4DFD5] shadow-2xs space-y-3">
-          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5">
-            {/* 실시간 검색창 */}
+        {/* 1) Tremor 스타일 월간 매출·전환율·파이프라인 KPI 대시보드 바 */}
+        <CrmAnalyticsStrip
+          customers={activeCustomers}
+          isDark={isDark}
+          onSelectFilter={(tab) => {
+            setViewMode('grid');
+            setActiveTab(tab);
+          }}
+        />
+
+        {/* 2) 3대 뷰 모드 전환 (카드 그리드 / 칸반 보드 / 배송 캘린더) + 검색창 + 정렬 */}
+        <div
+          className={`p-4 rounded-3xl border shadow-2xs space-y-3 ${
+            isDark
+              ? 'bg-[#151A25] border-white/10'
+              : 'bg-white border-[#E4DFD5]'
+          }`}
+        >
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5">
+            {/* 좌측: 3대 뷰 전환 세그먼트 컨트롤 */}
+            <div
+              className={`grid grid-cols-3 sm:inline-flex p-1 rounded-2xl border shrink-0 ${
+                isDark
+                  ? 'bg-[#0B0E14] border-white/10'
+                  : 'bg-[#F4F2ED] border-[#E4DFD5]'
+              }`}
+            >
+              {[
+                {
+                  id: 'grid' as CrmViewMode,
+                  label: '카드 그리드',
+                  icon: <LayoutGrid className="w-3.5 h-3.5" />,
+                },
+                {
+                  id: 'kanban' as CrmViewMode,
+                  label: '칸반 보드',
+                  icon: <Kanban className="w-3.5 h-3.5" />,
+                },
+                {
+                  id: 'calendar' as CrmViewMode,
+                  label: '배송 달력',
+                  icon: <Calendar className="w-3.5 h-3.5" />,
+                },
+              ].map((v) => {
+                const active = viewMode === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setViewMode(v.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer schedule-tab-btn ${
+                      active
+                        ? isDark
+                          ? 'bg-[#1E2738] text-sky-300 border border-sky-400/30 shadow-xs'
+                          : 'bg-white text-[#18181B] border border-[#D6D0C4] shadow-xs'
+                        : isDark
+                        ? 'text-slate-400 hover:text-slate-200'
+                        : 'text-[#68625D] hover:text-[#18181B]'
+                    }`}
+                  >
+                    {v.icon}
+                    <span>{v.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 중앙: 실시간 검색창 (모바일 16px 자동 줌인 방지 적용) */}
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="고객명, 연락처(뒷자리), 모델명, 전표번호, 사은품 검색..."
-                className="w-full pl-10 pr-8 py-2 rounded-xl border border-slate-200 bg-slate-50/70 text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                className={`w-full pl-10 pr-8 py-2 rounded-xl border text-base sm:text-sm font-medium focus:outline-none ${
+                  isDark
+                    ? 'bg-[#1B2230] border-white/10 text-white placeholder:text-slate-500'
+                    : 'bg-[#FAF8F4] border-[#E4DFD5] text-slate-800 placeholder:text-slate-400'
+                }`}
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold opacity-60 hover:opacity-100 cursor-pointer"
                 >
                   ✕
                 </button>
               )}
             </div>
 
-            {/* 정렬 드롭다운 */}
+            {/* 우측: 정렬 + 되돌리기 버튼 */}
             <div className="flex items-center gap-2 shrink-0">
-              <div className="flex items-center gap-1.5 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">
-                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
-                <select
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                  className="bg-transparent text-xs font-extrabold text-slate-700 focus:outline-none cursor-pointer"
-                >
-                  <option value="urgentFirst">🔥 긴급/할일 우선순</option>
-                  <option value="deliveryAsc">🚚 배송 임박순 (D-Day)</option>
-                  <option value="regDesc">🕒 최근 등록/상담순</option>
-                  <option value="amountDesc">💰 결제금액 높은순</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* 상태별 필터 탭 */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
-            {FILTER_TABS.map((tab) => {
-              const active = activeTab === tab;
-              const isSpecialUrgent = tab === '🔥긴급/오늘할일';
-              return (
+              {undoHistory.length > 0 && (
                 <button
-                  key={tab}
                   type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-                    active
-                      ? isSpecialUrgent
-                        ? 'bg-rose-600 text-white shadow-xs'
-                        : 'bg-[#18181B] text-white shadow-xs'
-                      : isSpecialUrgent
-                      ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
-                      : 'bg-[#F4F2ED] hover:bg-[#EAE5DC] text-[#57534E] border border-[#E4DFD5]'
+                  onClick={handleUndoLastAction}
+                  className={`px-3 py-2 rounded-xl border text-xs font-black inline-flex items-center gap-1 cursor-pointer schedule-tactile ${
+                    isDark
+                      ? 'bg-[#1B2230] text-amber-300 border-white/10'
+                      : 'bg-[#FAF5EC] text-[#6E4423] border-[#D8C3A8]'
                   }`}
                 >
-                  <span>{tab}</span>
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>되돌리기</span>
+                </button>
+              )}
+
+              {viewMode === 'grid' && (
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border ${
+                    isDark
+                      ? 'bg-[#1B2230] border-white/10 text-slate-200'
+                      : 'bg-[#FAF8F4] border-[#E4DFD5] text-slate-700'
+                  }`}
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5 opacity-65" />
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+                    className="bg-transparent text-base sm:text-xs font-extrabold focus:outline-none cursor-pointer"
+                  >
+                    <option value="urgentFirst">🔥 긴급/할일 우선순</option>
+                    <option value="deliveryAsc">🚚 배송 임박순 (D-Day)</option>
+                    <option value="regDesc">🕒 최근 등록/상담순</option>
+                    <option value="amountDesc">💰 결제금액 높은순</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 상태별 필터 탭 (그리드 뷰일 때 노출) */}
+          {viewMode === 'grid' && (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 no-scrollbar">
+              {FILTER_TABS.map((tab) => {
+                const active = activeTab === tab;
+                const isSpecialUrgent = tab === '🔥긴급/오늘할일';
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5 cursor-pointer schedule-tactile ${
                       active
-                        ? 'bg-white/20 text-white'
+                        ? isSpecialUrgent
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : isDark
+                          ? 'bg-sky-400 text-slate-950 shadow-xs'
+                          : 'bg-[#18181B] text-white shadow-xs'
                         : isSpecialUrgent
-                        ? 'bg-rose-200/70 text-rose-800'
-                        : 'bg-white text-slate-600'
+                        ? isDark
+                          ? 'bg-rose-500/15 text-rose-300 border border-rose-400/30'
+                          : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                        : isDark
+                        ? 'bg-[#1B2230] hover:bg-white/10 text-slate-300 border border-white/10'
+                        : 'bg-[#F4F2ED] hover:bg-[#EAE5DC] text-[#57534E] border border-[#E4DFD5]'
                     }`}
                   >
-                    {tabCounts[tab] ?? 0}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 안내 배너: 카드를 클릭하면 상세 정보 및 견적 보관함이 열립니다 */}
-        <div className="flex items-center justify-between px-1 text-xs text-slate-500 font-semibold">
-          <span>
-            💡 고객 카드를 클릭하면 상세 메모·전표·사은품 및{' '}
-            <strong className="text-indigo-600">다중 견적 보관함(최대 5개)</strong>
-            을 확인할 수 있습니다.
-          </span>
-          <span className="font-bold text-slate-700">
-            표시 {filteredCustomers.length}명
-          </span>
-        </div>
-
-        {/* 컴팩트 고객 카드 그리드 (한눈에 많이 보이는 3~4열) */}
-        {filteredCustomers.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-              <FolderOpen className="w-6 h-6" />
+                    <span>{tab}</span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                        active
+                          ? 'bg-black/20 text-current'
+                          : isSpecialUrgent
+                          ? 'bg-rose-500/20 text-rose-500'
+                          : 'bg-black/10'
+                      }`}
+                    >
+                      {tabCounts[tab] ?? 0}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <h3 className="text-base font-black text-slate-700">
-              조건에 맞는 고객 내역이 없습니다
-            </h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              우측 상단의 [신규 등록] 버튼을 누르거나, 견적서 계산 화면에서 [💾 CRM 고객 저장]을 누르면 이곳에 자동으로 쌓입니다.
-            </p>
-            {activeTab !== '전체' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('전체');
-                  setSearchQuery('');
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                전체 고객 보기로 돌아가기
-              </button>
-            )}
-          </div>
+          )}
+        </div>
+
+        {/* 3) 뷰 모드별 메인 스테이지 */}
+        {viewMode === 'kanban' ? (
+          <CrmKanbanBoard
+            customers={filteredCustomers}
+            isDark={isDark}
+            onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+            onStatusChange={handleStatusChange}
+            onOpenSMS={(c) => setSmsCustomer(c)}
+            onOpenQuote={(c) => onOpenCustomerInQuoteBuilder(c)}
+          />
+        ) : viewMode === 'calendar' ? (
+          <CrmDeliveryCalendar
+            customers={filteredCustomers}
+            isDark={isDark}
+            onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+          />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredCustomers.map((customer) => (
-              <CompactCustomerCard
-                key={customer.id}
-                customer={customer}
-                onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
-                onOpenSMS={(c, e) => {
-                  e.stopPropagation();
-                  setSmsCustomer(c);
-                }}
-                onOpenQuote={(c, e) => {
-                  e.stopPropagation();
-                  onOpenCustomerInQuoteBuilder(c);
-                }}
-              />
-            ))}
-          </div>
+          <>
+            <div className="flex items-center justify-between px-1 text-xs opacity-75 font-semibold">
+              <span>
+                💡 물류·사은품 배지를 누르거나 모바일에서 좌우로 밀면 즉시 처리됩니다 · 카드 클릭 시 다중 견적 보관함(최대 5개) 오픈
+              </span>
+              <span className="font-bold font-mono">
+                표시 {filteredCustomers.length}명
+              </span>
+            </div>
+
+            {filteredCustomers.length === 0 ? (
+              <div
+                className={`rounded-3xl border p-12 text-center space-y-3 ${
+                  isDark
+                    ? 'bg-[#151A25] border-white/10'
+                    : 'bg-white border-slate-200/80'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-slate-500/10 text-slate-400 flex items-center justify-center mx-auto">
+                  <FolderOpen className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-black">
+                  조건에 맞는 고객 내역이 없습니다
+                </h3>
+                <p className="text-xs opacity-70 max-w-md mx-auto">
+                  우측 상단의 [신규 등록] 버튼을 누르거나, 견적서 계산 화면에서 [고객저장]을 누르면 이곳에 자동으로 쌓입니다.
+                </p>
+                {activeTab !== '전체' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('전체');
+                      setSearchQuery('');
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    전체 고객 보기로 돌아가기
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                {filteredCustomers.map((customer) => (
+                  <CompactCustomerCard
+                    key={customer.id}
+                    customer={customer}
+                    isDark={isDark}
+                    onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+                    onOpenSMS={(c, e) => {
+                      e.stopPropagation();
+                      setSmsCustomer(c);
+                    }}
+                    onOpenQuote={(c, e) => {
+                      e.stopPropagation();
+                      onOpenCustomerInQuoteBuilder(c);
+                    }}
+                    onToggleLogistics={(c) =>
+                      handleFieldChange(c.id, {
+                        logisticsConfirmed: !c.logisticsConfirmed,
+                      })
+                    }
+                    onToggleGift={(c) =>
+                      handleFieldChange(c.id, {
+                        giftSent: !c.giftSent,
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </main>
 
-      {/* 고객 상세 카드 & 다중 견적 보관함 팝업 모달 */}
       <CustomerDetailModal
         customer={selectedCustomer}
         onClose={() => setSelectedCustomerId(null)}
@@ -644,14 +867,12 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         onOpenQuote={(c) => onOpenCustomerInQuoteBuilder(c)}
       />
 
-      {/* 원클릭 문자/알림톡 모달 */}
       <SMSModal
         customer={smsCustomer}
         onClose={() => setSmsCustomer(null)}
         onMarkSent={handleMarkSmsSent}
       />
 
-      {/* 신규 고객 등록 모달 */}
       <NewCustomerModal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
@@ -659,12 +880,14 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         prefillData={prefillNewCustomer}
       />
 
-      {/* 출근 모닝 브리핑 모달 */}
       <MorningBriefingModal
         isOpen={isBriefingOpen}
         onClose={() => setIsBriefingOpen(false)}
         customers={activeCustomers}
-        onSelectFilter={(tab) => setActiveTab(tab)}
+        onSelectFilter={(tab) => {
+          setViewMode('grid');
+          setActiveTab(tab);
+        }}
         onOpenSMS={(c) => setSmsCustomer(c)}
         onToggleLogistics={(c) =>
           handleFieldChange(c.id, {
@@ -678,7 +901,6 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         }
       />
 
-      {/* 데이터 백업 / 알림 / 휴지통 설정 모달 */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
