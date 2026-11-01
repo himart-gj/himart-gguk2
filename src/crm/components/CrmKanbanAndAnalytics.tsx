@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CustomerItem, CustomerStatus, FilterTab } from '../types/crm';
-import { formatCurrency, getDeliveryDDay } from '../utils/date';
+import { formatCurrency, formatShortManwon, getDeliveryDDay } from '../utils/date';
 import { resolveCustomerPerformanceProfile } from '../utils/settlementEngine';
-import { SpringNumberFlow } from '../../components/SpringNumberFlow';
 import {
   ArrowRight,
   Calculator,
@@ -17,7 +16,7 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// 1. Tremor 스타일 가망 파이프라인 & 전환율 요약 스트립 (총판·실판 보드 하단 보조 바)
+// 1. 컴팩트 1줄 가망 파이프라인 & 단계별 빠른 필터 바
 // ============================================================================
 export interface CrmAnalyticsStripProps {
   customers: CustomerItem[];
@@ -34,26 +33,21 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
     const closed = customers.filter(
       (c) => c.status === '계약완료' || c.status === '발송완료'
     );
-
     const activeLeads = customers.filter(
       (c) =>
         c.status === '신규/미발송' ||
         c.status === '상담진행중' ||
         c.status === '미구매/고민중'
     );
-
-    // 가망 파이프라인도 동일하게 실적 기준(일반=제품합계, 구독=구독원금)으로 산출
     const pipelinePerfSum = activeLeads.reduce(
       (s, c) => s + resolveCustomerPerformanceProfile(c).performanceAmount,
       0
     );
-
     const totalValid = customers.filter((c) => c.status !== '취소/보류').length;
     const convRate =
       totalValid > 0 ? Math.round((closed.length / totalValid) * 100) : 0;
 
     return {
-      closedCount: closed.length,
       activeLeadCount: activeLeads.length,
       pipelinePerfSum,
       convRate,
@@ -71,114 +65,52 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
     : 'bg-white border-[#E4DFD5] text-[#18181B]';
   const mutedCls = isDark ? 'text-slate-400' : 'text-[#78716C]';
 
-  const totalBar = Math.max(
-    1,
-    metrics.byStatus.newLead +
-      metrics.byStatus.consulting +
-      metrics.byStatus.hesitating +
-      metrics.byStatus.contracted
-  );
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {/* KPI 1: 가망 파이프라인 대기 금액 (원금/합계 기준) */}
-      <div className={`rounded-3xl border p-4 shadow-2xs space-y-1.5 ${cardCls}`}>
-        <div className="flex items-center justify-between">
-          <span className={`text-xs font-extrabold ${mutedCls}`}>
-            상담·고민중 가망 파이프라인 ({metrics.activeLeadCount}명)
-          </span>
-          <button
-            type="button"
-            onClick={() => onSelectFilter('미구매/고민중')}
-            className="text-[11px] font-black text-indigo-500 hover:underline cursor-pointer"
-          >
-            고민고객 보기 →
-          </button>
-        </div>
-        <div
-          className={`text-xl sm:text-2xl font-black ${
-            isDark ? 'text-sky-300' : 'text-[#18181B]'
-          }`}
-        >
-          <SpringNumberFlow value={metrics.pipelinePerfSum} suffix="원" />
-        </div>
-        <div className={`text-[11px] font-bold flex items-center gap-1.5 ${mutedCls}`}>
+    <div
+      className={`rounded-2xl border px-3 py-2 shadow-2xs flex flex-wrap items-center justify-between gap-2 text-xs ${cardCls}`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center gap-1 font-extrabold ${mutedCls}`}>
           <TrendingUp className="w-3.5 h-3.5 text-sky-500" />
-          <span>현재 누적 성약 전환율: </span>
-          <strong className="font-mono text-sky-500">{metrics.convRate}%</strong>
-          <span className="opacity-70">· 미구매 건은 수당/확정실적 제외</span>
-        </div>
+          <span>상담·고민 가망 ({metrics.activeLeadCount}명)</span>
+        </span>
+        <span className="font-black font-mono">
+          {formatShortManwon(metrics.pipelinePerfSum)}
+        </span>
+        <span className={`text-[11px] font-bold ${mutedCls}`}>
+          · 성약률 <strong className="font-mono text-sky-500">{metrics.convRate}%</strong>
+        </span>
       </div>
 
-      {/* KPI 2: 파이프라인 단계 분포 인터랙티브 바 */}
-      <div className={`rounded-3xl border p-4 shadow-2xs flex flex-col justify-between gap-2 ${cardCls}`}>
-        <div className="flex items-center justify-between text-xs font-extrabold">
-          <span className={mutedCls}>단계별 고객 분포 (클릭 시 즉시 필터)</span>
-          <span className="font-mono">{customers.length}명</span>
-        </div>
-
-        {/* Stacked Distribution Bar */}
-        <div className="w-full h-3 rounded-full overflow-hidden flex bg-black/5">
-          <button
-            type="button"
-            onClick={() => onSelectFilter('신규/미발송')}
-            style={{ width: `${(metrics.byStatus.newLead / totalBar) * 100}%` }}
-            className="bg-rose-500 h-full cursor-pointer"
-            title={`신규/미발송 ${metrics.byStatus.newLead}명`}
-          />
-          <button
-            type="button"
-            onClick={() => onSelectFilter('상담진행중')}
-            style={{ width: `${(metrics.byStatus.consulting / totalBar) * 100}%` }}
-            className="bg-indigo-500 h-full cursor-pointer"
-            title={`상담진행중 ${metrics.byStatus.consulting}명`}
-          />
-          <button
-            type="button"
-            onClick={() => onSelectFilter('미구매/고민중')}
-            style={{ width: `${(metrics.byStatus.hesitating / totalBar) * 100}%` }}
-            className="bg-amber-400 h-full cursor-pointer"
-            title={`미구매/고민중 ${metrics.byStatus.hesitating}명`}
-          />
-          <button
-            type="button"
-            onClick={() => onSelectFilter('계약완료')}
-            style={{ width: `${(metrics.byStatus.contracted / totalBar) * 100}%` }}
-            className="bg-emerald-500 h-full cursor-pointer"
-            title={`계약/발송완료 ${metrics.byStatus.contracted}명`}
-          />
-        </div>
-
-        <div className="flex items-center justify-between text-[10px] font-black flex-wrap gap-1">
-          <button
-            type="button"
-            onClick={() => onSelectFilter('신규/미발송')}
-            className="text-rose-500 cursor-pointer"
-          >
-            ● 신규 {metrics.byStatus.newLead}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectFilter('상담진행중')}
-            className="text-indigo-500 cursor-pointer"
-          >
-            ● 상담 {metrics.byStatus.consulting}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectFilter('미구매/고민중')}
-            className="text-amber-500 cursor-pointer"
-          >
-            ● 고민 {metrics.byStatus.hesitating}
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectFilter('계약완료')}
-            className="text-emerald-500 cursor-pointer"
-          >
-            ● 확정 {metrics.byStatus.contracted}
-          </button>
-        </div>
+      <div className="flex items-center gap-2.5 text-[11px] font-black flex-wrap">
+        <button
+          type="button"
+          onClick={() => onSelectFilter('신규/미발송')}
+          className="text-rose-500 hover:underline cursor-pointer"
+        >
+          ● 신규 {metrics.byStatus.newLead}
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectFilter('상담진행중')}
+          className="text-indigo-500 hover:underline cursor-pointer"
+        >
+          ● 상담 {metrics.byStatus.consulting}
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectFilter('미구매/고민중')}
+          className="text-amber-500 hover:underline cursor-pointer"
+        >
+          ● 고민 {metrics.byStatus.hesitating}
+        </button>
+        <button
+          type="button"
+          onClick={() => onSelectFilter('계약완료')}
+          className="text-emerald-500 hover:underline cursor-pointer"
+        >
+          ● 확정 {metrics.byStatus.contracted}
+        </button>
       </div>
     </div>
   );

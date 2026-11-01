@@ -632,7 +632,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       )}
 
       {/* 메인 컨텐츠 */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-2.5 space-y-2.5">
         {/* 1) 월간 총판·실판 분리 & 프리드/제품모델별 수당 정산 통합 허브 */}
         <CrmSalesAndIncentivePanel
           customers={activeCustomers}
@@ -643,6 +643,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
           onChangeTab={setSettlementTab}
           onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
           onShowToast={(msg) => showToast(msg, false)}
+          defaultExpanded={Boolean(initialSettlementTab)}
         />
 
         {/* 1-2) 가망 파이프라인 & 전환율 보조 대시보드 */}
@@ -657,7 +658,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
         {/* 2) 3대 뷰 모드 전환 (카드 그리드 / 칸반 보드 / 배송 캘린더) + 검색창 + 정렬 */}
         <div
-          className={`p-4 rounded-3xl border shadow-2xs space-y-3 ${
+          className={`p-3 rounded-2xl border shadow-2xs space-y-2.5 ${
             isDark
               ? 'bg-[#151A25] border-white/10'
               : 'bg-white border-[#E4DFD5]'

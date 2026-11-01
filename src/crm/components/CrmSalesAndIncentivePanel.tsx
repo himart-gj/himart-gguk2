@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Award,
   Calendar,
   Check,
   ChevronDown,
@@ -15,9 +14,9 @@ import {
   Loader2,
   Plus,
   Search,
-  Sparkles,
   Trash2,
   Truck,
+  X,
 } from 'lucide-react';
 import {
   CustomerItem,
@@ -42,7 +41,6 @@ import {
   saveAllModelIncentiveSheets,
   upsertMonthlyIncentiveSheet,
 } from '../utils/settlementEngine';
-import { SpringNumberFlow } from '../../components/SpringNumberFlow';
 
 interface CrmSalesAndIncentivePanelProps {
   customers: CustomerItem[];
@@ -53,12 +51,19 @@ interface CrmSalesAndIncentivePanelProps {
   onChangeTab: (tab: SettlementTabId) => void;
   onSelectCustomer: (customer: CustomerItem) => void;
   onShowToast?: (msg: string) => void;
+  defaultExpanded?: boolean;
 }
 
 function shiftYearMonth(ym: string, deltaMonths: number): string {
   const [y, m] = ym.split('-').map(Number);
   const d = new Date(y || new Date().getFullYear(), (m || 1) - 1 + deltaMonths, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatYearMonthShort(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  return `${String(y).slice(2)}.${String(m).padStart(2, '0')}월`;
 }
 
 function formatYearMonthKo(ym: string): string {
@@ -78,12 +83,20 @@ export const CrmSalesAndIncentivePanel: React.FC<
   onChangeTab,
   onSelectCustomer,
   onShowToast,
+  defaultExpanded = false,
 }) => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
   const [incentiveBasis, setIncentiveBasis] =
     useState<IncentiveMonthBasis>('contract');
   const [salesSubView, setSalesSubView] = useState<
     'gross' | 'delivery' | 'undated'
   >('gross');
+
+  useEffect(() => {
+    if (defaultExpanded) {
+      setIsExpanded(true);
+    }
+  }, [defaultExpanded, activeTab]);
 
   const [sheetsMap, setSheetsMap] = useState<ModelIncentivesMap>(() =>
     loadAllModelIncentiveSheets()
@@ -139,7 +152,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
     [customers, selectedYearMonth, currentSheet, incentiveBasis]
   );
 
-  const monthNum = parseInt(selectedYearMonth.split('-')[1] || '1', 10);
   const currentRealYm = getCurrentYearMonth();
 
   const filteredRules = useMemo(() => {
@@ -154,6 +166,21 @@ export const CrmSalesAndIncentivePanel: React.FC<
         (r.note && r.note.toLowerCase().includes(q))
     );
   }, [currentSheet, ruleSearch]);
+
+  const handleOpenOrToggleTab = (
+    targetTab: SettlementTabId,
+    subView?: 'gross' | 'delivery'
+  ) => {
+    if (subView) {
+      setSalesSubView(subView);
+    }
+    if (isExpanded && activeTab === targetTab && (!subView || salesSubView === subView)) {
+      setIsExpanded(false);
+    } else {
+      onChangeTab(targetTab);
+      setIsExpanded(true);
+    }
+  };
 
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -175,9 +202,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
       );
       setSheetsMap(loadAllModelIncentiveSheets());
       onShowToast?.(
-        `📊 ${formatYearMonthKo(selectedYearMonth)} 모델 수당표 반영 완료! (총 ${
-          nextSheet.rules.length
-        }개 모델)`
+        `📊 ${formatYearMonthKo(selectedYearMonth)} 모델 수당표 반영 (${nextSheet.rules.length}개)`
       );
     } catch (err: any) {
       setUploadError(err?.message || '엑셀 파일 분석 중 오류가 발생했습니다.');
@@ -207,7 +232,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
       );
       setSheetsMap(loadAllModelIncentiveSheets());
       onShowToast?.(
-        `📷 사진에서 ${totalParsed.length}개 모델 수당을 추출했습니다! (누적 ${nextSheet.rules.length}개)`
+        `📷 사진에서 ${totalParsed.length}개 모델 수당 추출 완료 (누적 ${nextSheet.rules.length}개)`
       );
     } catch (err: any) {
       setUploadError(err?.message || '사진 분석 중 오류가 발생했습니다.');
@@ -234,21 +259,19 @@ export const CrmSalesAndIncentivePanel: React.FC<
           saleTypeFilter: 'all',
         },
       ],
-      '직접 입력 및 업로드 통합본',
+      '직접 입력',
       false
     );
     setSheetsMap(loadAllModelIncentiveSheets());
     setManualModelCode('');
     setManualIncentive('');
-    onShowToast?.(`✅ [${code}] 수당 ${formatCurrency(amt)}원이 등록되었습니다.`);
+    onShowToast?.(`✅ [${code}] 수당 ${formatCurrency(amt)}원 등록`);
   };
 
   const handleBulkTextApply = () => {
     const parsed = parseModelIncentiveFreeText(bulkPasteText);
     if (parsed.length === 0) {
-      setUploadError(
-        '인식된 모델/수당 줄이 없습니다. 예: "RM70F64M2X 50000" 또는 "OLED65C4 10만" 형태로 입력해 주세요.'
-      );
+      setUploadError('예: "RM70F64M2X 50000" 또는 "OLED65C4 10만" 형태로 입력해 주세요.');
       return;
     }
     setUploadError(null);
@@ -261,9 +284,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
     setSheetsMap(loadAllModelIncentiveSheets());
     setBulkPasteText('');
     setShowManualDrawer(false);
-    onShowToast?.(
-      `✅ ${parsed.length}개 모델 수당이 일괄 반영되었습니다! (총 ${next.rules.length}개)`
-    );
+    onShowToast?.(`✅ ${parsed.length}개 모델 수당 반영 (총 ${next.rules.length}개)`);
   };
 
   const handleQuickAssignSave = () => {
@@ -286,9 +307,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
     );
     setSheetsMap(loadAllModelIncentiveSheets());
     onShowToast?.(
-      `💰 [${quickAssignTarget.modelCode}] 모델 수당 ${formatCurrency(
-        amt
-      )}원이 자동 반영되었습니다!`
+      `💰 [${quickAssignTarget.modelCode}] +${formatCurrency(amt)}원 반영 완료`
     );
     setQuickAssignTarget(null);
     setQuickAssignAmount('');
@@ -329,13 +348,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
     const next = upsertMonthlyIncentiveSheet(
       selectedYearMonth,
       prevSheet.rules,
-      `${formatYearMonthKo(prevYearMonth)} 단가표 복사본`,
+      `${formatYearMonthKo(prevYearMonth)} 복사본`,
       false
     );
     setSheetsMap(loadAllModelIncentiveSheets());
-    onShowToast?.(
-      `📋 ${formatYearMonthKo(prevYearMonth)} 수당 단가표(${next.rules.length}개)를 불러왔습니다.`
-    );
+    onShowToast?.(`📋 전월 단가표(${next.rules.length}개)를 불러왔습니다.`);
   };
 
   const shellCls = isDark
@@ -345,30 +362,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
     ? 'bg-[#0E131D] border-white/10'
     : 'bg-[#FAF8F4] border-[#E4DFD5]';
   const mutedCls = isDark ? 'text-slate-400' : 'text-[#78716C]';
-
-  const renderSaleTypeBadge = (
-    saleType: 'general' | 'subscription' | 'hybrid'
-  ) => {
-    if (saleType === 'subscription') {
-      return (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/15 text-rose-500 border border-rose-500/25">
-          구독원금 기준
-        </span>
-      );
-    }
-    if (saleType === 'hybrid') {
-      return (
-        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-500/15 text-indigo-500 border border-indigo-500/25">
-          일반합계+구독원금
-        </span>
-      );
-    }
-    return (
-      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/15 text-sky-600 border border-sky-500/25">
-        제품합계 기준
-      </span>
-    );
-  };
 
   const activeSalesRows: ConfirmedCustomerSettlementRow[] = useMemo(() => {
     if (salesSubView === 'delivery') return report.netDeliveryRows;
@@ -381,1058 +374,866 @@ export const CrmSalesAndIncentivePanel: React.FC<
   return (
     <section
       id="crm-sales-incentive-hub"
-      className={`rounded-3xl border p-4 sm:p-5 shadow-2xs space-y-4 ${shellCls}`}
+      className={`rounded-2xl border px-3 py-2 shadow-2xs transition ${shellCls}`}
     >
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div
-            className={`inline-flex items-center gap-1 p-1 rounded-2xl border ${subSurfaceCls}`}
-          >
-            <button
-              type="button"
-              onClick={() =>
-                onChangeYearMonth(shiftYearMonth(selectedYearMonth, -1))
-              }
-              className="p-1.5 rounded-xl hover:bg-black/5 cursor-pointer schedule-tactile"
-              title="이전 달"
+      {/* 슬림 요약 바: 데스크톱 1줄 · 모바일 깔끔한 2단 그리드 */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-1.5">
+        {/* 상단/좌측: 월 선택 + (모바일에서는 우측에 수당합계 배치) */}
+        <div className="flex items-center justify-between lg:justify-start gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5">
+            <div
+              className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-xl border ${subSurfaceCls}`}
             >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-2.5 text-sm font-black font-mono">
-              {formatYearMonthKo(selectedYearMonth)}
-            </span>
-            <button
-              type="button"
-              onClick={() =>
-                onChangeYearMonth(shiftYearMonth(selectedYearMonth, 1))
-              }
-              className="p-1.5 rounded-xl hover:bg-black/5 cursor-pointer schedule-tactile"
-              title="다음 달"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeYearMonth(shiftYearMonth(selectedYearMonth, -1))
+                }
+                className="p-1 rounded-lg hover:bg-black/5 cursor-pointer"
+                title="이전 달"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="px-1.5 text-xs font-black font-mono">
+                {formatYearMonthShort(selectedYearMonth)}
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeYearMonth(shiftYearMonth(selectedYearMonth, 1))
+                }
+                className="p-1 rounded-lg hover:bg-black/5 cursor-pointer"
+                title="다음 달"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {selectedYearMonth !== currentRealYm && (
+              <button
+                type="button"
+                onClick={() => onChangeYearMonth(currentRealYm)}
+                className={`px-2 py-1 rounded-lg text-[11px] font-extrabold border cursor-pointer ${
+                  isDark
+                    ? 'bg-sky-400/15 text-sky-300 border-sky-400/30'
+                    : 'bg-[#F4ECE1] text-[#8C5A32] border-[#DCCBB2]'
+                }`}
+              >
+                당월
+              </button>
+            )}
           </div>
 
-          {selectedYearMonth !== currentRealYm && (
-            <button
-              type="button"
-              onClick={() => onChangeYearMonth(currentRealYm)}
-              className={`px-2.5 py-1.5 rounded-xl text-xs font-black border cursor-pointer schedule-tactile ${
-                isDark
-                  ? 'bg-sky-400/15 text-sky-300 border-sky-400/30'
-                  : 'bg-[#F4ECE1] text-[#8C5A32] border-[#DCCBB2]'
+          {/* 모바일·태블릿용 우측 수당합계 토글 */}
+          <button
+            type="button"
+            onClick={() => setIsExpanded((v) => !v)}
+            className={`lg:hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-black cursor-pointer schedule-tactile ${
+              isDark
+                ? 'bg-[#172234] border-amber-400/35 text-amber-300'
+                : 'bg-[#FAF4EA] border-[#DFC9AC] text-[#7C4D25]'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span>수당</span>
+            <span className="font-mono text-amber-600 dark:text-amber-400">
+              +{formatCurrency(report.grandTotalIncentive)}원
+            </span>
+            {isExpanded ? (
+              <ChevronUp className="w-3.5 h-3.5 opacity-75" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 opacity-75" />
+            )}
+          </button>
+        </div>
+
+        {/* 중앙 4칸 정렬 칩 (모바일 2×2 칼각 그리드 / 태블릿·PC 4칸 1줄) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:items-center gap-1.5 flex-1 lg:justify-center">
+          <button
+            type="button"
+            onClick={() => handleOpenOrToggleTab('sales', 'gross')}
+            className={`flex items-center justify-between lg:justify-start gap-1.5 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+              isExpanded && activeTab === 'sales' && salesSubView === 'gross'
+                ? isDark
+                  ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
+                  : 'bg-emerald-50 border-emerald-400 text-emerald-900'
+                : subSurfaceCls
+            }`}
+            title="당월 계약(총판) 확정 내역 보기"
+          >
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-emerald-600 text-white shrink-0">
+              총판
+            </span>
+            <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 truncate">
+              {formatShortManwon(report.grossSalesTotal)}
+              <span className={`ml-0.5 text-[10px] font-normal ${mutedCls}`}>
+                ({report.grossRows.length})
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenOrToggleTab('sales', 'delivery')}
+            className={`flex items-center justify-between lg:justify-start gap-1.5 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+              isExpanded && activeTab === 'sales' && salesSubView === 'delivery'
+                ? isDark
+                  ? 'bg-sky-500/20 border-sky-400/60 text-sky-200'
+                  : 'bg-sky-50 border-sky-400 text-sky-900'
+                : subSurfaceCls
+            }`}
+            title="당월 배송(실판) 내역 보기"
+          >
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-sky-600 text-white shrink-0">
+              실판
+            </span>
+            <span
+              className={`font-black font-mono truncate ${
+                isDark ? 'text-sky-400' : 'text-blue-600'
               }`}
             >
-              이번 달로 이동
-            </button>
-          )}
+              {formatShortManwon(report.netDeliverySalesTotal)}
+              <span className={`ml-0.5 text-[10px] font-normal ${mutedCls}`}>
+                ({report.netDeliveryRows.length})
+              </span>
+            </span>
+          </button>
 
-          <span
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-extrabold border ${
-              isDark
-                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-400/25'
-                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+          <button
+            type="button"
+            onClick={() => handleOpenOrToggleTab('freed')}
+            className={`flex items-center justify-between lg:justify-start gap-1 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+              isExpanded && activeTab === 'freed'
+                ? isDark
+                  ? 'bg-amber-400/20 border-amber-400/60 text-amber-200'
+                  : 'bg-amber-50 border-amber-400 text-amber-900'
+                : subSurfaceCls
             }`}
+            title="프리드 가입 건수 및 종류별 수당 보기"
           >
-            <Sparkles className="w-3 h-3" />
-            <span>실적기준: 일반=제품합계금액 · 구독=구독원금 (확정고객 전용)</span>
-          </span>
+            <span className="text-[11px] font-extrabold shrink-0">프리드</span>
+            <span className="font-black font-mono text-amber-500 truncate">
+              +{formatShortManwon(report.freedSummary.totalIncentive)}
+              <span className={`ml-0.5 text-[10px] font-normal ${mutedCls}`}>
+                ({report.freedSummary.totalCount})
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleOpenOrToggleTab('models')}
+            className={`flex items-center justify-between lg:justify-start gap-1 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+              isExpanded && activeTab === 'models'
+                ? isDark
+                  ? 'bg-indigo-500/20 border-indigo-400/60 text-indigo-200'
+                  : 'bg-indigo-50 border-indigo-400 text-indigo-900'
+                : subSurfaceCls
+            }`}
+            title="월별 단가표 업로드 및 모델별 수당 보기"
+          >
+            <span className="text-[11px] font-extrabold shrink-0">모델수당</span>
+            <span className="font-black font-mono text-sky-500 truncate">
+              +{formatShortManwon(report.modelIncentiveTotal)}
+              <span className={`ml-0.5 text-[10px] font-normal ${mutedCls}`}>
+                ({report.matchedModelUnitCount})
+              </span>
+            </span>
+          </button>
         </div>
 
-        <div
-          className={`flex items-center justify-between sm:justify-end gap-3 px-3.5 py-2 rounded-2xl border ${
+        {/* 데스크톱용 우측 수당 총합 + 열기/접기 */}
+        <button
+          type="button"
+          onClick={() => setIsExpanded((v) => !v)}
+          className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
             isDark
-              ? 'bg-gradient-to-r from-[#17253B] to-[#121D2F] border-amber-400/35'
-              : 'bg-gradient-to-r from-[#FAF4EA] to-[#FFFDF9] border-[#DFC9AC]'
+              ? 'bg-[#172234] border-amber-400/35 text-amber-300'
+              : 'bg-[#FAF4EA] border-[#DFC9AC] text-[#7C4D25]'
           }`}
         >
-          <div className="flex items-center gap-1.5 text-xs font-black">
-            <Coins className="w-4 h-4 text-amber-500 shrink-0" />
-            <span>{monthNum}월 총 수당 적립</span>
-          </div>
-          <div className="text-base sm:text-lg font-black font-mono text-amber-500">
-            +<SpringNumberFlow value={report.grandTotalIncentive} suffix="원" />
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            onChangeTab('sales');
-            setSalesSubView('gross');
-          }}
-          className={`text-left rounded-2xl border p-4 transition cursor-pointer schedule-tactile space-y-1.5 ${
-            activeTab === 'sales' && salesSubView === 'gross'
-              ? isDark
-                ? 'bg-[#1A2436] border-emerald-400/60 ring-1 ring-emerald-400/30'
-                : 'bg-[#F6FBF8] border-emerald-500/60 ring-1 ring-emerald-500/20'
-              : subSurfaceCls
-          }`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="px-2 py-0.5 rounded-md text-[11px] font-black bg-emerald-600 text-white">
-                총판
-              </span>
-              <span className="text-xs sm:text-sm font-black">
-                {monthNum}월 당월 계약 매출
-              </span>
-            </div>
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black font-mono bg-emerald-500/15 text-emerald-500">
-              확정 {report.grossRows.length}건
-            </span>
-          </div>
-
-          <div className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-500">
-            <SpringNumberFlow value={report.grossSalesTotal} suffix="원" />
-          </div>
-
-          <div
-            className={`flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold pt-1 border-t ${
-              isDark ? 'border-white/10' : 'border-[#E4DFD5]'
-            } ${mutedCls}`}
-          >
-            <span>
-              일반 합계{' '}
-              <strong className={isDark ? 'text-slate-200' : 'text-[#18181B]'}>
-                {formatShortManwon(report.grossGeneralTotal)}
-              </strong>{' '}
-              · 구독원금{' '}
-              <strong className={isDark ? 'text-rose-300' : 'text-rose-600'}>
-                {formatShortManwon(report.grossSubPrincipalTotal)}
-              </strong>
-            </span>
-            <span className="text-[10px] opacity-80">계약월 기준 ›</span>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            onChangeTab('sales');
-            setSalesSubView('delivery');
-          }}
-          className={`text-left rounded-2xl border p-4 transition cursor-pointer schedule-tactile space-y-1.5 ${
-            activeTab === 'sales' && salesSubView === 'delivery'
-              ? isDark
-                ? 'bg-[#192338] border-sky-400/60 ring-1 ring-sky-400/30'
-                : 'bg-[#F4F9FE] border-sky-500/60 ring-1 ring-sky-500/20'
-              : subSurfaceCls
-          }`}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <span className="px-2 py-0.5 rounded-md text-[11px] font-black bg-sky-600 text-white">
-                실판
-              </span>
-              <span className="text-xs sm:text-sm font-black">
-                {monthNum}월 당월 배송출고 매출
-              </span>
-            </div>
-            <div className="flex items-center gap-1">
-              {report.undatedConfirmedCount > 0 && (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChangeTab('sales');
-                    setSalesSubView('undated');
-                  }}
-                  className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-500 border border-amber-500/30"
-                  title="배송일이 아직 입력되지 않은 당월 확정 고객"
-                >
-                  일정미정 {report.undatedConfirmedCount}건
-                </span>
-              )}
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black font-mono bg-sky-500/15 text-sky-500">
-                배송 {report.netDeliveryRows.length}건
-              </span>
-            </div>
-          </div>
-
-          <div
-            className={`text-2xl sm:text-3xl font-black font-mono tracking-tight ${
-              isDark ? 'text-sky-400' : 'text-blue-600'
-            }`}
-          >
-            <SpringNumberFlow value={report.netDeliverySalesTotal} suffix="원" />
-          </div>
-
-          <div
-            className={`flex flex-wrap items-center justify-between gap-1 text-[11px] font-bold pt-1 border-t ${
-              isDark ? 'border-white/10' : 'border-[#E4DFD5]'
-            } ${mutedCls}`}
-          >
-            <span>
-              일반 합계{' '}
-              <strong className={isDark ? 'text-slate-200' : 'text-[#18181B]'}>
-                {formatShortManwon(report.netGeneralTotal)}
-              </strong>{' '}
-              · 구독원금{' '}
-              <strong className={isDark ? 'text-rose-300' : 'text-rose-600'}>
-                {formatShortManwon(report.netSubPrincipalTotal)}
-              </strong>
-            </span>
-            <span className="text-[10px] opacity-80">배송월 기준 ›</span>
-          </div>
+          <Coins className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <span>수당합계</span>
+          <span className="font-mono text-amber-600 dark:text-amber-400">
+            +{formatCurrency(report.grandTotalIncentive)}원
+          </span>
+          {isExpanded ? (
+            <ChevronUp className="w-3.5 h-3.5 opacity-75" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 opacity-75" />
+          )}
         </button>
       </div>
 
-      <div
-        className={`grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 rounded-2xl border ${subSurfaceCls}`}
-      >
-        <button
-          type="button"
-          onClick={() => onChangeTab('sales')}
-          className={`px-3 py-2.5 rounded-xl text-xs font-black flex items-center justify-between sm:justify-center gap-2 cursor-pointer schedule-tab-btn ${
-            activeTab === 'sales'
-              ? isDark
-                ? 'bg-[#1E2738] text-white border border-sky-400/35 shadow-xs'
-                : 'bg-[#18181B] text-white shadow-xs'
-              : mutedCls
+      {/* 펼쳐졌을 때만 나타나는 심플·컴팩트 상세 탭 영역 */}
+      {isExpanded && (
+        <div
+          className={`mt-2.5 pt-2.5 border-t space-y-2.5 ${
+            isDark ? 'border-white/10' : 'border-[#EAE5DC]'
           }`}
         >
-          <span>📊 총판 · 실판 확정내역</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-500/20 text-emerald-400">
-            {report.grossRows.length}/{report.netDeliveryRows.length}건
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onChangeTab('freed')}
-          className={`px-3 py-2.5 rounded-xl text-xs font-black flex items-center justify-between sm:justify-center gap-2 cursor-pointer schedule-tab-btn ${
-            activeTab === 'freed'
-              ? isDark
-                ? 'bg-[#1E2738] text-amber-300 border border-amber-400/40 shadow-xs'
-                : 'bg-[#18181B] text-amber-300 shadow-xs'
-              : mutedCls
-          }`}
-        >
-          <span>💎 프리드 가입 · 수당</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-500/20 text-amber-500">
-            {report.freedSummary.totalCount}건 · +
-            {formatShortManwon(report.freedSummary.totalIncentive)}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => onChangeTab('models')}
-          className={`px-3 py-2.5 rounded-xl text-xs font-black flex items-center justify-between sm:justify-center gap-2 cursor-pointer schedule-tab-btn ${
-            activeTab === 'models'
-              ? isDark
-                ? 'bg-[#1E2738] text-sky-300 border border-sky-400/40 shadow-xs'
-                : 'bg-[#18181B] text-sky-300 shadow-xs'
-              : mutedCls
-          }`}
-        >
-          <span>🏷️ 제품 모델별 수당</span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-sky-500/20 text-sky-500">
-            {report.matchedModelUnitCount}대 · +
-            {formatShortManwon(report.modelIncentiveTotal)}
-          </span>
-        </button>
-      </div>
-
-      {activeTab === 'sales' && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
+          {/* 컴팩트 탭 바 + 안내 + 닫기 */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5">
+            <div
+              className={`inline-flex items-center gap-1 p-0.5 rounded-xl border ${subSurfaceCls}`}
+            >
               {[
                 {
-                  id: 'gross' as const,
-                  label: `총판 확정 (${report.grossRows.length}건)`,
+                  id: 'sales' as SettlementTabId,
+                  label: `총판·실판 (${report.grossRows.length}/${report.netDeliveryRows.length})`,
                 },
                 {
-                  id: 'delivery' as const,
-                  label: `실판 배송 (${report.netDeliveryRows.length}건)`,
+                  id: 'freed' as SettlementTabId,
+                  label: `프리드 수당 (${report.freedSummary.totalCount}건)`,
                 },
-                ...(report.undatedConfirmedCount > 0
-                  ? [
-                      {
-                        id: 'undated' as const,
-                        label: `⚠️ 배송일 미지정 (${report.undatedConfirmedCount}건)`,
-                      },
-                    ]
-                  : []),
-              ].map((pill) => {
-                const active = salesSubView === pill.id;
+                {
+                  id: 'models' as SettlementTabId,
+                  label: `모델별 수당 (${report.matchedModelUnitCount}대)`,
+                },
+              ].map((t) => {
+                const active = activeTab === t.id;
                 return (
                   <button
-                    key={pill.id}
+                    key={t.id}
                     type="button"
-                    onClick={() => setSalesSubView(pill.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border cursor-pointer schedule-tactile ${
+                    onClick={() => onChangeTab(t.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black cursor-pointer transition ${
                       active
                         ? isDark
-                          ? 'bg-sky-400 text-slate-950 border-sky-300'
-                          : 'bg-[#8C5A32] text-white border-[#8C5A32]'
-                        : subSurfaceCls
+                          ? 'bg-[#1E2738] text-white shadow-2xs'
+                          : 'bg-[#18181B] text-white shadow-2xs'
+                        : mutedCls
                     }`}
                   >
-                    {pill.label}
+                    {t.label}
                   </button>
                 );
               })}
             </div>
 
-            <span className={`text-[11px] font-bold ${mutedCls}`}>
-              ※ 미구매·상담중 고객은 자동 제외되며 계약완료·발송완료 건만 집계됩니다
-            </span>
-          </div>
-
-          {activeSalesRows.length === 0 ? (
-            <div
-              className={`rounded-2xl border p-6 text-center text-xs font-bold ${subSurfaceCls} ${mutedCls}`}
-            >
-              {formatYearMonthKo(selectedYearMonth)}에 해당하는 구매 확정 고객 내역이
-              없습니다. (고객 상태를 [계약완료] 또는 [발송완료]로 변경하면 즉시
-              반영됩니다)
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[340px] overflow-y-auto pr-1 schedule-matrix-scroll">
-              {activeSalesRows.map((row) => (
-                <button
-                  key={row.customer.id}
-                  type="button"
-                  onClick={() => onSelectCustomer(row.customer)}
-                  className={`p-3.5 rounded-2xl border text-left transition cursor-pointer schedule-tactile flex flex-col justify-between gap-2 ${subSurfaceCls}`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-black truncate">
-                          {row.customer.name}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-500">
-                          {row.customer.status}
-                        </span>
-                        {renderSaleTypeBadge(row.profile.saleType)}
-                      </div>
-                      <p className={`text-xs font-semibold truncate mt-1 ${mutedCls}`}>
-                        {row.customer.items || '품목 미입력'}
-                      </p>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <div className="text-[10px] font-bold opacity-70">
-                        실적 기준액
-                      </div>
-                      <div className="text-sm sm:text-base font-black font-mono text-emerald-500">
-                        {formatCurrency(row.profile.performanceAmount)}원
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className={`flex flex-wrap items-center justify-between gap-2 pt-2 border-t text-[11px] font-mono ${
-                      isDark ? 'border-white/10' : 'border-[#E4DFD5]'
-                    } ${mutedCls}`}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      계약(총판): {row.profile.contractDateStr || '-'}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <Truck className="w-3 h-3 text-sky-500" />
-                      배송(실판):{' '}
-                      <strong
-                        className={
-                          row.customer.deliveryDate
-                            ? isDark
-                              ? 'text-sky-300'
-                              : 'text-blue-700'
-                            : 'text-amber-500'
-                        }
-                      >
-                        {row.customer.deliveryDate || '미지정 (클릭해 입력)'}
-                      </strong>
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'freed' && (
-        <div className="space-y-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs sm:text-sm font-black">
-                💎 {formatYearMonthKo(selectedYearMonth)} 프리드 가입 종류별 수당 정산
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-bold hidden sm:inline ${mutedCls}`}>
+                실적기준: 일반=제품합계 · 구독=구독원금 (확정건 전용)
               </span>
-              <span className={`text-[11px] font-bold ${mutedCls}`}>
-                (구매 확정 고객 기준)
-              </span>
-            </div>
-
-            <div
-              className={`inline-flex items-center p-0.5 rounded-xl border text-[11px] font-black ${subSurfaceCls}`}
-            >
               <button
                 type="button"
-                onClick={() => setIncentiveBasis('contract')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer ${
-                  incentiveBasis === 'contract'
-                    ? isDark
-                      ? 'bg-amber-400 text-slate-950'
-                      : 'bg-[#18181B] text-white'
-                    : mutedCls
-                }`}
+                onClick={() => setIsExpanded(false)}
+                className={`p-1 rounded-lg hover:bg-black/5 cursor-pointer ${mutedCls}`}
+                title="패널 접기"
               >
-                계약월(총판) 기준
-              </button>
-              <button
-                type="button"
-                onClick={() => setIncentiveBasis('delivery')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer ${
-                  incentiveBasis === 'delivery'
-                    ? isDark
-                      ? 'bg-sky-400 text-slate-950'
-                      : 'bg-[#18181B] text-white'
-                    : mutedCls
-                }`}
-              >
-                배송월(실판) 기준
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-            <div
-              className={`col-span-2 sm:col-span-1 rounded-2xl border p-3 space-y-1 ${
-                report.freedSummary.plusSubCount > 0
-                  ? isDark
-                    ? 'bg-rose-500/15 border-rose-400/40'
-                    : 'bg-rose-50/80 border-rose-200'
-                  : subSurfaceCls
-              }`}
-            >
-              <div className="flex items-center justify-between text-[11px] font-black">
-                <span className="text-rose-500">플러스 구독</span>
-                <span className={`text-[10px] font-mono ${mutedCls}`}>
-                  건당 9만
-                </span>
-              </div>
-              <div className="text-xl font-black font-mono">
-                {report.freedSummary.plusSubCount}
-                <span className="text-xs font-bold ml-0.5">건</span>
-              </div>
-              <div className="text-xs font-black font-mono text-rose-500">
-                +{formatCurrency(report.freedSummary.plusSubIncentive)}원
-              </div>
-              <div className={`text-[10px] font-semibold ${mutedCls}`}>
-                72({report.freedSummary.counts.hi72}) · 90(
-                {report.freedSummary.counts.hi90}) · 108(
-                {report.freedSummary.counts.hi108})
-              </div>
-            </div>
-
-            {[
-              {
-                key: 'hf75' as const,
-                title: '하이프리드 75',
-                unitLabel: '건당 6만',
-                count: report.freedSummary.counts.hf75,
-                amount: report.freedSummary.hf75Incentive,
-              },
-              {
-                key: 'hf150' as const,
-                title: '하이프리드 150',
-                unitLabel: '건당 12만',
-                count: report.freedSummary.counts.hf150,
-                amount: report.freedSummary.hf150Incentive,
-              },
-              {
-                key: 'hf225' as const,
-                title: '하이프리드 225',
-                unitLabel: '건당 18만',
-                count: report.freedSummary.counts.hf225,
-                amount: report.freedSummary.hf225Incentive,
-              },
-              {
-                key: 'hf300' as const,
-                title: '하이프리드 300',
-                unitLabel: '건당 24만',
-                count: report.freedSummary.counts.hf300,
-                amount: report.freedSummary.hf300Incentive,
-              },
-            ].map((item) => (
-              <div
-                key={item.key}
-                className={`rounded-2xl border p-3 space-y-1 ${
-                  item.count > 0
-                    ? isDark
-                      ? 'bg-amber-400/15 border-amber-400/40'
-                      : 'bg-amber-50/90 border-amber-300'
-                    : subSurfaceCls
-                }`}
-              >
-                <div className="flex items-center justify-between text-[11px] font-black">
-                  <span>{item.title}</span>
-                  <span className={`text-[10px] font-mono ${mutedCls}`}>
-                    {item.unitLabel}
-                  </span>
-                </div>
-                <div className="text-xl font-black font-mono">
-                  {item.count}
-                  <span className="text-xs font-bold ml-0.5">건</span>
-                </div>
-                <div className="text-xs font-black font-mono text-amber-500">
-                  +{formatCurrency(item.amount)}원
-                </div>
-                <div className={`text-[10px] font-semibold ${mutedCls}`}>
-                  일반 결합상품
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div
-            className={`rounded-2xl border px-4 py-3 flex flex-wrap items-center justify-between gap-2 ${
-              isDark
-                ? 'bg-[#121927] border-amber-400/30'
-                : 'bg-[#FAF5EB] border-[#DCCBB2]'
-            }`}
-          >
-            <div className="text-xs font-extrabold">
-              <span>
-                총 프리드 가입{' '}
-                <strong className="font-mono">
-                  {report.freedSummary.totalCount}건
-                </strong>{' '}
-                (플러스 구독 {report.freedSummary.plusSubCount}건 + 일반 프리드{' '}
-                {report.freedSummary.generalCount}건)
-              </span>
-            </div>
-            <div className="text-sm sm:text-base font-black font-mono text-amber-500">
-              프리드 수당 합계: +{formatCurrency(report.freedSummary.totalIncentive)}원
-            </div>
-          </div>
-
-          {report.freedCustomerRows.length === 0 ? (
-            <div
-              className={`rounded-2xl border p-5 text-center text-xs font-bold ${subSurfaceCls} ${mutedCls}`}
-            >
-              이번 달 프리드가 포함된 구매 확정 고객이 아직 없습니다. (견적기에서
-              프리드 선택 후 [계약완료]로 저장하거나 고객 카드에서 프리드 구좌를
-              지정해 보세요)
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[280px] overflow-y-auto pr-1 schedule-matrix-scroll">
-              {report.freedCustomerRows.map((row) => (
-                <button
-                  key={row.customer.id}
-                  type="button"
-                  onClick={() => onSelectCustomer(row.customer)}
-                  className={`p-3 rounded-2xl border text-left flex items-center justify-between gap-2.5 cursor-pointer schedule-tactile ${subSurfaceCls}`}
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-black">
-                        {row.customer.name}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-500">
-                        {row.customer.status}
-                      </span>
-                      <span className={`text-[11px] font-mono ${mutedCls}`}>
-                        {incentiveBasis === 'delivery'
-                          ? `배송 ${row.customer.deliveryDate || '-'}`
-                          : `계약 ${row.profile.contractDateStr || '-'}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 flex-wrap mt-1">
-                      {row.profile.freedDetail.summaryBadges.map((b, idx) => (
-                        <span
-                          key={idx}
-                          className={`px-2 py-0.5 rounded-md text-[11px] font-extrabold ${
-                            isDark
-                              ? 'bg-amber-400/15 text-amber-300'
-                              : 'bg-amber-100 text-amber-900'
-                          }`}
-                        >
-                          {b}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-[10px] font-bold opacity-65">프리드 수당</div>
-                    <div className="text-sm font-black font-mono text-amber-500">
-                      +{formatCurrency(row.customerFreedIncentive)}원
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'models' && (
-        <div className="space-y-3.5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs sm:text-sm font-black">
-                  🏷️ {formatYearMonthKo(selectedYearMonth)} 제품 모델별 수당 자동 정산
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-500">
-                  ✓ 구매 확정 고객만 자동 반영 (미구매 제외)
-                </span>
-              </div>
-              <p className={`text-[11px] font-semibold mt-0.5 ${mutedCls}`}>
-                매월 수당표 사진·엑셀을 업로드하면 구매 확정 고객 카드의 구매 모델과
-                자동 매칭되어 수당이 합산됩니다.
-              </p>
-            </div>
-
-            <div
-              className={`inline-flex items-center p-0.5 rounded-xl border text-[11px] font-black ${subSurfaceCls}`}
-            >
-              <button
-                type="button"
-                onClick={() => setIncentiveBasis('contract')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer ${
-                  incentiveBasis === 'contract'
-                    ? isDark
-                      ? 'bg-sky-400 text-slate-950'
-                      : 'bg-[#18181B] text-white'
-                    : mutedCls
-                }`}
-              >
-                계약월(총판) 기준
-              </button>
-              <button
-                type="button"
-                onClick={() => setIncentiveBasis('delivery')}
-                className={`px-2.5 py-1 rounded-lg cursor-pointer ${
-                  incentiveBasis === 'delivery'
-                    ? isDark
-                      ? 'bg-sky-400 text-slate-950'
-                      : 'bg-[#18181B] text-white'
-                    : mutedCls
-                }`}
-              >
-                배송월(실판) 기준
-              </button>
-            </div>
-          </div>
-
-          <div className={`rounded-2xl border p-3.5 space-y-3 ${subSurfaceCls}`}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  disabled={isUploading}
-                  onClick={() => photoInputRef.current?.click()}
-                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-2xs cursor-pointer schedule-tactile"
-                >
-                  {isUploading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <ImageIcon className="w-3.5 h-3.5" />
-                  )}
-                  <span>사진·캡처 업로드 (AI)</span>
-                </button>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  disabled={isUploading}
-                  onClick={() => excelInputRef.current?.click()}
-                  className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-black inline-flex items-center gap-1.5 shadow-2xs cursor-pointer schedule-tactile"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>엑셀·CSV 업로드</span>
-                </button>
-                <input
-                  ref={excelInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  multiple
-                  onChange={handleExcelUpload}
-                  className="hidden"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => setShowManualDrawer((v) => !v)}
-                  className={`px-3 py-2 rounded-xl border text-xs font-black inline-flex items-center gap-1 cursor-pointer schedule-tactile ${shellCls}`}
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>모델 직접·텍스트 추가</span>
-                </button>
-
-                {prevSheet && prevSheet.rules.length > 0 && (
+          {/* 탭 1: 총판 · 실판 컴팩트 내역 */}
+          {activeTab === 'sales' && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
+                <div className="flex items-center gap-1 flex-wrap">
                   <button
                     type="button"
-                    onClick={handleCopyFromPrevMonth}
-                    className={`px-3 py-2 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer schedule-tactile ${shellCls}`}
+                    onClick={() => setSalesSubView('gross')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border cursor-pointer ${
+                      salesSubView === 'gross'
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : subSurfaceCls
+                    }`}
                   >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>전월 단가표 불러오기</span>
+                    총판 {formatCurrency(report.grossSalesTotal)}원 ({report.grossRows.length}건)
                   </button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <label className="inline-flex items-center gap-1.5 text-[11px] font-bold cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={replaceOnUpload}
-                    onChange={(e) => setReplaceOnUpload(e.target.checked)}
-                    className="rounded accent-indigo-600"
-                  />
-                  <span>업로드 시 기존 목록 교체</span>
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    downloadModelIncentiveExcelTemplate(
-                      selectedYearMonth,
-                      currentSheet?.rules || []
-                    )
-                  }
-                  className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${shellCls}`}
-                  title="현재 단가표를 엑셀로 내려받거나 업로드 양식을 받습니다"
-                >
-                  <Download className="w-3 h-3" />
-                  <span>엑셀 양식/저장</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowRulesDrawer((v) => !v)}
-                  className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-black inline-flex items-center gap-1 cursor-pointer ${
-                    isDark
-                      ? 'bg-sky-400/15 text-sky-300 border-sky-400/30'
-                      : 'bg-[#F4ECE1] text-[#8C5A32] border-[#DCCBB2]'
-                  }`}
-                >
-                  <span>등록 단가표 ({currentSheet?.rules.length || 0}개)</span>
-                  {showRulesDrawer ? (
-                    <ChevronUp className="w-3 h-3" />
-                  ) : (
-                    <ChevronDown className="w-3 h-3" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {uploadError && (
-              <div className="px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-xs font-bold">
-                ⚠️ {uploadError}
-              </div>
-            )}
-
-            {showManualDrawer && (
-              <div className={`p-3 rounded-2xl border space-y-3 ${shellCls}`}>
-                <form
-                  onSubmit={handleAddSingleRule}
-                  className="grid grid-cols-1 sm:grid-cols-12 gap-2"
-                >
-                  <input
-                    type="text"
-                    value={manualCategory}
-                    onChange={(e) => setManualCategory(e.target.value)}
-                    placeholder="품목 (예: 냉장고)"
-                    className={`sm:col-span-3 px-3 py-2 rounded-xl border text-base sm:text-xs font-bold ${subSurfaceCls}`}
-                  />
-                  <input
-                    type="text"
-                    value={manualModelCode}
-                    onChange={(e) => setManualModelCode(e.target.value)}
-                    placeholder="모델코드 (예: RM70F64M2X)"
-                    className={`sm:col-span-5 px-3 py-2 rounded-xl border text-base sm:text-xs font-bold font-mono ${subSurfaceCls}`}
-                  />
-                  <input
-                    type="text"
-                    value={manualIncentive}
-                    onChange={(e) => setManualIncentive(e.target.value)}
-                    placeholder="수당 (예: 50000 또는 5만)"
-                    className={`sm:col-span-2 px-3 py-2 rounded-xl border text-base sm:text-xs font-bold font-mono ${subSurfaceCls}`}
-                  />
                   <button
-                    type="submit"
-                    className="sm:col-span-2 px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black cursor-pointer"
+                    type="button"
+                    onClick={() => setSalesSubView('delivery')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border cursor-pointer ${
+                      salesSubView === 'delivery'
+                        ? 'bg-sky-600 text-white border-sky-600'
+                        : subSurfaceCls
+                    }`}
                   >
-                    + 단가 추가
+                    실판 {formatCurrency(report.netDeliverySalesTotal)}원 ({report.netDeliveryRows.length}건)
                   </button>
-                </form>
+                  {report.undatedConfirmedCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSalesSubView('undated')}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-extrabold border cursor-pointer ${
+                        salesSubView === 'undated'
+                          ? 'bg-amber-500 text-slate-950 border-amber-500'
+                          : subSurfaceCls
+                      }`}
+                    >
+                      배송일미정 {report.undatedConfirmedCount}건
+                    </button>
+                  )}
+                </div>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] font-bold">
-                    <span className={mutedCls}>
-                      또는 카톡·엑셀 표 내용을 여러 줄 복사해 붙여넣기 (예:
-                      RM70F64M2X 5만)
-                    </span>
+                <span className={`text-[11px] font-mono font-bold ${mutedCls}`}>
+                  {salesSubView === 'delivery'
+                    ? `일반 ${formatShortManwon(report.netGeneralTotal)} · 구독원금 ${formatShortManwon(report.netSubPrincipalTotal)}`
+                    : `일반 ${formatShortManwon(report.grossGeneralTotal)} · 구독원금 ${formatShortManwon(report.grossSubPrincipalTotal)}`}
+                </span>
+              </div>
+
+              {activeSalesRows.length === 0 ? (
+                <div
+                  className={`rounded-xl border py-3 px-3 text-center text-[11px] font-bold ${subSurfaceCls} ${mutedCls}`}
+                >
+                  해당 월의 확정 고객([계약완료]·[발송완료]) 내역이 없습니다.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1 schedule-matrix-scroll">
+                  {activeSalesRows.map((row) => (
+                    <button
+                      key={row.customer.id}
+                      type="button"
+                      onClick={() => onSelectCustomer(row.customer)}
+                      className={`px-3 py-2 rounded-xl border text-left flex items-center justify-between gap-2 cursor-pointer schedule-tactile ${subSurfaceCls}`}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-black truncate">
+                            {row.customer.name}
+                          </span>
+                          <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+                            {row.profile.saleType === 'subscription'
+                              ? '구독원금'
+                              : row.profile.saleType === 'hybrid'
+                              ? '혼합원금'
+                              : '제품합계'}
+                          </span>
+                        </div>
+                        <div className={`text-[11px] truncate ${mutedCls}`}>
+                          {row.customer.items || '품목 미입력'}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xs font-black font-mono text-emerald-600 dark:text-emerald-400">
+                          {formatCurrency(row.profile.performanceAmount)}원
+                        </div>
+                        <div className={`text-[10px] font-mono ${mutedCls}`}>
+                          <Calendar className="w-2.5 h-2.5 inline mr-0.5" />
+                          {(row.profile.contractDateStr || '-').slice(5)} ·{' '}
+                          <Truck className="w-2.5 h-2.5 inline mr-0.5 text-sky-500" />
+                          {row.customer.deliveryDate
+                            ? row.customer.deliveryDate.slice(5)
+                            : '미정'}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 탭 2: 프리드 가입 건수 & 종류별 수당 (심플 컴팩트형) */}
+          {activeTab === 'freed' && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <span className="text-xs font-extrabold">
+                  총 <strong className="font-mono">{report.freedSummary.totalCount}건</strong> 가입 · 수당{' '}
+                  <strong className="font-mono text-amber-500">
+                    +{formatCurrency(report.freedSummary.totalIncentive)}원
+                  </strong>
+                </span>
+
+                <div
+                  className={`inline-flex items-center p-0.5 rounded-lg border text-[10px] font-black ${subSurfaceCls}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIncentiveBasis('contract')}
+                    className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                      incentiveBasis === 'contract'
+                        ? isDark
+                          ? 'bg-amber-400 text-slate-950'
+                          : 'bg-[#18181B] text-white'
+                        : mutedCls
+                    }`}
+                  >
+                    계약월 기준
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIncentiveBasis('delivery')}
+                    className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                      incentiveBasis === 'delivery'
+                        ? isDark
+                          ? 'bg-sky-400 text-slate-950'
+                          : 'bg-[#18181B] text-white'
+                        : mutedCls
+                    }`}
+                  >
+                    배송월 기준
+                  </button>
+                </div>
+              </div>
+
+              {/* 5종 컴팩트 수당 칩 그리드 */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {[
+                  {
+                    key: 'plus',
+                    label: '플러스구독(9만)',
+                    count: report.freedSummary.plusSubCount,
+                    amt: report.freedSummary.plusSubIncentive,
+                    sub:
+                      report.freedSummary.plusSubCount > 0
+                        ? `72(${report.freedSummary.counts.hi72})·90(${report.freedSummary.counts.hi90})·108(${report.freedSummary.counts.hi108})`
+                        : '',
+                  },
+                  {
+                    key: 'hf75',
+                    label: '프리드 75(6만)',
+                    count: report.freedSummary.counts.hf75,
+                    amt: report.freedSummary.hf75Incentive,
+                    sub: '',
+                  },
+                  {
+                    key: 'hf150',
+                    label: '프리드 150(12만)',
+                    count: report.freedSummary.counts.hf150,
+                    amt: report.freedSummary.hf150Incentive,
+                    sub: '',
+                  },
+                  {
+                    key: 'hf225',
+                    label: '프리드 225(18만)',
+                    count: report.freedSummary.counts.hf225,
+                    amt: report.freedSummary.hf225Incentive,
+                    sub: '',
+                  },
+                  {
+                    key: 'hf300',
+                    label: '프리드 300(24만)',
+                    count: report.freedSummary.counts.hf300,
+                    amt: report.freedSummary.hf300Incentive,
+                    sub: '',
+                  },
+                ].map((f) => (
+                  <div
+                    key={f.key}
+                    className={`px-2.5 py-1.5 rounded-xl border text-xs ${
+                      f.count > 0
+                        ? isDark
+                          ? 'bg-amber-400/15 border-amber-400/40'
+                          : 'bg-amber-50/90 border-amber-300'
+                        : subSurfaceCls
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-[11px] font-extrabold truncate">
+                        {f.label}
+                      </span>
+                      <span className="font-black font-mono shrink-0">
+                        {f.count}건
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-1 mt-0.5">
+                      <span className="text-[11px] font-black font-mono text-amber-600 dark:text-amber-400">
+                        +{formatShortManwon(f.amt)}
+                      </span>
+                      {f.sub && (
+                        <span className={`text-[9px] font-mono ${mutedCls}`}>
+                          {f.sub}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {report.freedCustomerRows.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-h-40 overflow-y-auto pr-1 schedule-matrix-scroll">
+                  {report.freedCustomerRows.map((row) => (
+                    <button
+                      key={row.customer.id}
+                      type="button"
+                      onClick={() => onSelectCustomer(row.customer)}
+                      className={`px-3 py-1.5 rounded-xl border text-left flex items-center justify-between gap-2 text-xs cursor-pointer ${subSurfaceCls}`}
+                    >
+                      <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                        <span className="font-black">{row.customer.name}</span>
+                        {row.profile.freedDetail.summaryBadges.map((b, i) => (
+                          <span
+                            key={i}
+                            className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-300"
+                          >
+                            {b}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="font-black font-mono text-amber-500 shrink-0">
+                        +{formatCurrency(row.customerFreedIncentive)}원
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 탭 3: 제품 모델별 수당 (심플 컴팩트형) */}
+          {activeTab === 'models' && (
+            <div className="space-y-2">
+              {/* 한 줄 업로드·관리 툴바 */}
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => photoInputRef.current?.click()}
+                    className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    {isUploading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ImageIcon className="w-3 h-3" />
+                    )}
+                    <span>사진 업로드</span>
+                  </button>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handlePhotoUpload}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => excelInputRef.current?.click()}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3 h-3" />
+                    <span>엑셀 업로드</span>
+                  </button>
+                  <input
+                    ref={excelInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    multiple
+                    onChange={handleExcelUpload}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => setShowManualDrawer((v) => !v)}
+                    className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-black inline-flex items-center gap-1 cursor-pointer ${subSurfaceCls}`}
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>직접입력</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowRulesDrawer((v) => !v)}
+                    className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${subSurfaceCls}`}
+                  >
+                    <span>단가표({currentSheet?.rules.length || 0})</span>
+                    {showRulesDrawer ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
+
+                  {prevSheet && prevSheet.rules.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleCopyFromPrevMonth}
+                      className={`px-2 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${subSurfaceCls}`}
+                      title="전월 단가표 불러오기"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>전월복사</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadModelIncentiveExcelTemplate(
+                        selectedYearMonth,
+                        currentSheet?.rules || []
+                      )
+                    }
+                    className={`px-2 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${subSurfaceCls}`}
+                    title="엑셀 양식 또는 현재 단가표 다운로드"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>양식</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black font-mono text-sky-500">
+                    매칭 {report.matchedModelUnitCount}대 · +{formatCurrency(report.modelIncentiveTotal)}원
+                  </span>
+                  <div
+                    className={`inline-flex items-center p-0.5 rounded-lg border text-[10px] font-black ${subSurfaceCls}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setIncentiveBasis('contract')}
+                      className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                        incentiveBasis === 'contract'
+                          ? isDark
+                            ? 'bg-sky-400 text-slate-950'
+                            : 'bg-[#18181B] text-white'
+                          : mutedCls
+                      }`}
+                    >
+                      계약월
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIncentiveBasis('delivery')}
+                      className={`px-2 py-0.5 rounded-md cursor-pointer ${
+                        incentiveBasis === 'delivery'
+                          ? isDark
+                            ? 'bg-sky-400 text-slate-950'
+                            : 'bg-[#18181B] text-white'
+                          : mutedCls
+                      }`}
+                    >
+                      배송월
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {uploadError && (
+                <div className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-[11px] font-bold">
+                  ⚠️ {uploadError}
+                </div>
+              )}
+
+              {showManualDrawer && (
+                <div className={`p-2.5 rounded-xl border space-y-2 ${subSurfaceCls}`}>
+                  <form
+                    onSubmit={handleAddSingleRule}
+                    className="grid grid-cols-1 sm:grid-cols-12 gap-1.5"
+                  >
+                    <input
+                      type="text"
+                      value={manualCategory}
+                      onChange={(e) => setManualCategory(e.target.value)}
+                      placeholder="품목(냉장고)"
+                      className={`sm:col-span-3 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-bold ${shellCls}`}
+                    />
+                    <input
+                      type="text"
+                      value={manualModelCode}
+                      onChange={(e) => setManualModelCode(e.target.value)}
+                      placeholder="모델코드(RM70F64M2X)"
+                      className={`sm:col-span-5 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-mono font-bold ${shellCls}`}
+                    />
+                    <input
+                      type="text"
+                      value={manualIncentive}
+                      onChange={(e) => setManualIncentive(e.target.value)}
+                      placeholder="수당(5만)"
+                      className={`sm:col-span-2 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-mono font-bold ${shellCls}`}
+                    />
+                    <button
+                      type="submit"
+                      className="sm:col-span-2 px-2.5 py-1.5 rounded-lg bg-sky-600 text-white text-xs font-black cursor-pointer"
+                    >
+                      + 추가
+                    </button>
+                  </form>
+
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      value={bulkPasteText}
+                      onChange={(e) => setBulkPasteText(e.target.value)}
+                      placeholder="한 줄/여러 줄 붙여넣기 (예: RM70F64M2X 5만, OLED65C4 10만)"
+                      className={`flex-1 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-mono ${shellCls}`}
+                    />
                     <button
                       type="button"
                       onClick={handleBulkTextApply}
-                      className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-black cursor-pointer"
+                      className="px-2.5 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-black shrink-0 cursor-pointer"
                     >
-                      붙여넣기 일괄 반영
+                      일괄 반영
                     </button>
                   </div>
-                  <textarea
-                    rows={2}
-                    value={bulkPasteText}
-                    onChange={(e) => setBulkPasteText(e.target.value)}
-                    placeholder={`RM70F64M2X 50000\nW20WAN 7만\nOLED65C4 100,000`}
-                    className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-mono ${subSurfaceCls}`}
-                  />
                 </div>
-              </div>
-            )}
+              )}
 
-            {showRulesDrawer && (
-              <div className={`p-3 rounded-2xl border space-y-2.5 ${shellCls}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="relative flex-1">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={ruleSearch}
-                      onChange={(e) => setRuleSearch(e.target.value)}
-                      placeholder="등록된 모델코드 또는 품목 검색..."
-                      className={`w-full pl-8 pr-3 py-1.5 rounded-xl border text-base sm:text-xs font-semibold ${subSurfaceCls}`}
-                    />
+              {showRulesDrawer && (
+                <div className={`p-2.5 rounded-xl border space-y-2 ${subSurfaceCls}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={ruleSearch}
+                        onChange={(e) => setRuleSearch(e.target.value)}
+                        placeholder="모델코드/품목 검색..."
+                        className={`w-full pl-7 pr-2.5 py-1 rounded-lg border text-base sm:text-xs ${shellCls}`}
+                      />
+                    </div>
+                    <label className="inline-flex items-center gap-1 text-[10px] font-bold shrink-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={replaceOnUpload}
+                        onChange={(e) => setReplaceOnUpload(e.target.checked)}
+                        className="rounded accent-indigo-600"
+                      />
+                      <span>업로드시 교체</span>
+                    </label>
                   </div>
-                  {currentSheet && (
-                    <span className={`text-[11px] font-mono ${mutedCls}`}>
-                      최근 반영: {currentSheet.updatedAt}
-                    </span>
+
+                  {filteredRules.length === 0 ? (
+                    <div className={`py-2 text-center text-[11px] font-bold ${mutedCls}`}>
+                      등록된 모델 단가가 없습니다.
+                    </div>
+                  ) : (
+                    <div className="max-h-36 overflow-y-auto space-y-1 pr-1 schedule-matrix-scroll">
+                      {filteredRules.map((r) => (
+                        <div
+                          key={r.id}
+                          className={`px-2.5 py-1 rounded-lg border flex items-center justify-between gap-2 text-xs ${shellCls}`}
+                        >
+                          <div className="min-w-0 flex items-center gap-1.5 truncate">
+                            <span className="px-1.5 py-0.2 rounded bg-sky-500/15 text-sky-500 text-[10px] font-black shrink-0">
+                              {r.category}
+                            </span>
+                            <span className="font-mono font-black truncate">
+                              {r.modelCode}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <input
+                              type="number"
+                              value={r.incentiveAmount}
+                              onChange={(e) =>
+                                handleUpdateRuleAmount(
+                                  r.id,
+                                  Number(e.target.value) || 0
+                                )
+                              }
+                              className={`w-20 px-1.5 py-0.5 rounded border text-right font-mono font-bold text-base sm:text-xs ${subSurfaceCls}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRule(r.id)}
+                              className="p-1 text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
+              )}
 
-                {filteredRules.length === 0 ? (
-                  <div className={`py-4 text-center text-xs font-bold ${mutedCls}`}>
-                    등록된 모델 수당 단가가 없습니다. 위에서 사진이나 엑셀을
-                    업로드해 주세요.
-                  </div>
-                ) : (
-                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 schedule-matrix-scroll">
-                    {filteredRules.map((r) => (
-                      <div
-                        key={r.id}
-                        className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 text-xs ${subSurfaceCls}`}
-                      >
-                        <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                          <span className="px-2 py-0.5 rounded bg-sky-500/15 text-sky-500 text-[10px] font-black">
-                            {r.category}
-                          </span>
-                          <span className="font-mono font-black">
-                            {r.modelCode}
-                          </span>
-                          {r.productName && (
-                            <span className={`text-[11px] truncate ${mutedCls}`}>
-                              {r.productName}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <input
-                            type="number"
-                            value={r.incentiveAmount}
-                            onChange={(e) =>
-                              handleUpdateRuleAmount(
-                                r.id,
-                                Number(e.target.value) || 0
-                              )
-                            }
-                            className={`w-24 px-2 py-1 rounded-lg border text-right font-mono font-black text-base sm:text-xs ${shellCls}`}
-                          />
-                          <span className="text-[11px] font-bold">원</span>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteRule(r.id)}
-                            className="p-1 rounded-lg text-rose-500 hover:bg-rose-500/15 cursor-pointer"
-                            title="삭제"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div
-            className={`rounded-2xl border px-4 py-3 flex flex-wrap items-center justify-between gap-2 ${
-              isDark
-                ? 'bg-[#121D2D] border-sky-400/30'
-                : 'bg-[#F3F8FE] border-sky-200'
-            }`}
-          >
-            <div className="text-xs font-extrabold flex items-center gap-2 flex-wrap">
-              <Award className="w-4 h-4 text-sky-500" />
-              <span>
-                확정 고객 <strong>{report.confirmedRowsForIncentive.length}명</strong>{' '}
-                중 수당 매칭 <strong>{report.matchedCustomerCount}명</strong> (총{' '}
-                <strong>{report.matchedModelUnitCount}대</strong> 매칭)
-              </span>
-            </div>
-            <div className="text-sm sm:text-base font-black font-mono text-sky-500">
-              제품 모델 수당 합계: +{formatCurrency(report.modelIncentiveTotal)}원
-            </div>
-          </div>
-
-          {quickAssignTarget && (
-            <div
-              className={`rounded-2xl border p-3 flex flex-wrap items-center justify-between gap-2 ${
-                isDark
-                  ? 'bg-indigo-950/50 border-indigo-400/40'
-                  : 'bg-indigo-50 border-indigo-200'
-              }`}
-            >
-              <div className="text-xs font-black">
-                ⚡ [{quickAssignTarget.category}]{' '}
-                <span className="font-mono text-indigo-500">
-                  {quickAssignTarget.modelCode}
-                </span>{' '}
-                수당 단가 지정 ({formatYearMonthKo(selectedYearMonth)} 공통 적용)
-              </div>
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="text"
-                  value={quickAssignAmount}
-                  onChange={(e) => setQuickAssignAmount(e.target.value)}
-                  placeholder="예: 50000 또는 5만"
-                  className={`w-36 px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-mono font-bold ${shellCls}`}
-                />
-                <button
-                  type="button"
-                  onClick={handleQuickAssignSave}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-black inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <Check className="w-3.5 h-3.5" /> 반영
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setQuickAssignTarget(null)}
-                  className="px-2.5 py-1.5 rounded-xl text-xs font-bold opacity-70 cursor-pointer"
-                >
-                  취소
-                </button>
-              </div>
-            </div>
-          )}
-
-          {report.confirmedRowsForIncentive.length === 0 ? (
-            <div
-              className={`rounded-2xl border p-6 text-center text-xs font-bold ${subSurfaceCls} ${mutedCls}`}
-            >
-              {formatYearMonthKo(selectedYearMonth)}에 구매 확정([계약완료] ·
-              [발송완료])된 고객 카드가 없습니다. 고객이 구매 확정되면 카드 내 구매
-              모델에서 자동으로 수당이 계산됩니다.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-[360px] overflow-y-auto pr-1 schedule-matrix-scroll">
-              {report.confirmedRowsForIncentive.map((row) => (
+              {quickAssignTarget && (
                 <div
-                  key={row.customer.id}
-                  onClick={() => onSelectCustomer(row.customer)}
-                  className={`p-3.5 rounded-2xl border space-y-2.5 cursor-pointer transition schedule-tactile ${
-                    row.customerModelIncentive > 0
-                      ? isDark
-                        ? 'bg-[#142030] border-sky-400/40'
-                        : 'bg-white border-sky-300 shadow-2xs'
-                      : subSurfaceCls
+                  className={`rounded-xl border px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    isDark
+                      ? 'bg-indigo-950/50 border-indigo-400/40'
+                      : 'bg-indigo-50 border-indigo-200'
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm font-black">
+                  <span className="font-black">
+                    ⚡ [{quickAssignTarget.category}]{' '}
+                    <span className="font-mono text-indigo-500">
+                      {quickAssignTarget.modelCode}
+                    </span>{' '}
+                    수당 지정
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={quickAssignAmount}
+                      onChange={(e) => setQuickAssignAmount(e.target.value)}
+                      placeholder="예: 5만"
+                      className={`w-28 px-2 py-1 rounded-lg border text-base sm:text-xs font-mono font-bold ${shellCls}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleQuickAssignSave}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-black inline-flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <Check className="w-3 h-3" /> 반영
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuickAssignTarget(null)}
+                      className="px-2 py-1 text-[11px] font-bold opacity-70 cursor-pointer"
+                    >
+                      취소
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {report.confirmedRowsForIncentive.length === 0 ? (
+                <div
+                  className={`rounded-xl border py-3 px-3 text-center text-[11px] font-bold ${subSurfaceCls} ${mutedCls}`}
+                >
+                  구매 확정([계약완료]·[발송완료]) 고객이 등록되면 구매 모델에서 자동 계산됩니다. (미구매 제외)
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1 schedule-matrix-scroll">
+                  {report.confirmedRowsForIncentive.map((row) => (
+                    <div
+                      key={row.customer.id}
+                      onClick={() => onSelectCustomer(row.customer)}
+                      className={`px-3 py-2 rounded-xl border space-y-1.5 cursor-pointer ${
+                        row.customerModelIncentive > 0
+                          ? isDark
+                            ? 'bg-[#142030] border-sky-400/40'
+                            : 'bg-white border-sky-300'
+                          : subSurfaceCls
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-black truncate">
                           {row.customer.name} 고객님
                         </span>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-500/15 text-emerald-500">
-                          {row.customer.status}
-                        </span>
-                        <span className={`text-[10px] font-mono ${mutedCls}`}>
-                          {incentiveBasis === 'delivery'
-                            ? `배송 ${row.customer.deliveryDate || '-'}`
-                            : `계약 ${row.profile.contractDateStr || '-'}`}
+                        <span
+                          className={`font-black font-mono shrink-0 ${
+                            row.customerModelIncentive > 0 ? 'text-sky-500' : mutedCls
+                          }`}
+                        >
+                          +{formatCurrency(row.customerModelIncentive)}원
                         </span>
                       </div>
-                    </div>
 
-                    <div className="text-right shrink-0">
-                      <div className="text-[10px] font-bold opacity-70">
-                        모델 수당 합계
-                      </div>
                       <div
-                        className={`text-sm font-black font-mono ${
-                          row.customerModelIncentive > 0
-                            ? 'text-sky-500'
-                            : mutedCls
-                        }`}
+                        className="flex flex-wrap items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        +{formatCurrency(row.customerModelIncentive)}원
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className="space-y-1.5"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {row.modelMatches.length === 0 ? (
-                      <div className={`text-[11px] ${mutedCls}`}>
-                        등록된 세부 모델코드가 없습니다 (카드 클릭하여 모델 입력)
-                      </div>
-                    ) : (
-                      row.modelMatches.map((mm, mIdx) => {
-                        const matched = Boolean(mm.matchedRule);
-                        return (
-                          <div
-                            key={`${mm.modelEntry.id}-${mIdx}`}
-                            className={`px-2.5 py-1.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
-                              matched
-                                ? isDark
-                                  ? 'bg-emerald-500/15 border-emerald-400/35 text-emerald-200'
-                                  : 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                                : isDark
-                                ? 'bg-[#0B0E14]/70 border-white/10 text-slate-300'
-                                : 'bg-white/80 border-[#E4DFD5] text-slate-700'
-                            }`}
-                          >
-                            <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-black opacity-75">
-                                [{mm.modelEntry.category}]
-                              </span>
-                              <span className="font-mono font-black truncate">
+                        {row.modelMatches.length === 0 ? (
+                          <span className={`text-[10px] ${mutedCls}`}>
+                            세부 모델 미입력
+                          </span>
+                        ) : (
+                          row.modelMatches.map((mm, mIdx) => {
+                            const matched = Boolean(mm.matchedRule);
+                            return matched ? (
+                              <span
+                                key={`${mm.modelEntry.id}-${mIdx}`}
+                                className="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                              >
                                 {mm.modelEntry.modelName}
-                              </span>
-                              {mm.modelEntry.quantity > 1 && (
-                                <span className="text-[10px] font-mono font-black px-1.5 py-0.2 rounded bg-black/10">
-                                  ×{mm.modelEntry.quantity}대
-                                </span>
-                              )}
-                            </div>
-
-                            {matched ? (
-                              <span className="font-mono font-black text-emerald-500 shrink-0">
-                                +{formatCurrency(mm.subtotalIncentive)}원
+                                {mm.modelEntry.quantity > 1 ? `×${mm.modelEntry.quantity}` : ''}{' '}
+                                +{formatShortManwon(mm.subtotalIncentive)}
                               </span>
                             ) : (
                               <button
+                                key={`${mm.modelEntry.id}-${mIdx}`}
                                 type="button"
                                 onClick={() => {
                                   setQuickAssignTarget({
@@ -1441,22 +1242,18 @@ export const CrmSalesAndIncentivePanel: React.FC<
                                   });
                                   setQuickAssignAmount('');
                                 }}
-                                className={`px-2 py-0.5 rounded-lg text-[10px] font-extrabold border shrink-0 cursor-pointer ${
-                                  isDark
-                                    ? 'bg-white/5 hover:bg-white/15 text-sky-300 border-white/10'
-                                    : 'bg-[#FAF8F4] hover:bg-[#EAE5DC] text-[#8C5A32] border-[#D6D0C4]'
-                                }`}
+                                className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold border cursor-pointer ${subSurfaceCls}`}
                               >
-                                + 수당단가 지정
+                                {mm.modelEntry.modelName} +단가지정
                               </button>
-                            )}
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
         </div>

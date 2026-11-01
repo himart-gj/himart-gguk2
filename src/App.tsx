@@ -208,7 +208,7 @@ export function App() {
   const [crmCustomers, setCrmCustomers] = useState<CustomerItem[]>(() =>
     getCachedCustomers()
   );
-  const [initialCrmTab, setInitialCrmTab] = useState<SettlementTabId>('sales');
+  const [initialCrmTab, setInitialCrmTab] = useState<SettlementTabId | undefined>(undefined);
 
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState(null as string | null);
@@ -1381,6 +1381,7 @@ export function App() {
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
+                  setInitialCrmTab(undefined);
                   setStep('crm');
                 }}
                 className={`w-full py-3 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-between border transition cursor-pointer ${
@@ -1705,7 +1706,7 @@ export function App() {
             {/* 0-2) TODAY BRIEFING · VIP 통합 고객관리 히어로 배너 */}
             <button
               type="button"
-              onClick={() => setStep('crm')}
+              onClick={() => { setInitialCrmTab(undefined); setStep('crm'); }}
               className={`w-full py-4 sm:py-5 px-4 sm:px-6 rounded-3xl transition-all flex items-center justify-between group cursor-pointer shadow-md hover:shadow-xl ${
                 isDark
                   ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border-[1.5px] border-[#38BDF8]/45 hover:border-[#38BDF8]'
@@ -2355,7 +2356,7 @@ export function App() {
           onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
           onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
           onOpenInsuranceView={() => setStep('insurance')}
-          onOpenCrmScreen={() => setStep('crm')}
+          onOpenCrmScreen={() => { setInitialCrmTab(undefined); setStep('crm'); }}
           onLoadCrmCustomerQuote={(cust) => {
             const latestQuote =
               Array.isArray(cust.quotes) && cust.quotes.length > 0
