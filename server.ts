@@ -145,6 +145,49 @@ async function startServer() {
     }
   });
 
+  // 0. AI 비서 자연어 명령 분석 백엔드 프록시 (클라이언트 키 미설정 시 서버 키로 즉시 응답)
+  app.post('/api/ai/parse-command', async (req, res) => {
+    try {
+      const { promptText, apiKey: clientApiKey } = req.body || {};
+      if (!promptText || typeof promptText !== 'string') {
+        res.status(400).json({ error: '명령어 텍스트가 없습니다.' });
+        return;
+      }
+      const ai = getGenAIClient(clientApiKey);
+      const models = [
+        'gemini-2.5-flash',
+        'gemini-flash-latest',
+        'gemini-2.0-flash',
+        'gemini-2.5-pro',
+      ];
+      let lastErr: any = null;
+      for (const m of models) {
+        try {
+          const response = await ai.models.generateContent({
+            model: m,
+            contents: [{ role: 'user', parts: [{ text: promptText }] }],
+            config: {
+              temperature: 0.1,
+              responseMimeType: 'application/json',
+            },
+          });
+          const rawJson = (response.text || '').trim();
+          if (rawJson) {
+            res.json({ ok: true, model: m, rawJson });
+            return;
+          }
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      res.status(502).json({
+        error: lastErr?.message || 'AI 모델 응답을 가져오지 못했습니다.',
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || '서버 AI 분석 실패' });
+    }
+  });
+
   // 1. 일반구매(general) 및 혼합견적(hybrid)용 '일반전산 사진 자동입력' 엔드포인트
   app.post('/api/ai/parse-general-image', async (req, res) => {
     try {

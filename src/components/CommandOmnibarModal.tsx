@@ -4,6 +4,7 @@ import { CustomerItem } from '../crm/types/crm';
 import { CareTableDataset, CareTableItem } from '../utils/careTableParser';
 import { InstallmentDataset } from '../utils/installmentParser';
 import { MAJOR_AS_CENTERS, PLUX_AS_GROUPS } from './QuickCenterModal';
+import { loadPartnerLinks } from './PartnerLinksModal';
 import {
   getOrCreateMonthSchedule,
   isOffDayCode,
@@ -356,6 +357,33 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onSelect: () => {
             onClose();
             onOpenInstallmentModal();
+          },
+        });
+      });
+
+    // 3-2. 제휴 · 업무 바로가기 허브 링크
+    loadPartnerLinks()
+      .filter(
+        (pl) =>
+          !q ||
+          matchSearch(pl.title, q) ||
+          matchSearch(pl.badgeText, q) ||
+          matchSearch(pl.description, q)
+      )
+      .slice(0, q ? 6 : 2)
+      .forEach((pl) => {
+        list.push({
+          id: `partner-${pl.id}`,
+          group: '메뉴',
+          title: `🔗 ${pl.title}`,
+          subtitle: `${pl.badgeText} · ${pl.description}`,
+          badge: pl.isStaffOnly ? '직원전용 ↗' : '바로열기 ↗',
+          copyText: pl.isStaffOnly
+            ? pl.url
+            : `[롯데하이마트 경기광주점] ${pl.title} 안내\n👉 ${pl.url}`,
+          onSelect: () => {
+            onClose();
+            window.open(pl.url, '_blank', 'noopener,noreferrer');
           },
         });
       });

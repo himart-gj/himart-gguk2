@@ -30,6 +30,13 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
   if (explicitKey && explicitKey.trim()) return explicitKey.trim();
   const stored = getStoredGeminiApiKey();
   if (stored) return stored;
+  const viteKey =
+    typeof import.meta !== 'undefined' &&
+    (import.meta as any).env &&
+    (import.meta as any).env.VITE_GEMINI_API_KEY
+      ? String((import.meta as any).env.VITE_GEMINI_API_KEY).trim()
+      : '';
+  if (viteKey) return viteKey;
   const envKey =
     typeof process !== 'undefined' && process.env && process.env.GEMINI_API_KEY
       ? String(process.env.GEMINI_API_KEY)
@@ -38,11 +45,11 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
 }
 
 export const GEMINI_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-3.1-pro-preview',
-  'gemini-3.7-flash',
-  'gemini-3.5-flash',
+  'gemini-2.5-flash',
   'gemini-flash-latest',
+  'gemini-2.0-flash',
+  'gemini-2.5-pro',
+  'gemini-3.1-pro-preview',
 ] as const;
 
 /**

@@ -50,7 +50,12 @@ import {
   getTodayStr,
   isUrgentCustomer,
 } from '../crm/utils/date';
-import { GEMINI_MODELS, getEffectiveGeminiApiKey } from '../utils/aiImageParser';
+import {
+  GEMINI_MODELS,
+  getEffectiveGeminiApiKey,
+  getStoredGeminiApiKey,
+  setStoredGeminiApiKey,
+} from '../utils/aiImageParser';
 import {
   CareTableDataset,
   CareTableItem,
@@ -63,12 +68,16 @@ import {
   InstallmentQuickSummaryCardItem,
   loadLocalInstallmentDataset,
 } from '../utils/installmentParser';
-
-type InstallmentRowLabel = (typeof INSTALLMENT_ROW_LABELS)[number];
 import {
   MAJOR_AS_CENTERS,
   PLUX_AS_GROUPS,
 } from './QuickCenterModal';
+import {
+  loadPartnerLinks,
+  PartnerQuickLinkItem,
+} from './PartnerLinksModal';
+
+type InstallmentRowLabel = (typeof INSTALLMENT_ROW_LABELS)[number];
 import {
   DayScheduleCode,
   getOrCreateMonthSchedule,
@@ -2181,23 +2190,9 @@ export function parseKoreanCommandLocal(rawText: string): ParsedAiCommand {
  */
 export async function parseCommandWithHybridAi(
   rawText: string
-): Promise<{ parsed: ParsedAiCommand; engineLabel: string }> {
+): Promise<{ parsed: ParsedAiCommand; engineLabel: string; aiReply?: string }> {
   const localResult = parseKoreanCommandLocal(rawText);
   const apiKey = getEffectiveGeminiApiKey();
-
-  // 견적 품목이 없고 휴무표/안심케어/무이자/AS/CRM 검색 전용 명령이면 로컬 엔진으로 즉시 응답
-  const hasQuoteItemsLocally =
-    localResult.generalItems.length > 0 ||
-    localResult.subscriptionItems.length > 0;
-
-  if (!apiKey || !hasQuoteItemsLocally) {
-    return {
-      parsed: localResult,
-      engineLabel: '⚡ 초고속 한국어 통합 엔진 (즉시 처리 완료)',
-    };
-  }
-
-  const ai = new GoogleGenAI({ apiKey });
   const todayStr = getOffsetDateStr(0);
   const tomorrowStr = getOffsetDateStr(1);
   const fridayStr = getFridayDateStr(false);
@@ -2218,28 +2213,69 @@ export async function parseCommandWithHybridAi(
 9. selectedCardTierId: 롯데 기본 'lotte-30', 삼성 'samsung-30', 신한 'shinhan-50', 우리 'woori-30'
 10. hiPlusCounts: { hi72, hi90, hi108 }
 11. shouldOpenProposalDirectly: boolean ('제안서 보여줘', '제안서 바로 보여줘', '제안서 띄워줘' 포함 시 true)
-12. customer: { shouldSaveCrm: boolean, name: string, phone: string, status: '상담진행중' | '결제완료' | '배송대기' | '상담종료', deliveryDate: string (YYYY-MM-DD), memo: string }`;
+12. customer: { shouldSaveCrm: boolean, name: string, phone: string, status: '상담진행중' | '결제완료' | '배송대기' | '상담종료', deliveryDate: string (YYYY-MM-DD), memo: string }
+13. aiReply: string (견적 외 일반 상담 질문이나 업무 안내 요청일 때 직원이 바로 참고할 1~3문장 핵심 답변 요약)`;
 
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `${systemPrompt}\n\n[사용자 명령어]\n${rawText}` }],
+  const fullPrompt = `${systemPrompt}\n\n[사용자 명령어]\n${rawText}`;
+  let resolvedRawJson = '';
+  let resolvedModelName = '';
+
+  // 1차: 서버 프록시(/api/ai/parse-command) 시도 (AI 스튜디오 / 로컬 서버 환경에서 브라우저 키 없이도 즉시 작동)
+  try {
+    const srvRes = await fetch('/api/ai/parse-command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ promptText: fullPrompt, apiKey }),
+    });
+    if (srvRes.ok) {
+      const srvData = await srvRes.json();
+      if (srvData?.rawJson) {
+        resolvedRawJson = String(srvData.rawJson).trim();
+        resolvedModelName = String(srvData.model || 'server-gemini');
+      }
+    }
+  } catch {
+    // 정적 호스팅(GitHub Pages)에서는 아래 클라이언트 SDK로 즉시 진행
+  }
+
+  // 2차: 클라이언트 Gemini SDK 직접 호출
+  if (!resolvedRawJson && apiKey) {
+    const ai = new GoogleGenAI({ apiKey });
+    for (const modelName of GEMINI_MODELS) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: fullPrompt }],
+            },
+          ],
+          config: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
           },
-        ],
-        config: {
-          temperature: 0.1,
-          responseMimeType: 'application/json',
-        },
-      });
+        });
+        const txt = (response.text || '').trim();
+        if (txt) {
+          resolvedRawJson = txt;
+          resolvedModelName = modelName;
+          break;
+        }
+      } catch {
+        // 다음 폴백 모델 재시도
+      }
+    }
+  }
 
-      const rawJson = (response.text || '').trim();
-      if (!rawJson) continue;
-
-      const parsedJson = JSON.parse(rawJson);
+  if (resolvedRawJson) {
+    try {
+      const cleanJson = resolvedRawJson
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```\s*$/i, '')
+        .trim();
+      const parsedJson = JSON.parse(cleanJson);
 
       const mergedGeneralItems =
         Array.isArray(parsedJson.generalItems) && parsedJson.generalItems.length > 0
@@ -2352,16 +2388,22 @@ export async function parseCommandWithHybridAi(
 
       return {
         parsed: mergedResult,
-        engineLabel: `✨ Gemini AI 정밀 분석 완료 (${modelName})`,
+        engineLabel: `✨ Gemini AI 정밀 분석 완료 (${resolvedModelName})`,
+        aiReply:
+          typeof parsedJson.aiReply === 'string'
+            ? parsedJson.aiReply.trim()
+            : undefined,
       };
     } catch {
-      // 다음 폴백 모델 재시도
+      // JSON 파싱 실패 시 로컬 엔진 결과 반환
     }
   }
 
   return {
     parsed: localResult,
-    engineLabel: '⚡ 초고속 한국어 통합 엔진 (AI 폴백 완료)',
+    engineLabel: apiKey
+      ? '⚡ 초고속 한국어 통합 엔진 (로컬 분석 완료)'
+      : '⚡ 초고속 한국어 통합 엔진 (정밀 AI는 상단 [🔑 AI 키] 등록 시 활성화)',
   };
 }
 
@@ -2561,6 +2603,14 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
 
   const [autoSavedBanner, setAutoSavedBanner] = useState<string | null>(null);
   const [proposalReadyBanner, setProposalReadyBanner] = useState<string | null>(null);
+  const [aiReplyText, setAiReplyText] = useState<string | null>(null);
+  const [isApiKeyPanelOpen, setIsApiKeyPanelOpen] = useState<boolean>(false);
+  const [apiKeyInput, setApiKeyInput] = useState<string>(() =>
+    getStoredGeminiApiKey()
+  );
+  const [hasActiveApiKey, setHasActiveApiKey] = useState<boolean>(() =>
+    Boolean(getEffectiveGeminiApiKey())
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedCodeKey, setCopiedCodeKey] = useState<string | null>(null);
 
@@ -2760,6 +2810,25 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
     [commandText]
   );
 
+  const partnerLinkResults = useMemo<PartnerQuickLinkItem[]>(() => {
+    const q = commandText.trim().toLowerCase();
+    if (!q) return [];
+    const links = loadPartnerLinks();
+    if (/(바로가기|제휴\s*링크|업무\s*링크)/.test(q)) return links;
+    return links.filter((it) => {
+      const hay = `${it.title} ${it.badgeText} ${it.description}`.toLowerCase();
+      const keywords = [
+        '방충망', '코방', '크린토피아', '입주청소', '이사청소',
+        '중고보상', '중고가전', '중고몰', '리퍼',
+        '수당', '하이프리드 수당', '청약', 'sk인터넷', '인터넷 청약',
+      ];
+      return (
+        hay.includes(q) ||
+        keywords.some((kw) => q.includes(kw) && hay.includes(kw.split(' ')[0]))
+      );
+    });
+  }, [commandText]);
+
   // 입력 중일 때 휴무표 조회 프리뷰 (수정은 실행 버튼 클릭 시 실제 반영하거나 즉시 실행)
   const liveSchedulePreview = useMemo(() => {
     if (scheduleModifyResult || scheduleQueryResult) {
@@ -2871,6 +2940,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
       setIsAnalyzing(true);
       setAutoSavedBanner(null);
       setProposalReadyBanner(null);
+      setAiReplyText(null);
 
       try {
         // 1) 휴무표 수정/조회 명령 즉시 실행 (localStorage 'himart_gj_schedules_v4' 반영 + 이벤트 발송)
@@ -2892,8 +2962,11 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         setEngineBadge('⚡ 초고속 한국어 통합 엔진 실행 완료');
 
         // 3) 2차 하이브리드 AI 정밀 파서 호출
-        const { parsed: finalParsed, engineLabel } =
-          await parseCommandWithHybridAi(targetText);
+        const {
+          parsed: finalParsed,
+          engineLabel,
+          aiReply,
+        } = await parseCommandWithHybridAi(targetText);
         setParsedResult(finalParsed);
         setCustomerName(finalParsed.customer.name);
         setCustomerPhone(finalParsed.customer.phone);
@@ -2901,6 +2974,9 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         setCustomerStatus(finalParsed.customer.status);
         setCustomerMemo(finalParsed.customer.memo);
         setEngineBadge(engineLabel);
+        if (aiReply) {
+          setAiReplyText(aiReply);
+        }
 
         const hasItemsInFinal =
           finalParsed.generalItems.length > 0 ||
@@ -2965,8 +3041,27 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
               '📄 제안서 화면(step = proposal)에 모든 계산 결과가 즉시 세팅되었습니다! 아래 [📄 제안서 화면 바로 확인하기] 버튼을 누르거나 창을 닫으면 바로 제안서가 보입니다.'
             );
             showToast('📄 제안서 화면이 배경에 즉시 세팅되었습니다!');
+          } else {
+            showToast('✅ 견적 계산이 완료되었습니다! 아래 카드를 확인해 주세요.');
           }
+        } else if (
+          !schedExec.modifyResult &&
+          !schedExec.queryResult &&
+          !aiReply &&
+          searchCareTableFromCommand(targetText, careDataset).length === 0 &&
+          !searchInstallmentFromCommand(targetText) &&
+          searchAsCenterFromCommand(targetText).length === 0 &&
+          !searchCrmCustomersFromCommand(targetText) &&
+          !searchInsuranceFromCommand(targetText)
+        ) {
+          setAiReplyText(
+            hasActiveApiKey
+              ? `입력하신 "${targetText}" 명령에서 금액이나 품목이 감지되지 않았습니다. 예: "TV 380만 냉장고 320만 롯데카드", "오늘 누구 쉬어?", "에어컨 클리닝 단가", "방충망 주소"처럼 입력해 보세요!`
+              : `정밀 자유 대화 분석을 사용하려면 우측 상단 [🔑 AI 키] 버튼에서 Gemini API 키를 등록해 주세요. (키 없이도 "TV 380만 냉장고 320만 롯데카드", "15일 국지현 휴무", "에어컨 클리닝 단가", "방충망" 등 핵심 명령은 즉시 작동합니다!)`
+          );
         }
+      } catch (err: any) {
+        showToast(err?.message || '명령 실행 중 오류가 발생했습니다.');
       } finally {
         setIsAnalyzing(false);
       }
@@ -3085,17 +3180,70 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-indigo-200 hover:text-white hover:bg-white/10 transition cursor-pointer shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsApiKeyPanelOpen((prev) => !prev)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-black border transition cursor-pointer ${
+                hasActiveApiKey
+                  ? 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40 hover:bg-emerald-500/30'
+                  : 'bg-amber-400 text-slate-950 border-amber-300 hover:bg-amber-300'
+              }`}
+              title="Gemini API 키 등록 및 변경"
+            >
+              🔑 {hasActiveApiKey ? 'AI 키 연결됨' : 'AI 키 설정'}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl text-indigo-200 hover:text-white hover:bg-white/10 transition cursor-pointer shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 본문 스크롤 영역 */}
         <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          {/* API 키 설정 미니 패널 */}
+          {isApiKeyPanelOpen && (
+            <div className="p-3.5 rounded-2xl bg-slate-900 text-white border border-indigo-400/40 space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-black">
+                <span className="text-amber-300">
+                  🔑 Gemini API 키 설정 (브라우저 안전 저장 · 정밀 자연어 분석 활성화)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsApiKeyPanelOpen(false)}
+                  className="text-slate-400 hover:text-white cursor-pointer"
+                >
+                  닫기
+                </button>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder="AIzaSy... 로 시작하는 Gemini API 키 입력"
+                  className="flex-1 px-3 py-2 rounded-xl bg-slate-800 border border-slate-600 text-base sm:text-xs font-mono text-white focus:outline-hidden focus:border-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStoredGeminiApiKey(apiKeyInput);
+                    setHasActiveApiKey(Boolean(getEffectiveGeminiApiKey(apiKeyInput)));
+                    setIsApiKeyPanelOpen(false);
+                    showToast('✅ Gemini API 키가 저장되었습니다!');
+                  }}
+                  className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-black cursor-pointer shrink-0"
+                >
+                  저장하기
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 토스트 알림 */}
           {toastMessage && (
             <div className="p-3 rounded-2xl bg-slate-900 text-amber-300 text-xs sm:text-sm font-black flex items-center justify-between gap-2 shadow-md animate-fade-in">
@@ -3293,6 +3441,55 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* AI 브리핑 답변 카드 */}
+          {aiReplyText && (
+            <div className="rounded-2xl border-2 border-indigo-300 bg-indigo-50/90 p-4 space-y-1.5 shadow-2xs">
+              <div className="text-xs font-black text-indigo-800 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span>AI 비서 브리핑 안내</span>
+              </div>
+              <p className="text-xs sm:text-sm font-bold text-slate-800 leading-relaxed whitespace-pre-line">
+                {aiReplyText}
+              </p>
+            </div>
+          )}
+
+          {/* 제휴·업무 바로가기 즉시 매칭 카드 */}
+          {partnerLinkResults.length > 0 && (
+            <div className="rounded-2xl border-2 border-amber-300 bg-amber-50/80 p-4 space-y-2.5 shadow-2xs">
+              <div className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                <ExternalLink className="w-4 h-4 text-amber-700" />
+                <span>🔗 제휴 · 업무 바로가기 검색 결과 ({partnerLinkResults.length}건)</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {partnerLinkResults.map((pl) => (
+                  <div
+                    key={pl.id}
+                    className="p-3 rounded-xl bg-white border border-amber-200 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-black text-slate-900 truncate">
+                        {pl.title}
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate">
+                        {pl.description}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(pl.url, '_blank', 'noopener,noreferrer')
+                      }
+                      className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-black shrink-0 cursor-pointer"
+                    >
+                      열기 ↗
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* =====================================================================
               [결과 섹션 1] 📅 휴무표 말로 즉시 수정 / 근무·휴무자 조회 카드

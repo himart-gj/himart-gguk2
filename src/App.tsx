@@ -56,16 +56,9 @@ const CardInstallmentModal = lazy(() =>
 const ScheduleModal = lazy(() =>
   import('./components/ScheduleModal').then((m) => ({ default: m.ScheduleModal }))
 );
-const AiCommandModal = lazy(() =>
-  import('./components/AiCommandModal').then((m) => ({
-    default: m.AiCommandModal,
-  }))
-);
-const CommandOmnibarModal = lazy(() =>
-  import('./components/CommandOmnibarModal').then((m) => ({
-    default: m.CommandOmnibarModal,
-  }))
-);
+import { AiCommandModal } from './components/AiCommandModal';
+import { CommandOmnibarModal } from './components/CommandOmnibarModal';
+import { PartnerLinksModal } from './components/PartnerLinksModal';
 const CustomerShareQuoteView = lazy(() =>
   import('./components/CustomerShareQuoteView').then((m) => ({
     default: m.CustomerShareQuoteView,
@@ -245,6 +238,7 @@ export function App() {
     useState<boolean>(false);
   const [isCardIssueOpen, setIsCardIssueOpen] = useState<boolean>(false);
   const [isAsCenterOpen, setIsAsCenterOpen] = useState<boolean>(false);
+  const [isPartnerLinksOpen, setIsPartnerLinksOpen] = useState<boolean>(false);
   const [isScheduleModalOpen, setIsScheduleModalOpen] =
     useState<boolean>(false);
   const [isAiCommandModalOpen, setIsAiCommandModalOpen] =
@@ -328,6 +322,7 @@ export function App() {
     isInstallmentModalOpen,
     isCardIssueOpen,
     isAsCenterOpen,
+    isPartnerLinksOpen,
     isScheduleModalOpen,
     isMenuOpen,
   });
@@ -342,6 +337,7 @@ export function App() {
       isInstallmentModalOpen,
       isCardIssueOpen,
       isAsCenterOpen,
+      isPartnerLinksOpen,
       isScheduleModalOpen,
       isMenuOpen,
     };
@@ -354,6 +350,7 @@ export function App() {
     isInstallmentModalOpen,
     isCardIssueOpen,
     isAsCenterOpen,
+    isPartnerLinksOpen,
     isScheduleModalOpen,
     isMenuOpen,
   ]);
@@ -387,7 +384,8 @@ export function App() {
       isScheduleModalOpen ||
       isInstallmentModalOpen ||
       isCardIssueOpen ||
-      isAsCenterOpen
+      isAsCenterOpen ||
+      isPartnerLinksOpen
     ) {
       pushAppHistoryGuard('modal-open');
     }
@@ -401,6 +399,7 @@ export function App() {
     isInstallmentModalOpen,
     isCardIssueOpen,
     isAsCenterOpen,
+    isPartnerLinksOpen,
     pushAppHistoryGuard,
   ]);
 
@@ -488,6 +487,11 @@ export function App() {
       }
       if (current.isAsCenterOpen) {
         setIsAsCenterOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
+      if (current.isPartnerLinksOpen) {
+        setIsPartnerLinksOpen(false);
         pushAppHistoryGuard('modal-close');
         return;
       }
@@ -1189,12 +1193,12 @@ export function App() {
             : 'bg-[#FAF8F4]/95 text-[#18181B] border-[#E2DDD3]'
         }`}
       >
-        {/* 좌측: [홈] + [휴무표] + [AI 비서] */}
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        {/* 좌측: [홈] + [휴무표] + [검색] + [AI 비서] (모바일 겹침 방지 스크롤 가드 적용) */}
+        <div className="flex-1 flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
             onClick={() => setStep('home')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 transition cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
               step === 'home'
                 ? isDark
                   ? 'bg-[#38BDF8] text-[#0B0E14] shadow-xs'
@@ -1205,7 +1209,7 @@ export function App() {
             }`}
           >
             <Home className="w-3.5 h-3.5" />
-            <span>홈</span>
+            <span className="hidden sm:inline">홈</span>
           </button>
 
           <button
@@ -1215,7 +1219,7 @@ export function App() {
               setIsScheduleModalOpen(true);
             }}
             title="경기광주점 오늘 근무자 및 월별 휴무표 보기"
-            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 border transition cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shrink-0 border transition cursor-pointer ${
               isDark
                 ? 'bg-[#1B2230] hover:bg-[#232C3D] text-slate-200 border-white/10'
                 : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
@@ -1232,14 +1236,15 @@ export function App() {
               setIsOmnibarOpen(true);
             }}
             title="고객·안심케어·무이자·AS·근무자 0.01초 통합검색 (Ctrl+K)"
-            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shrink-0 border transition cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shrink-0 border transition cursor-pointer ${
               isDark
                 ? 'bg-[#1B2230] hover:bg-[#232C3D] text-sky-300 border-sky-400/30'
                 : 'bg-white hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
             }`}
           >
             <Search className="w-3.5 h-3.5" />
-            <span>통합검색</span>
+            <span className="hidden sm:inline">통합검색</span>
+            <span className="sm:hidden">검색</span>
             <kbd className="hidden md:inline-block px-1.5 py-0.2 rounded text-[10px] font-mono opacity-65 bg-black/5">
               ⌘K
             </kbd>
@@ -1247,12 +1252,14 @@ export function App() {
 
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsMenuOpen(false);
               pushAppHistoryGuard('open-ai-command');
               setIsAiCommandModalOpen(true);
             }}
             title="자연어·음성 한 줄로 견적 계산 및 고객관리 자동 등록"
-            className="px-3.5 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 shrink-0 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-xs transition cursor-pointer"
+            className="relative z-10 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-black flex items-center gap-1 shrink-0 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-95 text-white shadow-xs transition cursor-pointer"
           >
             <span>✦ AI 비서</span>
           </button>
@@ -1590,6 +1597,24 @@ export function App() {
                 >
                   <span>✦ AI 비서 (한 줄 견적 · 고객관리 자동등록)</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    pushAppHistoryGuard('open-partner-links');
+                    setIsPartnerLinksOpen(true);
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-xl font-black text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
+                    isDark
+                      ? 'bg-[#1B2230] hover:bg-[#232C3D] text-amber-300 border-amber-400/30'
+                      : 'bg-[#FAF6EE] hover:bg-[#F2E9D8] text-[#6E4423] border-[#D8C6AA]'
+                  }`}
+                >
+                  <span>🔗 제휴 · 업무 바로가기 허브</span>
+                  <span className="text-[10px] font-bold opacity-80">
+                    입주 · 중고 · 수당 · 청약
+                  </span>
+                </button>
                 <div className="grid grid-cols-4 gap-1.5">
                   <button
                     type="button"
@@ -1910,6 +1935,53 @@ export function App() {
                 </span>
               </div>
 
+              {/* 아이디어 1: 6대 제휴·업무 바로가기 통합 허브 배너 버튼 */}
+              <button
+                type="button"
+                onClick={() => {
+                  pushAppHistoryGuard('open-partner-links');
+                  setIsPartnerLinksOpen(true);
+                }}
+                className={`w-full p-3.5 sm:p-4 rounded-2xl border text-left flex items-center justify-between gap-3 transition cursor-pointer active:scale-[0.99] ${
+                  isDark
+                    ? 'bg-gradient-to-r from-[#1A2336] via-[#1E293B] to-[#1A2336] hover:border-amber-400/50 border-amber-400/25 text-white'
+                    : 'bg-gradient-to-r from-[#FAF5EB] via-[#F5ECE0] to-[#FAF5EB] hover:border-[#8C5A32] border-[#DCCBB2] text-[#18181B]'
+                }`}
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm font-black tracking-tight">
+                      🔗 제휴 · 업무 바로가기 허브
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        isDark
+                          ? 'bg-amber-400 text-slate-950'
+                          : 'bg-[#8C5A32] text-white'
+                      }`}
+                    >
+                      6대 포털 · QR · 안내문 복사
+                    </span>
+                  </div>
+                  <div
+                    className={`text-[11px] font-semibold truncate ${
+                      isDark ? 'text-slate-300' : 'text-[#685D52]'
+                    }`}
+                  >
+                    방충망 · 크린토피아 입주청소 · 중고보상/중고몰 · 하이프리드 수당 · SK인터넷 청약
+                  </div>
+                </div>
+                <span
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 ${
+                    isDark
+                      ? 'bg-white/10 text-amber-300'
+                      : 'bg-[#18181B] text-white'
+                  }`}
+                >
+                  열기 →
+                </span>
+              </button>
+
               <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                 <button
                   type="button"
@@ -2186,8 +2258,13 @@ export function App() {
         isOpen={isAsCenterOpen}
         onClose={() => setIsAsCenterOpen(false)}
       />
+      <PartnerLinksModal
+        isOpen={isPartnerLinksOpen}
+        onClose={() => setIsPartnerLinksOpen(false)}
+        isDark={isDark}
+      />
 
-      {/* ==================== 지연 로딩 모달 묶음 (무이자 / 휴무표 / ⌘K 옴니바 / AI 코파일럿) ==================== */}
+      {/* ==================== 지연 로딩 모달 묶음 (무이자 / 휴무표) ==================== */}
       <Suspense fallback={null}>
         {isInstallmentModalOpen && (
           <CardInstallmentModal
@@ -2204,8 +2281,10 @@ export function App() {
             onToggleTheme={toggleUiTheme}
           />
         )}
+      </Suspense>
 
-        {isOmnibarOpen && (
+      {/* ==================== 즉시 응답 모달 (⌘K 통합검색 & ✦ AI 비서 — 청크 지연 제로) ==================== */}
+      {isOmnibarOpen && (
           <CommandOmnibarModal
             isOpen={isOmnibarOpen}
             onClose={() => setIsOmnibarOpen(false)}
@@ -2284,7 +2363,6 @@ export function App() {
             );
           }}
         />
-      </Suspense>
 
       {/* ==================== CRM 고객 저장 팝업 모달 ==================== */}
       <SaveToCrmModal
