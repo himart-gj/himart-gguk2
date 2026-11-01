@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, FileSpreadsheet, Printer, CreditCard, Settings, Trash2, X, Filter, Download, FileText, Camera, Sparkles, ArrowLeft } from 'lucide-react';
-import { ProductData, CARD_BENEFITS } from './types';
+import { Upload, FileSpreadsheet, Printer, CreditCard, Settings, Trash2, X, Filter, Download, FileText, Camera, Sparkles, ArrowLeft, Maximize2, Columns2, CheckSquare } from 'lucide-react';
+import { ProductData, CARD_BENEFITS, PopPaperSize } from './types';
 import { parseExcel } from './excel';
 import PopCard from './PopCard';
 import ImageScannerModal from './ImageScannerModal';
@@ -76,6 +76,13 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string>(CARD_BENEFITS[0].id);
   const [popMode, setPopMode] = useState<'standard' | 'preed'>('standard');
+  const [paperSize, setPaperSize] = useState<PopPaperSize>('a4-2up');
+  const [selectedA3Ids, setSelectedA3Ids] = useState<string[]>([]);
+  const [onlySelectedInA3, setOnlySelectedInA3] = useState<boolean>(false);
+  const [singleA3Job, setSingleA3Job] = useState<{
+    product: ProductData;
+    action: 'print' | 'pdf';
+  } | null>(null);
   
   // Modals
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
@@ -276,6 +283,73 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   const handleClearData = () => {
     if (confirm('모든 데이터를 삭제하시겠습니까?')) {
       setProducts([]);
+      setSelectedA3Ids([]);
+      setOnlySelectedInA3(false);
+    }
+  };
+
+  const handleToggleA3Select = (id: string) => {
+    setSelectedA3Ids((prev) => {
+      const exists = prev.includes(id);
+      const next = exists ? prev.filter((item) => item !== id) : [...prev, id];
+      setOnlySelectedInA3(next.length > 0);
+      return next;
+    });
+  };
+
+  const exportPrintAreaToPDF = async (targetPaper: PopPaperSize, customFileName?: string) => {
+    const printArea = document.getElementById('print-area');
+    if (!printArea) return;
+
+    setIsDownloading(true);
+    const originalCssText = printArea.style.cssText;
+    try {
+      // PDF 저장을 위해 임시로 print-area 활성화
+      printArea.classList.remove('hidden', 'print:block');
+      printArea.style.cssText =
+        'display: block; position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;';
+
+      // 레이아웃 및 폰트가 완전히 잡힐 때까지 대기
+      await new Promise((resolve) => setTimeout(resolve, 420));
+
+      const pages = printArea.querySelectorAll('.print-page');
+      if (pages.length === 0) return;
+
+      const isA3 = targetPaper === 'a3-portrait';
+      const pdf = new jsPDF({
+        orientation: isA3 ? 'portrait' : 'landscape',
+        unit: 'mm',
+        format: isA3 ? 'a3' : 'a4',
+      });
+
+      const pageWidthMm = 297;
+      const pageHeightMm = isA3 ? 420 : 210;
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i] as HTMLElement;
+        const pageDataUrl = await domToImage.toJpeg(page, {
+          quality: 0.96,
+          bgcolor: '#ffffff',
+          scale: isA3 ? 1.75 : 1.5,
+          style: {
+            transform: 'none',
+            margin: '0',
+          },
+        });
+
+        if (i > 0) pdf.addPage();
+        pdf.addImage(pageDataUrl, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
+      }
+
+      const defaultName = isA3 ? '구독POP_A3세로_단독연출.pdf' : '구독POP_A4_2분할_출력물.pdf';
+      pdf.save(customFileName || defaultName);
+    } catch (err) {
+      console.error(err);
+      alert('PDF 저장 중 오류가 발생했습니다: ' + (err as Error).message);
+    } finally {
+      printArea.style.cssText = originalCssText;
+      printArea.classList.add('hidden', 'print:block');
+      setIsDownloading(false);
     }
   };
 
@@ -284,62 +358,50 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   };
 
   const handleDownloadPDF = async () => {
-    const printArea = document.getElementById('print-area');
-    if (!printArea) return;
-    
-    setIsDownloading(true);
-    try {
-      // PDF 저장을 위해 임시로 print-area 활성화
-      const originalCssText = printArea.style.cssText;
-      printArea.classList.remove('hidden', 'print:block');
-      printArea.style.cssText = 'display: block; position: absolute; left: 0; top: 0; z-index: -1;';
-
-      // 레이아웃이 완전히 잡힐 때까지 약간 대기
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const pages = printArea.querySelectorAll('.print-page');
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'mm',
-        format: 'a4'
-      });
-
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i] as HTMLElement;
-        const pageDataUrl = await domToImage.toJpeg(page, {
-          quality: 0.95,
-          bgcolor: '#ffffff',
-          style: {
-            transform: 'none',
-            margin: '0',
-            width: '100%',
-            height: '100%'
-          }
-        });
-        
-        if (i > 0) pdf.addPage();
-        pdf.addImage(pageDataUrl, 'JPEG', 0, 0, 297, 210);
-      }
-
-      pdf.save('구독POP_출력물.pdf');
-      
-      // 원래 상태로 복구
-      printArea.style.cssText = originalCssText;
-      printArea.classList.add('hidden', 'print:block');
-    } catch (err) {
-      console.error(err);
-      alert('PDF 저장 중 오류가 발생했습니다: ' + (err as Error).message);
-      // 에러 발생 시에도 복구
-      printArea.style.display = '';
-      printArea.classList.add('hidden', 'print:block');
-    } finally {
-      setIsDownloading(false);
-    }
+    await exportPrintAreaToPDF(paperSize);
   };
+
+  const handleQuickPrintA3 = (product: ProductData) => {
+    setSingleA3Job({ product, action: 'print' });
+  };
+
+  const handleQuickDownloadA3Pdf = (product: ProductData) => {
+    if (isDownloading) return;
+    setSingleA3Job({ product, action: 'pdf' });
+  };
+
+  // 카드별 [A3 단독인쇄] / [A3 PDF] 원클릭 작업 큐 실행 및 자동 복구
+  useEffect(() => {
+    if (!singleA3Job) return;
+    let cancelled = false;
+
+    const timer = window.setTimeout(async () => {
+      if (cancelled) return;
+      if (singleA3Job.action === 'print') {
+        const cleanup = () => {
+          window.removeEventListener('afterprint', cleanup);
+          setSingleA3Job(null);
+        };
+        window.addEventListener('afterprint', cleanup);
+        window.print();
+        // 데스크톱 브라우저에서 window.print() 반환 직후 안전 복구
+        window.setTimeout(cleanup, 600);
+      } else {
+        const safeModel = (singleA3Job.product.modelName || '단독모델').replace(/[\/:*?"<>|]/g, '_');
+        await exportPrintAreaToPDF('a3-portrait', `구독POP_A3세로_${safeModel}.pdf`);
+        if (!cancelled) setSingleA3Job(null);
+      }
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [singleA3Job]);
 
   const selectedCard = CARD_BENEFITS.find(c => c.id === selectedCardId) || CARD_BENEFITS[0];
 
-  // 필터링된 상품 목록
+  // 필터링된 상품 목록 (웹 화면 표시 기준)
   const displayedProducts = products.filter(p => {
     if (printMode === 'changed') return p.changeStatus === 'changed';
     if (printMode === 'new') return p.changeStatus === 'new';
@@ -348,15 +410,34 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
     return true; // 'all'
   });
 
-  // 인쇄 페이지용 묶음 (2개씩)
-  const productPairs = [];
-  for (let i = 0; i < displayedProducts.length; i += 2) {
-    productPairs.push(displayedProducts.slice(i, i + 2));
+  // A3 세로 개별 연출 체크된 모델 목록 (현재 필터 내)
+  const selectedDisplayedProducts = displayedProducts.filter((p) =>
+    selectedA3Ids.includes(p.id)
+  );
+
+  // 실제 인쇄/PDF 영역(#print-area)에 렌더링될 규격 및 대상 모델
+  const effectivePaperSize: PopPaperSize = singleA3Job ? 'a3-portrait' : paperSize;
+  const activePrintProducts: ProductData[] = singleA3Job
+    ? [singleA3Job.product]
+    : effectivePaperSize === 'a3-portrait' &&
+      onlySelectedInA3 &&
+      selectedDisplayedProducts.length > 0
+    ? selectedDisplayedProducts
+    : displayedProducts;
+
+  // A4 가로 2분할 인쇄용 묶음 (2개씩)
+  const productPairs: ProductData[][] = [];
+  for (let i = 0; i < activePrintProducts.length; i += 2) {
+    productPairs.push(activePrintProducts.slice(i, i + 2));
   }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
-      <style>{`@media print { @page { size: A4 landscape !important; margin: 0 !important; } }`}</style>
+      <style>{
+        effectivePaperSize === 'a3-portrait'
+          ? `@media print { @page { size: A3 portrait !important; margin: 0 !important; } .print-page.print-page-a3 { transform: none !important; } }`
+          : `@media print { @page { size: A4 landscape !important; margin: 0 !important; } }`
+      }</style>
       {/* Header (Hidden on Print) */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm no-print">
         <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 flex flex-col gap-2">
@@ -409,7 +490,37 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
 
           {/* Bottom Row (모바일/폴드용 상단 설정 바 - lg 이상에서는 좌측 패널에서도 제어 가능) */}
           <div className="flex items-center justify-between gap-1.5 flex-wrap sm:flex-nowrap border-t border-slate-100 pt-2">
-            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Paper Size Switch (A4 가로 2분할 쇼카드 vs A3 세로 단독 연출) */}
+              <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPaperSize('a4-2up')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    paperSize === 'a4-2up'
+                      ? 'bg-slate-800 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                  title="A4 가로 용지 1장에 2개 모델을 나란히 배치하여 반으로 재단해 쓰는 기본 쇼카드 모드"
+                >
+                  <Columns2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>A4 2분할</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaperSize('a3-portrait')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                    paperSize === 'a3-portrait'
+                      ? 'bg-emerald-700 text-amber-200 shadow-xs'
+                      : 'text-slate-600 hover:text-emerald-800 hover:bg-white/60'
+                  }`}
+                  title="A3 세로(297×420mm) 용지 1장에 1개 모델을 2배 크기로 단독 확대 출력하는 개별 연출 모드"
+                >
+                  <Maximize2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>A3 세로 단독</span>
+                </button>
+              </div>
+
               {/* POP Mode Switch (일반모드 vs 상조모드) */}
               <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
                 <button
@@ -537,21 +648,31 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
               {/* Print Button */}
               <button
                 onClick={handlePrint}
-                disabled={displayedProducts.length === 0}
-                className="flex items-center gap-1 bg-slate-800 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
+                disabled={activePrintProducts.length === 0}
+                className={`flex items-center gap-1 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
+                  paperSize === 'a3-portrait'
+                    ? 'bg-emerald-700 hover:bg-emerald-800'
+                    : 'bg-slate-800 hover:bg-slate-700'
+                }`}
               >
                 <Printer className="w-3.5 h-3.5" />
-                일반 인쇄 ({displayedProducts.length})
+                {paperSize === 'a3-portrait'
+                  ? `A3 세로 인쇄 (${activePrintProducts.length}장)`
+                  : `A4 인쇄 (${activePrintProducts.length}건)`}
               </button>
 
               {/* PDF Button */}
               <button
                 onClick={handleDownloadPDF}
-                disabled={displayedProducts.length === 0 || isDownloading}
+                disabled={activePrintProducts.length === 0 || isDownloading}
                 className="flex items-center gap-1 bg-red-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <FileText className="w-3.5 h-3.5" />
-                {isDownloading ? 'PDF 생성 중...' : 'PDF 저장'}
+                {isDownloading
+                  ? 'PDF 생성 중...'
+                  : paperSize === 'a3-portrait'
+                  ? 'A3 PDF 저장'
+                  : 'A4 PDF 저장'}
               </button>
             </div>
           </div>
@@ -579,7 +700,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
           <div className="space-y-1">
             <h2 className="text-sm font-black text-slate-900">POP 빠른 설정 패널</h2>
             <p className="text-xs text-slate-500">
-              전산 사진 스캔(Ctrl+V) 또는 엑셀 자료를 등록해 A4 재단선 POP를 즉시 출력합니다.
+              A4 2분할 재단용 쇼카드와 A3 세로(297×420mm) 단독 연출 포스터를 즉시 전환·출력합니다.
             </p>
           </div>
 
@@ -603,6 +724,67 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
               <Upload className="w-4 h-4" />
               엑셀 자료 관리 ({products.length}건)
             </button>
+          </div>
+
+          <div className="space-y-1.5 pt-2 border-t border-slate-100">
+            <label className="text-xs font-extrabold text-slate-700 block">
+              출력 용지 규격 (쇼카드 vs 단독연출)
+            </label>
+            <div className="grid grid-cols-1 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setPaperSize('a4-2up')}
+                className={`w-full px-3 py-2 rounded-xl text-xs font-black border text-left flex flex-col gap-0.5 transition cursor-pointer ${
+                  paperSize === 'a4-2up'
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <div className="w-full flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Columns2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>A4 가로 2분할 (기본 쇼카드)</span>
+                  </span>
+                  {paperSize === 'a4-2up' && (
+                    <span className="text-[10px] text-amber-300">선택됨</span>
+                  )}
+                </div>
+                <span
+                  className={`text-[10px] font-semibold ${
+                    paperSize === 'a4-2up' ? 'text-slate-300' : 'text-slate-500'
+                  }`}
+                >
+                  297×210mm · 1장당 2모델 중앙 재단선
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaperSize('a3-portrait')}
+                className={`w-full px-3 py-2 rounded-xl text-xs font-black border text-left flex flex-col gap-0.5 transition cursor-pointer ${
+                  paperSize === 'a3-portrait'
+                    ? 'bg-emerald-700 text-amber-200 border-emerald-700 shadow-2xs'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:text-emerald-800'
+                }`}
+              >
+                <div className="w-full flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Maximize2 className="w-3.5 h-3.5 shrink-0" />
+                    <span>A3 세로 단독 (개별 연출)</span>
+                  </span>
+                  {paperSize === 'a3-portrait' && (
+                    <span className="text-[10px] text-white">선택됨</span>
+                  )}
+                </div>
+                <span
+                  className={`text-[10px] font-semibold ${
+                    paperSize === 'a3-portrait' ? 'text-emerald-100' : 'text-slate-500'
+                  }`}
+                >
+                  297×420mm · 1장당 1모델 2배 확대 포스터
+                </span>
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-slate-100">
@@ -667,20 +849,30 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
             <button
               type="button"
               onClick={handlePrint}
-              disabled={displayedProducts.length === 0}
-              className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-40 transition cursor-pointer"
+              disabled={activePrintProducts.length === 0}
+              className={`w-full py-2.5 px-3 rounded-xl text-white text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-40 transition cursor-pointer ${
+                paperSize === 'a3-portrait'
+                  ? 'bg-emerald-700 hover:bg-emerald-800'
+                  : 'bg-slate-900 hover:bg-slate-800'
+              }`}
             >
               <Printer className="w-4 h-4" />
-              A4 일반 인쇄 ({displayedProducts.length}건)
+              {paperSize === 'a3-portrait'
+                ? `A3 세로 단독 인쇄 (${activePrintProducts.length}장)`
+                : `A4 2분할 인쇄 (${activePrintProducts.length}건)`}
             </button>
             <button
               type="button"
               onClick={handleDownloadPDF}
-              disabled={displayedProducts.length === 0 || isDownloading}
+              disabled={activePrintProducts.length === 0 || isDownloading}
               className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-40 transition cursor-pointer"
             >
               <FileText className="w-4 h-4" />
-              {isDownloading ? 'PDF 생성 중...' : '고해상도 PDF 저장'}
+              {isDownloading
+                ? 'PDF 생성 중...'
+                : paperSize === 'a3-portrait'
+                ? '고해상도 A3 세로 PDF 저장'
+                : '고해상도 A4 PDF 저장'}
             </button>
           </div>
         </aside>
@@ -742,47 +934,165 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
           {/* POP Grid */}
           {products.length > 0 && (
             <div className="w-full">
+              {/* A3 세로 개별 연출 모드 안내 및 선택 모델 필터 바 */}
+              {(paperSize === 'a3-portrait' || selectedA3Ids.length > 0) && (
+                <div className="no-print print:hidden mb-4 rounded-2xl border border-emerald-300 bg-gradient-to-r from-emerald-50 via-teal-50/70 to-white p-3.5 sm:p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-700 text-amber-200 text-xs font-black">
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        A3 세로 개별 연출 지원 (297×420mm)
+                      </span>
+                      <span className="text-xs sm:text-sm font-extrabold text-slate-900">
+                        1페이지당 1모델 단독 2배 확대 · 재단선 없음
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      진열대 단독 연출할 모델을 체크해 원하는 상품만 A3 세로로 모아 뽑거나, 각 카드 상단의{' '}
+                      <strong className="text-slate-900">[A3 단독인쇄]</strong> ·{' '}
+                      <strong className="text-rose-600">[A3 PDF]</strong> 버튼으로 1장씩 즉시 출력할 수 있습니다.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                    {paperSize !== 'a3-portrait' && selectedDisplayedProducts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaperSize('a3-portrait');
+                          setOnlySelectedInA3(true);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-amber-200 text-xs font-black cursor-pointer transition whitespace-nowrap"
+                      >
+                        선택한 {selectedDisplayedProducts.length}건 A3 세로 모드로 보기
+                      </button>
+                    )}
+
+                    {paperSize === 'a3-portrait' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setOnlySelectedInA3(false)}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer whitespace-nowrap ${
+                            !onlySelectedInA3 || selectedDisplayedProducts.length === 0
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          전체 출력 ({displayedProducts.length}장)
+                        </button>
+                        <button
+                          type="button"
+                          disabled={selectedDisplayedProducts.length === 0}
+                          onClick={() => setOnlySelectedInA3(true)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold border transition cursor-pointer whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed ${
+                            onlySelectedInA3 && selectedDisplayedProducts.length > 0
+                              ? 'bg-emerald-700 text-amber-200 border-emerald-700'
+                              : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50'
+                          }`}
+                        >
+                          <CheckSquare className="w-3.5 h-3.5" />
+                          선택 모델만 출력 ({selectedDisplayedProducts.length}장)
+                        </button>
+                      </>
+                    )}
+
+                    {selectedA3Ids.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedA3Ids([]);
+                          setOnlySelectedInA3(false);
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-500 border border-slate-200 text-xs font-bold cursor-pointer whitespace-nowrap"
+                      >
+                        선택 해제
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* 1. 웹 화면용 뷰 (인쇄 시 숨김) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-6 print:hidden">
+              <div
+                className={`grid gap-6 print:hidden ${
+                  paperSize === 'a3-portrait'
+                    ? 'grid-cols-1 xl:grid-cols-2'
+                    : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-2'
+                }`}
+              >
                 {displayedProducts.map((product) => (
-                  <PopCard 
-                    key={product.id} 
-                    product={product} 
+                  <PopCard
+                    key={product.id}
+                    product={product}
                     cardBenefit={selectedCard}
                     popMode={popMode}
+                    paperSize={paperSize}
+                    isA3Selected={selectedA3Ids.includes(product.id)}
                     onToggleAllCare={handleToggleAllCare}
+                    onToggleA3Select={handleToggleA3Select}
+                    onQuickPrintA3={handleQuickPrintA3}
+                    onQuickDownloadA3Pdf={handleQuickDownloadA3Pdf}
                   />
                 ))}
               </div>
 
-              {/* 2. 인쇄/PDF용 뷰 (화면 시 숨김) - 완벽한 A4 재단선 지원 */}
+              {/* 2. 인쇄/PDF용 뷰 (화면 시 숨김) - A4 가로 2분할 재단선 & A3 세로 1장 단독 확대 모두 완벽 지원 */}
               <div id="print-area" className="hidden print:block w-full">
-                {productPairs.map((pair, idx) => (
-                  <div 
-                    key={idx} 
-                    className="print-page w-[297mm] h-[210mm] mx-auto flex relative overflow-hidden bg-white"
-                    style={{ pageBreakAfter: 'always', breakAfter: 'page' }}
-                  >
-                    {/* 중앙 재단선 (Cutting Line) */}
-                    <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-slate-400 z-50"></div>
-                    
-                    {/* 카드 렌더링 (최대 2개) */}
-                    {pair.map((product) => (
-                      <div key={product.id} className="w-[148.5mm] h-[210mm] flex items-center justify-center box-border shrink-0">
-                        <div className="w-full h-full flex items-center justify-center print:p-[6mm]">
-                          <div className="w-full h-full relative">
-                            <PopCard
-                              product={product}
-                              cardBenefit={selectedCard}
-                              popMode={popMode}
-                              onToggleAllCare={handleToggleAllCare}
-                            />
+                {effectivePaperSize === 'a3-portrait'
+                  ? activePrintProducts.map((product, idx) => (
+                      <div
+                        key={`a3-${product.id}-${idx}`}
+                        className="print-page print-page-a3 w-[297mm] h-[420mm] mx-auto flex items-center justify-center relative overflow-hidden bg-white"
+                        style={
+                          idx < activePrintProducts.length - 1
+                            ? { pageBreakAfter: 'always', breakAfter: 'page' }
+                            : undefined
+                        }
+                      >
+                        <PopCard
+                          product={product}
+                          cardBenefit={selectedCard}
+                          popMode={popMode}
+                          paperSize="a3-portrait"
+                          isA3PrintSheet={true}
+                        />
+                      </div>
+                    ))
+                  : productPairs.map((pair, idx) => (
+                      <div
+                        key={`a4-${idx}`}
+                        className="print-page w-[297mm] h-[210mm] mx-auto flex relative overflow-hidden bg-white"
+                        style={
+                          idx < productPairs.length - 1
+                            ? { pageBreakAfter: 'always', breakAfter: 'page' }
+                            : undefined
+                        }
+                      >
+                        {/* 중앙 재단선 (Cutting Line) */}
+                        <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-slate-400 z-50"></div>
+
+                        {/* 카드 렌더링 (최대 2개) */}
+                        {pair.map((product) => (
+                          <div
+                            key={product.id}
+                            className="w-[148.5mm] h-[210mm] flex items-center justify-center box-border shrink-0"
+                          >
+                            <div className="w-full h-full flex items-center justify-center print:p-[6mm]">
+                              <div className="w-full h-full relative">
+                                <PopCard
+                                  product={product}
+                                  cardBenefit={selectedCard}
+                                  popMode={popMode}
+                                  paperSize="a4-2up"
+                                  onToggleAllCare={handleToggleAllCare}
+                                />
+                              </div>
+                            </div>
                           </div>
-                        </div>
+                        ))}
                       </div>
                     ))}
-                  </div>
-                ))}
               </div>
 
               {displayedProducts.length === 0 && (

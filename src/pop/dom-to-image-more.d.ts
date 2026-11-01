@@ -6,6 +6,7 @@ declare module 'dom-to-image-more' {
     height?: number;
     style?: Record<string, string>;
     quality?: number;
+    scale?: number;
     imagePlaceholder?: string;
     cacheBust?: boolean;
   }

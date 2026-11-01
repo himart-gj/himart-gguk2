@@ -1,11 +1,24 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { ProductData, CardBenefit, CARD_BENEFITS, PopMode } from './types';
+import { Printer, FileText, CheckSquare, Square, Maximize2 } from 'lucide-react';
+import { ProductData, CardBenefit, CARD_BENEFITS, PopMode, PopPaperSize } from './types';
+
+// A3 세로(297×420mm) 인쇄 시 148.5×210mm 원본 카드를 정밀 비례 확대하는 배율
+// 148.5mm * 1.92 = 285.12mm (좌우 약 5.9mm 여백), 210mm * 1.92 = 403.2mm (상하 약 8.4mm 여백)
+const A3_PORTRAIT_PRINT_SCALE = 1.92;
+const BASE_CARD_WIDTH_PX = 561.26; // 148.5mm @ 96 DPI
+const BASE_CARD_HEIGHT_PX = 793.7; // 210.0mm @ 96 DPI
 
 interface PopCardProps {
   product: ProductData;
   cardBenefit: CardBenefit;
   popMode?: PopMode;
+  paperSize?: PopPaperSize;
+  isA3PrintSheet?: boolean;
+  isA3Selected?: boolean;
   onToggleAllCare?: (id: string) => void;
+  onToggleA3Select?: (id: string) => void;
+  onQuickPrintA3?: (product: ProductData) => void;
+  onQuickDownloadA3Pdf?: (product: ProductData) => void;
 }
 
 interface PreedPlanInfo {
@@ -146,26 +159,42 @@ export default function PopCard({
   product,
   cardBenefit,
   popMode = 'standard',
+  paperSize = 'a4-2up',
+  isA3PrintSheet = false,
+  isA3Selected = false,
   onToggleAllCare,
+  onToggleA3Select,
+  onQuickPrintA3,
+  onQuickDownloadA3Pdf,
 }: PopCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  const [scale, setScale] = useState(isA3PrintSheet ? A3_PORTRAIT_PRINT_SCALE : 1);
 
   useEffect(() => {
+    if (isA3PrintSheet) {
+      setScale(A3_PORTRAIT_PRINT_SCALE);
+      return;
+    }
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const availableWidth = entry.contentRect.width;
-        const targetWidth = 561.26; // 148.5mm in pixels at 96 DPI
-        setScale(availableWidth < targetWidth ? availableWidth / targetWidth : 1);
+        const targetWidth = BASE_CARD_WIDTH_PX;
+        if (availableWidth < targetWidth) {
+          setScale(availableWidth / targetWidth);
+        } else if (paperSize === 'a3-portrait') {
+          setScale(Math.min(1.16, availableWidth / targetWidth));
+        } else {
+          setScale(1);
+        }
       }
     });
-    
+
     if (containerRef.current) {
       observer.observe(containerRef.current);
     }
-    
+
     return () => observer.disconnect();
-  }, []);
+  }, [isA3PrintSheet, paperSize]);
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat('ko-KR').format(num);
@@ -208,15 +237,103 @@ export default function PopCard({
     22
   );
 
+  const effectiveScale = isA3PrintSheet ? A3_PORTRAIT_PRINT_SCALE : scale;
+  const stageWidthPx = BASE_CARD_WIDTH_PX * effectiveScale;
+  const stageHeightPx = BASE_CARD_HEIGHT_PX * effectiveScale;
+  const showQuickA3Toolbar =
+    !isA3PrintSheet && Boolean(onQuickPrintA3 || onQuickDownloadA3Pdf || onToggleA3Select);
+
   return (
-    <div ref={containerRef} className="w-full flex justify-center print:w-full print:h-full">
+    <div
+      ref={containerRef}
+      className={
+        isA3PrintSheet
+          ? 'w-full h-full flex items-center justify-center'
+          : 'w-full flex flex-col items-center print:w-full print:h-full'
+      }
+    >
+      {/* 웹 미리보기 전용: 개별 연출(A3 세로) 선택 및 1클릭 단독 출력 툴바 */}
+      {showQuickA3Toolbar && (
+        <div
+          className={`no-print print:hidden mb-2 rounded-xl px-2.5 py-1.5 border flex items-center justify-between gap-1.5 flex-wrap transition-all ${
+            isA3Selected
+              ? 'bg-emerald-50 border-emerald-400 shadow-xs'
+              : paperSize === 'a3-portrait'
+              ? 'bg-indigo-50/80 border-indigo-200'
+              : 'bg-white border-slate-200 shadow-2xs'
+          }`}
+          style={{ width: `${stageWidthPx}px`, maxWidth: '100%' }}
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            {onToggleA3Select && (
+              <button
+                type="button"
+                onClick={() => onToggleA3Select(product.id)}
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-extrabold border transition-colors cursor-pointer whitespace-nowrap ${
+                  isA3Selected
+                    ? 'bg-emerald-600 text-white border-emerald-700'
+                    : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-slate-200'
+                }`}
+                title="A3 세로 개별 연출 출력 대상으로 이 모델을 체크합니다"
+              >
+                {isA3Selected ? (
+                  <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                ) : (
+                  <Square className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                )}
+                <span>{isA3Selected ? 'A3 연출 선택됨' : '개별연출 선택'}</span>
+              </button>
+            )}
+            {paperSize === 'a3-portrait' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-black whitespace-nowrap">
+                <Maximize2 className="w-2.5 h-2.5" />
+                A3 세로 297×420mm
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 ml-auto">
+            {onQuickPrintA3 && (
+              <button
+                type="button"
+                onClick={() => onQuickPrintA3(product)}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-[11px] font-black transition-colors cursor-pointer whitespace-nowrap"
+                title="전체 모드를 바꾸지 않고 이 모델 1개만 즉시 A3 세로(297×420mm) 단독 포스터로 인쇄합니다"
+              >
+                <Printer className="w-3 h-3 shrink-0" />
+                <span>A3 단독인쇄</span>
+              </button>
+            )}
+            {onQuickDownloadA3Pdf && (
+              <button
+                type="button"
+                onClick={() => onQuickDownloadA3Pdf(product)}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black transition-colors cursor-pointer whitespace-nowrap"
+                title="이 모델 1개만 A3 세로(297×420mm) 고해상도 PDF로 즉시 저장합니다"
+              >
+                <FileText className="w-3 h-3 shrink-0" />
+                <span>A3 PDF</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div
-        className="relative print:!w-full print:!h-full"
-        style={{ width: `${561.26 * scale}px`, height: `${793.7 * scale}px` }}
+        className={isA3PrintSheet ? 'relative shrink-0' : 'relative print:!w-full print:!h-full'}
+        style={{ width: `${stageWidthPx}px`, height: `${stageHeightPx}px` }}
       >
         <div
-          className="pop-card-print w-[148.5mm] h-[210mm] border-8 border-slate-800 bg-white px-[22px] pt-[18px] pb-[16px] flex flex-col justify-between shadow-lg box-border shrink-0 origin-top-left absolute top-0 left-0 print:!relative print:!transform-none print:w-full print:h-full print:border-[6px] print:shadow-none print:m-0"
-          style={{ transform: `scale(${scale})` }}
+          className={
+            isA3PrintSheet
+              ? 'pop-card-print w-[148.5mm] h-[210mm] border-8 border-slate-800 bg-white px-[22px] pt-[18px] pb-[16px] flex flex-col justify-between box-border shrink-0 origin-top-left absolute top-0 left-0 shadow-none m-0'
+              : `pop-card-print w-[148.5mm] h-[210mm] border-8 ${
+                  isA3Selected
+                    ? 'border-emerald-700 ring-4 ring-emerald-400/40'
+                    : 'border-slate-800'
+                } bg-white px-[22px] pt-[18px] pb-[16px] flex flex-col justify-between shadow-lg box-border shrink-0 origin-top-left absolute top-0 left-0 print:!relative print:!transform-none print:w-full print:h-full print:border-[6px] print:shadow-none print:m-0`
+          }
+          style={{ transform: `scale(${effectiveScale})` }}
         >
           {/* [1단] 최상단 바 & 메인 타이틀 영역 */}
           <div className="text-center">
