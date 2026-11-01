@@ -772,17 +772,6 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                     >
                       {item.description}
                     </p>
-
-                    <div
-                      className={`text-[10.5px] font-mono truncate px-2 py-1 rounded-lg ${
-                        isDark
-                          ? 'bg-black/25 text-slate-400'
-                          : 'bg-[#F5F2EB] text-[#78716C]'
-                      }`}
-                      title={item.url}
-                    >
-                      {item.url}
-                    </div>
                   </div>
 
                   {/* 하단 원터치 액션 버튼들 */}

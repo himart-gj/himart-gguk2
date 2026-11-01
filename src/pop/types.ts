@@ -28,8 +28,8 @@ export const CARD_BENEFITS: CardBenefit[] = [
   {
     id: 'lotte',
     name: '롯데카드',
-    discount: 16000,
-    description: '30만원 이용시 월 16,000원 캐시백',
+    discount: 18000,
+    description: '30만원 이용시 월 18,000원 캐시백',
     benefitType: '캐시백'
   },
   {

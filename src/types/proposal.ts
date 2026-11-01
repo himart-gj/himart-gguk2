@@ -815,9 +815,9 @@ export const AFFILIATE_CARDS: AffiliateCardSpec[] = [
     shortName: '롯데카드',
     benefitType: '캐시백',
     tiers: [
-      { id: 'lotte-30', minSpendLabel: '전월 실적 30만원 이상', minSpendShort: '30만원', monthlyDiscount: 16000 },
-      { id: 'lotte-70', minSpendLabel: '전월 실적 70만원 이상', minSpendShort: '70만원', monthlyDiscount: 19000 },
-      { id: 'lotte-150', minSpendLabel: '전월 실적 150만원 이상', minSpendShort: '150만원', monthlyDiscount: 21000 },
+      { id: 'lotte-30', minSpendLabel: '전월 실적 30만원 이상', minSpendShort: '30만원', monthlyDiscount: 18000 },
+      { id: 'lotte-70', minSpendLabel: '전월 실적 70만원 이상', minSpendShort: '70만원', monthlyDiscount: 20000 },
+      { id: 'lotte-150', minSpendLabel: '전월 실적 150만원 이상', minSpendShort: '150만원', monthlyDiscount: 22000 },
     ],
   },
   {
