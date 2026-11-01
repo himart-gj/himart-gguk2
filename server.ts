@@ -145,6 +145,22 @@ async function startServer() {
     }
   });
 
+  // 로컬/서버 환경에서 업로드·수정한 월별 제품 모델 수당 단가표를 public/model-incentive-data.json에 즉시 반영
+  app.post('/api/model-incentives/save', (req, res) => {
+    try {
+      const { sheets } = req.body || {};
+      if (!sheets || typeof sheets !== 'object' || Array.isArray(sheets)) {
+        res.status(400).json({ error: '유효한 모델 수당 단가표 데이터가 없습니다.' });
+        return;
+      }
+      const targetPath = path.join(__dirname, 'public', 'model-incentive-data.json');
+      fs.writeFileSync(targetPath, JSON.stringify(sheets, null, 2), 'utf-8');
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'model-incentive-data.json 저장 실패' });
+    }
+  });
+
   // 0. AI 비서 자연어 명령 분석 백엔드 프록시 (클라이언트 키 미설정 시 서버 키로 즉시 응답)
   app.post('/api/ai/parse-command', async (req, res) => {
     try {

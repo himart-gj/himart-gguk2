@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'himart-shell-v6';
-const DATA_JSON_CACHE = 'himart-data-v6';
+const APP_SHELL_CACHE = 'himart-shell-v7';
+const DATA_JSON_CACHE = 'himart-data-v7';
 
 const PRECACHE_URLS = [
   './',
@@ -11,6 +11,7 @@ const PRECACHE_URLS = [
   './care-table-data.json',
   './card-installment-data.json',
   './schedule-data.json',
+  './model-incentive-data.json',
 ];
 
 self.addEventListener('install', (event) => {

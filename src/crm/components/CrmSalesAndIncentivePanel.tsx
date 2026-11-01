@@ -11,8 +11,10 @@ import {
   Download,
   FileSpreadsheet,
   Image as ImageIcon,
+  Cloud,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
   Trash2,
   Truck,
@@ -29,16 +31,21 @@ import {
   computeMonthlySettlementReport,
   ConfirmedCustomerSettlementRow,
   downloadModelIncentiveExcelTemplate,
+  fetchRemoteModelIncentiveSheets,
   getCurrentYearMonth,
+  GitHubSyncConfig,
   hydrateModelIncentiveSheetsFromIdb,
   IncentiveMonthBasis,
   loadAllModelIncentiveSheets,
+  loadGitHubSyncConfig,
   MODEL_INCENTIVE_UPDATED_EVENT,
   parseIncentiveAmountCell,
   parseModelIncentiveExcelOrCsv,
   parseModelIncentiveFreeText,
   parseModelIncentiveImage,
+  publishModelIncentiveSheetsToGitHub,
   saveAllModelIncentiveSheets,
+  saveGitHubSyncConfig,
   upsertMonthlyIncentiveSheet,
 } from '../utils/settlementEngine';
 
@@ -107,6 +114,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
 
   const [showManualDrawer, setShowManualDrawer] = useState<boolean>(false);
   const [showRulesDrawer, setShowRulesDrawer] = useState<boolean>(false);
+  const [showCloudDrawer, setShowCloudDrawer] = useState<boolean>(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [ghConfig, setGhConfig] = useState<GitHubSyncConfig>(() =>
+    loadGitHubSyncConfig()
+  );
   const [ruleSearch, setRuleSearch] = useState<string>('');
   const [manualCategory, setManualCategory] = useState<string>('');
   const [manualModelCode, setManualModelCode] = useState<string>('');
@@ -127,6 +139,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
       if (Object.keys(loaded).length > 0) {
         setSheetsMap(loaded);
       }
+      fetchRemoteModelIncentiveSheets().then((remoteMerged) => {
+        if (remoteMerged && Object.keys(remoteMerged).length > 0) {
+          setSheetsMap(remoteMerged);
+        }
+      });
     });
     const sync = () => setSheetsMap(loadAllModelIncentiveSheets());
     window.addEventListener(MODEL_INCENTIVE_UPDATED_EVENT, sync);
@@ -182,6 +199,68 @@ export const CrmSalesAndIncentivePanel: React.FC<
     }
   };
 
+  const pushSheetsToAllStaff = async (
+    baseMsg: string,
+    overrideConfig?: GitHubSyncConfig
+  ) => {
+    const latestMap = loadAllModelIncentiveSheets();
+    setSheetsMap(latestMap);
+    const cfg = overrideConfig || loadGitHubSyncConfig();
+    if (!cfg.repo.trim() || !cfg.token.trim()) {
+      onShowToast?.(baseMsg);
+      return;
+    }
+    setIsSyncingCloud(true);
+    try {
+      const res = await publishModelIncentiveSheetsToGitHub(latestMap, cfg);
+      onShowToast?.(
+        res.ok
+          ? `${baseMsg} · ☁️ 전 직원 자동 공유 완료!`
+          : `${baseMsg} (${res.message})`
+      );
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleManualPullOrPush = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const pulled = await fetchRemoteModelIncentiveSheets();
+      if (pulled) {
+        setSheetsMap(pulled);
+      }
+      const cfg = loadGitHubSyncConfig();
+      if (cfg.repo.trim() && cfg.token.trim()) {
+        const latest = loadAllModelIncentiveSheets();
+        const pushed = await publishModelIncentiveSheetsToGitHub(latest, cfg);
+        onShowToast?.(
+          pushed.ok
+            ? '☁️ 전 직원 모델 수당 단가표 최신 동기화 완료!'
+            : `⚠️ ${pushed.message}`
+        );
+      } else {
+        onShowToast?.(
+          pulled
+            ? '✅ 서버에서 최신 모델 수당 단가표를 불러왔습니다!'
+            : '현재 기기의 단가표가 최신 상태입니다.'
+        );
+      }
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handleSaveGhConfig = async () => {
+    saveGitHubSyncConfig(ghConfig);
+    if (ghConfig.repo.trim() && ghConfig.token.trim()) {
+      await pushSheetsToAllStaff('✅ 동기화 설정 저장', ghConfig);
+      setShowCloudDrawer(false);
+    } else {
+      onShowToast?.('GitHub 동기화 설정이 저장되었습니다.');
+    }
+  };
+
   const handleExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -200,9 +279,8 @@ export const CrmSalesAndIncentivePanel: React.FC<
         `${files[0].name}${files.length > 1 ? ` 외 ${files.length - 1}건` : ''}`,
         replaceOnUpload
       );
-      setSheetsMap(loadAllModelIncentiveSheets());
-      onShowToast?.(
-        `📊 ${formatYearMonthKo(selectedYearMonth)} 모델 수당표 반영 (${nextSheet.rules.length}개)`
+      await pushSheetsToAllStaff(
+        `📊 ${formatYearMonthKo(selectedYearMonth)} 단가표 ${nextSheet.rules.length}개 반영`
       );
     } catch (err: any) {
       setUploadError(err?.message || '엑셀 파일 분석 중 오류가 발생했습니다.');
@@ -230,9 +308,8 @@ export const CrmSalesAndIncentivePanel: React.FC<
         `사진 스캔 (${files.length}장)`,
         replaceOnUpload
       );
-      setSheetsMap(loadAllModelIncentiveSheets());
-      onShowToast?.(
-        `📷 사진에서 ${totalParsed.length}개 모델 수당 추출 완료 (누적 ${nextSheet.rules.length}개)`
+      await pushSheetsToAllStaff(
+        `📷 사진에서 ${totalParsed.length}개 추출 (누적 ${nextSheet.rules.length}개)`
       );
     } catch (err: any) {
       setUploadError(err?.message || '사진 분석 중 오류가 발생했습니다.');
@@ -262,10 +339,9 @@ export const CrmSalesAndIncentivePanel: React.FC<
       '직접 입력',
       false
     );
-    setSheetsMap(loadAllModelIncentiveSheets());
     setManualModelCode('');
     setManualIncentive('');
-    onShowToast?.(`✅ [${code}] 수당 ${formatCurrency(amt)}원 등록`);
+    void pushSheetsToAllStaff(`✅ [${code}] 수당 ${formatCurrency(amt)}원 등록`);
   };
 
   const handleBulkTextApply = () => {
@@ -281,23 +357,25 @@ export const CrmSalesAndIncentivePanel: React.FC<
       `텍스트 일괄등록 (${parsed.length}건)`,
       replaceOnUpload
     );
-    setSheetsMap(loadAllModelIncentiveSheets());
     setBulkPasteText('');
     setShowManualDrawer(false);
-    onShowToast?.(`✅ ${parsed.length}개 모델 수당 반영 (총 ${next.rules.length}개)`);
+    void pushSheetsToAllStaff(
+      `✅ ${parsed.length}개 모델 단가 반영 (총 ${next.rules.length}개)`
+    );
   };
 
   const handleQuickAssignSave = () => {
     if (!quickAssignTarget) return;
     const amt = parseIncentiveAmountCell(quickAssignAmount, 1);
     if (amt <= 0) return;
+    const targetCode = quickAssignTarget.modelCode;
     upsertMonthlyIncentiveSheet(
       selectedYearMonth,
       [
         {
           id: `QCK-${Date.now()}`,
           category: quickAssignTarget.category || '가전',
-          modelCode: quickAssignTarget.modelCode.trim().toUpperCase(),
+          modelCode: targetCode.trim().toUpperCase(),
           incentiveAmount: amt,
           saleTypeFilter: 'all',
         },
@@ -305,12 +383,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
       '고객 카드 즉시 지정',
       false
     );
-    setSheetsMap(loadAllModelIncentiveSheets());
-    onShowToast?.(
-      `💰 [${quickAssignTarget.modelCode}] +${formatCurrency(amt)}원 반영 완료`
-    );
     setQuickAssignTarget(null);
     setQuickAssignAmount('');
+    void pushSheetsToAllStaff(
+      `💰 [${targetCode}] +${formatCurrency(amt)}원 단가 반영`
+    );
   };
 
   const handleUpdateRuleAmount = (ruleId: string, nextAmount: number) => {
@@ -322,11 +399,19 @@ export const CrmSalesAndIncentivePanel: React.FC<
       ...sheetsMap,
       [selectedYearMonth]: {
         ...currentSheet,
+        updatedAt: new Date().toISOString(),
         rules: nextRules,
       },
     };
     saveAllModelIncentiveSheets(nextMap);
     setSheetsMap(nextMap);
+  };
+
+  const handleRuleAmountBlur = () => {
+    const cfg = loadGitHubSyncConfig();
+    if (cfg.repo.trim() && cfg.token.trim()) {
+      void pushSheetsToAllStaff('✏️ 수정된 단가');
+    }
   };
 
   const handleDeleteRule = (ruleId: string) => {
@@ -336,11 +421,13 @@ export const CrmSalesAndIncentivePanel: React.FC<
       ...sheetsMap,
       [selectedYearMonth]: {
         ...currentSheet,
+        updatedAt: new Date().toISOString(),
         rules: nextRules,
       },
     };
     saveAllModelIncentiveSheets(nextMap);
     setSheetsMap(nextMap);
+    void pushSheetsToAllStaff('🗑️ 모델 단가 삭제 반영');
   };
 
   const handleCopyFromPrevMonth = () => {
@@ -351,8 +438,9 @@ export const CrmSalesAndIncentivePanel: React.FC<
       `${formatYearMonthKo(prevYearMonth)} 복사본`,
       false
     );
-    setSheetsMap(loadAllModelIncentiveSheets());
-    onShowToast?.(`📋 전월 단가표(${next.rules.length}개)를 불러왔습니다.`);
+    void pushSheetsToAllStaff(
+      `📋 전월 단가표(${next.rules.length}개) 복사 완료`
+    );
   };
 
   const shellCls = isDark
@@ -968,6 +1056,42 @@ export const CrmSalesAndIncentivePanel: React.FC<
                     <Download className="w-3 h-3" />
                     <span>양식</span>
                   </button>
+
+                  <button
+                    type="button"
+                    disabled={isSyncingCloud}
+                    onClick={handleManualPullOrPush}
+                    className={`px-2 py-1.5 rounded-xl border text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer ${subSurfaceCls}`}
+                    title="서버에서 최신 단가표 새로고침 / 내 단가표 즉시 공유"
+                  >
+                    <RefreshCw
+                      className={`w-3 h-3 ${isSyncingCloud ? 'animate-spin text-sky-500' : ''}`}
+                    />
+                    <span>동기화</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGhConfig(loadGitHubSyncConfig());
+                      setShowCloudDrawer((v) => !v);
+                    }}
+                    className={`px-2 py-1.5 rounded-xl border text-[11px] font-extrabold inline-flex items-center gap-1 cursor-pointer ${
+                      ghConfig.repo.trim() && ghConfig.token.trim()
+                        ? isDark
+                          ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/35'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : subSurfaceCls
+                    }`}
+                    title="전 직원 단가표 자동 공유(GitHub) 설정 — 휴무표·조견표 설정과 자동 연동됩니다"
+                  >
+                    <Cloud className="w-3 h-3" />
+                    <span>
+                      {ghConfig.repo.trim() && ghConfig.token.trim()
+                        ? '전직원공유 ON'
+                        : '공유설정'}
+                    </span>
+                  </button>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -1010,6 +1134,50 @@ export const CrmSalesAndIncentivePanel: React.FC<
               {uploadError && (
                 <div className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-[11px] font-bold">
                   ⚠️ {uploadError}
+                </div>
+              )}
+
+              {showCloudDrawer && (
+                <div className={`p-2.5 rounded-xl border space-y-2 text-xs ${subSurfaceCls}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold">
+                      ☁️ 전 직원 단가표 자동 공유 (휴무표·조견표 GitHub 설정과 자동 연동 · 고객정보 제외)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCloudDrawer(false)}
+                      className="text-[11px] font-bold opacity-70 cursor-pointer"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-1.5">
+                    <input
+                      type="text"
+                      value={ghConfig.repo}
+                      onChange={(e) =>
+                        setGhConfig((p) => ({ ...p, repo: e.target.value }))
+                      }
+                      placeholder="저장소 (예: 아이디/저장소명)"
+                      className={`sm:col-span-5 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-mono ${shellCls}`}
+                    />
+                    <input
+                      type="password"
+                      value={ghConfig.token}
+                      onChange={(e) =>
+                        setGhConfig((p) => ({ ...p, token: e.target.value }))
+                      }
+                      placeholder="GitHub 토큰 (ghp_...)"
+                      className={`sm:col-span-5 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-mono ${shellCls}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveGhConfig}
+                      className="sm:col-span-2 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-black cursor-pointer"
+                    >
+                      저장·배포
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -1120,6 +1288,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
                                   Number(e.target.value) || 0
                                 )
                               }
+                              onBlur={handleRuleAmountBlur}
                               className={`w-20 px-1.5 py-0.5 rounded border text-right font-mono font-bold text-base sm:text-xs ${subSurfaceCls}`}
                             />
                             <button

@@ -13,6 +13,7 @@ import { ProposalPreview } from './components/ProposalPreview';
 import { AsCenterModal, CardIssueModal } from './components/QuickCenterModal';
 import { fetchRemoteSchedules } from './components/ScheduleModal';
 import { ScheduleCharacterBanner } from './components/ScheduleCharacterBanner';
+import { fetchRemoteModelIncentiveSheets } from './crm/utils/settlementEngine';
 import { SaveToCrmModal } from './crm/components/SaveToCrmModal';
 import {
   decodeSharedQuoteFromHash,
@@ -614,8 +615,11 @@ export function App() {
           // ignore
         });
 
-      // 월간 휴무표 전 직원 최신 데이터 자동 동기화
+      // 월간 휴무표 & 월별 모델 수당 단가표 전 직원 최신 데이터 자동 동기화
       fetchRemoteSchedules().catch(() => {
+        // ignore
+      });
+      fetchRemoteModelIncentiveSheets().catch(() => {
         // ignore
       });
     }

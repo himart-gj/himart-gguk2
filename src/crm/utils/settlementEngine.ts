@@ -1,3 +1,4 @@
+import { GitHubSyncConfig, loadGitHubSyncConfig, saveGitHubSyncConfig } from '../../utils/careTableParser';
 import { idbMirrorGet, idbMirrorSet } from '../../utils/offlineDbQueue';
 import { compressImageFile, GEMINI_MODELS, getEffectiveGeminiApiKey } from '../../utils/aiImageParser';
 import {
@@ -883,7 +884,23 @@ export async function hydrateModelIncentiveSheetsFromIdb(): Promise<ModelIncenti
   return local;
 }
 
-export function saveAllModelIncentiveSheets(map: ModelIncentivesMap): void {
+export function syncModelIncentiveSheetsToServer(map: ModelIncentivesMap): void {
+  if (typeof fetch === 'undefined') return;
+  try {
+    fetch('/api/model-incentives/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheets: map }),
+    }).catch(() => {});
+  } catch {
+    // Ignore on static hosting
+  }
+}
+
+export function saveAllModelIncentiveSheets(
+  map: ModelIncentivesMap,
+  options?: { skipServerSync?: boolean }
+): void {
   const safeMap = map && typeof map === 'object' ? map : {};
   if (typeof localStorage !== 'undefined') {
     try {
@@ -893,8 +910,241 @@ export function saveAllModelIncentiveSheets(map: ModelIncentivesMap): void {
     }
   }
   void idbMirrorSet(MODEL_INCENTIVE_STORAGE_KEY, safeMap);
+  if (!options?.skipServerSync) {
+    syncModelIncentiveSheetsToServer(safeMap);
+  }
   emitModelIncentiveUpdated();
 }
+
+function parseIsoMs(iso?: string): number {
+  if (!iso) return 0;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function inferGitHubPagesRepoFromLocation(): string {
+  if (typeof window === 'undefined' || !window.location) return '';
+  const host = window.location.hostname || '';
+  if (!host.endsWith('.github.io')) return '';
+  const owner = host.replace(/\.github\.io$/i, '').trim();
+  const pathParts = (window.location.pathname || '')
+    .split('/')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const repoName = pathParts[0] || `${owner}.github.io`;
+  if (!owner || !repoName) return '';
+  return `${owner}/${repoName}`;
+}
+
+function isValidSheetRecord(val: any): val is MonthlyModelIncentiveSheet {
+  return Boolean(
+    val &&
+      typeof val === 'object' &&
+      typeof val.yearMonth === 'string' &&
+      Array.isArray(val.rules)
+  );
+}
+
+/**
+ * [전 직원 단가표 자동 수신]
+ * GitHub 저장소(public/model-incentive-data.json) 및 배포된 정적 파일(./model-incentive-data.json)에서
+ * 최신 월별 모델 수당 단가표만 가져와 병합합니다. (개인 고객 카드·개인 실적은 절대 공유되지 않음)
+ */
+export async function fetchRemoteModelIncentiveSheets(): Promise<ModelIncentivesMap | null> {
+  if (typeof fetch === 'undefined') return null;
+  try {
+    const gh = loadGitHubSyncConfig();
+    const configuredRepo = gh.repo
+      .trim()
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '');
+    const effectiveRepo = configuredRepo || inferGitHubPagesRepoFromLocation();
+    const branch = gh.branch.trim() || 'main';
+
+    const candidates: ModelIncentivesMap[] = [];
+
+    // 1) GitHub Contents API (업로드 직후 1~2초 내 즉시 반영)
+    if (effectiveRepo) {
+      try {
+        const ghApiUrl = `https://api.github.com/repos/${effectiveRepo}/contents/public/model-incentive-data.json?ref=${encodeURIComponent(
+          branch
+        )}`;
+        const headers: Record<string, string> = {
+          Accept: 'application/vnd.github.v3.raw',
+        };
+        if (configuredRepo && gh.token.trim()) {
+          headers.Authorization = `Bearer ${gh.token.trim()}`;
+        }
+        const ghRes = await fetch(ghApiUrl, {
+          cache: 'no-store',
+          headers,
+        });
+        if (ghRes.ok) {
+          const parsed = await ghRes.json();
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            candidates.push(parsed as ModelIncentivesMap);
+          }
+        }
+      } catch {
+        // Fallback to static JSON below
+      }
+    }
+
+    // 2) 배포 서버 정적 파일 (./model-incentive-data.json - 토큰 없는 일반 직원 기기 100% 호환)
+    try {
+      const staticRes = await fetch(`./model-incentive-data.json?t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (staticRes.ok) {
+        const ct = staticRes.headers.get('content-type') || '';
+        if (ct.includes('json') || ct.includes('text') || !ct) {
+          const parsed = await staticRes.json();
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            candidates.push(parsed as ModelIncentivesMap);
+          }
+        }
+      }
+    } catch {
+      // Ignore offline errors
+    }
+
+    if (candidates.length === 0) return null;
+
+    // 후보 원격 맵들 중 월별로 가장 최신(updatedAt)인 단가표 선택
+    const bestRemote: ModelIncentivesMap = {};
+    for (const srcMap of candidates) {
+      for (const [ym, sheet] of Object.entries(srcMap)) {
+        if (!isValidSheetRecord(sheet)) continue;
+        const prev = bestRemote[ym];
+        if (!prev || parseIsoMs(sheet.updatedAt) >= parseIsoMs(prev.updatedAt)) {
+          bestRemote[ym] = sheet;
+        }
+      }
+    }
+
+    if (Object.keys(bestRemote).length === 0) return null;
+
+    const localMap = loadAllModelIncentiveSheets();
+    const merged: ModelIncentivesMap = { ...localMap };
+    let changed = false;
+
+    for (const [ym, remoteSheet] of Object.entries(bestRemote)) {
+      const localSheet = localMap[ym];
+      if (
+        !localSheet ||
+        parseIsoMs(remoteSheet.updatedAt) > parseIsoMs(localSheet.updatedAt) ||
+        (parseIsoMs(remoteSheet.updatedAt) === parseIsoMs(localSheet.updatedAt) &&
+          remoteSheet.rules.length !== localSheet.rules.length)
+      ) {
+        merged[ym] = remoteSheet;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      saveAllModelIncentiveSheets(merged, { skipServerSync: true });
+    }
+    return merged;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * [전 직원 단가표 자동 배포]
+ * 월별 제품 모델 수당 단가표(ModelIncentivesMap)만 GitHub 저장소(public/model-incentive-data.json)에 업로드합니다.
+ */
+export async function publishModelIncentiveSheetsToGitHub(
+  sheetsMap: ModelIncentivesMap,
+  config?: GitHubSyncConfig
+): Promise<{ ok: boolean; configured: boolean; message: string }> {
+  syncModelIncentiveSheetsToServer(sheetsMap);
+
+  const gh = config || loadGitHubSyncConfig();
+  const repo = gh.repo
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, '')
+    .replace(/\.git$/i, '');
+  const token = gh.token.trim();
+  const branch = gh.branch.trim() || 'main';
+
+  if (!repo || !token) {
+    return {
+      ok: false,
+      configured: false,
+      message: 'GitHub 동기화 미설정 (내 기기에만 저장됨)',
+    };
+  }
+
+  const filePath = 'public/model-incentive-data.json';
+  const apiUrl = `https://api.github.com/repos/${repo}/contents/${filePath}`;
+
+  try {
+    let currentSha: string | undefined;
+    const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+      },
+    });
+    if (getRes.ok) {
+      const info = await getRes.json();
+      currentSha = info.sha;
+    }
+
+    const jsonText = JSON.stringify(sheetsMap, null, 2);
+    const bytes = new TextEncoder().encode(jsonText);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64Content = btoa(binary);
+
+    const putRes = await fetch(apiUrl, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: `chore(incentive): 월별 제품 모델 수당 단가표 자동 동기화 (${new Date()
+          .toISOString()
+          .slice(0, 10)})`,
+        content: base64Content,
+        branch,
+        ...(currentSha ? { sha: currentSha } : {}),
+      }),
+    });
+
+    if (!putRes.ok) {
+      const errTxt = await putRes.text().catch(() => '');
+      return {
+        ok: false,
+        configured: true,
+        message: `GitHub 단가표 배포 실패 (${putRes.status})${
+          errTxt ? `: ${errTxt.slice(0, 80)}` : ''
+        }`,
+      };
+    }
+
+    return {
+      ok: true,
+      configured: true,
+      message: '전 직원 단가표 자동 업데이트 완료!',
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      configured: true,
+      message: `네트워크 오류로 내 기기에만 저장됨 (${err?.message || '연결 확인'})`,
+    };
+  }
+}
+
+export { loadGitHubSyncConfig, saveGitHubSyncConfig };
+export type { GitHubSyncConfig };
 
 function cleanUploadedModelCode(raw?: string): string {
   if (!raw) return '';
