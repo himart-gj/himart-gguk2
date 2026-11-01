@@ -16,11 +16,15 @@ import {
   getCachedCustomers,
 } from '../crm/services/gasApi';
 import {
+  ALLCARE_COUNT_UPDATED_EVENT,
   computeMonthlySettlementReport,
   fetchRemoteModelIncentiveSheets,
   getCurrentYearMonth,
+  getMonthlyAllCareCount,
   hydrateModelIncentiveSheetsFromIdb,
+  hydrateMonthlyAllCareCountsFromIdb,
   loadAllModelIncentiveSheets,
+  loadAllMonthlyAllCareCounts,
   MODEL_INCENTIVE_UPDATED_EVENT,
 } from '../crm/utils/settlementEngine';
 import { formatShortManwon } from '../crm/utils/date';
@@ -109,6 +113,9 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
   const [incentiveSheets, setIncentiveSheets] = useState(() =>
     loadAllModelIncentiveSheets()
   );
+  const [allCareCountsMap, setAllCareCountsMap] = useState(() =>
+    loadAllMonthlyAllCareCounts()
+  );
 
   const isDark = isDarkProp ?? domDark;
 
@@ -141,6 +148,11 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         setIncentiveSheets(loaded);
       }
     });
+    hydrateMonthlyAllCareCountsFromIdb().then((loadedAllCare) => {
+      if (Object.keys(loadedAllCare).length > 0) {
+        setAllCareCountsMap(loadedAllCare);
+      }
+    });
     const refreshSchedule = () => {
       setUserName(loadSavedUserName());
       setSchedules(loadAllSchedules());
@@ -148,18 +160,23 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     const refreshIncentives = () => {
       setLocalCustomers(getCachedCustomers());
       setIncentiveSheets(loadAllModelIncentiveSheets());
+      setAllCareCountsMap(loadAllMonthlyAllCareCounts());
+    };
+    const refreshStorage = () => {
+      refreshSchedule();
+      refreshIncentives();
     };
     window.addEventListener(SCHEDULE_UPDATED_EVENT, refreshSchedule);
     window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshIncentives);
     window.addEventListener(MODEL_INCENTIVE_UPDATED_EVENT, refreshIncentives);
-    window.addEventListener('storage', () => {
-      refreshSchedule();
-      refreshIncentives();
-    });
+    window.addEventListener(ALLCARE_COUNT_UPDATED_EVENT, refreshIncentives);
+    window.addEventListener('storage', refreshStorage);
     return () => {
       window.removeEventListener(SCHEDULE_UPDATED_EVENT, refreshSchedule);
       window.removeEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshIncentives);
       window.removeEventListener(MODEL_INCENTIVE_UPDATED_EVENT, refreshIncentives);
+      window.removeEventListener(ALLCARE_COUNT_UPDATED_EVENT, refreshIncentives);
+      window.removeEventListener('storage', refreshStorage);
     };
   }, []);
 
@@ -173,6 +190,11 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     const sheet = incentiveSheets[currentYm] || null;
     return computeMonthlySettlementReport(activeList, currentYm, sheet, 'contract');
   }, [effectiveCustomers, incentiveSheets, currentYm]);
+
+  const currentMonthAllCareCount = useMemo(
+    () => getMonthlyAllCareCount(currentYm, allCareCountsMap),
+    [currentYm, allCareCountsMap]
+  );
 
   // 직원 직무(파트) 조회
   const userRole = useMemo(() => {
@@ -981,6 +1003,26 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         .scb-inc-chip:active {
           transform: scale(0.96);
         }
+        .scb-inc-chip.is-sub {
+          border-color: #FDA4AF;
+          background: #FFF1F2;
+          color: #BE123C;
+        }
+        .scb-root.is-dark .scb-inc-chip.is-sub {
+          background: rgba(244, 63, 94, 0.14);
+          border-color: rgba(251, 113, 133, 0.38);
+          color: #FDA4AF;
+        }
+        .scb-inc-chip.is-allcare {
+          border-color: #C7D2FE;
+          background: #EEF2FF;
+          color: #3730A3;
+        }
+        .scb-root.is-dark .scb-inc-chip.is-allcare {
+          background: rgba(99, 102, 241, 0.16);
+          border-color: rgba(129, 140, 248, 0.4);
+          color: #C7D2FE;
+        }
 
         /* Inline Quick Staff Picker Tray */
         .scb-picker-tray {
@@ -1254,6 +1296,30 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         </div>
 
         <div className="scb-inc-pills">
+          <button
+            type="button"
+            className="scb-inc-chip is-sub"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenIncentiveTab?.('sales');
+            }}
+            title={`${currentMonthNum}월 구독 판매접수 확정 건수 (고객관리에서 상세 확인)`}
+          >
+            🔄 구독 {monthlyIncentiveSummary.grossSubscriptionCount}개
+          </button>
+
+          <button
+            type="button"
+            className="scb-inc-chip is-allcare"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenIncentiveTab?.('sales');
+            }}
+            title={`${currentMonthNum}월 가전올케어 유치 건수 (터치하여 고객관리에서 수량 조정)`}
+          >
+            🛡️ 가전올케어 {currentMonthAllCareCount}개
+          </button>
+
           <button
             type="button"
             className="scb-inc-chip"

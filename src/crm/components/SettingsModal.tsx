@@ -13,7 +13,10 @@ import { CustomerItem } from '../types/crm';
 import { triggerDailyMorningNotification } from '../services/notificationService';
 import {
   loadAllModelIncentiveSheets,
+  loadAllMonthlyAllCareCounts,
+  MONTHLY_ALLCARE_STORAGE_KEY,
   saveAllModelIncentiveSheets,
+  saveAllMonthlyAllCareCounts,
 } from '../utils/settlementEngine';
 
 interface SettingsModalProps {
@@ -47,11 +50,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleExportBackup = () => {
     const allCustomers = [...customers, ...trashedCustomers];
     const modelIncentiveSheets = loadAllModelIncentiveSheets();
+    const monthlyAllCareCounts = loadAllMonthlyAllCareCounts();
     const backupPayload = {
-      version: 'gookji-crm-backup-v4',
+      version: 'gookji-crm-backup-v5',
       exportedAt: new Date().toISOString(),
       customers: allCustomers,
       modelIncentiveSheets,
+      monthlyAllCareCounts,
     };
 
     const blob = new Blob([JSON.stringify(backupPayload, null, 2)], {
@@ -99,6 +104,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           };
           saveAllModelIncentiveSheets(mergedSheets);
         }
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          parsed.monthlyAllCareCounts &&
+          typeof parsed.monthlyAllCareCounts === 'object'
+        ) {
+          saveAllMonthlyAllCareCounts({
+            ...loadAllMonthlyAllCareCounts(),
+            ...parsed.monthlyAllCareCounts,
+          });
+        }
         setBackupNotice(
           `✅ 백업 파일에서 고객 ${list.length}명 데이터 및 수당 설정을 성공적으로 복원했습니다!`
         );
@@ -122,6 +138,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleResetAllData = () => {
     localStorage.removeItem('gookji_crm_customers_cache_v3');
     localStorage.removeItem('himart_crm_model_incentives_v1');
+    localStorage.removeItem(MONTHLY_ALLCARE_STORAGE_KEY);
     window.location.reload();
   };
 

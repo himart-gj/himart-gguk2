@@ -446,6 +446,7 @@ export interface ResolvedCustomerPerformanceProfile {
   generalProductTotal: number;
   subscriptionPrincipal: number;
   performanceAmount: number;
+  subscriptionItemCount: number;
   freedCounts: CustomerFreedCounts;
   freedDetail: ReturnType<typeof calculateFreedIncentiveDetail>;
   purchasedModels: PurchasedModelEntry[];
@@ -567,11 +568,25 @@ export function resolveCustomerPerformanceProfile(
     );
   }
 
+  // 구독 판매접수 품목(대수/건수) 자동 산출:
+  // - 단독 구독(subscription) 및 혼합 견적(hybrid) 내 subscription 품목 수량 합산
+  // - 수기 등록 등으로 세부 품목 배열이 비어 있더라도 구독 주문(구독원금>0 또는 구독모드 또는 플러스구독 가입)이면 최소 1개 보장
+  const parsedSubUnits = purchasedModels
+    .filter((m) => m.saleType === 'subscription')
+    .reduce((acc, m) => acc + Math.max(1, Math.floor(Number(m.quantity) || 1)), 0);
+  const hasSubscriptionOrder =
+    saleType === 'subscription' ||
+    subscriptionPrincipal > 0 ||
+    freedDetail.plusSubCount > 0;
+  const subscriptionItemCount =
+    parsedSubUnits > 0 ? parsedSubUnits : hasSubscriptionOrder ? 1 : 0;
+
   return {
     saleType,
     generalProductTotal,
     subscriptionPrincipal,
     performanceAmount,
+    subscriptionItemCount,
     freedCounts,
     freedDetail,
     purchasedModels,
@@ -679,10 +694,14 @@ export interface MonthlySettlementReport {
   grossGeneralTotal: number;
   grossSubPrincipalTotal: number;
   grossRows: ConfirmedCustomerSettlementRow[];
+  grossSubscriptionCount: number;
+  grossSubscriptionCustomerCount: number;
+  grossSubscriptionRows: ConfirmedCustomerSettlementRow[];
   netDeliverySalesTotal: number;
   netGeneralTotal: number;
   netSubPrincipalTotal: number;
   netDeliveryRows: ConfirmedCustomerSettlementRow[];
+  netDeliverySubscriptionCount: number;
   undatedConfirmedCount: number;
   freedSummary: ReturnType<typeof calculateFreedIncentiveDetail>;
   freedCustomerRows: ConfirmedCustomerSettlementRow[];
@@ -755,6 +774,14 @@ export function computeMonthlySettlementReport(
     (s, r) => s + r.profile.subscriptionPrincipal,
     0
   );
+  const grossSubscriptionRows = grossRows.filter(
+    (r) => r.profile.subscriptionItemCount > 0
+  );
+  const grossSubscriptionCount = grossSubscriptionRows.reduce(
+    (s, r) => s + r.profile.subscriptionItemCount,
+    0
+  );
+  const grossSubscriptionCustomerCount = grossSubscriptionRows.length;
 
   const netDeliveryRows = allConfirmedRows.filter(
     (r) => r.profile.deliveryYearMonth === yearMonth
@@ -769,6 +796,10 @@ export function computeMonthlySettlementReport(
   );
   const netSubPrincipalTotal = netDeliveryRows.reduce(
     (s, r) => s + r.profile.subscriptionPrincipal,
+    0
+  );
+  const netDeliverySubscriptionCount = netDeliveryRows.reduce(
+    (s, r) => s + r.profile.subscriptionItemCount,
     0
   );
 
@@ -817,10 +848,14 @@ export function computeMonthlySettlementReport(
     grossGeneralTotal,
     grossSubPrincipalTotal,
     grossRows,
+    grossSubscriptionCount,
+    grossSubscriptionCustomerCount,
+    grossSubscriptionRows,
     netDeliverySalesTotal,
     netGeneralTotal,
     netSubPrincipalTotal,
     netDeliveryRows,
+    netDeliverySubscriptionCount,
     undatedConfirmedCount,
     freedSummary,
     freedCustomerRows,
@@ -1665,4 +1700,103 @@ export async function downloadModelIncentiveExcelTemplate(
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, `${yearMonth}_모델수당표`);
   XLSX.writeFile(wb, `모델별_수당단가표_${yearMonth}.xlsx`);
+}
+
+
+// ============================================================================
+// 월별 가전올케어 수동 수량 저장소 (고객관리 <-> 메인화면 수당적립 요약 실시간 연동)
+// ============================================================================
+
+export type MonthlyAllCareCountsMap = Record<string, number>;
+
+export const MONTHLY_ALLCARE_STORAGE_KEY = 'himart_crm_monthly_allcare_counts_v1';
+export const ALLCARE_COUNT_UPDATED_EVENT = 'himart-allcare-count-updated';
+
+function sanitizeAllCareMap(raw: unknown): MonthlyAllCareCountsMap {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: MonthlyAllCareCountsMap = {};
+  for (const [ym, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
+    const n = Math.max(0, Math.floor(Number(val) || 0));
+    out[ym] = n;
+  }
+  return out;
+}
+
+function emitAllCareCountUpdated(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(ALLCARE_COUNT_UPDATED_EVENT));
+  }
+}
+
+export function loadAllMonthlyAllCareCounts(): MonthlyAllCareCountsMap {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(MONTHLY_ALLCARE_STORAGE_KEY);
+    if (!raw) return {};
+    return sanitizeAllCareMap(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+export function getMonthlyAllCareCount(
+  yearMonth: string,
+  map?: MonthlyAllCareCountsMap
+): number {
+  const target = map ?? loadAllMonthlyAllCareCounts();
+  return Math.max(0, Math.floor(Number(target[yearMonth]) || 0));
+}
+
+export async function hydrateMonthlyAllCareCountsFromIdb(): Promise<MonthlyAllCareCountsMap> {
+  const local = loadAllMonthlyAllCareCounts();
+  try {
+    const mirrored = await idbMirrorGet<MonthlyAllCareCountsMap>(
+      MONTHLY_ALLCARE_STORAGE_KEY
+    );
+    const safeMirror = sanitizeAllCareMap(mirrored);
+    if (Object.keys(safeMirror).length > 0 && Object.keys(local).length === 0) {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(
+          MONTHLY_ALLCARE_STORAGE_KEY,
+          JSON.stringify(safeMirror)
+        );
+      }
+      emitAllCareCountUpdated();
+      return safeMirror;
+    }
+    if (Object.keys(safeMirror).length > 0) {
+      return { ...safeMirror, ...local };
+    }
+  } catch {
+    // Ignore IDB fallback errors
+  }
+  return local;
+}
+
+export function saveAllMonthlyAllCareCounts(map: MonthlyAllCareCountsMap): void {
+  const safe = sanitizeAllCareMap(map);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(MONTHLY_ALLCARE_STORAGE_KEY, JSON.stringify(safe));
+    } catch {
+      // Ignore storage quota warning
+    }
+  }
+  void idbMirrorSet(MONTHLY_ALLCARE_STORAGE_KEY, safe);
+  emitAllCareCountUpdated();
+}
+
+export function setMonthlyAllCareCount(
+  yearMonth: string,
+  nextCount: number
+): MonthlyAllCareCountsMap {
+  const current = loadAllMonthlyAllCareCounts();
+  const clamped = Math.max(0, Math.min(9999, Math.floor(Number(nextCount) || 0)));
+  const updated: MonthlyAllCareCountsMap = {
+    ...current,
+    [yearMonth]: clamped,
+  };
+  saveAllMonthlyAllCareCounts(updated);
+  return updated;
 }

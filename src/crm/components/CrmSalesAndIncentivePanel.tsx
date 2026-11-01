@@ -13,8 +13,11 @@ import {
   Image as ImageIcon,
   Cloud,
   Loader2,
+  Minus,
   Plus,
   RefreshCw,
+  Repeat,
+  ShieldCheck,
   Search,
   Trash2,
   Truck,
@@ -28,8 +31,14 @@ import {
 } from '../types/crm';
 import { formatCurrency, formatShortManwon } from '../utils/date';
 import {
+  ALLCARE_COUNT_UPDATED_EVENT,
   computeMonthlySettlementReport,
   ConfirmedCustomerSettlementRow,
+  getMonthlyAllCareCount,
+  hydrateMonthlyAllCareCountsFromIdb,
+  loadAllMonthlyAllCareCounts,
+  MonthlyAllCareCountsMap,
+  setMonthlyAllCareCount,
   downloadModelIncentiveExcelTemplate,
   fetchRemoteModelIncentiveSheets,
   getCurrentYearMonth,
@@ -96,8 +105,14 @@ export const CrmSalesAndIncentivePanel: React.FC<
   const [incentiveBasis, setIncentiveBasis] =
     useState<IncentiveMonthBasis>('contract');
   const [salesSubView, setSalesSubView] = useState<
-    'gross' | 'delivery' | 'undated'
+    'gross' | 'delivery' | 'subscription' | 'undated'
   >('gross');
+
+  const [allCareMap, setAllCareMap] = useState<MonthlyAllCareCountsMap>(() =>
+    loadAllMonthlyAllCareCounts()
+  );
+  const [isEditingAllCare, setIsEditingAllCare] = useState<boolean>(false);
+  const [allCareDraft, setAllCareDraft] = useState<string>('');
 
   useEffect(() => {
     if (defaultExpanded) {
@@ -145,14 +160,30 @@ export const CrmSalesAndIncentivePanel: React.FC<
         }
       });
     });
+    hydrateMonthlyAllCareCountsFromIdb().then((loadedAllCare) => {
+      if (Object.keys(loadedAllCare).length > 0) {
+        setAllCareMap(loadedAllCare);
+      }
+    });
     const sync = () => setSheetsMap(loadAllModelIncentiveSheets());
+    const syncAllCare = () => setAllCareMap(loadAllMonthlyAllCareCounts());
+    const syncStorage = () => {
+      sync();
+      syncAllCare();
+    };
     window.addEventListener(MODEL_INCENTIVE_UPDATED_EVENT, sync);
-    window.addEventListener('storage', sync);
+    window.addEventListener(ALLCARE_COUNT_UPDATED_EVENT, syncAllCare);
+    window.addEventListener('storage', syncStorage);
     return () => {
       window.removeEventListener(MODEL_INCENTIVE_UPDATED_EVENT, sync);
-      window.removeEventListener('storage', sync);
+      window.removeEventListener(ALLCARE_COUNT_UPDATED_EVENT, syncAllCare);
+      window.removeEventListener('storage', syncStorage);
     };
   }, []);
+
+  useEffect(() => {
+    setIsEditingAllCare(false);
+  }, [selectedYearMonth]);
 
   const currentSheet = sheetsMap[selectedYearMonth] || null;
   const prevYearMonth = shiftYearMonth(selectedYearMonth, -1);
@@ -184,9 +215,29 @@ export const CrmSalesAndIncentivePanel: React.FC<
     );
   }, [currentSheet, ruleSearch]);
 
+  const currentAllCareCount = getMonthlyAllCareCount(
+    selectedYearMonth,
+    allCareMap
+  );
+
+  const handleStepAllCare = (delta: number) => {
+    const nextVal = Math.max(0, currentAllCareCount + delta);
+    const updated = setMonthlyAllCareCount(selectedYearMonth, nextVal);
+    setAllCareMap(updated);
+  };
+
+  const commitAllCareDraft = () => {
+    const parsed = parseInt(allCareDraft.replace(/[^0-9]/g, ''), 10);
+    if (!Number.isNaN(parsed)) {
+      const updated = setMonthlyAllCareCount(selectedYearMonth, parsed);
+      setAllCareMap(updated);
+    }
+    setIsEditingAllCare(false);
+  };
+
   const handleOpenOrToggleTab = (
     targetTab: SettlementTabId,
-    subView?: 'gross' | 'delivery'
+    subView?: 'gross' | 'delivery' | 'subscription'
   ) => {
     if (subView) {
       setSalesSubView(subView);
@@ -453,6 +504,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
 
   const activeSalesRows: ConfirmedCustomerSettlementRow[] = useMemo(() => {
     if (salesSubView === 'delivery') return report.netDeliveryRows;
+    if (salesSubView === 'subscription') return report.grossSubscriptionRows;
     if (salesSubView === 'undated') {
       return report.grossRows.filter((r) => !r.profile.deliveryYearMonth);
     }
@@ -464,10 +516,10 @@ export const CrmSalesAndIncentivePanel: React.FC<
       id="crm-sales-incentive-hub"
       className={`rounded-2xl border px-3 py-2 shadow-2xs transition ${shellCls}`}
     >
-      {/* 슬림 요약 바: 데스크톱 1줄 · 모바일 깔끔한 2단 그리드 */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-1.5">
-        {/* 상단/좌측: 월 선택 + (모바일에서는 우측에 수당합계 배치) */}
-        <div className="flex items-center justify-between lg:justify-start gap-1.5 shrink-0">
+      {/* 슬림 요약 바: 상단 월 선택·수당합계 헤더 + 하단 6칸 대칭 실적/수량 그리드 (모바일 2×3 · 태블릿/폴드 3×2 · 와이드PC 6열) */}
+      <div className="space-y-1.5">
+        {/* 1행: 월 선택기 + 우측 수당 총합 토글 */}
+        <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <div
               className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-xl border ${subSurfaceCls}`}
@@ -512,11 +564,10 @@ export const CrmSalesAndIncentivePanel: React.FC<
             )}
           </div>
 
-          {/* 모바일·태블릿용 우측 수당합계 토글 */}
           <button
             type="button"
             onClick={() => setIsExpanded((v) => !v)}
-            className={`lg:hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-xs font-black cursor-pointer schedule-tactile ${
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
               isDark
                 ? 'bg-[#172234] border-amber-400/35 text-amber-300'
                 : 'bg-[#FAF4EA] border-[#DFC9AC] text-[#7C4D25]'
@@ -535,12 +586,13 @@ export const CrmSalesAndIncentivePanel: React.FC<
           </button>
         </div>
 
-        {/* 중앙 4칸 정렬 칩 (모바일 2×2 칼각 그리드 / 태블릿·PC 4칸 1줄) */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:flex lg:items-center gap-1.5 flex-1 lg:justify-center">
+        {/* 2행: 6칸 정렬 지표 그리드 (총판 · 실판 · 프리드 · 모델수당 · 구독[자동집계] · 가전올케어[수량조정]) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-1.5">
+          {/* 1. 총판 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('sales', 'gross')}
-            className={`flex items-center justify-between lg:justify-start gap-1.5 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+            className={`min-h-[36px] flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
               isExpanded && activeTab === 'sales' && salesSubView === 'gross'
                 ? isDark
                   ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
@@ -549,7 +601,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
             }`}
             title="당월 계약(총판) 확정 내역 보기"
           >
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-emerald-600 text-white shrink-0">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-600 text-white shrink-0">
               총판
             </span>
             <span className="font-black font-mono text-emerald-600 dark:text-emerald-400 truncate">
@@ -560,10 +612,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
+          {/* 2. 실판 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('sales', 'delivery')}
-            className={`flex items-center justify-between lg:justify-start gap-1.5 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+            className={`min-h-[36px] flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
               isExpanded && activeTab === 'sales' && salesSubView === 'delivery'
                 ? isDark
                   ? 'bg-sky-500/20 border-sky-400/60 text-sky-200'
@@ -572,7 +625,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
             }`}
             title="당월 배송(실판) 내역 보기"
           >
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-black bg-sky-600 text-white shrink-0">
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-black bg-sky-600 text-white shrink-0">
               실판
             </span>
             <span
@@ -587,10 +640,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
+          {/* 3. 프리드 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('freed')}
-            className={`flex items-center justify-between lg:justify-start gap-1 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+            className={`min-h-[36px] flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
               isExpanded && activeTab === 'freed'
                 ? isDark
                   ? 'bg-amber-400/20 border-amber-400/60 text-amber-200'
@@ -608,10 +662,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
+          {/* 4. 모델수당 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('models')}
-            className={`flex items-center justify-between lg:justify-start gap-1 px-2.5 py-1 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+            className={`min-h-[36px] flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
               isExpanded && activeTab === 'models'
                 ? isDark
                   ? 'bg-indigo-500/20 border-indigo-400/60 text-indigo-200'
@@ -628,29 +683,130 @@ export const CrmSalesAndIncentivePanel: React.FC<
               </span>
             </span>
           </button>
-        </div>
 
-        {/* 데스크톱용 우측 수당 총합 + 열기/접기 */}
-        <button
-          type="button"
-          onClick={() => setIsExpanded((v) => !v)}
-          className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
-            isDark
-              ? 'bg-[#172234] border-amber-400/35 text-amber-300'
-              : 'bg-[#FAF4EA] border-[#DFC9AC] text-[#7C4D25]'
-          }`}
-        >
-          <Coins className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-          <span>수당합계</span>
-          <span className="font-mono text-amber-600 dark:text-amber-400">
-            +{formatCurrency(report.grandTotalIncentive)}원
-          </span>
-          {isExpanded ? (
-            <ChevronUp className="w-3.5 h-3.5 opacity-75" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 opacity-75" />
-          )}
-        </button>
+          {/* 5. 구독 건수 (해당월 구독 판매접수건 자동 집계 · 클릭 시 당월 구독 접수 내역 확인) */}
+          <button
+            type="button"
+            onClick={() => handleOpenOrToggleTab('sales', 'subscription')}
+            className={`min-h-[36px] flex items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs transition cursor-pointer schedule-tactile ${
+              isExpanded && activeTab === 'sales' && salesSubView === 'subscription'
+                ? isDark
+                  ? 'bg-rose-500/20 border-rose-400/60 text-rose-200'
+                  : 'bg-rose-50 border-rose-400 text-rose-900'
+                : subSurfaceCls
+            }`}
+            title="해당월 구독 판매접수 확정건수 자동 집계 (클릭 시 접수 고객 내역 보기)"
+          >
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-black bg-rose-600 text-white shrink-0">
+              <Repeat className="w-2.5 h-2.5" />
+              <span>구독</span>
+            </span>
+            <span
+              className={`font-black font-mono truncate ${
+                isDark ? 'text-rose-400' : 'text-rose-600'
+              }`}
+            >
+              {report.grossSubscriptionCount}개
+              {report.grossSubscriptionCustomerCount > 0 && (
+                <span className={`ml-0.5 text-[10px] font-normal ${mutedCls}`}>
+                  ({report.grossSubscriptionCustomerCount}명)
+                </span>
+              )}
+            </span>
+          </button>
+
+          {/* 6. 가전올케어 건수 (월별 수량 직접 조정 전용: [-] / 숫자클릭 직접입력 / [+]) */}
+          <div
+            className={`min-h-[36px] flex items-center justify-between gap-1 px-2 py-1 rounded-xl border text-xs transition ${
+              currentAllCareCount > 0
+                ? isDark
+                  ? 'bg-indigo-500/15 border-indigo-400/45 text-indigo-100'
+                  : 'bg-indigo-50/75 border-indigo-300 text-indigo-950'
+                : subSurfaceCls
+            }`}
+            title={`${formatYearMonthKo(selectedYearMonth)} 가전올케어 유치 건수 조정 (메인화면 수당적립 요약에 실시간 반영)`}
+          >
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-black bg-indigo-700 text-amber-200 shrink-0">
+              <ShieldCheck className="w-2.5 h-2.5" />
+              <span>가전올케어</span>
+            </span>
+
+            <div className="inline-flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStepAllCare(-1);
+                }}
+                disabled={currentAllCareCount <= 0}
+                aria-label="가전올케어 수량 감소"
+                className={`w-6 h-6 rounded-lg border flex items-center justify-center transition cursor-pointer disabled:opacity-35 disabled:cursor-not-allowed schedule-tactile ${
+                  isDark
+                    ? 'bg-[#172030] border-white/15 hover:bg-[#1E2A3F] text-slate-200'
+                    : 'bg-white border-[#D6D3CD] hover:bg-slate-100 text-[#18181B]'
+                }`}
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+
+              {isEditingAllCare ? (
+                <input
+                  type="number"
+                  min={0}
+                  max={9999}
+                  autoFocus
+                  value={allCareDraft}
+                  onChange={(e) => setAllCareDraft(e.target.value)}
+                  onBlur={commitAllCareDraft}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      commitAllCareDraft();
+                    } else if (e.key === 'Escape') {
+                      setIsEditingAllCare(false);
+                    }
+                  }}
+                  className={`w-12 h-6 px-1 rounded-md border text-center font-black font-mono text-base sm:text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                    isDark
+                      ? 'bg-[#0B0E14] border-indigo-400 text-amber-300'
+                      : 'bg-white border-indigo-500 text-indigo-900'
+                  }`}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAllCareDraft(String(currentAllCareCount));
+                    setIsEditingAllCare(true);
+                  }}
+                  title="클릭하여 숫자로 직접 입력"
+                  className={`min-w-[34px] px-1 py-0.5 rounded-md text-center font-black font-mono cursor-pointer hover:underline ${
+                    isDark ? 'text-amber-300' : 'text-indigo-700'
+                  }`}
+                >
+                  {currentAllCareCount}개
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStepAllCare(1);
+                }}
+                aria-label="가전올케어 수량 증가"
+                className={`w-6 h-6 rounded-lg border flex items-center justify-center transition cursor-pointer schedule-tactile ${
+                  isDark
+                    ? 'bg-indigo-600 border-indigo-400/50 hover:bg-indigo-500 text-amber-200'
+                    : 'bg-indigo-700 border-indigo-800 hover:bg-indigo-800 text-white'
+                }`}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 펼쳐졌을 때만 나타나는 심플·컴팩트 상세 탭 영역 */}
@@ -741,6 +897,17 @@ export const CrmSalesAndIncentivePanel: React.FC<
                   >
                     실판 {formatCurrency(report.netDeliverySalesTotal)}원 ({report.netDeliveryRows.length}건)
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setSalesSubView('subscription')}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-extrabold border cursor-pointer ${
+                      salesSubView === 'subscription'
+                        ? 'bg-rose-600 text-white border-rose-600'
+                        : subSurfaceCls
+                    }`}
+                  >
+                    구독접수 {report.grossSubscriptionCount}개 ({report.grossSubscriptionCustomerCount}명)
+                  </button>
                   {report.undatedConfirmedCount > 0 && (
                     <button
                       type="button"
@@ -785,9 +952,9 @@ export const CrmSalesAndIncentivePanel: React.FC<
                           </span>
                           <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
                             {row.profile.saleType === 'subscription'
-                              ? '구독원금'
+                              ? `구독 ${row.profile.subscriptionItemCount}개`
                               : row.profile.saleType === 'hybrid'
-                              ? '혼합원금'
+                              ? `혼합(구독 ${row.profile.subscriptionItemCount}개)`
                               : '제품합계'}
                           </span>
                         </div>
