@@ -1,30 +1,30 @@
 {
-  "versionTitle": "■ '26년 10월 안심케어서비스 조견표 ■",
-  "updatedAt": "2026. 10. 25. 오후 11:25:46",
-  "fileName": "5._10월_안심케어_모델리스트_v1.xlsx",
+  "versionTitle": "■ '26년 11월 안심케어서비스 조견표 ■",
+  "updatedAt": "2026. 11. 1. 오후 1:34:36",
+  "fileName": "5._11월_안심케어_모델리스트_v1.xlsx",
   "items": [
     {
-      "id": "s1-a-7-SET-EV-CLEAN-PAC",
+      "id": "s1-a-7-SET-V-CLEAN-PAC",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "스탠드",
-      "code": "SET-EV-CLEAN-PAC",
-      "price": "134,000원",
+      "code": "SET-V-CLEAN-PAC",
+      "price": "159,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-8-SET-EV-CLEAN-RAC",
+      "id": "s1-a-8-SET-V-CLEAN-RAC",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "벽걸이",
-      "code": "SET-EV-CLEAN-RAC",
-      "price": "85,000원",
+      "code": "SET-V-CLEAN-RAC",
+      "price": "99,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -36,7 +36,7 @@
       "category": "에어컨",
       "name": "프리미엄 · 스탠드",
       "code": "SET-V-CLEAN-PAC(P)",
-      "price": "189,000원",
+      "price": "193,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -48,7 +48,7 @@
       "category": "에어컨",
       "name": "프리미엄 · 벽걸이",
       "code": "SET-V-CLEAN-RAC(P)",
-      "price": "117,000원",
+      "price": "119,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -60,103 +60,103 @@
       "category": "에어컨",
       "name": "프리미엄 · 2IN1",
       "code": "SET-V-CLEAN-2IN1(P)",
-      "price": "293,000원",
+      "price": "299,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-12-SET-EV-CLEAN-SYSTEM(2WAY)",
+      "id": "s1-a-12-SET-V-CLEAN-SYSTEM(2WAY)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "천정형(1,2WAY)",
-      "code": "SET-EV-CLEAN-SYSTEM(2WAY)",
-      "price": "118,000원",
+      "code": "SET-V-CLEAN-SYSTEM(2WAY)",
+      "price": "134,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-13-SET-EV-CLEAN-SYSTEM(2WAY-3)",
+      "id": "s1-a-13-SET-V-CLEAN-SYSTEM(2WAY-3)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "천정형(1,2WAY) 3대",
-      "code": "SET-EV-CLEAN-SYSTEM(2WAY-3)",
-      "price": "354,000원",
+      "code": "SET-V-CLEAN-SYSTEM(2WAY-3)",
+      "price": "391,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-14-SET-EV-CLEAN-SYSTEM(2WAY-4)",
+      "id": "s1-a-14-SET-V-CLEAN-SYSTEM(2WAY-4)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "천정형(1,2WAY) 4대",
-      "code": "SET-EV-CLEAN-SYSTEM(2WAY-4)",
-      "price": "460,000원",
+      "code": "SET-V-CLEAN-SYSTEM(2WAY-4)",
+      "price": "498,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-15-SET-EV-CLEAN-SYSTEM(2WAY-5)",
+      "id": "s1-a-15-SET-V-CLEAN-SYSTEM(2WAY-5)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "천정형(1,2WAY) 5대",
-      "code": "SET-EV-CLEAN-SYSTEM(2WAY-5)",
-      "price": "580,000원",
+      "code": "SET-V-CLEAN-SYSTEM(2WAY-5)",
+      "price": "631,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-16-SET-EV-CLEAN-SYSTEM(2WAY-6)",
+      "id": "s1-a-16-SET-V-CLEAN-SYSTEM(2WAY-6)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "천정형(1,2WAY) 6대",
-      "code": "SET-EV-CLEAN-SYSTEM(2WAY-6)",
-      "price": "690,000원",
+      "code": "SET-V-CLEAN-SYSTEM(2WAY-6)",
+      "price": "759,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-17-SET-EV-CLEAN-2IN1",
+      "id": "s1-a-17-SET-V-CLEAN-2IN1",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "2IN1",
-      "code": "SET-EV-CLEAN-2IN1",
-      "price": "213,000원",
+      "code": "SET-V-CLEAN-2IN1",
+      "price": "240,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-18-SET-EV-CLEAN-3IN1",
+      "id": "s1-a-18-SET-V-CLEAN-3IN1",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "3IN1",
-      "code": "SET-EV-CLEAN-3IN1",
-      "price": "274,000원",
+      "code": "SET-V-CLEAN-3IN1",
+      "price": "320,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-19-SET-EV-CLEAN-SYSTEM(4WAY)",
+      "id": "s1-a-19-SET-V-CLEAN-SYSTEM(4WAY)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "에어컨",
       "name": "천정형(4WAY)",
-      "code": "SET-EV-CLEAN-SYSTEM(4WAY)",
-      "price": "147,000원",
+      "code": "SET-V-CLEAN-SYSTEM(4WAY)",
+      "price": "169,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -168,7 +168,7 @@
       "category": "에어컨",
       "name": "업소형(99㎡미만)",
       "code": "SET-V-CLEAN-LAC(UNDER30)",
-      "price": "143,000원",
+      "price": "157,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -180,31 +180,31 @@
       "category": "에어컨",
       "name": "업소형(99㎡이상)",
       "code": "SET-V-CLEAN-LAC(OVER30)",
-      "price": "162,000원",
+      "price": "170,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-22-SET-EV-CLEAN-WM",
+      "id": "s1-a-22-SET-V-CLEAN-WM",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "세탁기",
       "name": "일반",
-      "code": "SET-EV-CLEAN-WM",
-      "price": "93,000원",
+      "code": "SET-V-CLEAN-WM",
+      "price": "109,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-23-SET-EV-CLEAN-WM(DRUM)",
+      "id": "s1-a-23-SET-V-CLEAN-WM(DRUM)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "세탁기",
       "name": "드럼(일반)",
-      "code": "SET-EV-CLEAN-WM(DRUM)",
-      "price": "145,000원",
+      "code": "SET-V-CLEAN-WM(DRUM)",
+      "price": "179,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -216,7 +216,7 @@
       "category": "세탁기",
       "name": "드럼(빌트인)",
       "code": "SET-V-CLEAN-WM(BUILTIN)",
-      "price": "160,000원",
+      "price": "190,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -228,7 +228,7 @@
       "category": "세탁기",
       "name": "드럼(트윈워시)",
       "code": "SET-V-CLEAN-WM(TWINWASH)",
-      "price": "210,000원",
+      "price": "279,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -240,7 +240,7 @@
       "category": "세탁기",
       "name": "아기사랑",
       "code": "SET-V-CLEAN-WM(BABY)",
-      "price": "74,000원",
+      "price": "89,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -252,7 +252,7 @@
       "category": "세탁기",
       "name": "아기사랑(꼬망스)",
       "code": "SET-V-CLEAN-WM(BABY-DRUM)",
-      "price": "95,000원",
+      "price": "109,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -264,43 +264,43 @@
       "category": "세탁기",
       "name": "플렉스워시",
       "code": "SET-V-CLEAN-DRUM(PLEXWASH)",
-      "price": "270,000원",
+      "price": "316,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-29-SET-EV-CLEAN-WM(COMBO)",
+      "id": "s1-a-29-SET-CLEAN-WM(COMBO)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "세탁기",
       "name": "세탁·건조기 · 콤보형",
-      "code": "SET-EV-CLEAN-WM(COMBO)",
-      "price": "255,000원",
+      "code": "SET-CLEAN-WM(COMBO)",
+      "price": "250,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-30-SET-EV-CLEAN-WM(TOWER)",
+      "id": "s1-a-30-SET-CLEAN-WM(TOWER)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "세탁기",
       "name": "직렬 설치 · 일체형",
-      "code": "SET-EV-CLEAN-WM(TOWER)",
-      "price": "279,000원",
+      "code": "SET-CLEAN-WM(TOWER)",
+      "price": "309,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
-      "id": "s1-a-31-SET-EV-CLEAN-WM(TOWER-S)",
+      "id": "s1-a-31-SET-CLEAN-WM(TOWER-S)",
       "sheetType": "안심케어",
       "folderKey": "cleaning",
       "folderLabel": "1. 가전청소 · 케어십 · 소모품",
       "section": "가전청소 일회성",
       "category": "세탁기",
       "name": "직렬 설치 · 분리형",
-      "code": "SET-EV-CLEAN-WM(TOWER-S)",
-      "price": "279,000원",
+      "code": "SET-CLEAN-WM(TOWER-S)",
+      "price": "309,000원",
       "note": "파트너사: 케이크린 (내)8000-5337 / (외)070-7178-8444"
     },
     {
@@ -1800,7 +1800,7 @@
       "category": "유리난간 설치 서비스",
       "name": "[교체] 창 2개 (공동 구매)",
       "code": "INS-S-GLASSRAIL(2W)(G)",
-      "price": "2,800,000원",
+      "price": "3,000,000원",
       "note": "파트너사: 코끼리시스템 1555-0143"
     },
     {
@@ -1824,7 +1824,7 @@
       "category": "유리난간 설치 서비스",
       "name": "[교체] 창 3개 (공동 구매)",
       "code": "INS-S-GLASSRAIL(3W)(G)",
-      "price": "3,000,000원",
+      "price": "3,200,000원",
       "note": "파트너사: 코끼리시스템 1555-0143"
     },
     {
@@ -3529,7 +3529,7 @@
       "name": "문짝교체 (주방리폼) · 문짝교체-무료견적코드-품목무관",
       "code": "ESTIMATE-REFORM(KITCHEN)",
       "price": "10원",
-      "note": "신규장 | 케이크린 1877-2242"
+      "note": "키친페스타 행사 | 케이크린 1877-2242"
     },
     {
       "id": "s1-b-179-KC-REFORM(KITCHEN)",
@@ -3540,7 +3540,7 @@
       "category": "문짝교체 (주방리폼)",
       "name": "문짝교체 (주방리폼) · 케이크린)문짝교체-1천원코드",
       "code": "KC-REFORM(KITCHEN)",
-      "price": "1,000원",
+      "price": "9,500원",
       "note": "케이크린 1877-2242"
     },
     {
@@ -3552,44 +3552,8 @@
       "category": "행사코드",
       "name": "행사코드 · 냉장고 수납장 [빌트인형]",
       "code": "KC-REFORM-REF-BASIC(EXPO)",
-      "price": "1,150,000원",
-      "note": "가전 동시구매할인가: 1,090,000원 | 케이크린 1877-2242"
-    },
-    {
-      "id": "s1-b-182-KC-REFORM(ROBOT-A)(EXPO)",
-      "sheetType": "안심케어",
-      "folderKey": "reform",
-      "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
-      "section": "맞춤 수납장 01 (케이크린)",
-      "category": "행사코드",
-      "name": "행사코드 · 로봇청소기장 700mm 이하",
-      "code": "KC-REFORM(ROBOT-A)(EXPO)",
-      "price": "220,000원",
-      "note": "가전 동시구매할인가: 190,000원 | 케이크린 1877-2242"
-    },
-    {
-      "id": "s1-b-183-KC-REFORM(ROBOT-B)(EXPO)",
-      "sheetType": "안심케어",
-      "folderKey": "reform",
-      "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
-      "section": "맞춤 수납장 01 (케이크린)",
-      "category": "행사코드",
-      "name": "행사코드 · 로봇청소기장 700mm 초과",
-      "code": "KC-REFORM(ROBOT-B)(EXPO)",
-      "price": "270,000원",
-      "note": "가전 동시구매할인가: 240,000원 | 케이크린 1877-2242"
-    },
-    {
-      "id": "s1-b-184-KC-REFORM(WASH)(EXPO)",
-      "sheetType": "안심케어",
-      "folderKey": "reform",
-      "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
-      "section": "맞춤 수납장 01 (케이크린)",
-      "category": "행사코드",
-      "name": "행사코드 · 세탁기장",
-      "code": "KC-REFORM(WASH)(EXPO)",
-      "price": "820,000원",
-      "note": "가전 동시구매할인가: 790,000원 | 케이크린 1877-2242"
+      "price": "1,090,000원",
+      "note": "- | 케이크린 1877-2242"
     },
     {
       "id": "s1-b-185-KC-REFORM(OVEN)(EXPO)",
@@ -3600,7 +3564,7 @@
       "category": "행사코드",
       "name": "행사코드 · 오븐장",
       "code": "KC-REFORM(OVEN)(EXPO)",
-      "price": "170,000원",
+      "price": "160,000원",
       "note": "가전 동시구매할인가: 160,000원 | 케이크린 1877-2242"
     },
     {
@@ -3612,7 +3576,7 @@
       "category": "행사코드",
       "name": "행사코드 · 식기세척기장",
       "code": "KC-REFORM(DISH)(EXPO)",
-      "price": "170,000원",
+      "price": "160,000원",
       "note": "가전 동시구매할인가: 160,000원 | 케이크린 1877-2242"
     },
     {
@@ -4048,52 +4012,16 @@
       "note": "기본가 | 닥터매직 1644-0766 / 1644-0730"
     },
     {
-      "id": "s1-b-227-M-CLEAN-DOC(REFG-EXPO3-2)",
+      "id": "s1-b-227-M-CLEAN-DOC(REFG-EXPO3-3)",
       "sheetType": "안심케어",
       "folderKey": "reform",
       "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
       "section": "맞춤 수납장 02 (닥터매직)",
       "category": "행사코드",
       "name": "행사코드 · 냉장고 수납장 [빌트인형]",
-      "code": "M-CLEAN-DOC(REFG-EXPO3-2)",
-      "price": "1,150,000원",
-      "note": "가전 동시구매할인가: 1,090,000원 | 닥터매직 1644-0766 / 1644-0730"
-    },
-    {
-      "id": "s1-b-228-M-CLEAN-DOC(ROBOT-A-EXPO3)",
-      "sheetType": "안심케어",
-      "folderKey": "reform",
-      "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
-      "section": "맞춤 수납장 02 (닥터매직)",
-      "category": "행사코드",
-      "name": "행사코드 · 로봇청소기장 700mm 이하",
-      "code": "M-CLEAN-DOC(ROBOT-A-EXPO3)",
-      "price": "220,000원",
-      "note": "가전 동시구매할인가: 190,000원 | 닥터매직 1644-0766 / 1644-0730"
-    },
-    {
-      "id": "s1-b-229-M-CLEAN-DOC(ROBOT-B-EXPO3)",
-      "sheetType": "안심케어",
-      "folderKey": "reform",
-      "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
-      "section": "맞춤 수납장 02 (닥터매직)",
-      "category": "행사코드",
-      "name": "행사코드 · 로봇청소기장 700mm 초과",
-      "code": "M-CLEAN-DOC(ROBOT-B-EXPO3)",
-      "price": "270,000원",
-      "note": "가전 동시구매할인가: 240,000원 | 닥터매직 1644-0766 / 1644-0730"
-    },
-    {
-      "id": "s1-b-230-M-CLEAN-DOC(WASH-EXPO3)",
-      "sheetType": "안심케어",
-      "folderKey": "reform",
-      "folderLabel": "3. 맞춤 수납장 · 무타공TV · 배관 · 창호",
-      "section": "맞춤 수납장 02 (닥터매직)",
-      "category": "행사코드",
-      "name": "행사코드 · 세탁기장",
-      "code": "M-CLEAN-DOC(WASH-EXPO3)",
-      "price": "820,000원",
-      "note": "가전 동시구매할인가: 790,000원 | 닥터매직 1644-0766 / 1644-0730"
+      "code": "M-CLEAN-DOC(REFG-EXPO3-3)",
+      "price": "1,090,000원",
+      "note": "- | 닥터매직 1644-0766 / 1644-0730"
     },
     {
       "id": "s1-b-231-M-CLEAN-DOC(OVEN-EXPO3)",
@@ -4104,7 +4032,7 @@
       "category": "행사코드",
       "name": "행사코드 · 오븐장",
       "code": "M-CLEAN-DOC(OVEN-EXPO3)",
-      "price": "170,000원",
+      "price": "160,000원",
       "note": "가전 동시구매할인가: 160,000원 | 닥터매직 1644-0766 / 1644-0730"
     },
     {
@@ -4116,7 +4044,7 @@
       "category": "행사코드",
       "name": "행사코드 · 식기세척기장",
       "code": "M-CLEAN-DOC(DISH-EXPO3)",
-      "price": "170,000원",
+      "price": "160,000원",
       "note": "가전 동시구매할인가: 160,000원 | 닥터매직 1644-0766 / 1644-0730"
     },
     {
@@ -4249,7 +4177,7 @@
       "name": "기본청소 · 크린토피아_이사/입주청소(평당)",
       "code": "EV-CT-CLN-MOVEIN",
       "price": "10,900원",
-      "note": "10/1~27 한정"
+      "note": "11월 1일~26일 한정"
     },
     {
       "id": "s1-c-32-EV-CT-CLN-RESIDENTIAL",
@@ -5208,8 +5136,8 @@
       "category": "보일러배관 청소",
       "name": "보일러 배관 청소(30평 미만)",
       "code": "CLEAN-BOILER(UNDER30)",
-      "price": "135,000원",
-      "note": "~10월 행사가 운영 아파트, 빌라, 단독, 전원주택 형태 무관"
+      "price": "150,000원",
+      "note": "아파트, 빌라, 단독, 전원주택 형태 무관"
     },
     {
       "id": "s1-c-131-CLEAN-BOILER(UNDER40)",
@@ -5220,7 +5148,7 @@
       "category": "보일러배관 청소",
       "name": "보일러 배관 청소(40평 미만)",
       "code": "CLEAN-BOILER(UNDER40)",
-      "price": "155,000원",
+      "price": "170,000원",
       "note": ""
     },
     {
@@ -5232,7 +5160,7 @@
       "category": "보일러배관 청소",
       "name": "보일러 배관 청소(50평 미만)",
       "code": "CLEAN-BOILER(UNDER50)",
-      "price": "190,000원",
+      "price": "200,000원",
       "note": ""
     },
     {
@@ -5244,7 +5172,7 @@
       "category": "보일러배관 청소",
       "name": "보일러 배관 청소(50평 이상)",
       "code": "CLEAN-BOILER(OVER50)",
-      "price": "240,000원",
+      "price": "250,000원",
       "note": ""
     },
     {
@@ -5257,7 +5185,7 @@
       "name": "분배기 교체 · [보일러 추가]분배기 교체(4구 이하)",
       "code": "ADD-BOILER-DIVIDER(4)",
       "price": "180,000원",
-      "note": "~10월 행사가 운영 기존 분배기 철거 +신규 분배기 본체 *(스테인레스 재질) +신규 분배기 설치"
+      "note": "기존 분배기 철거 +신규 분배기 본체 *(스테인레스 재질) +신규 분배기 설치"
     },
     {
       "id": "s1-c-135-ADD-BOILER-DIVIDER(5)",
@@ -5548,122 +5476,122 @@
       "note": ""
     },
     {
-      "id": "s1-c-170-PACK-EV-CLEAN-PAC",
+      "id": "s1-c-170-PACK-CLEAN-PAC",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "에어컨 청소",
       "name": "에어컨 청소 · 스탠드",
-      "code": "PACK-EV-CLEAN-PAC",
-      "price": "129,000원",
+      "code": "PACK-CLEAN-PAC",
+      "price": "154,000원",
       "note": "가전 청소"
     },
     {
-      "id": "s1-c-171-PACK-EV-CLEAN-RAC",
+      "id": "s1-c-171-PACK-CLEAN-RAC",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "에어컨 청소",
       "name": "에어컨 청소 · 벽걸이",
-      "code": "PACK-EV-CLEAN-RAC",
-      "price": "80,000원",
+      "code": "PACK-CLEAN-RAC",
+      "price": "94,000원",
       "note": ""
     },
     {
-      "id": "s1-c-172-PACK-EV-CLEAN-2IN1",
+      "id": "s1-c-172-PACK-CLEAN-2IN1",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "에어컨 청소",
       "name": "에어컨 청소 · 2IN1",
-      "code": "PACK-EV-CLEAN-2IN1",
-      "price": "202,000원",
+      "code": "PACK-CLEAN-2IN1",
+      "price": "230,000원",
       "note": ""
     },
     {
-      "id": "s1-c-173-PACK-EV-CLEAN-SYSTEM(2WAY)",
+      "id": "s1-c-173-PACK-CLEAN-SYSTEM(2WAY)",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "에어컨 청소",
       "name": "에어컨 청소 · 시스템(1,2WAY)",
-      "code": "PACK-EV-CLEAN-SYSTEM(2WAY)",
-      "price": "113,000원",
+      "code": "PACK-CLEAN-SYSTEM(2WAY)",
+      "price": "129,000원",
       "note": ""
     },
     {
-      "id": "s1-c-174-PACK-EV-CLEAN-SYSTEM(4WAY)",
+      "id": "s1-c-174-PACK-CLEAN-SYSTEM(4WAY)",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "에어컨 청소",
       "name": "에어컨 청소 · 시스템(4WAY)",
-      "code": "PACK-EV-CLEAN-SYSTEM(4WAY)",
-      "price": "142,000원",
+      "code": "PACK-CLEAN-SYSTEM(4WAY)",
+      "price": "164,000원",
       "note": ""
     },
     {
-      "id": "s1-c-175-PACK-EV-CLEAN-WM",
+      "id": "s1-c-175-PACK-CLEAN-WM",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "세탁기 청소",
       "name": "세탁기 청소 · 일반",
-      "code": "PACK-EV-CLEAN-WM",
-      "price": "88,000원",
+      "code": "PACK-CLEAN-WM",
+      "price": "104,000원",
       "note": ""
     },
     {
-      "id": "s1-c-176-PACK-EV-CLEAN-WM(DRUM)",
+      "id": "s1-c-176-PACK-CLEAN-WM(DRUM)",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "세탁기 청소",
       "name": "세탁기 청소 · 드럼",
-      "code": "PACK-EV-CLEAN-WM(DRUM)",
-      "price": "140,000원",
+      "code": "PACK-CLEAN-WM(DRUM)",
+      "price": "174,000원",
       "note": ""
     },
     {
-      "id": "s1-c-177-PACK-EV-CLEAN-WM(COMBO)",
+      "id": "s1-c-177-PACK-CLEAN-WM(COMBO)",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "세탁기 청소",
       "name": "세탁기 청소 · 콤보",
-      "code": "PACK-EV-CLEAN-WM(COMBO)",
-      "price": "250,000원",
+      "code": "PACK-CLEAN-WM(COMBO)",
+      "price": "245,000원",
       "note": ""
     },
     {
-      "id": "s1-c-178-PACK-EV-CLEAN-WM(TOWER)",
+      "id": "s1-c-178-PACK-CLEAN-WM(TOWER)",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "세탁기 청소",
       "name": "세탁기 청소 · 직렬일체형",
-      "code": "PACK-EV-CLEAN-WM(TOWER)",
+      "code": "PACK-CLEAN-WM(TOWER)",
       "price": "304,000원",
       "note": ""
     },
     {
-      "id": "s1-c-179-PACK-EV-CLEAN-WM(TOWER-S)",
+      "id": "s1-c-179-PACK-CLEAN-WM(TOWER-S)",
       "sheetType": "안심케어",
       "folderKey": "package",
       "folderLabel": "5. 서비스할인 패키지 (PACK 코드)",
       "section": "나에게 딱 맞는 서비스할인 패키지",
       "category": "세탁기 청소",
       "name": "세탁기 청소 · 직렬분리형",
-      "code": "PACK-EV-CLEAN-WM(TOWER-S)",
+      "code": "PACK-CLEAN-WM(TOWER-S)",
       "price": "304,000원",
       "note": ""
     },
@@ -5676,7 +5604,7 @@
       "category": "냉장고 청소",
       "name": "냉장고 청소 · 일반",
       "code": "PACK-CLEAN-REF",
-      "price": "124,000원",
+      "price": "134,000원",
       "note": ""
     },
     {
@@ -5724,7 +5652,7 @@
       "category": "보일러 배관 청소",
       "name": "보일러 배관 청소 · 30평 미만",
       "code": "PACK-CLEAN-BOILER(UNDER30)",
-      "price": "125,000원",
+      "price": "150,000원",
       "note": "수도/보일러 배관 청소"
     },
     {
@@ -5736,7 +5664,7 @@
       "category": "보일러 배관 청소",
       "name": "보일러 배관 청소 · 40평 미만",
       "code": "PACK-CLEAN-BOILER(UNDER40)",
-      "price": "145,000원",
+      "price": "170,000원",
       "note": ""
     },
     {
@@ -5748,7 +5676,7 @@
       "category": "보일러 배관 청소",
       "name": "보일러 배관 청소 · 50평 미만",
       "code": "PACK-CLEAN-BOILER(UNDER50)",
-      "price": "180,000원",
+      "price": "200,000원",
       "note": ""
     },
     {
@@ -5760,7 +5688,7 @@
       "category": "보일러 배관 청소",
       "name": "보일러 배관 청소 · 50평 이상",
       "code": "PACK-CLEAN-BOILER(OVER50)",
-      "price": "225,000원",
+      "price": "250,000원",
       "note": ""
     },
     {
