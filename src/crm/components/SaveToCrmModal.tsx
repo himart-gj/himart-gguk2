@@ -248,6 +248,18 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         )}원`
       );
     }
+    if (primarySubSummary.subTierCashback > 0) {
+      benefitParts.push(
+        `${primarySubSummary.currentCard?.shortName || '제휴카드'} 금액대캐시백 -${formatCurrency(
+          primarySubSummary.subTierCashback
+        )}원`
+      );
+    }
+    if (primarySubSummary.subExtraCashback > 0) {
+      benefitParts.push(
+        `추가캐시백 -${formatCurrency(primarySubSummary.subExtraCashback)}원`
+      );
+    }
 
     let plan2Summary: QuotePlan2Summary | undefined;
     if (hasSecondPlan && plan2SubSummary.totalBaseMonthly > 0) {
@@ -268,6 +280,18 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
           `구독프리드(${plan2SubSummary.hiSummary.totalAccounts}구좌) 월 -${formatCurrency(
             plan2SubSummary.hiPlusMonthly
           )}원`
+        );
+      }
+      if (plan2SubSummary.subTierCashback > 0) {
+        p2SubBenefits.push(
+          `${plan2SubSummary.currentCard?.shortName || '제휴카드'} 금액대캐시백 -${formatCurrency(
+            plan2SubSummary.subTierCashback
+          )}원`
+        );
+      }
+      if (plan2SubSummary.subExtraCashback > 0) {
+        p2SubBenefits.push(
+          `추가캐시백 -${formatCurrency(plan2SubSummary.subExtraCashback)}원`
         );
       }
 

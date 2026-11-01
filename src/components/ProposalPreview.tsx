@@ -402,10 +402,25 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       ? '캐시백'
       : '청구할인';
 
-  // 구독구매 수식 배지 문구
+  // 구독구매 일시 캐시백 세부 내역 및 수식 배지 문구
+  const subCashbackDetailParts: string[] = [];
+  if (subSummary.subTierCashback > 0) {
+    subCashbackDetailParts.push(
+      `${currentCard?.shortName || '제휴카드'} 금액대별 캐시백(원금 ${Math.floor(
+        totalPrincipal / 10000
+      ).toLocaleString()}만원 구간) -${subSummary.subTierCashback.toLocaleString()}원`
+    );
+  }
+  if (subSummary.subExtraCashback > 0) {
+    subCashbackDetailParts.push(
+      `추가 캐시백 -${subSummary.subExtraCashback.toLocaleString()}원`
+    );
+  }
+
   const subFormulaParts = ['월 구독료'];
   if (cardMonthlyDiscount > 0) subFormulaParts.push(`카드${subCardBenefitLabel}`);
   if (hiPlusMonthlySupport > 0) subFormulaParts.push('구독프리드');
+  if (subSummary.monthlyCashbackEquiv > 0) subFormulaParts.push('캐시백(월환산)');
   const subFormulaText = subFormulaParts.join(' ➖ ');
 
   // 혼합 모드 통합 총 할인/지원 혜택 합계
@@ -1119,7 +1134,9 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                   )}
 
                   {/* 차감 내역 (선택한 항목만 깔끔한 고정 높이 배너로 표시) */}
-                  {(cardMonthlyDiscount > 0 || hiPlusMonthlySupport > 0) && (
+                  {(cardMonthlyDiscount > 0 ||
+                    hiPlusMonthlySupport > 0 ||
+                    subSummary.totalSubCashback > 0) && (
                     <div className="space-y-2.5">
                       {cardMonthlyDiscount > 0 && currentCard && currentCardTier && (
                         <div className="bg-blue-50/80 border border-blue-200 rounded-2xl px-5 py-3.5 flex items-center justify-between">
@@ -1163,12 +1180,40 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           </div>
                         </div>
                       )}
+
+                      {subSummary.totalSubCashback > 0 && (
+                        <div className="bg-emerald-50/85 border border-emerald-300 rounded-2xl px-5 py-3.5 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                              <Sparkles className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="text-base font-black text-slate-900">
+                                (-) 구독 캐시백 혜택 (총 -{subSummary.totalSubCashback.toLocaleString()}원 지급)
+                              </div>
+                              <div className="text-xs font-bold text-emerald-700">
+                                {subCashbackDetailParts.join(' · ')}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="text-2xl font-black text-emerald-600">
+                              월 환산 -{subSummary.monthlyCashbackEquiv.toLocaleString()}원
+                            </div>
+                            <div className="text-[11px] font-extrabold text-emerald-800">
+                              일시 총 -{subSummary.totalSubCashback.toLocaleString()}원
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {/* 메인 히어로 강조 박스 (가운데 정렬, 초대형 숫자) */}
                   <div className="bg-rose-50/70 border-2 border-rose-500 rounded-2xl p-6 text-center space-y-2 shadow-xs">
-                    {(cardMonthlyDiscount > 0 || hiPlusMonthlySupport > 0) && (
+                    {(cardMonthlyDiscount > 0 ||
+                      hiPlusMonthlySupport > 0 ||
+                      subSummary.totalSubCashback > 0) && (
                       <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-white border border-rose-200 text-xs font-extrabold text-slate-700">
                         <span>{subFormulaText}</span>
                       </div>
@@ -1179,6 +1224,13 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     <div className="text-5xl font-black text-rose-600 tracking-tight py-1">
                       월 <SpringNumberFlow value={finalMonthlyFee} suffix="원" />
                     </div>
+                    {subSummary.totalSubCashback > 0 && (
+                      <div className="text-xs font-bold text-slate-600">
+                        매월 실부담 월{' '}
+                        {subSummary.monthlyBillingAfterCardAndHiPlus.toLocaleString()}원 ·
+                        일시 캐시백 총 {subSummary.totalSubCashback.toLocaleString()}원 별도 지급 반영
+                      </div>
+                    )}
                     {finalMonthlyFee < 0 && (
                       <div className="pt-1">
                         <span className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-black">
@@ -1504,7 +1556,9 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       )}
 
                       {/* 차감 내역 */}
-                      {(cardMonthlyDiscount > 0 || hiPlusMonthlySupport > 0) && (
+                      {(cardMonthlyDiscount > 0 ||
+                        hiPlusMonthlySupport > 0 ||
+                        subSummary.totalSubCashback > 0) && (
                         <div className="bg-white rounded-xl border border-slate-200 p-3 space-y-2">
                           <div className="text-xs font-black text-slate-700">
                             월 할인 및 지원금 차감
@@ -1530,13 +1584,24 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                               </span>
                             </div>
                           )}
+                          {subSummary.totalSubCashback > 0 && (
+                            <div className="flex items-center justify-between text-xs font-bold text-emerald-800 pt-1 border-t border-slate-100">
+                              <span>
+                                (-) 구독 캐시백 (총 {subSummary.totalSubCashback.toLocaleString()}원)
+                              </span>
+                              <span className="font-black text-emerald-600">
+                                월 환산 -{subSummary.monthlyCashbackEquiv.toLocaleString()}원
+                              </span>
+                            </div>
+                          )}
                         </div>
                       )}
 
                       {/* 메인 히어로: 최종 월 체감가 */}
                       <div className="bg-rose-50/80 border-2 border-rose-500 rounded-xl p-4 text-center space-y-1">
                         {(cardMonthlyDiscount > 0 ||
-                          hiPlusMonthlySupport > 0) && (
+                          hiPlusMonthlySupport > 0 ||
+                          subSummary.totalSubCashback > 0) && (
                           <div className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-white border border-rose-200 text-[10px] font-extrabold text-slate-600">
                             {subFormulaText}
                           </div>

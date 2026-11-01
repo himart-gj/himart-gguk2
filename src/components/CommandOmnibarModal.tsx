@@ -68,6 +68,7 @@ export interface CommandOmnibarModalProps {
   onOpenInstallmentModal: () => void;
   onOpenCardIssueModal: () => void;
   onOpenAsCenterModal: () => void;
+  onOpenPartnerLinksModal?: () => void;
   onRunInAiCopilot: (commandText: string) => void;
 }
 
@@ -97,6 +98,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
   onOpenInstallmentModal,
   onOpenCardIssueModal,
   onOpenAsCenterModal,
+  onOpenPartnerLinksModal,
   onRunInAiCopilot,
 }) => {
   const [query, setQuery] = useState<string>('');
@@ -249,6 +251,54 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onOpenCardIssueModal();
         },
       },
+      {
+        id: 'menu-allcare-guide',
+        group: '메뉴',
+        title: '34대 가전수리 올케어 고객 안내서',
+        subtitle: '사용 중 가전 2년 수리비 보증 품목 및 카톡 안내문 복사',
+        badge: 'STEP 03',
+        onSelect: () => {
+          onClose();
+          onNavigateStep('allcare-guide');
+        },
+      },
+      {
+        id: 'menu-insurance',
+        group: '메뉴',
+        title: '연장보증 · 파손보험 안내서',
+        subtitle: '하이워런티 및 모바일·가전 보험 안내',
+        badge: 'STEP 03',
+        onSelect: () => {
+          onClose();
+          onNavigateStep('insurance');
+        },
+      },
+      {
+        id: 'menu-himobile',
+        group: '메뉴',
+        title: '하이모바일 KT망 알뜰 요금제 안내',
+        subtitle: '자급제·유심 특가 요금제 비교 및 안내',
+        badge: 'STEP 03',
+        onSelect: () => {
+          onClose();
+          onNavigateStep('himobile');
+        },
+      },
+      ...(onOpenPartnerLinksModal
+        ? [
+            {
+              id: 'menu-partner-hub',
+              group: '메뉴' as const,
+              title: '제휴 · 업무 바로가기 허브 열기',
+              subtitle: '방충망 · 입주청소 · 중고보상 · 하이프리드 수당 · SK인터넷 청약',
+              badge: 'STEP 03',
+              onSelect: () => {
+                onClose();
+                onOpenPartnerLinksModal();
+              },
+            },
+          ]
+        : []),
     ];
 
     if (!q) {

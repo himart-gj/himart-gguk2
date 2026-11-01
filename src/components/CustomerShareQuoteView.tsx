@@ -18,10 +18,13 @@ import {
 } from '../types/proposal';
 import {
   ConsultantProfile,
+  decodeSharedQuoteFromHash,
   encodeSharedQuoteUrl,
+  loadCachedCustomerQuotePayload,
   loadConsultantProfile,
   saveConsultantProfile,
   SharedQuotePayload,
+  unlockStaffDeviceWithPin,
 } from '../utils/shareQuoteCodec';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import {
@@ -125,7 +128,13 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
 
     const priceHighlight =
       state.quoteMode === 'subscription'
-        ? `월 체감가 ${subSummary.finalMonthlyFee.toLocaleString()}원 (${subSummary.periodLabel})`
+        ? `월 체감가 ${subSummary.finalMonthlyFee.toLocaleString()}원 (${
+            subSummary.periodLabel
+          }${
+            subSummary.totalSubCashback > 0
+              ? ` · 캐시백 ${subSummary.totalSubCashback.toLocaleString()}원 반영`
+              : ''
+          })`
         : state.quoteMode === 'hybrid'
         ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 월 ${subSummary.finalMonthlyFee.toLocaleString()}원`
         : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원 (총 혜택 -${genSummary.totalDiscountAndBenefit.toLocaleString()}원)`;
@@ -281,6 +290,20 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             />
           </div>
 
+          {/* 고객 전용 보안 격리 안내 배지 */}
+          <div
+            className={`rounded-2xl border px-3.5 py-2.5 flex items-center gap-2 text-xs font-bold ${
+              isDark
+                ? 'bg-emerald-500/15 border-emerald-400/35 text-emerald-300'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>
+              고객 전용 보안 격리 적용: 링크 접속 시 오직 이 견적서만 열리며, 직원용 관리앱·휴무표·수당 메뉴 진입이 원천 차단됩니다.
+            </span>
+          </div>
+
           {/* 생성된 메시지 미리보기 */}
           <div
             className={`rounded-2xl border p-3.5 text-xs space-y-1.5 ${
@@ -347,12 +370,10 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
 // ============================================================================
 export interface CustomerShareQuoteViewProps {
   payload: SharedQuotePayload;
-  onExitCustomerView?: () => void;
 }
 
 export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
   payload,
-  onExitCustomerView,
 }) => {
   // 고객이 직접 조건을 눌러보며 비교할 수 있는 로컬 시뮬레이션 상태 (언제든 원본 복원 가능)
   const [simState, setSimState] = useState<ProposalState>(() =>
@@ -430,6 +451,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
       ...prev,
       selectedCardId: cardId,
       selectedCardTierId: firstTier,
+      subAutoTierCashback: true,
     }));
   };
 
@@ -459,7 +481,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {isModifiedFromOriginal && (
+            {isModifiedFromOriginal ? (
               <button
                 type="button"
                 onClick={handleResetToOriginal}
@@ -468,15 +490,11 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>원래 제안 복귀</span>
               </button>
-            )}
-            {onExitCustomerView && (
-              <button
-                type="button"
-                onClick={onExitCustomerView}
-                className="px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold cursor-pointer"
-              >
-                관리앱으로
-              </button>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 text-amber-300 text-[11px] font-extrabold border border-white/10">
+                <UserCheck className="w-3 h-3" />
+                <span>고객 전용 안심뷰</span>
+              </span>
             )}
           </div>
         </div>
@@ -796,8 +814,19 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                     기본 월 구독료 {subSummary.totalBaseMonthly.toLocaleString()}원
                   </div>
                   <div className="text-xs font-black text-emerald-400 font-mono">
-                    매월 -{(subSummary.cardDiscount + subSummary.hiPlusMonthly).toLocaleString()}원 절감
+                    매월 -
+                    {(
+                      subSummary.cardDiscount +
+                      subSummary.hiPlusMonthly +
+                      subSummary.monthlyCashbackEquiv
+                    ).toLocaleString()}
+                    원 체감 절감
                   </div>
+                  {subSummary.totalSubCashback > 0 && (
+                    <div className="text-[10.5px] font-extrabold text-amber-300 mt-0.5">
+                      일시 캐시백 총 {subSummary.totalSubCashback.toLocaleString()}원 포함
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -859,6 +888,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                         ...prev,
                         selectedCardId: 'none',
                         selectedCardTierId: '',
+                        subAutoTierCashback: true,
                       }))
                     }
                     className={`px-2.5 py-1 rounded-xl text-xs font-black border cursor-pointer ${
@@ -947,6 +977,25 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                     );
                   })}
                 </div>
+
+                {subSummary.totalSubCashback > 0 && (
+                  <div className="rounded-xl bg-emerald-50 border border-emerald-300 px-3 py-2 text-[11px] font-bold text-emerald-900 space-y-0.5">
+                    <div>
+                      🎁 일시 지급 캐시백 총{' '}
+                      <strong>-{subSummary.totalSubCashback.toLocaleString()}원</strong> 적용됨
+                      (월 환산 -{subSummary.monthlyCashbackEquiv.toLocaleString()}원 체감)
+                    </div>
+                    <div className="text-[10.5px] text-emerald-700">
+                      {subSummary.subTierCashback > 0 &&
+                        `${subSummary.currentCard?.shortName || ''} 300만↑ 금액대별 캐시백 -${subSummary.subTierCashback.toLocaleString()}원`}
+                      {subSummary.subTierCashback > 0 &&
+                        subSummary.subExtraCashback > 0 &&
+                        ' · '}
+                      {subSummary.subExtraCashback > 0 &&
+                        `추가 캐시백 -${subSummary.subExtraCashback.toLocaleString()}원`}
+                    </div>
+                  </div>
+                )}
 
                 {hiPlusSummary.totalAccounts > 0 && (
                   <p className="text-[11px] font-bold text-sky-900 leading-relaxed">
@@ -1062,4 +1111,107 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
       </div>
     </div>
   );
+};
+
+
+// ============================================================================
+// 3. 고객 전용 독립 보안 루트 (직원용 App.tsx 마운트 자체를 원천 차단하는 샌드박스 엔트리)
+// ============================================================================
+export const CustomerShareStandaloneRoot: React.FC = () => {
+  const [payload, setPayload] = useState<SharedQuotePayload | null>(() =>
+    loadCachedCustomerQuotePayload()
+  );
+  const [status, setStatus] = useState<'loading' | 'ready' | 'invalid'>('loading');
+
+  useEffect(() => {
+    let active = true;
+
+    const loadFromUrl = async () => {
+      const decoded = await decodeSharedQuoteFromHash();
+      if (!active) return;
+      if (decoded) {
+        setPayload(decoded);
+        setStatus('ready');
+      } else {
+        setStatus('invalid');
+      }
+    };
+
+    loadFromUrl();
+
+    const handleUrlChange = () => {
+      loadFromUrl();
+    };
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      active = false;
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
+
+  const handleStaffUnlock = () => {
+    const pin = window.prompt('직원 전용 인증 코드를 입력해 주세요:');
+    if (!pin) return;
+    if (unlockStaffDeviceWithPin(pin)) {
+      window.location.href = `${window.location.origin}${window.location.pathname}`;
+    } else {
+      window.alert('인증 코드가 일치하지 않습니다.');
+    }
+  };
+
+  if (status === 'loading' && !payload) {
+    return (
+      <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-[#18181B] text-amber-300 flex items-center justify-center mb-3 shadow-md">
+          <Sparkles className="w-6 h-6 animate-pulse" />
+        </div>
+        <div className="text-base font-black">맞춤 비교 견적서를 불러오는 중입니다...</div>
+        <p className="text-xs text-[#78716C] font-semibold mt-1">
+          롯데하이마트 경기광주점 고객 전용 보안 뷰어
+        </p>
+      </div>
+    );
+  }
+
+  if (!payload || status === 'invalid') {
+    return (
+      <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-5">
+        <div className="w-full max-w-md rounded-3xl bg-white border border-[#E4DFD5] p-6 text-center shadow-sm space-y-3">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-50 border border-amber-200 text-[#8C5A32] flex items-center justify-center">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <h1 className="text-base sm:text-lg font-black">
+            맞춤 견적 링크를 다시 확인해 주세요
+          </h1>
+          <p className="text-xs text-[#57534E] leading-relaxed font-medium">
+            카카오톡 메시지에서 전달받으신 전체 링크를 다시 눌러 접속해 주시거나, 담당 컨설턴트에게 새 비교 견적 링크를 요청해 주세요.
+          </p>
+          <div className="pt-2">
+            <a
+              href="https://map.naver.com/p/search/%EB%A1%AF%EB%8D%B0%ED%95%98%EC%9D%B4%EB%A7%88%ED%8A%B8%20%EA%B2%BD%EA%B8%B0%EA%B4%91%EC%A3%BC%EC%A0%90"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full py-3 px-4 rounded-2xl bg-[#18181B] text-white text-xs font-black inline-flex items-center justify-center gap-1.5"
+            >
+              <MapPin className="w-4 h-4 text-amber-300" />
+              <span>롯데하이마트 경기광주점 위치 안내</span>
+            </a>
+          </div>
+          <div className="pt-3 border-t border-[#F4F2ED]">
+            <button
+              type="button"
+              onClick={handleStaffUnlock}
+              className="text-[10px] text-stone-400 hover:text-stone-600 underline cursor-pointer"
+            >
+              매장 직원 기기 전환
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <CustomerShareQuoteView payload={payload} />;
 };

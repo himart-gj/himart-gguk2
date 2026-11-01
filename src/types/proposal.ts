@@ -216,6 +216,32 @@ export function calculateAutoTierCashback(
   return 0;
 }
 
+/**
+ * 구독구매 전용: 삼성제휴카드 · 신한제휴카드 선택 시 구독원금 합계(totalPrincipal)가
+ * 300만원 이상이면 일반 견적기와 동일한 금액대별 캐시백 구간을 자동 지급합니다.
+ * (우리카드 · 롯데카드 · 미적용 또는 원금 300만원 미만: 0원)
+ */
+export function isSubTierCashbackEligibleCard(
+  cardId?: AffiliateCardId | string
+): boolean {
+  return cardId === 'samsung' || cardId === 'shinhan';
+}
+
+export function calculateAutoSubscriptionTierCashback(
+  totalPrincipal: number,
+  cardId?: AffiliateCardId | string
+): number {
+  if (!isSubTierCashbackEligibleCard(cardId)) return 0;
+  if (totalPrincipal >= 20000000) return 1000000;
+  if (totalPrincipal >= 15000000) return 750000;
+  if (totalPrincipal >= 12000000) return 600000;
+  if (totalPrincipal >= 10000000) return 500000;
+  if (totalPrincipal >= 7000000) return 350000;
+  if (totalPrincipal >= 5000000) return 250000;
+  if (totalPrincipal >= 3000000) return 150000;
+  return 0;
+}
+
 export interface GeneralPlanData {
   generalItems: GeneralPurchaseItem[];
   generalCardType: GeneralCardType;
@@ -238,6 +264,9 @@ export interface GeneralPlanData {
   selectedCardId: AffiliateCardId;
   selectedCardTierId: string;
   hiPlusCounts: HiPlusCounts;
+  subAutoTierCashback?: boolean;
+  subManualTierCashback?: number;
+  subExtraCashback?: number;
 }
 
 export function extractGeneralPlanData(
@@ -285,6 +314,9 @@ export function extractGeneralPlanData(
       hi108: 0,
       ...(source.hiPlusCounts || {}),
     },
+    subAutoTierCashback: source.subAutoTierCashback ?? true,
+    subManualTierCashback: Math.max(0, Number(source.subManualTierCashback) || 0),
+    subExtraCashback: Math.max(0, Number(source.subExtraCashback) || 0),
   };
 }
 
@@ -347,6 +379,9 @@ export function cloneGeneralPlanData(
       hi108: 0,
       ...(source.hiPlusCounts || {}),
     },
+    subAutoTierCashback: source.subAutoTierCashback ?? true,
+    subManualTierCashback: Math.max(0, Number(source.subManualTierCashback) || 0),
+    subExtraCashback: Math.max(0, Number(source.subExtraCashback) || 0),
   };
 }
 
@@ -548,11 +583,20 @@ export function getSubscriptionPeriodSummary(
     0
   );
 
-  // 각 구독 품목의 개별 원금 = (Number(item.monthlyFee) || 0) * (item.period || 60)
+  // 각 구독 품목의 개별 원금 (전산 OCR contractAmount 반올림 오차 ±period*5원 이내면 전산 원금 우선 사용하여 CRM 총판·실판 원금과 1원 단위 일치 보장)
   const totalPrincipal = list.reduce((sum, item) => {
     const itemPeriod: SubscriptionPeriod =
       item.period === 36 ? 36 : item.period === 60 ? 60 : safeFallback;
-    return sum + Math.max(0, Number(item.monthlyFee) || 0) * itemPeriod;
+    const monthly = Math.max(0, Number(item.monthlyFee) || 0);
+    const byMonthly = monthly * itemPeriod;
+    const explicitContract = Math.max(0, Number(item.contractAmount) || 0);
+    if (
+      explicitContract > 0 &&
+      (monthly === 0 || Math.abs(explicitContract - byMonthly) <= itemPeriod * 5)
+    ) {
+      return sum + explicitContract;
+    }
+    return sum + byMonthly;
   }, 0);
 
   return {
@@ -614,13 +658,40 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
   );
   const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
 
-  const finalMonthlyFee = totalBaseMonthly - cardDiscount - hiPlusMonthly;
+  // 삼성·신한 제휴카드 구독원금 300만원 이상 금액대별 캐시백 + 구독 추가 캐시백
+  const isTierCashbackCard = isSubTierCashbackEligibleCard(planData.selectedCardId);
+  const autoSubTierCashback = calculateAutoSubscriptionTierCashback(
+    totalPrincipal,
+    planData.selectedCardId
+  );
+  const subTierCashback =
+    planData.subAutoTierCashback !== false
+      ? autoSubTierCashback
+      : Math.max(0, Number(planData.subManualTierCashback) || 0);
+  const subExtraCashback = Math.max(0, Number(planData.subExtraCashback) || 0);
+  const totalSubCashback = subTierCashback + subExtraCashback;
+
+  // 일시 캐시백의 대표 구독기간 월 환산 체감분
+  const monthlyCashbackEquiv =
+    representativePeriod > 0 && totalSubCashback > 0
+      ? Math.round(totalSubCashback / representativePeriod)
+      : 0;
+
+  // 실제 매월 청구·월지원 차감 후 금액 (일시 캐시백 제외 매월 실부담)
+  const monthlyBillingAfterCardAndHiPlus =
+    totalBaseMonthly - cardDiscount - hiPlusMonthly;
+
+  // 일시 캐시백 월 환산분까지 모두 반영한 최종 월 체감가
+  const finalMonthlyFee =
+    monthlyBillingAfterCardAndHiPlus - monthlyCashbackEquiv;
+
   const totalSubBenefit =
-    (cardDiscount + hiPlusMonthly) * representativePeriod;
+    (cardDiscount + hiPlusMonthly) * representativePeriod + totalSubCashback;
   const finalTotalFee = totalPrincipal - totalSubBenefit;
 
   const hasSubData =
     totalBaseMonthly > 0 ||
+    totalPrincipal > 0 ||
     items.some(
       (it) =>
         (it.category || '').trim() !== '' || (it.modelName || '').trim() !== ''
@@ -642,6 +713,13 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
     cardDiscount,
     hiSummary,
     hiPlusMonthly,
+    isTierCashbackCard,
+    autoSubTierCashback,
+    subTierCashback,
+    subExtraCashback,
+    totalSubCashback,
+    monthlyCashbackEquiv,
+    monthlyBillingAfterCardAndHiPlus,
     finalMonthlyFee,
     finalTotalFee,
     totalSubBenefit,
@@ -793,6 +871,9 @@ export interface ProposalState {
   selectedCardId: AffiliateCardId;
   selectedCardTierId: string;
   hiPlusCounts: HiPlusCounts;
+  subAutoTierCashback?: boolean;
+  subManualTierCashback?: number;
+  subExtraCashback?: number;
 }
 
 export const MAX_HI_PLUS_ACCOUNTS = 8;

@@ -6,6 +6,7 @@ import {
   calculateGeneralPurchaseSummary,
   calculateHiPlusSummary,
   calculateSubscriptionSummary,
+  isSubTierCashbackEligibleCard,
   copyPlan1ToPlan2InState,
   GENERAL_CARD_OPTIONS,
   GENERAL_CATEGORY_PRESETS,
@@ -400,6 +401,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       ...prev,
       selectedCardId: cardId,
       selectedCardTierId: cardSpec?.tiers[0]?.id || '',
+      subAutoTierCashback: true,
+      subManualTierCashback: 0,
     }));
   };
 
@@ -473,6 +476,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       warrantyType: 'AS연장보험 + 가전수리올케어',
       warrantyYears: 5,
       allCare: true,
+      subAutoTierCashback: true,
+      subManualTierCashback: 0,
+      subExtraCashback: 0,
       selectedCardId: 'none',
       selectedCardTierId: '',
       hiPlusCounts: {
@@ -550,9 +556,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     representativePeriod
   );
 
-  const cardDiscount = currentCardTier?.monthlyDiscount || 0;
-  const hiPlusMonthly = hiSummary.monthlyHiPlusSupport;
-  const rawFinalMonthly = totalBaseMonthly - cardDiscount - hiPlusMonthly;
+  const cardDiscount = liveSubSummary.cardDiscount;
+  const hiPlusMonthly = liveSubSummary.hiPlusMonthly;
+  const rawFinalMonthly = liveSubSummary.finalMonthlyFee;
 
   const hasCustomApiKey = Boolean(getStoredGeminiApiKey());
 
@@ -1566,18 +1572,30 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
                 {AFFILIATE_CARDS.map((card) => {
                   const selected = state.selectedCardId === card.id;
+                  const hasPrincipalTier = isSubTierCashbackEligibleCard(card.id);
                   return (
                     <button
                       key={card.id}
                       type="button"
                       onClick={() => handleCardSelect(card.id)}
-                      className={`py-1.5 sm:py-2 px-1 sm:px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
+                      className={`py-1.5 sm:py-2 px-1 sm:px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer flex flex-col items-center justify-center ${
                         selected
                           ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      {card.shortName}
+                      <span>{card.shortName}</span>
+                      {hasPrincipalTier && (
+                        <span
+                          className={`text-[8.5px] font-black leading-tight mt-0.5 px-1 rounded ${
+                            selected
+                              ? 'bg-amber-300 text-slate-950'
+                              : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          300만↑캐백
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -1625,6 +1643,166 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   })}
                 </div>
               )}
+
+              {/* 삼성·신한 300만↑ 금액대별 캐시백 자동 감지 안내 배너 & 구독 추가 캐시백 입력 칸 */}
+              <div className="pt-1.5 space-y-2">
+                {liveSubSummary.isTierCashbackCard && (
+                  <div
+                    className={`rounded-xl px-3 py-2 border text-[11px] font-bold flex items-center justify-between gap-2 flex-wrap ${
+                      totalPrincipal >= 3000000
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                        : 'bg-amber-50/80 border-amber-200 text-amber-900'
+                    }`}
+                  >
+                    {totalPrincipal >= 3000000 ? (
+                      <span>
+                        ✨ <strong>{currentCard?.shortName}</strong> 구독원금{' '}
+                        <strong>{totalPrincipal.toLocaleString()}원</strong> (300만↑ 구간 충족) ➔ 금액대별 캐시백{' '}
+                        <strong className="text-emerald-700">
+                          -{liveSubSummary.autoSubTierCashback.toLocaleString()}원
+                        </strong>{' '}
+                        자동 적용!
+                      </span>
+                    ) : (
+                      <span>
+                        💡 <strong>{currentCard?.shortName}</strong>는 구독원금 300만원 이상 시 금액대별 캐시백(15만~100만원)이 추가 지급됩니다. (현재 원금{' '}
+                        <strong>{totalPrincipal.toLocaleString()}원</strong> ·{' '}
+                        <strong className="text-rose-600">
+                          {(3000000 - totalPrincipal).toLocaleString()}원
+                        </strong>{' '}
+                        추가 시 15만원 지급)
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* 좌측: 삼성·신한 구독원금 300만↑ 금액대별 캐시백 */}
+                  <div
+                    className={`p-2.5 rounded-xl border ${
+                      liveSubSummary.subTierCashback > 0
+                        ? 'bg-blue-50/75 border-blue-300'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <label className="text-[10.5px] font-extrabold text-blue-950">
+                        (-) 금액대별 캐시백 (삼성·신한 300만↑)
+                      </label>
+                      {state.subAutoTierCashback === false ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onChange((prev) => ({
+                              ...prev,
+                              subAutoTierCashback: true,
+                              subManualTierCashback: 0,
+                            }))
+                          }
+                          className="text-[9.5px] font-black text-blue-600 hover:underline cursor-pointer"
+                        >
+                          자동계산 복원
+                        </button>
+                      ) : (
+                        <span className="text-[9.5px] font-bold text-blue-600">
+                          {liveSubSummary.isTierCashbackCard
+                            ? totalPrincipal >= 3000000
+                              ? '원금기준 자동적용'
+                              : '원금 300만 미만'
+                            : '삼성·신한 전용'}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      step={10000}
+                      value={liveSubSummary.subTierCashback || ''}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          onChange((prev) => ({
+                            ...prev,
+                            subAutoTierCashback: false,
+                            subManualTierCashback: 0,
+                          }));
+                          return;
+                        }
+                        onChange((prev) => ({
+                          ...prev,
+                          subAutoTierCashback: false,
+                          subManualTierCashback: Math.max(0, Number(raw) || 0),
+                        }));
+                      }}
+                      placeholder={
+                        liveSubSummary.isTierCashbackCard
+                          ? '300만원 이상 시 자동 계산'
+                          : '삼성·신한 선택 시 자동 계산'
+                      }
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-blue-200 text-base sm:text-xs font-black text-right text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* 우측: 구독 추가 캐시백 (배송익월·다품목·특별 프로모션 캐시백) */}
+                  <div
+                    className={`p-2.5 rounded-xl border ${
+                      liveSubSummary.subExtraCashback > 0
+                        ? 'bg-rose-50/70 border-rose-300'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <label className="text-[10.5px] font-extrabold text-slate-800">
+                        (-) 구독 추가 캐시백 (원)
+                      </label>
+                      <div className="flex items-center gap-1">
+                        {[50000, 100000].map((amt) => (
+                          <button
+                            key={amt}
+                            type="button"
+                            onClick={() =>
+                              onChange((prev) => ({
+                                ...prev,
+                                subExtraCashback:
+                                  Math.max(0, Number(prev.subExtraCashback) || 0) + amt,
+                              }))
+                            }
+                            className="px-1.5 py-0.2 rounded bg-white hover:bg-rose-100 border border-slate-200 text-[9.5px] font-extrabold text-rose-700 cursor-pointer"
+                          >
+                            +{amt / 10000}만
+                          </button>
+                        ))}
+                        {(state.subExtraCashback || 0) > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onChange((prev) => ({
+                                ...prev,
+                                subExtraCashback: 0,
+                              }))
+                            }
+                            className="px-1.5 py-0.2 rounded bg-slate-200 hover:bg-slate-300 text-[9.5px] font-bold text-slate-700 cursor-pointer"
+                          >
+                            초기화
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      step={10000}
+                      value={state.subExtraCashback || ''}
+                      onChange={(e) =>
+                        onChange((prev) => ({
+                          ...prev,
+                          subExtraCashback: Math.max(0, Number(e.target.value) || 0),
+                        }))
+                      }
+                      placeholder="추가 캐시백 금액 입력 (예: 100000)"
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-base sm:text-xs font-black text-right text-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* 3. 구독프리드 (Hi구독 플러스) */}
@@ -1726,6 +1904,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     기본 {totalBaseMonthly.toLocaleString()}원 - 카드{' '}
                     {cardDiscount.toLocaleString()}원 - 프리드{' '}
                     {hiPlusMonthly.toLocaleString()}원
+                    {liveSubSummary.totalSubCashback > 0 && (
+                      <span className="text-emerald-700 font-extrabold">
+                        {' '}
+                        - 캐시백 월환산 {liveSubSummary.monthlyCashbackEquiv.toLocaleString()}원
+                        (총 {liveSubSummary.totalSubCashback.toLocaleString()}원)
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">

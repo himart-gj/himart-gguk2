@@ -2478,7 +2478,10 @@ export function buildProposalStateFromAiCommand(cmd: ParsedAiCommand): ProposalS
     pointUsed: Math.max(0, Number(cmd.pointUsed) || 0),
     autoTierCashback: true,
     manualTierCashback: 0,
-    extraCashback: Math.max(0, Number(cmd.extraCashback) || 0),
+    extraCashback:
+      cmd.quoteMode === 'subscription'
+        ? 0
+        : Math.max(0, Number(cmd.extraCashback) || 0),
     extraBenefits: [],
     generalHiPreedCounts: {
       hf75: cmd.generalHiPreedCounts.hf75 || 0,
@@ -2499,6 +2502,12 @@ export function buildProposalStateFromAiCommand(cmd: ParsedAiCommand): ProposalS
       hi90: cmd.hiPlusCounts.hi90 || 0,
       hi108: cmd.hiPlusCounts.hi108 || 0,
     },
+    subAutoTierCashback: true,
+    subManualTierCashback: 0,
+    subExtraCashback:
+      cmd.quoteMode === 'subscription'
+        ? Math.max(0, Number(cmd.extraCashback) || 0)
+        : 0,
   };
 
   const emptyPlan2: GeneralPlanData = {
@@ -4314,6 +4323,34 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                         </div>
                       </div>
                     </div>
+                    {quotePayload.primarySubSummary.totalSubCashback > 0 && (
+                      <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-extrabold text-emerald-800 flex items-center justify-between flex-wrap gap-1">
+                        <span>
+                          🎁 일시 지급 캐시백 합계: -
+                          {formatCurrency(
+                            quotePayload.primarySubSummary.totalSubCashback
+                          )}
+                          원 (월 환산 -
+                          {formatCurrency(
+                            quotePayload.primarySubSummary.monthlyCashbackEquiv
+                          )}
+                          원 반영)
+                        </span>
+                        <span>
+                          {quotePayload.primarySubSummary.subTierCashback > 0 &&
+                            `금액대별 -${formatCurrency(
+                              quotePayload.primarySubSummary.subTierCashback
+                            )}원`}
+                          {quotePayload.primarySubSummary.subTierCashback > 0 &&
+                            quotePayload.primarySubSummary.subExtraCashback > 0 &&
+                            ' · '}
+                          {quotePayload.primarySubSummary.subExtraCashback > 0 &&
+                            `추가 -${formatCurrency(
+                              quotePayload.primarySubSummary.subExtraCashback
+                            )}원`}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 

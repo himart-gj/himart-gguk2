@@ -66,7 +66,7 @@ const CustomerShareQuoteView = lazy(() =>
   }))
 );
 import { CustomerItem, QuoteRecord, SettlementTabId } from './crm/types/crm';
-import { getCachedCustomers } from './crm/services/gasApi';
+import { CRM_CUSTOMERS_UPDATED_EVENT, getCachedCustomers } from './crm/services/gasApi';
 import { isUrgentCustomer } from './crm/utils/date';
 import {
   CareTableDataset,
@@ -166,6 +166,9 @@ const createEmptyGeneralPlanData = (
     hi90: 0,
     hi108: 0,
   },
+  subAutoTierCashback: true,
+  subManualTierCashback: 0,
+  subExtraCashback: 0,
 });
 
 const createInitialState = (mode: QuoteMode): ProposalState => {
@@ -285,21 +288,20 @@ export function App() {
   );
   const [installmentDataset, setInstallmentDataset] = useState(() => loadLocalInstallmentDataset());
 
-  // 카톡 공유 링크(#share=...) 감지 및 고객 전용 인터랙티브 비교 뷰 자동 라우팅
+  // 카톡 공유 링크(?share=... 또는 #share=...) 감지 시 고객 전용 뷰로 단방향 잠금 (직원 앱 복귀 불가)
   useEffect(() => {
-    const checkShareHash = () => {
-      const h = window.location.hash || '';
-      if (h.startsWith('#share=')) {
-        decodeSharedQuoteFromHash(h).then((decoded) => {
+    const checkShareUrl = () => {
+      const hasQueryShare = window.location.search.includes('share=');
+      const hasHashShare = (window.location.hash || '').startsWith('#share=');
+      if (hasQueryShare || hasHashShare) {
+        decodeSharedQuoteFromHash().then((decoded) => {
           if (decoded) setSharedQuotePayload(decoded);
         });
-      } else {
-        setSharedQuotePayload(null);
       }
     };
-    checkShareHash();
-    window.addEventListener('hashchange', checkShareHash);
-    return () => window.removeEventListener('hashchange', checkShareHash);
+    checkShareUrl();
+    window.addEventListener('hashchange', checkShareUrl);
+    return () => window.removeEventListener('hashchange', checkShareUrl);
   }, []);
 
   // 전역 Ctrl+K / Cmd+K 통합 검색 옴니바 단축키
@@ -581,6 +583,17 @@ export function App() {
     }
   }, [deferredPrompt]);
 
+  // CRM 고객 변경 이벤트 발생 시 메인 홈(수당적립·구독건수·TODAY 브리핑) 및 통합검색 캐시 즉시 동기화
+  useEffect(() => {
+    const syncCustomers = () => setCrmCustomers(getCachedCustomers());
+    window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, syncCustomers);
+    window.addEventListener('storage', syncCustomers);
+    return () => {
+      window.removeEventListener(CRM_CUSTOMERS_UPDATED_EVENT, syncCustomers);
+      window.removeEventListener('storage', syncCustomers);
+    };
+  }, []);
+
   // 메인 홈 화면 진입 시 최신 CRM 캐시 및 안심케어 조견표 · 무이자 할부 행사표 동기화
   useEffect(() => {
     if (step === 'home') {
@@ -799,6 +812,18 @@ export function App() {
             parsed.generalPlan1?.hiPlusCounts ||
             parsed.hiPlusCounts ||
             base.generalPlan1.hiPlusCounts,
+          subAutoTierCashback:
+            parsed.generalPlan1?.subAutoTierCashback ??
+            parsed.subAutoTierCashback ??
+            true,
+          subManualTierCashback:
+            parsed.generalPlan1?.subManualTierCashback ??
+            parsed.subManualTierCashback ??
+            0,
+          subExtraCashback:
+            parsed.generalPlan1?.subExtraCashback ??
+            parsed.subExtraCashback ??
+            0,
         });
 
         const mergedPlan2 = extractGeneralPlanData({
@@ -1123,6 +1148,7 @@ export function App() {
             warrantyType: resolvedWarrantyType,
             warrantyYears: 5,
             allCare: data.allCare ?? true,
+            subAutoTierCashback: mappedCard ? true : (prev.subAutoTierCashback ?? true),
             selectedCardId:
               mappedCard.cardId !== 'none'
                 ? mappedCard.cardId
@@ -1173,13 +1199,7 @@ export function App() {
           </div>
         }
       >
-        <CustomerShareQuoteView
-          payload={sharedQuotePayload}
-          onExitCustomerView={() => {
-            window.history.replaceState(null, '', window.location.pathname);
-            setSharedQuotePayload(null);
-          }}
-        />
+        <CustomerShareQuoteView payload={sharedQuotePayload} />
       </Suspense>
     );
   }
@@ -2313,6 +2333,7 @@ export function App() {
             onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
             onOpenCardIssueModal={() => setIsCardIssueOpen(true)}
             onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
+            onOpenPartnerLinksModal={() => setIsPartnerLinksOpen(true)}
             onRunInAiCopilot={(cmd) => {
               setAiInitialCommand(cmd);
               setIsAiCommandModalOpen(true);
