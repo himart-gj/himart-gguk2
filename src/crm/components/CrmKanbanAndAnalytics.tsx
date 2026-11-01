@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CustomerItem, CustomerStatus, FilterTab } from '../types/crm';
 import { formatCurrency, getDeliveryDDay } from '../utils/date';
+import { resolveCustomerPerformanceProfile } from '../utils/settlementEngine';
 import { SpringNumberFlow } from '../../components/SpringNumberFlow';
 import {
   ArrowRight,
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react';
 
 // ============================================================================
-// 1. Tremor 스타일 월간 매출·실적 & 전환 파이프라인 대시보드 바
+// 1. Tremor 스타일 가망 파이프라인 & 전환율 요약 스트립 (총판·실판 보드 하단 보조 바)
 // ============================================================================
 export interface CrmAnalyticsStripProps {
   customers: CustomerItem[];
@@ -30,19 +31,8 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
   onSelectFilter,
 }) => {
   const metrics = useMemo(() => {
-    const now = new Date();
-    const ymPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
-      2,
-      '0'
-    )}`;
-
     const closed = customers.filter(
       (c) => c.status === '계약완료' || c.status === '발송완료'
-    );
-    const thisMonthClosed = closed.filter(
-      (c) =>
-        (c.regDate || '').startsWith(ymPrefix) ||
-        (c.deliveryDate || '').startsWith(ymPrefix)
     );
 
     const activeLeads = customers.filter(
@@ -52,13 +42,9 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
         c.status === '미구매/고민중'
     );
 
-    const closedPaidSum = closed.reduce((s, c) => s + (c.paidAmount || 0), 0);
-    const closedBenefitSum = closed.reduce(
-      (s, c) => s + Math.max(0, (c.paidAmount || 0) - (c.netAmount || 0)),
-      0
-    );
-    const pipelinePaidSum = activeLeads.reduce(
-      (s, c) => s + (c.paidAmount || 0),
+    // 가망 파이프라인도 동일하게 실적 기준(일반=제품합계, 구독=구독원금)으로 산출
+    const pipelinePerfSum = activeLeads.reduce(
+      (s, c) => s + resolveCustomerPerformanceProfile(c).performanceAmount,
       0
     );
 
@@ -68,11 +54,8 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
 
     return {
       closedCount: closed.length,
-      thisMonthClosedCount: thisMonthClosed.length,
       activeLeadCount: activeLeads.length,
-      closedPaidSum,
-      closedBenefitSum,
-      pipelinePaidSum,
+      pipelinePerfSum,
       convRate,
       byStatus: {
         newLead: customers.filter((c) => c.status === '신규/미발송').length,
@@ -88,39 +71,17 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
     : 'bg-white border-[#E4DFD5] text-[#18181B]';
   const mutedCls = isDark ? 'text-slate-400' : 'text-[#78716C]';
 
-  const totalBar =
-    Math.max(
-      1,
-      metrics.byStatus.newLead +
-        metrics.byStatus.consulting +
-        metrics.byStatus.hesitating +
-        metrics.byStatus.contracted
-    );
+  const totalBar = Math.max(
+    1,
+    metrics.byStatus.newLead +
+      metrics.byStatus.consulting +
+      metrics.byStatus.hesitating +
+      metrics.byStatus.contracted
+  );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      {/* KPI 1: 누적 확정 매출 */}
-      <div className={`rounded-3xl border p-4 shadow-2xs space-y-1.5 ${cardCls}`}>
-        <div className="flex items-center justify-between">
-          <span className={`text-xs font-extrabold ${mutedCls}`}>
-            계약·발송 확정 매출 ({metrics.closedCount}건)
-          </span>
-          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/15 text-emerald-500">
-            이번 달 {metrics.thisMonthClosedCount}건
-          </span>
-        </div>
-        <div className="text-xl sm:text-2xl font-black text-emerald-500">
-          <SpringNumberFlow value={metrics.closedPaidSum} suffix="원" />
-        </div>
-        <div className={`text-[11px] font-bold ${mutedCls}`}>
-          제공한 총 고객 체감 혜택:{' '}
-          <strong className={isDark ? 'text-amber-300' : 'text-[#8C5A32]'}>
-            -{formatCurrency(metrics.closedBenefitSum)}원
-          </strong>
-        </div>
-      </div>
-
-      {/* KPI 2: 가망 파이프라인 대기 금액 */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {/* KPI 1: 가망 파이프라인 대기 금액 (원금/합계 기준) */}
       <div className={`rounded-3xl border p-4 shadow-2xs space-y-1.5 ${cardCls}`}>
         <div className="flex items-center justify-between">
           <span className={`text-xs font-extrabold ${mutedCls}`}>
@@ -139,19 +100,20 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
             isDark ? 'text-sky-300' : 'text-[#18181B]'
           }`}
         >
-          <SpringNumberFlow value={metrics.pipelinePaidSum} suffix="원" />
+          <SpringNumberFlow value={metrics.pipelinePerfSum} suffix="원" />
         </div>
         <div className={`text-[11px] font-bold flex items-center gap-1.5 ${mutedCls}`}>
           <TrendingUp className="w-3.5 h-3.5 text-sky-500" />
           <span>현재 누적 성약 전환율: </span>
           <strong className="font-mono text-sky-500">{metrics.convRate}%</strong>
+          <span className="opacity-70">· 미구매 건은 수당/확정실적 제외</span>
         </div>
       </div>
 
-      {/* KPI 3: 파이프라인 단계 분포 인터랙티브 바 */}
+      {/* KPI 2: 파이프라인 단계 분포 인터랙티브 바 */}
       <div className={`rounded-3xl border p-4 shadow-2xs flex flex-col justify-between gap-2 ${cardCls}`}>
         <div className="flex items-center justify-between text-xs font-extrabold">
-          <span className={mutedCls}>단계별 고객 분포 (클릭 시 필터)</span>
+          <span className={mutedCls}>단계별 고객 분포 (클릭 시 즉시 필터)</span>
           <span className="font-mono">{customers.length}명</span>
         </div>
 
@@ -214,7 +176,7 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
             onClick={() => onSelectFilter('계약완료')}
             className="text-emerald-500 cursor-pointer"
           >
-            ● 계약 {metrics.byStatus.contracted}
+            ● 확정 {metrics.byStatus.contracted}
           </button>
         </div>
       </div>
@@ -295,7 +257,10 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
     <div className="flex gap-3 overflow-x-auto pb-3 schedule-matrix-scroll">
       {KANBAN_COLUMNS.map((col) => {
         const colItems = customers.filter((c) => c.status === col.status);
-        const colAmount = colItems.reduce((s, c) => s + (c.paidAmount || 0), 0);
+        const colAmount = colItems.reduce(
+          (s, c) => s + resolveCustomerPerformanceProfile(c).performanceAmount,
+          0
+        );
         const isOver = dragOverStatus === col.status;
 
         return (
@@ -334,7 +299,7 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
                 </span>
               </div>
               <div className="text-[11px] font-mono font-bold opacity-70">
-                합계 {formatCurrency(colAmount)}원
+                실적합계 {formatCurrency(colAmount)}원
               </div>
             </div>
 
@@ -347,6 +312,7 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
               ) : (
                 colItems.map((c) => {
                   const dday = getDeliveryDDay(c.deliveryDate);
+                  const perf = resolveCustomerPerformanceProfile(c);
                   return (
                     <div
                       key={c.id}
@@ -391,8 +357,9 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
                           {c.items || '상담 품목 미입력'}
                         </div>
                         <div className="flex justify-between mt-1 text-[11px] font-mono">
-                          <span className="opacity-70">
-                            결제 {formatCurrency(c.paidAmount)}원
+                          <span className="opacity-75">
+                            {perf.saleType === 'subscription' ? '원금 ' : '합계 '}
+                            {formatCurrency(perf.performanceAmount)}원
                           </span>
                           <span className="font-black text-amber-500">
                             체감 {formatCurrency(c.netAmount)}원

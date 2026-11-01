@@ -11,6 +11,10 @@ import {
 } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
 import { triggerDailyMorningNotification } from '../services/notificationService';
+import {
+  loadAllModelIncentiveSheets,
+  saveAllModelIncentiveSheets,
+} from '../utils/settlementEngine';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -39,13 +43,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
-  // 전체 기기 데이터 JSON 파일 다운로드 백업
+  // 전체 기기 데이터 JSON 파일 다운로드 백업 (고객 데이터 + 월별 제품 모델 수당 단가표 통합)
   const handleExportBackup = () => {
     const allCustomers = [...customers, ...trashedCustomers];
+    const modelIncentiveSheets = loadAllModelIncentiveSheets();
     const backupPayload = {
-      version: 'gookji-crm-backup-v3',
+      version: 'gookji-crm-backup-v4',
       exportedAt: new Date().toISOString(),
       customers: allCustomers,
+      modelIncentiveSheets,
     };
 
     const blob = new Blob([JSON.stringify(backupPayload, null, 2)], {
@@ -55,10 +61,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const a = document.createElement('a');
     const dateStr = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `국지점_고객관리_전체백업_${dateStr}.json`;
+    a.download = `국지점_고객관리_및_수당단가표_전체백업_${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setBackupNotice('✅ 현재 기기의 모든 고객 데이터가 파일로 저장되었습니다.');
+    setBackupNotice(
+      '✅ 현재 기기의 모든 고객 데이터 및 월별 모델 수당 단가표가 파일로 저장되었습니다.'
+    );
   };
 
   // JSON 백업 파일 불러오기
@@ -79,8 +87,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (list.length > 0) {
           onImportCustomers(list);
         }
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          parsed.modelIncentiveSheets &&
+          typeof parsed.modelIncentiveSheets === 'object'
+        ) {
+          const mergedSheets = {
+            ...loadAllModelIncentiveSheets(),
+            ...parsed.modelIncentiveSheets,
+          };
+          saveAllModelIncentiveSheets(mergedSheets);
+        }
         setBackupNotice(
-          `✅ 백업 파일에서 고객 ${list.length}명 데이터를 성공적으로 복원했습니다!`
+          `✅ 백업 파일에서 고객 ${list.length}명 데이터 및 수당 설정을 성공적으로 복원했습니다!`
         );
       } catch {
         setBackupNotice('⚠️ 올바른 백업 JSON 파일이 아닙니다.');
@@ -101,6 +121,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleResetAllData = () => {
     localStorage.removeItem('gookji_crm_customers_cache_v3');
+    localStorage.removeItem('himart_crm_model_incentives_v1');
     window.location.reload();
   };
 
@@ -132,7 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 💾 기기 내 영구 저장 & 파일 백업 / 복원
               </h4>
               <p className="text-[11px] text-blue-800 mt-0.5 leading-relaxed">
-                등록하신 모든 고객 및 다중 견적(최대 5개)은 현재 휴대폰/PC에 즉시 자동 저장됩니다. 기기 변경 시 아래 백업 파일로 언제든 옮길 수 있습니다.
+                등록하신 모든 고객·다중 견적(최대 5개) 및 월별 제품 모델 수당 단가표는 현재 기기에 자동 저장됩니다. 기기 변경 시 백업 파일로 언제든 옮길 수 있습니다.
               </p>
             </div>
 
@@ -282,7 +303,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 기기 데이터 전체 초기화
               </h4>
               <p className="text-[11px] text-rose-700 mt-0.5">
-                현재 기기에 저장된 고객 목록을 모두 비우고 처음 상태로 되돌립니다.
+                현재 기기에 저장된 고객 목록 및 수당 단가표를 모두 비우고 처음 상태로 되돌립니다.
               </p>
             </div>
             {!confirmResetAll ? (

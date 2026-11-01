@@ -17,8 +17,11 @@ import {
   getGeneralPlan1And2Summaries,
 } from '../../types/proposal';
 import {
+  CustomerFreedCounts,
   CustomerItem,
+  CustomerSaleType,
   CustomerStatus,
+  PurchasedModelEntry,
   QuotePlan2Summary,
 } from '../types/crm';
 import {
@@ -26,7 +29,12 @@ import {
   formatPhoneNumber,
   getFridayDateStr,
   getOffsetDateStr,
+  getTodayStr,
 } from '../utils/date';
+import {
+  calculateFreedIncentiveDetail,
+  extractPerformanceFromProposalState,
+} from '../utils/settlementEngine';
 import { getCachedCustomers, saveCustomerQuote } from '../services/gasApi';
 
 interface SaveToCrmModalProps {
@@ -58,6 +66,12 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
   netAmount: number;
   expectedBenefit: string;
   defaultQuoteTitle: string;
+  saleType: CustomerSaleType;
+  performanceAmount: number;
+  generalProductTotal: number;
+  subscriptionPrincipal: number;
+  freedCounts: CustomerFreedCounts;
+  purchasedModels: PurchasedModelEntry[];
   plan2Summary?: QuotePlan2Summary;
   plan1Data: GeneralPlanData;
   plan2Data: GeneralPlanData;
@@ -86,6 +100,30 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     : plan1SubSummary;
   const hasSecondPlan = !usePlan2AsPrimary && hasPlan2Data;
 
+  const perfInfo = extractPerformanceFromProposalState(state);
+  const saleType: CustomerSaleType = perfInfo?.saleType || state.quoteMode;
+  const generalProductTotal =
+    perfInfo?.generalProductTotal ?? primaryGenSummary.sum;
+  const subscriptionPrincipal =
+    perfInfo?.subscriptionPrincipal ?? primarySubSummary.totalPrincipal;
+  const performanceAmount =
+    perfInfo?.performanceAmount ??
+    (state.quoteMode === 'subscription'
+      ? primarySubSummary.totalPrincipal
+      : state.quoteMode === 'hybrid'
+      ? primaryGenSummary.sum + primarySubSummary.totalPrincipal
+      : primaryGenSummary.sum);
+  const freedCounts = perfInfo?.freedCounts || {
+    hi72: 0,
+    hi90: 0,
+    hi108: 0,
+    hf75: 0,
+    hf150: 0,
+    hf225: 0,
+    hf300: 0,
+  };
+  const purchasedModels = perfInfo?.purchasedModels || [];
+
   const primaryGenNames = getValidGeneralItemNames(primaryData);
   const plan2GenNames = getValidGeneralItemNames(plan2Data);
 
@@ -106,7 +144,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     }
     if (primaryGenSummary.hiFreedSupport > 0) {
       benefitParts.push(
-        `하이프리드(${generalHiPreed.totalAccounts}구좌) ${formatCurrency(
+        `하이프리드(${generalHiPreed.comboLabel || `${generalHiPreed.totalAccounts}구좌`}) ${formatCurrency(
           primaryGenSummary.hiFreedSupport
         )}원`
       );
@@ -152,6 +190,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         itemSummary: p2Names,
         paidAmount: plan2GenSummary.payPrice,
         netAmount: plan2GenSummary.rawNet,
+        performanceAmount: plan2GenSummary.sum,
         benefit:
           p2BenefitParts.join(' + ') ||
           (plan2GenSummary.totalDiscountAndBenefit > 0
@@ -172,6 +211,12 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
           primaryGenSummary.totalDiscountAndBenefit
         )}원`,
       defaultQuoteTitle: `[일반구매] ${itemsSummary.slice(0, 22)}`,
+      saleType,
+      performanceAmount,
+      generalProductTotal,
+      subscriptionPrincipal,
+      freedCounts,
+      purchasedModels,
       plan2Summary,
       plan1Data,
       plan2Data,
@@ -230,6 +275,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         itemSummary: p2SubNames,
         paidAmount: plan2SubSummary.totalBaseMonthly,
         netAmount: plan2SubSummary.finalMonthlyFee,
+        performanceAmount: plan2SubSummary.totalPrincipal,
         benefit:
           p2SubBenefits.join(' + ') ||
           `${plan2SubSummary.periodLabel} 총 체감가 ${formatCurrency(
@@ -247,6 +293,12 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       defaultQuoteTitle: `[구독 ${primarySubSummary.periodLabel}] ${
         primarySubSummary.validSubNames.join(', ').slice(0, 18) || '맞춤 구독'
       }`,
+      saleType,
+      performanceAmount,
+      generalProductTotal,
+      subscriptionPrincipal,
+      freedCounts,
+      purchasedModels,
       plan2Summary,
       plan1Data,
       plan2Data,
@@ -309,6 +361,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         plan2GenSummary.sum > 0
           ? plan2GenSummary.rawNet
           : plan2SubSummary.finalMonthlyFee,
+      performanceAmount: plan2GenSummary.sum + plan2SubSummary.totalPrincipal,
       benefit: `일반 2안 실결제 ${formatCurrency(
         plan2GenSummary.payPrice
       )}원(체감 ${formatCurrency(plan2GenSummary.rawNet)}원) + 구독(${
@@ -329,6 +382,12 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     netAmount: primaryNetAmount,
     expectedBenefit,
     defaultQuoteTitle: `[혼합견적] ${itemsSummary.slice(0, 22)}`,
+    saleType,
+    performanceAmount,
+    generalProductTotal,
+    subscriptionPrincipal,
+    freedCounts,
+    purchasedModels,
     plan2Summary,
     plan1Data,
     plan2Data,
@@ -356,6 +415,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [status, setStatus] = useState<CustomerStatus>('상담진행중');
+  const [contractDate, setContractDate] = useState('');
   const [deliveryDate, setDeliveryDate] = useState('');
   const [followUpDate, setFollowUpDate] = useState('');
   const [orderNo, setOrderNo] = useState('');
@@ -369,12 +429,18 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     [state]
   );
 
+  const freedIncentivePreview = useMemo(
+    () => calculateFreedIncentiveDetail(extracted.freedCounts),
+    [extracted.freedCounts]
+  );
+
   useEffect(() => {
     if (!isOpen) return;
     const cached = getCachedCustomers().filter((c) => !c.deletedAt);
     setExistingCustomers(cached);
     setQuoteTitle(extracted.defaultQuoteTitle);
     setSavedToast(null);
+    const today = getTodayStr();
 
     if (activeCustomer) {
       const found = cached.find((c) => c.id === activeCustomer.id);
@@ -384,6 +450,9 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
         setName(found.name);
         setPhone(found.phone || '');
         setStatus(found.status || '상담진행중');
+        setContractDate(
+          found.contractDate || found.regDate?.slice(0, 10) || today
+        );
         setDeliveryDate(found.deliveryDate || '');
         setFollowUpDate(found.followUpDate || '');
         setOrderNo(found.orderNo || '');
@@ -398,6 +467,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     setName('');
     setPhone('');
     setStatus('상담진행중');
+    setContractDate(today);
     setDeliveryDate('');
     setFollowUpDate('');
     setOrderNo('');
@@ -412,6 +482,9 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     setName(c.name);
     setPhone(c.phone || '');
     setStatus(c.status || '상담진행중');
+    setContractDate(
+      c.contractDate || c.regDate?.slice(0, 10) || getTodayStr()
+    );
     setDeliveryDate(c.deliveryDate || '');
     setFollowUpDate(c.followUpDate || '');
     setOrderNo(c.orderNo || '');
@@ -449,6 +522,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       paidAmount: extracted.paidAmount,
       netAmount: extracted.netAmount,
       expectedBenefit: extracted.expectedBenefit,
+      contractDate: contractDate.trim() || getTodayStr(),
       deliveryDate: deliveryDate.trim(),
       followUpDate: followUpDate.trim(),
       status,
@@ -458,6 +532,12 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       quoteTitle: quoteTitle.trim() || extracted.defaultQuoteTitle,
       proposalState: syncedProposalState,
       quoteMode: state.quoteMode,
+      saleType: extracted.saleType,
+      performanceAmount: extracted.performanceAmount,
+      generalProductTotal: extracted.generalProductTotal,
+      subscriptionPrincipal: extracted.subscriptionPrincipal,
+      freedCounts: extracted.freedCounts,
+      purchasedModels: extracted.purchasedModels,
       plan2Summary: extracted.plan2Summary,
     });
 
@@ -495,10 +575,10 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-black tracking-tight">
-                💾 CRM 고객 저장 & 다중 견적 보관함 연동
+                💾 CRM 고객 저장 & 총판·실판·수당 자동 연동
               </h3>
               <p className="text-[11px] text-slate-300">
-                현재 작성한 견적 조건을 고객 카드 및 견적 히스토리(최대 5개)에 저장합니다
+                계약완료/발송완료 시 총판·실판 실적(원금/제품합계) 및 프리드·모델 수당에 자동 반영됩니다
               </p>
             </div>
           </div>
@@ -545,7 +625,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
           onSubmit={handleSubmit}
           className="p-5 overflow-y-auto space-y-4 flex-1"
         >
-          {/* 현재 견적 자동 요약 카드 */}
+          {/* 현재 견적 자동 요약 카드 + 총판/실판 실적기준 금액 미리보기 */}
           <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 space-y-2">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-900 text-amber-300 text-[11px] font-black">
@@ -557,77 +637,52 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                   `일반+구독 혼합견적 (${extracted.primarySubSummary.periodLabel})`}
               </span>
 
-              {extracted.plan2Summary && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black shadow-2xs">
-                  <Sparkles className="w-3 h-3" />✨ 1안 + 2안 비교 견적이 함께 저장됩니다
-                </span>
-              )}
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black">
+                실적기준(
+                {state.quoteMode === 'subscription'
+                  ? '구독원금'
+                  : state.quoteMode === 'hybrid'
+                  ? '제품합계+구독원금'
+                  : '제품합계'}
+                ): {formatCurrency(extracted.performanceAmount)}원
+              </span>
             </div>
 
             <div className="text-xs font-extrabold text-slate-800">
               📦 {extracted.itemsSummary}
             </div>
 
-            {state.quoteMode === 'hybrid' ? (
-              <div className="space-y-1.5 pt-1 border-t border-slate-200/80 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200">
-                  <span className="font-extrabold text-blue-700">
-                    📘 [1안 일반] 실결제{' '}
-                    {formatCurrency(extracted.primaryGenSummary.payPrice)}원 /
-                    체감 {formatCurrency(extracted.primaryGenSummary.rawNet)}원
-                  </span>
-                  <span className="font-extrabold text-rose-600">
-                    🔄 [1안 구독 {extracted.primarySubSummary.periodLabel}] 월 기본{' '}
-                    {formatCurrency(
-                      extracted.primarySubSummary.totalBaseMonthly
-                    )}
-                    원 / 월 체감{' '}
-                    {formatCurrency(extracted.primarySubSummary.finalMonthlyFee)}
-                    원
-                  </span>
-                </div>
-
-                {extracted.plan2Summary && (
-                  <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-900 space-y-0.5">
-                    <div>📗 [2안 품목] {extracted.plan2Summary.itemSummary}</div>
-                    <div className="text-emerald-800">
-                      • {extracted.plan2Summary.benefit}
-                    </div>
-                  </div>
-                )}
+            {freedIncentivePreview.totalCount > 0 && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] font-extrabold text-amber-900 flex items-center justify-between gap-2">
+                <span>💎 프리드: {freedIncentivePreview.summaryText}</span>
+                <span>
+                  확정 시 수당 +{formatCurrency(freedIncentivePreview.totalIncentive)}원
+                </span>
               </div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80 text-xs">
-                  <span className="text-slate-600 font-bold">
-                    {state.quoteMode === 'subscription'
-                      ? '월 기준 구독료: '
-                      : '실결제가: '}
-                    <strong className="text-slate-900 font-black">
-                      {formatCurrency(extracted.paidAmount)}원
-                    </strong>
-                  </span>
-                  <span className="text-blue-600 font-black">
-                    {state.quoteMode === 'subscription'
-                      ? '최종 월 체감가: '
-                      : '최종 혜택가(체감가): '}
-                    {formatCurrency(extracted.netAmount)}원
-                  </span>
-                </div>
+            )}
 
-                {extracted.plan2Summary && (
-                  <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-900">
-                    📗 [2안 요약] {extracted.plan2Summary.itemSummary} ·{' '}
-                    {state.quoteMode === 'subscription' ? '월 기본 ' : '실결제가 '}
-                    {formatCurrency(extracted.plan2Summary.paidAmount)}원 /{' '}
-                    {state.quoteMode === 'subscription' ? '월 체감 ' : '체감가 '}
-                    {formatCurrency(extracted.plan2Summary.netAmount)}원
-                    {extracted.plan2Summary.benefit
-                      ? ` (${extracted.plan2Summary.benefit})`
-                      : ''}
-                  </div>
-                )}
-              </>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/80 text-xs">
+              <span className="text-slate-600 font-bold">
+                {state.quoteMode === 'subscription'
+                  ? '월 기준 구독료: '
+                  : '고객 실결제가: '}
+                <strong className="text-slate-900 font-black">
+                  {formatCurrency(extracted.paidAmount)}원
+                </strong>
+              </span>
+              <span className="text-blue-600 font-black">
+                {state.quoteMode === 'subscription'
+                  ? '최종 월 체감가: '
+                  : '최종 혜택가(체감가): '}
+                {formatCurrency(extracted.netAmount)}원
+              </span>
+            </div>
+
+            {extracted.plan2Summary && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-900">
+                <Sparkles className="w-3 h-3 inline mr-1" />
+                [2안 동시 저장] {extracted.plan2Summary.itemSummary}
+              </div>
             )}
           </div>
 
@@ -644,7 +699,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="고객명/연락처 검색..."
-                  className="px-2.5 py-1 rounded-lg border border-amber-300 bg-white text-xs font-semibold focus:outline-none"
+                  className="px-2.5 py-1 rounded-lg border border-amber-300 bg-white text-base sm:text-xs font-semibold focus:outline-none"
                 />
               </div>
 
@@ -694,7 +749,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               value={quoteTitle}
               onChange={(e) => setQuoteTitle(e.target.value)}
               placeholder="예: 85인치 TV + 오브제 냉장고 1안"
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-base sm:text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
@@ -710,7 +765,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="홍길동"
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-base sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -722,39 +777,50 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 value={phone}
                 onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
                 placeholder="010-1234-5678"
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-base sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
 
-          {/* 진행 상태 & 배송 예정일 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 진행 상태 & 계약일(총판월) & 배송예정일(실판월) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
-                진행 상태
+                진행 상태 (구매확정 여부)
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as CustomerStatus)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-extrabold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-base sm:text-xs font-extrabold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="상담진행중">상담진행중</option>
-                <option value="신규/미발송">신규/미발송</option>
-                <option value="발송완료">발송완료</option>
+                <option value="상담진행중">상담진행중 (미구매)</option>
+                <option value="신규/미발송">신규/미발송 (미구매)</option>
                 <option value="미구매/고민중">미구매/고민중</option>
-                <option value="계약완료">계약완료</option>
+                <option value="계약완료">✅ 계약완료 (구매확정)</option>
+                <option value="발송완료">🚚 발송완료 (배송/인도완료)</option>
                 <option value="취소/보류">취소/보류</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                배송 예정일 (선택)
+              <label className="block text-xs font-bold text-emerald-700 mb-1">
+                계약/매출일 (총판월 기준)
+              </label>
+              <input
+                type="date"
+                value={contractDate}
+                onChange={(e) => setContractDate(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-emerald-200 text-base sm:text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-blue-700 mb-1">
+                배송 예정일 (실판월 기준)
               </label>
               <input
                 type="date"
                 value={deliveryDate}
                 onChange={(e) => setDeliveryDate(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-xl border border-blue-200 text-base sm:text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -801,7 +867,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               type="date"
               value={followUpDate}
               onChange={(e) => setFollowUpDate(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-xl border border-indigo-200 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-1.5 rounded-xl border border-indigo-200 bg-white text-base sm:text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -816,7 +882,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 value={orderNo}
                 onChange={(e) => setOrderNo(e.target.value)}
                 placeholder="예: 250516-0042"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-base sm:text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -828,7 +894,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 value={giftItems}
                 onChange={(e) => setGiftItems(e.target.value)}
                 placeholder="예: 냄비 3종 세트"
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-base sm:text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -843,7 +909,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
               placeholder="고객 요청사항, 타사 비교견적, 카드 발급 일정 등"
-              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-base sm:text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 

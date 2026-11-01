@@ -10,12 +10,30 @@ import {
   SCHEDULE_UPDATED_EVENT,
   SchedulesMap,
 } from './ScheduleModal';
+import { CustomerItem, SettlementTabId } from '../crm/types/crm';
+import {
+  CRM_CUSTOMERS_UPDATED_EVENT,
+  getCachedCustomers,
+} from '../crm/services/gasApi';
+import {
+  computeMonthlySettlementReport,
+  getCurrentYearMonth,
+  hydrateModelIncentiveSheetsFromIdb,
+  loadAllModelIncentiveSheets,
+  MODEL_INCENTIVE_UPDATED_EVENT,
+} from '../crm/utils/settlementEngine';
+import { formatShortManwon } from '../crm/utils/date';
+import { SpringNumberFlow } from './SpringNumberFlow';
 
 interface ScheduleCharacterBannerProps {
   onOpenScheduleModal: () => void;
   isDark?: boolean;
   /** Optional clock override for live preview/testing; defaults to real-time system clock */
   overrideNow?: Date;
+  /** CRM 고객 목록 (전달 시 즉시 동기화, 미전달 시 로컬 캐시 자동 구독) */
+  customers?: CustomerItem[];
+  /** 수당 적립 위젯 클릭 시 고객관리 해당 탭으로 바로 이동 */
+  onOpenIncentiveTab?: (tab: SettlementTabId) => void;
 }
 
 type HolidayContext =
@@ -70,6 +88,8 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
   onOpenScheduleModal,
   isDark: isDarkProp,
   overrideNow,
+  customers: customersProp,
+  onOpenIncentiveTab,
 }) => {
   const [userName, setUserName] = useState<string>(() => loadSavedUserName());
   const [schedules, setSchedules] = useState<SchedulesMap>(() => loadAllSchedules());
@@ -81,9 +101,17 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       : false
   );
 
+  // 이번 달 수당 적립 실시간 동기화 상태
+  const [localCustomers, setLocalCustomers] = useState<CustomerItem[]>(() =>
+    getCachedCustomers()
+  );
+  const [incentiveSheets, setIncentiveSheets] = useState(() =>
+    loadAllModelIncentiveSheets()
+  );
+
   const isDark = isDarkProp ?? domDark;
 
-  // 실시간 시계 동기화 (15초 주기 자동 갱신 - 출근 10:00 ~ 퇴근 20:00 기분 실시간 반영)
+  // 실시간 시계 동기화 (15초 주기 자동 갱신)
   useEffect(() => {
     if (overrideNow) {
       setNow(overrideNow);
@@ -105,19 +133,45 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     return () => obs.disconnect();
   }, []);
 
-  // 휴무표 업데이트 이벤트 동기화
+  // 휴무표 + CRM 고객 + 모델별 수당 단가표 업데이트 이벤트 동기화
   useEffect(() => {
-    const refresh = () => {
+    hydrateModelIncentiveSheetsFromIdb().then((loaded) => {
+      if (Object.keys(loaded).length > 0) {
+        setIncentiveSheets(loaded);
+      }
+    });
+    const refreshSchedule = () => {
       setUserName(loadSavedUserName());
       setSchedules(loadAllSchedules());
     };
-    window.addEventListener(SCHEDULE_UPDATED_EVENT, refresh);
-    window.addEventListener('storage', refresh);
+    const refreshIncentives = () => {
+      setLocalCustomers(getCachedCustomers());
+      setIncentiveSheets(loadAllModelIncentiveSheets());
+    };
+    window.addEventListener(SCHEDULE_UPDATED_EVENT, refreshSchedule);
+    window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshIncentives);
+    window.addEventListener(MODEL_INCENTIVE_UPDATED_EVENT, refreshIncentives);
+    window.addEventListener('storage', () => {
+      refreshSchedule();
+      refreshIncentives();
+    });
     return () => {
-      window.removeEventListener(SCHEDULE_UPDATED_EVENT, refresh);
-      window.removeEventListener('storage', refresh);
+      window.removeEventListener(SCHEDULE_UPDATED_EVENT, refreshSchedule);
+      window.removeEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshIncentives);
+      window.removeEventListener(MODEL_INCENTIVE_UPDATED_EVENT, refreshIncentives);
     };
   }, []);
+
+  const effectiveCustomers = customersProp ?? localCustomers;
+  const currentYm = useMemo(() => getCurrentYearMonth(now), [now]);
+  const currentMonthNum = now.getMonth() + 1;
+
+  // 이번 달 수당 적립 & 총판/실판 실시간 정산 요약
+  const monthlyIncentiveSummary = useMemo(() => {
+    const activeList = (effectiveCustomers || []).filter((c) => !c.deletedAt);
+    const sheet = incentiveSheets[currentYm] || null;
+    return computeMonthlySettlementReport(activeList, currentYm, sheet, 'contract');
+  }, [effectiveCustomers, incentiveSheets, currentYm]);
 
   // 직원 직무(파트) 조회
   const userRole = useMemo(() => {
@@ -182,7 +236,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
   // 휴무 컨텍스트 판별
   const holidayCtx: HolidayContext = useMemo(() => {
     if (!userName) return 'unset';
-    const currentYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const isCurrentMonthRegistered = Boolean(
       schedules[currentYm] && schedules[currentYm].isRegistered !== false
     );
@@ -197,7 +250,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     if (isOffDayCode(getEmployeeCodeForDate(schedules, userName, tomorrow))) return 'holiday-eve';
     if (isOffDayCode(getEmployeeCodeForDate(schedules, userName, yesterday))) return 'post-holiday';
     return 'normal-work';
-  }, [nextOffInfo.days, schedules, now, todayCode, userName]);
+  }, [currentYm, nextOffInfo.days, schedules, now, todayCode, userName]);
 
   // 좌측 Apple Dynamic Bento D-Day 링 데이터
   const leftSummary = useMemo(() => {
@@ -269,7 +322,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     const mm = String(now.getMinutes()).padStart(2, '0');
     const timeStr = `${hh}:${mm}`;
 
-    // 1) 오늘 내 휴무 당일 (종일 해피 오프 모드!)
     if (holidayCtx === 'holiday-today') {
       const msg =
         curMin < 720
@@ -287,7 +339,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // 2) 퇴근 시간 이후 (20:00 ~ 자정 또는 00:00 ~ 08:29)
     if (curMin >= SHIFT_END_MIN || curMin < 8 * 60 + 30) {
       if (holidayCtx === 'holiday-eve' && curMin >= SHIFT_END_MIN) {
         return {
@@ -309,7 +360,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // 3) 출근 준비 구간 (08:30 ~ 09:59)
     if (curMin < SHIFT_START_MIN) {
       const minsLeft = SHIFT_START_MIN - curMin;
       if (holidayCtx === 'post-holiday') {
@@ -342,13 +392,11 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // === 근무 시간 중 (10:00 ~ 19:59) 실시간 진행률 & 퇴근 잔여시간 계산 ===
     const elapsed = curMin - SHIFT_START_MIN;
     const remain = SHIFT_END_MIN - curMin;
     const pct = Math.max(2, Math.min(99, Math.round((elapsed / SHIFT_TOTAL_MIN) * 100)));
     const remLabel = formatRemainHm(remain);
 
-    // 4) 마감 직전 30분 카운트다운! (19:30 ~ 19:59)
     if (curMin >= 19 * 60 + 30) {
       return {
         face: 'star-party' as FaceExpressionId,
@@ -363,7 +411,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // 5) 저녁 퇴근 가시권 설렘 구간 (17:30 ~ 19:29)
     if (curMin >= 17 * 60 + 30) {
       return {
         face: 'closing-blush' as FaceExpressionId,
@@ -378,7 +425,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // 6) 오후 피크 열일 구간 (14:30 ~ 17:29)
     if (curMin >= 14 * 60 + 30) {
       if (holidayCtx === 'holiday-eve') {
         return {
@@ -403,7 +449,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // 7) 점심 & 나른한 식곤증 구간 (12:00 ~ 14:29)
     if (curMin >= 12 * 60) {
       const isPostLunch = curMin >= 13 * 60 + 20;
       return {
@@ -418,7 +463,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       };
     }
 
-    // 8) 오전 오픈 & 시동 구간 (10:00 ~ 11:59)
     if (holidayCtx === 'post-holiday') {
       return {
         face: 'coffee-sleepy' as FaceExpressionId,
@@ -449,7 +493,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     };
   }, [holidayCtx, nextOffInfo.days, now]);
 
-  // 상황별 살아 움직이는 커스텀 3D-Shaded 벡터 표정 캐릭터 렌더링
   const renderAnimatedMoodFace = (expr: FaceExpressionId) => {
     return (
       <div className="scb-face-orb" aria-hidden="true">
@@ -467,7 +510,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
             </radialGradient>
           </defs>
 
-          {/* Base Glossy 3D Sphere Face */}
           <g className={expr === 'star-party' || expr === 'closing-blush' ? 'scb-anim-excited' : 'scb-anim-breathe'}>
             <circle
               cx="32"
@@ -475,10 +517,8 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               r="24"
               fill={expr === 'cool-sunglasses' ? 'url(#scbCoolSkin)' : 'url(#scbFaceSkin)'}
             />
-            {/* Top-left Specular Highlight */}
             <ellipse cx="23" cy="20" rx="8" ry="4.5" transform="rotate(-24 23 20)" fill="#FFFFFF" opacity="0.45" />
 
-            {/* 1. 휴무 당일: 선글라스 + 방긋 미소 + 음표 */}
             {expr === 'cool-sunglasses' && (
               <>
                 <circle cx="19" cy="38" r="4" fill="#FB7185" opacity="0.45" />
@@ -495,7 +535,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 2. 마감 카운트다운 / 퇴근×휴무 전야제: 별 눈동자 + 환호 입 */}
             {expr === 'star-party' && (
               <>
                 <circle cx="18" cy="38" r="4.5" fill="#F43F5E" opacity="0.5" />
@@ -515,7 +554,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 3. 20:00 퇴근 완료: 평온한 힐링 눈웃음 + 초승달 */}
             {expr === 'moon-peace' && (
               <>
                 <circle cx="19" cy="37" r="4" fill="#FB7185" opacity="0.4" />
@@ -531,7 +569,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 4. 출근 전 / 휴무 다음날 오전: 반쯤 감긴 눈 + 김 나는 커피컵 */}
             {expr === 'coffee-sleepy' && (
               <>
                 <line x1="17" y1="28" x2="27" y2="28" stroke="#78350F" strokeWidth="3" strokeLinecap="round" />
@@ -539,7 +576,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
                 <line x1="37" y1="28" x2="47" y2="28" stroke="#78350F" strokeWidth="3" strokeLinecap="round" />
                 <circle cx="42" cy="30.5" r="2.3" fill="#78350F" />
                 <path d="M28 42 Q32 40 36 42" stroke="#78350F" strokeWidth="2.8" strokeLinecap="round" fill="none" />
-                {/* Mini Coffee Mug */}
                 <g transform="translate(42, 38)">
                   <rect x="0" y="4" width="14" height="13" rx="3" fill="#FFFFFF" stroke="#8C5A32" strokeWidth="2" />
                   <rect x="2" y="6" width="10" height="4" fill="#78350F" />
@@ -550,7 +586,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 5. 10시 오픈 스타트: 초롱초롱 깜빡이는 눈 + 반짝이 */}
             {expr === 'focus-spark' && (
               <>
                 <g className="scb-anim-blink">
@@ -566,7 +601,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 6. 점심/식곤증 구간: 나른한 눈 + Zzz 방울 */}
             {expr === 'lunch-zzz' && (
               <>
                 <path d="M18 31 Q22 34 26 31" stroke="#78350F" strokeWidth="2.8" strokeLinecap="round" fill="none" />
@@ -576,7 +610,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 7. 오후 열일 구간: 집중 눈썹 + 땀방울 송골 */}
             {expr === 'sweat-hustle' && (
               <>
                 <line x1="17" y1="23" x2="26" y2="25" stroke="#78350F" strokeWidth="2.5" strokeLinecap="round" />
@@ -584,7 +617,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
                 <circle cx="22" cy="30" r="3.2" fill="#451A03" />
                 <circle cx="42" cy="30" r="3.2" fill="#451A03" />
                 <path d="M25 42 Q32 45 39 41" stroke="#78350F" strokeWidth="3" strokeLinecap="round" fill="none" />
-                {/* Animated Blue Sweat Droplet */}
                 <path
                   d="M50 17 C50 17 55 24 55 27 A5 5 0 1 1 45 27 C45 24 50 17 50 17 Z"
                   fill="#38BDF8"
@@ -595,7 +627,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 8. 17:30~19:30 퇴근 가시권 설렘: 큰 반짝 눈 + 홍조 + 활짝 미소 */}
             {expr === 'closing-blush' && (
               <>
                 <circle cx="17" cy="38" r="5" fill="#F43F5E" opacity="0.52" />
@@ -608,7 +639,6 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               </>
             )}
 
-            {/* 9. 휴무 전날(D-1) 근무 중 신나는 윙크 */}
             {expr === 'eve-wink' && (
               <>
                 <circle cx="18" cy="38" r="4.5" fill="#FB7185" opacity="0.48" />
@@ -670,7 +700,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
           box-shadow: 0 2px 6px rgba(24,24,27,0.03), 0 10px 24px -6px rgba(24,24,27,0.05);
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 11px;
           cursor: pointer;
           position: relative;
           transition: transform 160ms cubic-bezier(0.23,1,0.32,1), border-color 180ms ease, background-color 180ms ease;
@@ -682,12 +712,12 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
           box-shadow: 0 14px 32px -8px rgba(0,0,0,0.45);
         }
         .scb-root:active {
-          transform: scale(0.992);
+          transform: scale(0.994);
         }
         @media (min-width: 640px) {
           .scb-root {
             padding: 18px 20px;
-            gap: 14px;
+            gap: 12px;
           }
         }
 
@@ -873,6 +903,84 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
           color: #94A3B8;
         }
 
+        /* Integrated Monthly Incentive Strip (적당한 크기로 휴무표 빈 공간 활용) */
+        .scb-incentive-strip {
+          border-radius: 16px;
+          padding: 9px 12px;
+          background: linear-gradient(90deg, #FAF5EB 0%, #FFFDF9 100%);
+          border: 1px solid #DFC9AC;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          cursor: pointer;
+          transition: transform 140ms cubic-bezier(0.23,1,0.32,1), border-color 160ms ease;
+        }
+        .scb-root.is-dark .scb-incentive-strip {
+          background: linear-gradient(90deg, #162235 0%, #131B29 100%);
+          border-color: rgba(251,191,36,0.32);
+        }
+        .scb-incentive-strip:active {
+          transform: scale(0.985);
+        }
+        .scb-inc-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+        .scb-inc-badge {
+          padding: 3px 8px;
+          border-radius: 999px;
+          background: #8C5A32;
+          color: #FFFFFF;
+          font-size: 10.5px;
+          font-weight: 900;
+          white-space: nowrap;
+        }
+        .scb-root.is-dark .scb-inc-badge {
+          background: rgba(251,191,36,0.2);
+          color: #FBBF24;
+          border: 1px solid rgba(251,191,36,0.35);
+        }
+        .scb-inc-total {
+          font-size: 15.5px;
+          font-weight: 900;
+          font-variant-numeric: tabular-nums;
+          color: #B45309;
+          letter-spacing: -0.02em;
+        }
+        .scb-root.is-dark .scb-inc-total {
+          color: #FBBF24;
+        }
+        .scb-inc-pills {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .scb-inc-chip {
+          padding: 3.5px 8.5px;
+          border-radius: 10px;
+          background: #FFFFFF;
+          border: 1px solid #E4DFD5;
+          font-size: 11px;
+          font-weight: 800;
+          font-variant-numeric: tabular-nums;
+          color: #18181B;
+          cursor: pointer;
+          transition: transform 120ms cubic-bezier(0.23,1,0.32,1);
+        }
+        .scb-root.is-dark .scb-inc-chip {
+          background: #0F141F;
+          border-color: rgba(255,255,255,0.1);
+          color: #E2E8F0;
+        }
+        .scb-inc-chip:active {
+          transform: scale(0.96);
+        }
+
         /* Inline Quick Staff Picker Tray */
         .scb-picker-tray {
           padding: 10px 12px;
@@ -1038,7 +1146,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         }
       `}</style>
 
-      {/* 상단 좌/우 분할: [좌] 버전 1 D-Day 링 & 이름변경  |  [우] 실시간 출퇴근·휴무 표정 이모티콘 포드 */}
+      {/* 상단 좌/우 분할: [좌] D-Day 링 & 이름변경  |  [우] 실시간 출퇴근·휴무 표정 이모티콘 포드 */}
       <div className="scb-top-split">
         <div className="scb-left-pane">
           <div
@@ -1126,7 +1234,67 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
         </div>
       )}
 
-      {/* 하단: 버전 1 정갈한 7일 주간 캡슐 트랙 */}
+      {/* 중단: 메인화면 휴무표 내 '이번 달 수당 적립' 컴팩트 현황 바 (클릭 시 고객관리 수당 탭으로 즉시 이동) */}
+      <div
+        className="scb-incentive-strip"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenIncentiveTab?.('freed');
+        }}
+        role="region"
+        aria-label={`${currentMonthNum}월 수당 적립 요약`}
+        title="터치하여 고객관리 내 총판·실판 및 프리드·모델 수당 상세 탭 열기"
+      >
+        <div className="scb-inc-left">
+          <span className="scb-inc-badge">💰 {currentMonthNum}월 수당적립</span>
+          <span className="scb-inc-total">
+            +<SpringNumberFlow value={monthlyIncentiveSummary.grandTotalIncentive} suffix="원" />
+          </span>
+        </div>
+
+        <div className="scb-inc-pills">
+          <button
+            type="button"
+            className="scb-inc-chip"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenIncentiveTab?.('freed');
+            }}
+            title="이번 달 프리드 가입 건수 및 종류별 수당 보기"
+          >
+            💎 프리드 {monthlyIncentiveSummary.freedSummary.totalCount}건 (
+            +{formatShortManwon(monthlyIncentiveSummary.freedSummary.totalIncentive)})
+          </button>
+
+          <button
+            type="button"
+            className="scb-inc-chip"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenIncentiveTab?.('models');
+            }}
+            title="이번 달 제품 모델별 수당 및 단가표 업로드 보기"
+          >
+            🏷️ 모델수당 {monthlyIncentiveSummary.matchedModelUnitCount}대 (
+            +{formatShortManwon(monthlyIncentiveSummary.modelIncentiveTotal)})
+          </button>
+
+          <button
+            type="button"
+            className="scb-inc-chip"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenIncentiveTab?.('sales');
+            }}
+            title="이번 달 총판·실판 확정 매출 내역 보기"
+          >
+            총판 {formatShortManwon(monthlyIncentiveSummary.grossSalesTotal)} · 실판{' '}
+            {formatShortManwon(monthlyIncentiveSummary.netDeliverySalesTotal)} ›
+          </button>
+        </div>
+      </div>
+
+      {/* 하단: 정갈한 7일 주간 캡슐 트랙 */}
       <div className="scb-week-grid">
         {trackDays.map((item) => {
           const stateText = !item.isRegistered

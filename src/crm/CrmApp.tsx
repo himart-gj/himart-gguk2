@@ -15,6 +15,7 @@ import {
   CustomerStatus,
   FilterTab,
   QuoteRecord,
+  SettlementTabId,
   SortOrder,
 } from './types/crm';
 import {
@@ -28,6 +29,12 @@ import {
   triggerDailyMorningNotification,
 } from './services/notificationService';
 import { getDeliveryDDay, isUrgentCustomer } from './utils/date';
+import {
+  computeMonthlySettlementReport,
+  extractPerformanceFromProposalState,
+  getCurrentYearMonth,
+  resolveCustomerPerformanceProfile,
+} from './utils/settlementEngine';
 import { CRMHeader } from './components/CRMHeader';
 import { CompactCustomerCard } from './components/CompactCustomerCard';
 import { CustomerDetailModal } from './components/CustomerDetailModal';
@@ -35,6 +42,7 @@ import { SMSModal } from './components/SMSModal';
 import { NewCustomerModal } from './components/NewCustomerModal';
 import { SettingsModal } from './components/SettingsModal';
 import { MorningBriefingModal } from './components/MorningBriefingModal';
+import { CrmSalesAndIncentivePanel } from './components/CrmSalesAndIncentivePanel';
 import {
   CrmAnalyticsStrip,
   CrmDeliveryCalendar,
@@ -66,6 +74,7 @@ interface CrmAppProps {
     quote: QuoteRecord
   ) => void;
   onCustomersChange?: (customers: CustomerItem[]) => void;
+  initialSettlementTab?: SettlementTabId;
 }
 
 export const CrmApp: React.FC<CrmAppProps> = ({
@@ -73,6 +82,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   onOpenCustomerInQuoteBuilder,
   onOpenQuoteRecordInQuoteBuilder,
   onCustomersChange,
+  initialSettlementTab,
 }) => {
   // 앱 다크모드 실시간 동기화
   const [isDark, setIsDark] = useState<boolean>(() =>
@@ -99,6 +109,20 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     getCachedCustomers()
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
+
+  // 월간 총판·실판 및 수당 정산 탭 상태
+  const [selectedYearMonth, setSelectedYearMonth] = useState<string>(() =>
+    getCurrentYearMonth()
+  );
+  const [settlementTab, setSettlementTab] = useState<SettlementTabId>(
+    initialSettlementTab || 'sales'
+  );
+
+  useEffect(() => {
+    if (initialSettlementTab) {
+      setSettlementTab(initialSettlementTab);
+    }
+  }, [initialSettlementTab]);
 
   const [viewMode, setViewMode] = useState<CrmViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -299,6 +323,8 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         }`,
         true
       );
+    } else {
+      showToast(`✅ [${target?.name || '고객'}] 정보가 업데이트되었습니다.`, true);
     }
     await syncCustomerToGas('update', { id, ...patch });
   };
@@ -330,25 +356,35 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     quote: QuoteRecord
   ) => {
     pushUndoSnapshot('대표 견적 변경');
-    const updated = customers.map((c) => {
-      if (c.id !== customerId) return c;
-      return {
-        ...c,
-        items: quote.itemSummary,
-        paidAmount: quote.paidAmount,
-        netAmount: quote.netAmount,
-        expectedBenefit: quote.benefit,
-      };
-    });
-    const deduped = setCachedCustomers(updated);
-    setCustomers(deduped);
-    showToast(`📌 [${quote.title}] 견적이 대표 견적으로 적용되었습니다.`, true);
-    await syncCustomerToGas('update', {
-      id: customerId,
+    const extractedPerf = extractPerformanceFromProposalState(
+      quote.proposalState
+    );
+    const patch: Partial<CustomerItem> = {
       items: quote.itemSummary,
       paidAmount: quote.paidAmount,
       netAmount: quote.netAmount,
       expectedBenefit: quote.benefit,
+      saleType: extractedPerf?.saleType || quote.quoteMode || 'general',
+      performanceAmount:
+        extractedPerf?.performanceAmount ?? quote.performanceAmount,
+      generalProductTotal:
+        extractedPerf?.generalProductTotal ?? quote.generalProductTotal,
+      subscriptionPrincipal:
+        extractedPerf?.subscriptionPrincipal ?? quote.subscriptionPrincipal,
+      freedCounts: extractedPerf?.freedCounts ?? quote.freedCounts,
+      purchasedModels:
+        extractedPerf?.purchasedModels ?? quote.purchasedModels,
+    };
+
+    const updated = customers.map((c) =>
+      c.id === customerId ? { ...c, ...patch } : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCustomers(deduped);
+    showToast(`📌 [${quote.title}] 견적이 대표 견적 및 실적 기준으로 적용되었습니다.`, true);
+    await syncCustomerToGas('update', {
+      id: customerId,
+      ...patch,
     });
   };
 
@@ -409,7 +445,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   const handleMarkSmsSent = async (customerId: string) => {
     const target = customers.find((c) => c.id === customerId);
     if (target && target.status === '신규/미발송') {
-      await handleStatusChange(customerId, '발송완료');
+      await handleStatusChange(customerId, '상담진행중');
     }
   };
 
@@ -423,9 +459,12 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     const unconfirmedLogisticsCount = briefing.unconfirmedLogistics.length;
     const unpaidGiftCount = briefing.unpaidGifts.length;
 
-    const contractedSalesTotal = activeCustomers
-      .filter((c) => c.status === '계약완료' || c.status === '발송완료')
-      .reduce((acc, cur) => acc + (cur.paidAmount || 0), 0);
+    const monthlyReport = computeMonthlySettlementReport(
+      activeCustomers,
+      selectedYearMonth,
+      null,
+      'contract'
+    );
 
     const pipelineSalesTotal = activeCustomers
       .filter(
@@ -434,7 +473,11 @@ export const CrmApp: React.FC<CrmAppProps> = ({
           c.status === '상담진행중' ||
           c.status === '미구매/고민중'
       )
-      .reduce((acc, cur) => acc + (cur.paidAmount || 0), 0);
+      .reduce(
+        (acc, cur) =>
+          acc + resolveCustomerPerformanceProfile(cur).performanceAmount,
+        0
+      );
 
     return {
       totalCount: activeCustomers.length,
@@ -442,10 +485,11 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       todayTomorrowDeliveryCount,
       unconfirmedLogisticsCount,
       unpaidGiftCount,
-      contractedSalesTotal,
+      grossSalesTotal: monthlyReport.grossSalesTotal,
+      netDeliverySalesTotal: monthlyReport.netDeliverySalesTotal,
       pipelineSalesTotal,
     };
-  }, [activeCustomers]);
+  }, [activeCustomers, selectedYearMonth]);
 
   const tabCounts = useMemo(() => {
     const map: Record<string, number> = {
@@ -523,7 +567,10 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         return scoreA - scoreB;
       }
       if (sortOrder === 'amountDesc') {
-        return (b.paidAmount || 0) - (a.paidAmount || 0);
+        return (
+          resolveCustomerPerformanceProfile(b).performanceAmount -
+          resolveCustomerPerformanceProfile(a).performanceAmount
+        );
       }
       return b.regDate.localeCompare(a.regDate);
     });
@@ -542,7 +589,8 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         todayTomorrowDeliveryCount={kpiStats.todayTomorrowDeliveryCount}
         unconfirmedLogisticsCount={kpiStats.unconfirmedLogisticsCount}
         unpaidGiftCount={kpiStats.unpaidGiftCount}
-        contractedSalesTotal={kpiStats.contractedSalesTotal}
+        grossSalesTotal={kpiStats.grossSalesTotal}
+        netDeliverySalesTotal={kpiStats.netDeliverySalesTotal}
         pipelineSalesTotal={kpiStats.pipelineSalesTotal}
         isLoading={isLoading}
         onRefresh={loadCustomers}
@@ -555,6 +603,11 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         onQuickFilter={(tab) => {
           setViewMode('grid');
           setActiveTab(tab);
+        }}
+        onFocusSettlement={() => {
+          document
+            .getElementById('crm-sales-incentive-hub')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }}
         onBackToHome={onBackToHome}
       />
@@ -580,7 +633,19 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
       {/* 메인 컨텐츠 */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-4 space-y-4">
-        {/* 1) Tremor 스타일 월간 매출·전환율·파이프라인 KPI 대시보드 바 */}
+        {/* 1) 월간 총판·실판 분리 & 프리드/제품모델별 수당 정산 통합 허브 */}
+        <CrmSalesAndIncentivePanel
+          customers={activeCustomers}
+          isDark={isDark}
+          selectedYearMonth={selectedYearMonth}
+          onChangeYearMonth={setSelectedYearMonth}
+          activeTab={settlementTab}
+          onChangeTab={setSettlementTab}
+          onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+          onShowToast={(msg) => showToast(msg, false)}
+        />
+
+        {/* 1-2) 가망 파이프라인 & 전환율 보조 대시보드 */}
         <CrmAnalyticsStrip
           customers={activeCustomers}
           isDark={isDark}
@@ -706,7 +771,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
                     <option value="urgentFirst">🔥 긴급/할일 우선순</option>
                     <option value="deliveryAsc">🚚 배송 임박순 (D-Day)</option>
                     <option value="regDesc">🕒 최근 등록/상담순</option>
-                    <option value="amountDesc">💰 결제금액 높은순</option>
+                    <option value="amountDesc">💰 실적금액 높은순</option>
                   </select>
                 </div>
               )}
@@ -801,7 +866,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
                   조건에 맞는 고객 내역이 없습니다
                 </h3>
                 <p className="text-xs opacity-70 max-w-md mx-auto">
-                  우측 상단의 [신규 등록] 버튼을 누르거나, 견적서 계산 화면에서 [고객저장]을 누르면 이곳에 자동으로 쌓입니다.
+                  우측 상단의 [신규 고객 등록] 버튼을 누르거나, 견적서 계산 화면에서 [고객저장]을 누르면 이곳에 자동으로 쌓입니다.
                 </p>
                 {activeTab !== '전체' && (
                   <button

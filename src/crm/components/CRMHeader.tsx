@@ -15,7 +15,8 @@ interface CRMHeaderProps {
   todayTomorrowDeliveryCount: number;
   unconfirmedLogisticsCount: number;
   unpaidGiftCount: number;
-  contractedSalesTotal: number;
+  grossSalesTotal: number;
+  netDeliverySalesTotal: number;
   pipelineSalesTotal: number;
   isLoading: boolean;
   onRefresh: () => void;
@@ -23,6 +24,7 @@ interface CRMHeaderProps {
   onOpenSettings: () => void;
   onOpenBriefing: () => void;
   onQuickFilter: (tab: any) => void;
+  onFocusSettlement?: () => void;
   onBackToHome: () => void;
 }
 
@@ -32,7 +34,8 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
   todayTomorrowDeliveryCount,
   unconfirmedLogisticsCount,
   unpaidGiftCount,
-  contractedSalesTotal,
+  grossSalesTotal,
+  netDeliverySalesTotal,
   pipelineSalesTotal,
   isLoading,
   onRefresh,
@@ -40,6 +43,7 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
   onOpenSettings,
   onOpenBriefing,
   onQuickFilter,
+  onFocusSettlement,
   onBackToHome,
 }) => {
   return (
@@ -68,7 +72,7 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
                 </h1>
               </div>
               <p className="text-[11px] text-[#78716C] font-medium hidden sm:block">
-                상담 · 배송 · 물류 · 사은품 통합 파이프라인
+                총판·실판 실적 · 프리드/모델 수당 · 배송 · 사은품 통합 관리
               </p>
             </div>
           </div>
@@ -133,20 +137,27 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
           </div>
         </div>
 
-        {/* 4칸 빅 넘버 KPI 벤토 대시보드 (클릭 시 즉시 해당 필터 탭 전환) */}
+        {/* 4칸 빅 넘버 KPI 벤토 대시보드 */}
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
           <button
             type="button"
-            onClick={() => onQuickFilter('전체')}
+            onClick={() => {
+              onQuickFilter('전체');
+              onFocusSettlement?.();
+            }}
             className="bg-white hover:bg-[#FAF8F4] border border-[#E4DFD5] rounded-2xl px-3.5 py-2.5 text-left transition cursor-pointer shadow-2xs"
           >
-            <div className="flex items-center justify-between text-[11px] font-extrabold text-[#78716C]">
-              <span>전체 관리 고객</span>
-              <span>확정 {formatShortManwon(contractedSalesTotal)}</span>
+            <div className="flex items-center justify-between gap-1 text-[11px] font-extrabold text-[#78716C]">
+              <span>전체 고객 ({totalCount}명)</span>
+              <span className="text-emerald-600 font-black">당월 실적</span>
             </div>
-            <div className="text-xl sm:text-2xl font-black text-[#18181B] tracking-tight mt-0.5">
-              {totalCount}
-              <span className="text-xs font-bold text-[#78716C] ml-1">명</span>
+            <div className="mt-1 flex items-center justify-between gap-1 text-xs sm:text-sm font-black font-mono tracking-tight">
+              <span className="text-emerald-600 truncate">
+                총판 {formatShortManwon(grossSalesTotal)}
+              </span>
+              <span className="text-blue-600 truncate">
+                실판 {formatShortManwon(netDeliverySalesTotal)}
+              </span>
             </div>
           </button>
 

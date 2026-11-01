@@ -1,5 +1,13 @@
-import { CustomerItem, CustomerStatus, QuoteRecord } from '../types/crm';
-import { getNowDateTimeStr } from '../utils/date';
+import {
+  CustomerFreedCounts,
+  CustomerItem,
+  CustomerSaleType,
+  CustomerStatus,
+  PurchasedModelEntry,
+  QuoteRecord,
+} from '../types/crm';
+import { getNowDateTimeStr, getTodayStr } from '../utils/date';
+import { extractPerformanceFromProposalState } from '../utils/settlementEngine';
 import {
   enqueueOfflineMutation,
   flushPendingOutbox,
@@ -7,7 +15,8 @@ import {
   idbMirrorSet,
 } from '../../utils/offlineDbQueue';
 
-const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
+export const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
+export const CRM_CUSTOMERS_UPDATED_EVENT = 'himart_crm_customers_updated';
 
 function normalizePhoneKey(phone: string): string {
   return String(phone || '').replace(/\D/g, '');
@@ -57,6 +66,16 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
         ...secondary,
         ...primary,
         id: existing.id || item.id,
+        contractDate: primary.contractDate || secondary.contractDate || undefined,
+        saleType: primary.saleType || secondary.saleType || undefined,
+        performanceAmount:
+          primary.performanceAmount ?? secondary.performanceAmount,
+        generalProductTotal:
+          primary.generalProductTotal ?? secondary.generalProductTotal,
+        subscriptionPrincipal:
+          primary.subscriptionPrincipal ?? secondary.subscriptionPrincipal,
+        freedCounts: primary.freedCounts ?? secondary.freedCounts,
+        purchasedModels: primary.purchasedModels ?? secondary.purchasedModels,
         orderNo: primary.orderNo || secondary.orderNo || '',
         giftItems: primary.giftItems || secondary.giftItems || '',
         giftSent: Boolean(primary.giftSent ?? secondary.giftSent),
@@ -104,6 +123,9 @@ export function setCachedCustomers(customers: CustomerItem[]): CustomerItem[] {
   }
   // 대용량 다중 견적 데이터를 IndexedDB에도 즉시 비동기 미러링 (5MB 한계 돌파)
   idbMirrorSet(STORAGE_KEY_CACHE, deduped).catch(() => {});
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(CRM_CUSTOMERS_UPDATED_EVENT));
+  }
   return deduped;
 }
 
@@ -141,6 +163,7 @@ export async function saveCustomerQuote(payload: {
   paidAmount: number;
   netAmount: number;
   expectedBenefit: string;
+  contractDate?: string;
   deliveryDate: string;
   followUpDate?: string;
   status: CustomerStatus;
@@ -150,11 +173,18 @@ export async function saveCustomerQuote(payload: {
   quoteTitle?: string;
   proposalState?: any;
   quoteMode?: 'general' | 'subscription' | 'hybrid';
+  saleType?: CustomerSaleType;
+  performanceAmount?: number;
+  generalProductTotal?: number;
+  subscriptionPrincipal?: number;
+  freedCounts?: CustomerFreedCounts;
+  purchasedModels?: PurchasedModelEntry[];
   plan2Summary?: {
     itemSummary: string;
     paidAmount: number;
     netAmount: number;
     benefit?: string;
+    performanceAmount?: number;
   };
 }): Promise<{
   customers: CustomerItem[];
@@ -164,6 +194,26 @@ export async function saveCustomerQuote(payload: {
 }> {
   const current = getCachedCustomers();
   const nowStr = getNowDateTimeStr();
+  const todayStr = getTodayStr();
+
+  const extractedPerf = extractPerformanceFromProposalState(payload.proposalState);
+  const resolvedSaleType: CustomerSaleType =
+    payload.saleType ||
+    extractedPerf?.saleType ||
+    payload.quoteMode ||
+    'general';
+  const resolvedGeneralTotal =
+    payload.generalProductTotal ?? extractedPerf?.generalProductTotal ?? 0;
+  const resolvedSubPrincipal =
+    payload.subscriptionPrincipal ?? extractedPerf?.subscriptionPrincipal ?? 0;
+  const resolvedPerformanceAmount =
+    payload.performanceAmount ??
+    extractedPerf?.performanceAmount ??
+    payload.paidAmount;
+  const resolvedFreedCounts =
+    payload.freedCounts ?? extractedPerf?.freedCounts;
+  const resolvedPurchasedModels =
+    payload.purchasedModels ?? extractedPerf?.purchasedModels;
 
   const newQuote: QuoteRecord = {
     id: `QT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -180,6 +230,11 @@ export async function saveCustomerQuote(payload: {
       : undefined,
     quoteMode: payload.quoteMode,
     plan2Summary: payload.plan2Summary,
+    performanceAmount: resolvedPerformanceAmount,
+    generalProductTotal: resolvedGeneralTotal,
+    subscriptionPrincipal: resolvedSubPrincipal,
+    freedCounts: resolvedFreedCounts,
+    purchasedModels: resolvedPurchasedModels,
   };
 
   let existingIndex = -1;
@@ -215,12 +270,23 @@ export async function saveCustomerQuote(payload: {
     savedCustomer = {
       ...existing,
       regDate: nowStr,
+      contractDate:
+        payload.contractDate?.trim() ||
+        existing.contractDate ||
+        existing.regDate?.slice(0, 10) ||
+        todayStr,
       name: payload.name.trim() || existing.name,
       phone: payload.phone.trim() || existing.phone,
       items: payload.items,
       paidAmount: payload.paidAmount,
       netAmount: payload.netAmount,
       expectedBenefit: payload.expectedBenefit,
+      saleType: resolvedSaleType,
+      performanceAmount: resolvedPerformanceAmount,
+      generalProductTotal: resolvedGeneralTotal,
+      subscriptionPrincipal: resolvedSubPrincipal,
+      freedCounts: resolvedFreedCounts,
+      purchasedModels: resolvedPurchasedModels,
       deliveryDate: payload.deliveryDate || existing.deliveryDate,
       followUpDate:
         payload.followUpDate !== undefined
@@ -246,12 +312,19 @@ export async function saveCustomerQuote(payload: {
     savedCustomer = {
       id: `CUST-${Date.now()}`,
       regDate: nowStr,
+      contractDate: payload.contractDate?.trim() || todayStr,
       name: payload.name.trim(),
       phone: payload.phone.trim(),
       items: payload.items,
       paidAmount: payload.paidAmount,
       netAmount: payload.netAmount,
       expectedBenefit: payload.expectedBenefit,
+      saleType: resolvedSaleType,
+      performanceAmount: resolvedPerformanceAmount,
+      generalProductTotal: resolvedGeneralTotal,
+      subscriptionPrincipal: resolvedSubPrincipal,
+      freedCounts: resolvedFreedCounts,
+      purchasedModels: resolvedPurchasedModels,
       deliveryDate: payload.deliveryDate,
       followUpDate: payload.followUpDate || '',
       status: payload.status,

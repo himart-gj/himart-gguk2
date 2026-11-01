@@ -861,6 +861,93 @@ async function startServer() {
     }
   });
 
+  // 월별 제품 모델별 수당 단가표 이미지 AI 판독 엔드포인트
+  app.post('/api/ai/parse-model-incentive-image', async (req, res) => {
+    try {
+      const { imageBase64, mimeType, apiKey: clientApiKey } = req.body || {};
+      if (!imageBase64 || typeof imageBase64 !== 'string') {
+        res.status(400).json({ error: '이미지 데이터가 없습니다.' });
+        return;
+      }
+      const cleanBase64 = imageBase64.includes(',')
+        ? imageBase64.split(',')[1]
+        : imageBase64;
+      const ai = getGenAIClient(clientApiKey);
+      const promptText = `당신은 가전 매장의 '월별 제품 모델별 판매수당(인센티브/장려금/시상금) 단가표' 이미지를 분석하는 전문 AI입니다.
+이미지 속 표나 목록에서 각 제품의 모델코드(모델명)와 해당 모델 판매 시 지급되는 수당 금액(원 단위 정수)을 추출해 JSON으로 반환하세요.
+- modelCode: 영문+숫자 모델코드(예: RM70F64M2X, OLED65C4, W20WAN). 제조사 접미사(.AKOR 등) 제거.
+- category: 품목명(예: 냉장고, 김치냉장고, TV, 워시타워, 에어컨, 세탁기 등).
+- productName: 상품명(있을 경우).
+- incentiveAmount: 원 단위 수당 정수 (예: 표에 '5만', '50,000', 또는 단위:만원 열에 '5'로 적혀 있으면 반드시 50000으로 변환. 제품 판매가가 아닌 판매사원 수당/시상금을 추출할 것).
+- saleTypeFilter: 전체 공통이면 'all', 구독 전용이면 'subscription', 일반 전용이면 'general'.
+- note: 특이사항.`;
+
+      const models = [
+        'gemini-2.5-flash',
+        'gemini-flash-latest',
+        'gemini-2.0-flash',
+        'gemini-2.5-pro',
+      ];
+      let lastErr: any = null;
+      for (const m of models) {
+        try {
+          const response = await ai.models.generateContent({
+            model: m,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: mimeType || 'image/jpeg',
+                      data: cleanBase64,
+                    },
+                  },
+                  { text: promptText },
+                ],
+              },
+            ],
+            config: {
+              temperature: 0.1,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  rules: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        category: { type: Type.STRING },
+                        modelCode: { type: Type.STRING },
+                        productName: { type: Type.STRING },
+                        incentiveAmount: { type: Type.INTEGER },
+                        saleTypeFilter: { type: Type.STRING },
+                        note: { type: Type.STRING },
+                      },
+                      required: ['modelCode', 'incentiveAmount'],
+                    },
+                  },
+                },
+                required: ['rules'],
+              },
+            },
+          });
+          if (response && response.text) {
+            const parsed = JSON.parse(response.text.trim());
+            res.json(parsed);
+            return;
+          }
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      res.status(502).json({ error: lastErr?.message || '모델 수당 이미지 분석 실패' });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || '서버 이미지 분석 오류' });
+    }
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

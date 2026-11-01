@@ -16,6 +16,7 @@ import {
   getFollowUpInfo,
   isUrgentCustomer,
 } from '../utils/date';
+import { resolveCustomerPerformanceProfile } from '../utils/settlementEngine';
 
 interface CompactCustomerCardProps {
   customer: CustomerItem;
@@ -61,6 +62,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   const hasUnpaidGift =
     Boolean(customer.giftItems && customer.giftItems.trim()) &&
     !customer.giftSent;
+  const perf = resolveCustomerPerformanceProfile(customer);
 
   // 모바일 좌우 스와이프 제스처 지원
   const touchStartXRef = useRef<number | null>(null);
@@ -82,7 +84,6 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
     if (swipeOffset <= -56 && onToggleLogistics) {
       onToggleLogistics(customer);
     } else if (swipeOffset >= 56) {
-      // 오른쪽으로 밀면 빠른 문자 모달 오픈
       const syntheticEvt = { stopPropagation: () => {} } as React.MouseEvent;
       onOpenSMS(customer, syntheticEvt);
     }
@@ -159,6 +160,17 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                     견적 {quoteCount}
                   </span>
                 )}
+                {perf.freedDetail.totalCount > 0 && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
+                      isDark
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/30'
+                        : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    }`}
+                  >
+                    💎 프리드 {perf.freedDetail.totalCount}건
+                  </span>
+                )}
                 {followUp.hasFollowUp && (
                   <span
                     className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
@@ -186,16 +198,24 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
             </span>
           </div>
 
-          {/* 중단: 관심품목 1줄 요약 */}
+          {/* 중단: 관심품목 1줄 요약 + 실적기준액/체감가 */}
           <div className={`mt-2.5 rounded-2xl px-3 py-2.5 border ${stripSurface}`}>
             <p className="text-xs font-bold line-clamp-1">
               {customer.items || '상담 품목 미입력'}
             </p>
             <div className="mt-1 flex items-center justify-between text-[11px] font-mono">
               <span className={mutedText}>
-                결제{' '}
-                <strong className={isDark ? 'text-white font-black' : 'text-[#18181B] font-extrabold'}>
-                  {formatCurrency(customer.paidAmount)}원
+                {perf.saleType === 'subscription'
+                  ? '구독원금 '
+                  : perf.saleType === 'hybrid'
+                  ? '실적합계 '
+                  : '제품합계 '}
+                <strong
+                  className={
+                    isDark ? 'text-emerald-300 font-black' : 'text-emerald-700 font-extrabold'
+                  }
+                >
+                  {formatCurrency(perf.performanceAmount)}원
                 </strong>
               </span>
               <span
@@ -203,7 +223,8 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                   isDark ? 'text-amber-300' : 'text-[#8C5A32]'
                 }`}
               >
-                체감 {formatCurrency(customer.netAmount)}원
+                {perf.saleType === 'subscription' ? '월체감 ' : '체감 '}
+                {formatCurrency(customer.netAmount)}원
               </span>
             </div>
           </div>

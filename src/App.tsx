@@ -64,7 +64,7 @@ const CustomerShareQuoteView = lazy(() =>
     default: m.CustomerShareQuoteView,
   }))
 );
-import { CustomerItem, QuoteRecord } from './crm/types/crm';
+import { CustomerItem, QuoteRecord, SettlementTabId } from './crm/types/crm';
 import { getCachedCustomers } from './crm/services/gasApi';
 import { isUrgentCustomer } from './crm/utils/date';
 import {
@@ -208,6 +208,7 @@ export function App() {
   const [crmCustomers, setCrmCustomers] = useState<CustomerItem[]>(() =>
     getCachedCustomers()
   );
+  const [initialCrmTab, setInitialCrmTab] = useState<SettlementTabId>('sales');
 
   const [isParsing, setIsParsing] = useState(false);
   const [parseError, setParseError] = useState(null as string | null);
@@ -1687,12 +1688,17 @@ export function App() {
       {step === 'home' && (
         <main className="flex-1 w-full flex items-center justify-center p-3 sm:p-6">
           <div className="w-full max-w-3xl flex flex-col gap-3 sm:gap-3.5">
-            {/* 0-1) 최상단 내 휴무 카운트다운 배너 */}
+            {/* 0-1) 최상단 내 휴무 카운트다운 배너 + 이번 달 수당 적립 요약 */}
             <ScheduleCharacterBanner
               isDark={isDark}
+              customers={activeCrmCustomers}
               onOpenScheduleModal={() => {
                 pushAppHistoryGuard('open-schedule');
                 setIsScheduleModalOpen(true);
+              }}
+              onOpenIncentiveTab={(targetTab) => {
+                setInitialCrmTab(targetTab);
+                setStep('crm');
               }}
             />
 
@@ -2233,6 +2239,7 @@ export function App() {
             onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
             onOpenQuoteRecordInQuoteBuilder={handleOpenQuoteRecordInQuoteBuilder}
             onCustomersChange={(list) => setCrmCustomers(list)}
+            initialSettlementTab={initialCrmTab}
           />
         )}
         {step === 'himobile' && (
