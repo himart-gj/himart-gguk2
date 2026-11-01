@@ -8,9 +8,6 @@ export default defineConfig(({mode}) => {
   const geminiApiKey = process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '';
   return {
     base: './',
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(geminiApiKey),
-    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
