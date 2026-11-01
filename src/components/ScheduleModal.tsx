@@ -1487,13 +1487,21 @@ const CORNER_GROUP_ORDER = [
   '애플·모바일·통신',
 ] as const;
 
-// 2026~2027 대한민국 주요 공휴일 매핑 (날짜 헤더 강조 및 개인 달력 표기용)
+// 2025~2028 대한민국 법정·대체공휴일 매핑 (상단 헤더 및 하단 세로 전체 열 배경 강조용)
 const HOLIDAY_NAMES_BY_MONTH: Record<string, Record<number, string>> = {
+  '2025-01': { 1: '신정', 27: '임시공휴일', 28: '설연휴', 29: '설날', 30: '설연휴' },
+  '2025-03': { 1: '삼일절', 3: '대체공휴일' },
+  '2025-05': { 1: '노동절', 5: '어린이날', 6: '대체공휴일' },
+  '2025-06': { 3: '대통령선거', 6: '현충일' },
+  '2025-08': { 15: '광복절' },
+  '2025-10': { 3: '개천절', 5: '추석연휴', 6: '추석', 7: '추석연휴', 8: '대체공휴일', 9: '한글날' },
+  '2025-12': { 25: '성탄절' },
   '2026-01': { 1: '신정' },
   '2026-02': { 16: '설연휴', 17: '설날', 18: '설연휴' },
   '2026-03': { 1: '삼일절', 2: '대체공휴일' },
-  '2026-05': { 5: '어린이날', 24: '부처님오신날', 25: '대체공휴일' },
+  '2026-05': { 1: '노동절', 5: '어린이날', 24: '부처님오신날', 25: '대체공휴일' },
   '2026-06': { 3: '지방선거', 6: '현충일' },
+  '2026-07': { 17: '제헌절' },
   '2026-08': { 15: '광복절', 17: '대체공휴일' },
   '2026-09': { 24: '추석연휴', 25: '추석', 26: '추석연휴' },
   '2026-10': { 3: '개천절', 5: '대체공휴일', 9: '한글날' },
@@ -1501,13 +1509,109 @@ const HOLIDAY_NAMES_BY_MONTH: Record<string, Record<number, string>> = {
   '2027-01': { 1: '신정' },
   '2027-02': { 6: '설연휴', 7: '설날', 8: '설연휴', 9: '대체공휴일' },
   '2027-03': { 1: '삼일절' },
-  '2027-05': { 5: '어린이날', 13: '부처님오신날' },
+  '2027-05': { 1: '노동절', 3: '대체공휴일', 5: '어린이날', 13: '부처님오신날' },
   '2027-06': { 6: '현충일' },
+  '2027-07': { 17: '제헌절', 19: '대체공휴일' },
   '2027-08': { 15: '광복절', 16: '대체공휴일' },
   '2027-09': { 14: '추석연휴', 15: '추석', 16: '추석연휴' },
   '2027-10': { 3: '개천절', 4: '대체공휴일', 9: '한글날', 11: '대체공휴일' },
   '2027-12': { 25: '성탄절', 27: '대체공휴일' },
+  '2028-01': { 1: '신정', 26: '설연휴', 27: '설날', 28: '설연휴' },
+  '2028-03': { 1: '삼일절' },
+  '2028-05': { 1: '노동절', 2: '부처님오신날', 5: '어린이날' },
+  '2028-06': { 6: '현충일' },
+  '2028-07': { 17: '제헌절' },
+  '2028-08': { 15: '광복절' },
+  '2028-10': { 2: '추석연휴', 3: '추석·개천절', 4: '추석연휴', 5: '대체공휴일', 9: '한글날' },
+  '2028-12': { 25: '성탄절' },
 };
+
+type DaySpecialKind = 'holiday' | 'sunday' | 'saturday' | 'weekday';
+
+function getDaySpecialKind(
+  yearMonth: string,
+  day: number,
+  dow: number
+): DaySpecialKind {
+  if (HOLIDAY_NAMES_BY_MONTH[yearMonth]?.[day]) return 'holiday';
+  if (dow === 0) return 'sunday';
+  if (dow === 6) return 'saturday';
+  return 'weekday';
+}
+
+function getShortHolidayBadge(holidayName?: string): string {
+  if (!holidayName) return '';
+  if (holidayName.includes('대체')) return '대체';
+  if (holidayName.includes('임시')) return '임시';
+  if (holidayName.includes('부처님')) return '석탄';
+  if (holidayName.includes('어린이')) return '어린';
+  if (holidayName.includes('선거')) return '선거';
+  return holidayName.slice(0, 2);
+}
+
+function getMatrixStickyHeaderBg(kind: DaySpecialKind, isDark: boolean): string {
+  if (kind === 'holiday') {
+    return isDark ? 'bg-[#3D1524]' : 'bg-[#4A1423]';
+  }
+  if (kind === 'sunday') {
+    return isDark ? 'bg-[#311320]' : 'bg-[#38121D]';
+  }
+  if (kind === 'saturday') {
+    return isDark ? 'bg-[#12263F]' : 'bg-[#112A45]';
+  }
+  return isDark ? 'bg-[#161D2B]' : 'bg-[#18181B]';
+}
+
+function getMatrixBodyCellBg(
+  kind: DaySpecialKind,
+  isDark: boolean,
+  isMe = false
+): string {
+  if (kind === 'holiday') {
+    if (isDark) {
+      return isMe
+        ? 'bg-rose-500/25 hover:bg-rose-500/32'
+        : 'bg-rose-500/[0.18] hover:bg-rose-500/[0.26]';
+    }
+    return isMe
+      ? 'bg-rose-200/75 hover:bg-rose-200/95'
+      : 'bg-rose-100/90 hover:bg-rose-200/75';
+  }
+  if (kind === 'sunday') {
+    if (isDark) {
+      return isMe
+        ? 'bg-rose-500/20 hover:bg-rose-500/28'
+        : 'bg-rose-500/[0.12] hover:bg-rose-500/[0.20]';
+    }
+    return isMe
+      ? 'bg-rose-100/70 hover:bg-rose-200/70'
+      : 'bg-rose-50/95 hover:bg-rose-100/80';
+  }
+  if (kind === 'saturday') {
+    if (isDark) {
+      return isMe
+        ? 'bg-sky-500/20 hover:bg-sky-500/28'
+        : 'bg-sky-500/[0.12] hover:bg-sky-500/[0.20]';
+    }
+    return isMe
+      ? 'bg-sky-100/70 hover:bg-sky-200/70'
+      : 'bg-sky-50/95 hover:bg-sky-100/80';
+  }
+  return '';
+}
+
+function getCornerDividerCellBg(kind: DaySpecialKind, isDark: boolean): string {
+  if (kind === 'holiday') {
+    return isDark ? 'bg-rose-500/22' : 'bg-rose-200/70';
+  }
+  if (kind === 'sunday') {
+    return isDark ? 'bg-rose-500/15' : 'bg-rose-200/50';
+  }
+  if (kind === 'saturday') {
+    return isDark ? 'bg-sky-500/15' : 'bg-sky-200/50';
+  }
+  return '';
+}
 
 // 한글 초성 검색 지원 유틸 (예: 'ㄱㅅㅇ' -> '강석원', 'ㄷㅎ' -> '대형')
 const CHOSEONG_LIST = [
@@ -4316,6 +4420,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                       const holidayName =
                         HOLIDAY_NAMES_BY_MONTH[item.yearMonth]?.[item.day];
                       const isRedDay = item.dow === 0 || Boolean(holidayName);
+                      const specialKind = getDaySpecialKind(
+                        item.yearMonth,
+                        item.day,
+                        item.dow
+                      );
 
                       return (
                         <button
@@ -4327,6 +4436,18 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                               ? isDark
                                 ? 'bg-sky-400 text-slate-950 border-sky-300 shadow-md'
                                 : 'bg-[#18181B] text-white border-[#18181B] shadow-md'
+                              : specialKind === 'holiday'
+                              ? isDark
+                                ? 'bg-rose-500/20 hover:bg-rose-500/28 border-rose-400/35'
+                                : 'bg-rose-100/90 hover:bg-rose-200/80 border-rose-300'
+                              : specialKind === 'sunday'
+                              ? isDark
+                                ? 'bg-rose-500/14 hover:bg-rose-500/22 border-rose-400/25'
+                                : 'bg-rose-50/95 hover:bg-rose-100/85 border-rose-200'
+                              : specialKind === 'saturday'
+                              ? isDark
+                                ? 'bg-sky-500/14 hover:bg-sky-500/22 border-sky-400/25'
+                                : 'bg-sky-50/95 hover:bg-sky-100/85 border-sky-200'
                               : isDark
                               ? 'bg-[#1B2230]/80 hover:bg-[#232C3E] border-white/10'
                               : 'bg-[#FAF8F4] hover:bg-[#EAE5DC] border-[#E4DFD5]'
@@ -4768,13 +4889,17 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                   {WEEKDAY_KO.map((w, idx) => (
                     <div
                       key={w}
-                      className={
+                      className={`py-0.5 rounded-md ${
                         idx === 0
-                          ? 'text-rose-500'
+                          ? isDark
+                            ? 'text-rose-400 bg-rose-500/15'
+                            : 'text-rose-600 bg-rose-100/80'
                           : idx === 6
-                          ? 'text-sky-500'
+                          ? isDark
+                            ? 'text-sky-400 bg-sky-500/15'
+                            : 'text-sky-600 bg-sky-100/80'
                           : ''
-                      }
+                      }`}
                     >
                       {w}
                     </div>
@@ -4801,6 +4926,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                     const isRed = cell.dow === 0 || Boolean(cell.holidayName);
                     const off = isOffDayCode(cell.code);
                     const dayWorkCount = dailySummaryMap[cell.day]?.workingCount ?? 0;
+                    const cellKind = getDaySpecialKind(
+                      currentYearMonth,
+                      cell.day,
+                      cell.dow
+                    );
 
                     return (
                       <button
@@ -4815,10 +4945,22 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                           }
                         }}
                         className={`min-h-[68px] sm:min-h-[88px] p-1.5 sm:p-2.5 border-b border-r border-current/10 flex flex-col justify-between text-left cursor-pointer transition-colors ${
-                          off
+                          cellKind === 'holiday'
                             ? isDark
-                              ? 'bg-rose-500/10 hover:bg-rose-500/20'
-                              : 'bg-rose-50/70 hover:bg-rose-100/70'
+                              ? 'bg-rose-500/[0.20] hover:bg-rose-500/[0.28]'
+                              : 'bg-rose-100/90 hover:bg-rose-200/80'
+                            : cellKind === 'sunday'
+                            ? isDark
+                              ? 'bg-rose-500/[0.13] hover:bg-rose-500/[0.20]'
+                              : 'bg-rose-50/95 hover:bg-rose-100/80'
+                            : cellKind === 'saturday'
+                            ? isDark
+                              ? 'bg-sky-500/[0.13] hover:bg-sky-500/[0.20]'
+                              : 'bg-sky-50/95 hover:bg-sky-100/80'
+                            : off
+                            ? isDark
+                              ? 'bg-amber-400/[0.08] hover:bg-amber-400/[0.15]'
+                              : 'bg-amber-50/70 hover:bg-amber-100/70'
                             : isDark
                             ? 'hover:bg-white/5'
                             : 'hover:bg-[#FAF8F4]'
@@ -5007,12 +5149,19 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                         const holiday =
                           HOLIDAY_NAMES_BY_MONTH[wd.yearMonth]?.[wd.day];
                         const isRed = wd.dow === 0 || Boolean(holiday);
+                        const wdKind = getDaySpecialKind(
+                          wd.yearMonth,
+                          wd.day,
+                          wd.dow
+                        );
                         return (
                           <th
                             key={wd.date.toISOString()}
                             onClick={() => setSelectedDate(new Date(wd.date))}
                             className={`px-2 py-2 border-r last:border-r-0 border-white/10 cursor-pointer ${
-                              isTodayCol ? 'bg-amber-400 text-slate-950' : ''
+                              isTodayCol
+                                ? 'bg-amber-400 text-slate-950'
+                                : getMatrixStickyHeaderBg(wdKind, isDark)
                             }`}
                           >
                             <div
@@ -5020,17 +5169,18 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                 isTodayCol
                                   ? 'text-slate-950'
                                   : isRed
-                                  ? 'text-rose-400'
+                                  ? 'text-rose-300'
                                   : wd.dow === 6
-                                  ? 'text-sky-400'
+                                  ? 'text-sky-300'
                                   : ''
                               }`}
                             >
                               {wd.date.getMonth() + 1}/{wd.day} ({WEEKDAY_KO[wd.dow]})
+                              {holiday ? ` · ${getShortHolidayBadge(holiday)}` : ''}
                             </div>
                             <div
                               className={`text-[10px] font-bold font-mono mt-0.5 ${
-                                isTodayCol ? 'text-slate-900' : 'opacity-75'
+                                isTodayCol ? 'text-slate-900' : 'opacity-80'
                               }`}
                             >
                               근무 {wd.workingCount}명
@@ -5049,15 +5199,33 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                           className={
                             isDark
                               ? 'bg-[#111622] text-sky-300 border-b border-white/10'
-                              : 'bg-[#F4ECE1]/80 text-[#6E4423] border-b border-[#E4DFD5]'
+                              : 'bg-[#F4ECE1]/85 text-[#6E4423] border-b border-[#E4DFD5]'
                           }
                         >
                           <td
-                            colSpan={8}
-                            className="px-3 py-1.5 text-left text-[11px] font-black"
+                            className={`sticky left-0 z-10 px-3 py-1.5 text-left text-[11px] font-black border-r ${
+                              isDark
+                                ? 'bg-[#111622] border-white/10'
+                                : 'bg-[#F4ECE1] border-[#E4DFD5]'
+                            }`}
                           >
                             ▪ {group.corner} ({group.employees.length}명)
                           </td>
+                          {currentWeekDates.map((wd) => {
+                            const wdKind = getDaySpecialKind(
+                              wd.yearMonth,
+                              wd.day,
+                              wd.dow
+                            );
+                            return (
+                              <td
+                                key={`wk-div-${group.corner}-${wd.date.toISOString()}`}
+                                className={`border-r last:border-r-0 ${
+                                  isDark ? 'border-white/5' : 'border-[#E4DFD5]'
+                                } ${getCornerDividerCellBg(wdKind, isDark)}`}
+                              />
+                            );
+                          })}
                         </tr>
                         {group.employees.map((emp) => {
                           const isMe = emp.name === savedName;
@@ -5113,6 +5281,20 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                 const code =
                                   targetEmpInDay?.days[String(wd.day)] || '';
                                 const canEdit = wd.yearMonth === currentYearMonth;
+                                const wdKind = getDaySpecialKind(
+                                  wd.yearMonth,
+                                  wd.day,
+                                  wd.dow
+                                );
+                                const isTodayCol =
+                                  wd.date.getFullYear() === todayReal.getFullYear() &&
+                                  wd.date.getMonth() === todayReal.getMonth() &&
+                                  wd.date.getDate() === wd.day;
+                                const colBgCls = getMatrixBodyCellBg(
+                                  wdKind,
+                                  isDark,
+                                  isMe
+                                );
 
                                 return (
                                   <td
@@ -5125,9 +5307,16 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                       handleCellInteraction(emp, wd.day);
                                     }}
                                     className={`px-1.5 py-2 border-r last:border-r-0 cursor-pointer ${
-                                      isDark
-                                        ? 'border-white/5 hover:bg-white/5'
-                                        : 'border-[#EDE9E0] hover:bg-[#FAF8F4]'
+                                      isDark ? 'border-white/5' : 'border-[#E5DFD3]'
+                                    } ${
+                                      isTodayCol
+                                        ? isDark
+                                          ? 'bg-amber-400/15 ring-1 ring-inset ring-amber-400/60'
+                                          : 'bg-amber-100/75 ring-1 ring-inset ring-amber-400'
+                                        : colBgCls ||
+                                          (isDark
+                                            ? 'hover:bg-white/5'
+                                            : 'hover:bg-[#FAF8F4]')
                                     } ${!canEdit ? 'opacity-50' : ''}`}
                                   >
                                     {code ? (
@@ -5254,12 +5443,15 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   ? `코너 공백: ${dailySummaryMap[d]?.vacantCorners.join(', ')}`
                                   : `${d}일 일일 브리핑 기준일로 선택`
                               }
-                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b border-white/10 cursor-pointer ${
+                              className={`sticky top-0 z-20 px-1 py-1.5 border-r border-b border-white/15 cursor-pointer ${
                                 isTodayCol
                                   ? 'bg-amber-400 text-slate-950'
                                   : isOverlapDay
                                   ? 'bg-indigo-600 text-white'
-                                  : ''
+                                  : getMatrixStickyHeaderBg(
+                                      getDaySpecialKind(currentYearMonth, d, dow),
+                                      isDark
+                                    )
                               }`}
                             >
                               <div
@@ -5267,9 +5459,9 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   isTodayCol
                                     ? 'text-slate-950'
                                     : isRed
-                                    ? 'text-rose-400'
+                                    ? 'text-rose-300'
                                     : dow === 6
-                                    ? 'text-sky-400'
+                                    ? 'text-sky-300'
                                     : ''
                                 }`}
                               >
@@ -5280,14 +5472,25 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   isTodayCol
                                     ? 'text-slate-900'
                                     : isRed
-                                    ? 'text-rose-300'
+                                    ? 'text-rose-200'
                                     : dow === 6
-                                    ? 'text-sky-300'
+                                    ? 'text-sky-200'
                                     : 'text-slate-400'
                                 }`}
                               >
                                 {WEEKDAY_KO[dow]}
                               </div>
+                              {holidayName && (
+                                <div
+                                  className={`text-[8px] font-extrabold leading-none mt-0.5 px-0.5 rounded ${
+                                    isTodayCol
+                                      ? 'bg-slate-950/15 text-slate-950'
+                                      : 'bg-rose-500/35 text-rose-100'
+                                  }`}
+                                >
+                                  {getShortHolidayBadge(holidayName)}
+                                </div>
+                              )}
                               {hasVacancy && (
                                 <div className="text-[9px] leading-none mt-0.5 text-rose-400 font-black">
                                   ⚠️
@@ -5324,6 +5527,32 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                             const vacant =
                               (summary?.vacantCorners.length || 0) > 0;
                             const lowStaff = work <= Math.floor(monthData.employees.length * 0.55);
+                            const sumDow = new Date(
+                              currentYear,
+                              currentMonth - 1,
+                              d
+                            ).getDay();
+                            const sumKind = getDaySpecialKind(
+                              currentYearMonth,
+                              d,
+                              sumDow
+                            );
+                            const sumWeekendBg =
+                              sumKind === 'holiday'
+                                ? isDark
+                                  ? 'bg-rose-500/22 text-rose-200'
+                                  : 'bg-rose-200/80 text-rose-900'
+                                : sumKind === 'sunday'
+                                ? isDark
+                                  ? 'bg-rose-500/15 text-emerald-300'
+                                  : 'bg-rose-100/80 text-emerald-800'
+                                : sumKind === 'saturday'
+                                ? isDark
+                                  ? 'bg-sky-500/15 text-emerald-300'
+                                  : 'bg-sky-100/80 text-emerald-800'
+                                : isDark
+                                ? 'text-emerald-400'
+                                : 'text-emerald-700';
 
                             return (
                               <td
@@ -5332,10 +5561,12 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   isDark ? 'border-white/5' : 'border-[#E4DFD5]'
                                 } ${
                                   vacant
-                                    ? 'bg-rose-500/20 text-rose-500'
+                                    ? 'bg-rose-500/30 text-rose-500'
                                     : lowStaff
-                                    ? (isDark ? 'bg-amber-400/20 text-amber-300' : 'bg-amber-100 text-amber-900')
-                                    : (isDark ? 'text-emerald-400' : 'text-emerald-700')
+                                    ? isDark
+                                      ? 'bg-amber-400/20 text-amber-300'
+                                      : 'bg-amber-100 text-amber-900'
+                                    : sumWeekendBg
                                 }`}
                               >
                                 {work}
@@ -5389,7 +5620,31 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                   ({group.employees.length})
                                 </span>
                               </td>
-                              <td colSpan={daysInMonth} />
+                              {Array.from(
+                                { length: daysInMonth },
+                                (_, i) => i + 1
+                              ).map((d) => {
+                                const cDow = new Date(
+                                  currentYear,
+                                  currentMonth - 1,
+                                  d
+                                ).getDay();
+                                const cKind = getDaySpecialKind(
+                                  currentYearMonth,
+                                  d,
+                                  cDow
+                                );
+                                return (
+                                  <td
+                                    key={`corner-div-${group.corner}-${d}`}
+                                    className={`border-r last:border-r-0 ${
+                                      isDark
+                                        ? 'border-white/5'
+                                        : 'border-[#DFD6C7]/70'
+                                    } ${getCornerDividerCellBg(cKind, isDark)}`}
+                                  />
+                                );
+                              })}
                             </tr>
 
                             {!isCollapsed &&
@@ -5465,6 +5720,21 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                       (_, i) => i + 1
                                     ).map((d) => {
                                       const code = emp.days[String(d)] || '';
+                                      const dDow = new Date(
+                                        currentYear,
+                                        currentMonth - 1,
+                                        d
+                                      ).getDay();
+                                      const dKind = getDaySpecialKind(
+                                        currentYearMonth,
+                                        d,
+                                        dDow
+                                      );
+                                      const colBgCls = getMatrixBodyCellBg(
+                                        dKind,
+                                        isDark,
+                                        isMe
+                                      );
                                       const isTodayCol =
                                         todayReal.getFullYear() === currentYear &&
                                         todayReal.getMonth() + 1 === currentMonth &&
@@ -5486,7 +5756,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                           className={`px-0.5 py-1 border-r last:border-r-0 cursor-pointer align-middle ${
                                             isDark
                                               ? 'border-white/5'
-                                              : 'border-[#EDE9E0]'
+                                              : 'border-[#E5DFD3]'
                                           } ${
                                             isTodayCol
                                               ? isDark
@@ -5494,7 +5764,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                                                 : 'bg-amber-100/75 ring-1 ring-inset ring-amber-400'
                                               : isOverlapCell
                                               ? 'bg-rose-500/20 ring-1 ring-inset ring-rose-400'
-                                              : ''
+                                              : colBgCls
                                           }`}
                                         >
                                           {renderCodeBadge(
