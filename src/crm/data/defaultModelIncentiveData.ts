@@ -1,0 +1,3838 @@
+import { ModelIncentivesMap } from '../types/crm';
+
+export const DEFAULT_MODEL_INCENTIVE_SHEETS: ModelIncentivesMap = {
+  "2026-11": {
+    "yearMonth": "2026-11",
+    "updatedAt": "2026-11-02T05:45:00.000Z",
+    "sourceLabel": "모델별_수당단가표_2026-11_완성본.xlsx (442개 모델 기본 탑재)",
+    "rules": [
+      {
+        "id": "NOV26-001",
+        "category": "TV",
+        "modelCode": "115X955MAX",
+        "incentiveAmount": 300000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-002",
+        "category": "TV",
+        "modelCode": "115C7K",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-003",
+        "category": "TV",
+        "modelCode": "85C6K",
+        "incentiveAmount": 80000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-004",
+        "category": "TV",
+        "modelCode": "75C6K",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-005",
+        "category": "TV",
+        "modelCode": "65C6K",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-006",
+        "category": "TV",
+        "modelCode": "55C6K",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-007",
+        "category": "TV",
+        "modelCode": "98C8L",
+        "incentiveAmount": 140000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-008",
+        "category": "TV",
+        "modelCode": "85C8L",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-009",
+        "category": "TV",
+        "modelCode": "75C8L",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-010",
+        "category": "TV",
+        "modelCode": "98C7L",
+        "incentiveAmount": 120000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-011",
+        "category": "TV",
+        "modelCode": "85C7L",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-012",
+        "category": "TV",
+        "modelCode": "75C7L",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-013",
+        "category": "TV",
+        "modelCode": "65C7L",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-014",
+        "category": "TV",
+        "modelCode": "55C7L",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-015",
+        "category": "TV",
+        "modelCode": "98A400M",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-016",
+        "category": "TV",
+        "modelCode": "85A400M",
+        "incentiveAmount": 80000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-017",
+        "category": "TV",
+        "modelCode": "75A400M",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-018",
+        "category": "TV",
+        "modelCode": "65A400M",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-019",
+        "category": "냉장고",
+        "modelCode": "P810CDC",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-020",
+        "category": "냉장고",
+        "modelCode": "P810CDB",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-021",
+        "category": "냉장고",
+        "modelCode": "TRF-460WEXPKRS",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-022",
+        "category": "냉장고",
+        "modelCode": "TRF-650WEX2FBPKR",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-023",
+        "category": "에어컨",
+        "modelCode": "TAC-08CSD/TPH21I",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-024",
+        "category": "에어컨",
+        "modelCode": "TAC-12CSD/TPH21I",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-025",
+        "category": "에어컨",
+        "modelCode": "TAC-08CSD/P7G",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-026",
+        "category": "에어컨",
+        "modelCode": "TAC-12CSD/P7G",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-027",
+        "category": "에어컨",
+        "modelCode": "TAC-24CFV/V7G",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-028",
+        "category": "에어컨",
+        "modelCode": "FMA-28I2CD/DVOG",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "26년 11월 총판건 중 12월 내 실판 완료건 한정 지급 (J코드 제외)"
+      },
+      {
+        "id": "NOV26-029",
+        "category": "김치냉장고",
+        "modelCode": "MNKR-100G",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.11월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-030",
+        "category": "세탁기",
+        "modelCode": "HS3E400-NEK",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.11월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-031",
+        "category": "세탁기",
+        "modelCode": "HS3H400-NMK",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.11월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-032",
+        "category": "TV",
+        "modelCode": "KMR85RH85AFXKR",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-033",
+        "category": "TV",
+        "modelCode": "KMR75RH85AFXKR",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-034",
+        "category": "TV",
+        "modelCode": "KQ83SH90AEXKR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-035",
+        "category": "TV",
+        "modelCode": "KQ77SH90AFXKR",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-036",
+        "category": "TV",
+        "modelCode": "KQ77SH85AEXKR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-037",
+        "category": "TV",
+        "modelCode": "KQ85QNH80AFXKR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-038",
+        "category": "TV",
+        "modelCode": "KQ75QNH80AFXKR",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-039",
+        "category": "TV",
+        "modelCode": "KQ65QNH80AFXKR",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-040",
+        "category": "TV",
+        "modelCode": "KU85MH80AFXKR",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-041",
+        "category": "TV",
+        "modelCode": "KU75MH80AFXKR",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-042",
+        "category": "TV",
+        "modelCode": "KQ100QNF80AFXKR",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-043",
+        "category": "TV",
+        "modelCode": "KQ83SF95AEXKR",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-044",
+        "category": "TV",
+        "modelCode": "KQ83SF90AEXKR",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-045",
+        "category": "TV",
+        "modelCode": "KQ77SF95AFXKR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-046",
+        "category": "TV",
+        "modelCode": "KQ85QNF87AFXKR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-047",
+        "category": "TV",
+        "modelCode": "KQ85QNF85BFXKR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 27.1월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-048",
+        "category": "TV",
+        "modelCode": "OLED83C6FNA.AKRG",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-049",
+        "category": "TV",
+        "modelCode": "OLED77C6FNA.AKRG",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-050",
+        "category": "TV",
+        "modelCode": "86MRGB85BMC.AKRG",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-051",
+        "category": "TV",
+        "modelCode": "85QNED91BKA.AKRQ",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-052",
+        "category": "TV",
+        "modelCode": "75QNED86BKA.AKRG",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-053",
+        "category": "TV",
+        "modelCode": "85QNED86BKA.AKRG",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-054",
+        "category": "TV",
+        "modelCode": "OLED77B4HNA.AKRG",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-055",
+        "category": "TV",
+        "modelCode": "98QNED89TKA.AKRQ",
+        "incentiveAmount": 300000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 포함 지급"
+      },
+      {
+        "id": "NOV26-056",
+        "category": "세탁가전",
+        "modelCode": "FC2521SX6C",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-057",
+        "category": "세탁가전",
+        "modelCode": "FC2521UX6C",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-058",
+        "category": "세탁가전",
+        "modelCode": "FC2521EQ6C",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-059",
+        "category": "세탁가전",
+        "modelCode": "FC2521IQ6C",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26.12월 내 실판 완료된 건 한정, (J)코드 지급 X"
+      },
+      {
+        "id": "NOV26-060",
+        "category": "청소기",
+        "modelCode": "PC91-5IBM",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-061",
+        "category": "청소기",
+        "modelCode": "EFP52212DB",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-062",
+        "category": "청소기",
+        "modelCode": "N95THO.CKOR",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "기간 : 11월 월간\n    ※ 11월 총판 중 11~12월 실판 전환분 한정\n    ※ 온라인 지점 실판건은 실적 미포함\n    ※ 진열 판매 제외"
+      },
+      {
+        "id": "NOV26-063",
+        "category": "청소기",
+        "modelCode": "N95THU.CKOR",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "기간 : 11월 월간\n    ※ 11월 총판 중 11~12월 실판 전환분 한정\n    ※ 온라인 지점 실판건은 실적 미포함\n    ※ 진열 판매 제외"
+      },
+      {
+        "id": "NOV26-064",
+        "category": "청소기",
+        "modelCode": "N95TWU.CKOR",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "기간 : 11월 월간\n    ※ 11월 총판 중 11~12월 실판 전환분 한정\n    ※ 온라인 지점 실판건은 실적 미포함\n    ※ 진열 판매 제외"
+      },
+      {
+        "id": "NOV26-065",
+        "category": "헤어드라이기",
+        "modelCode": "SC1500A",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-066",
+        "category": "구강용품",
+        "modelCode": "WO-200",
+        "incentiveAmount": 8000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-067",
+        "category": "구강용품",
+        "modelCode": "WO-300",
+        "incentiveAmount": 12000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-068",
+        "category": "구강용품",
+        "modelCode": "WO-201",
+        "incentiveAmount": 8000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-069",
+        "category": "공기청정기",
+        "modelCode": "ATTM115_MSK",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-070",
+        "category": "가습기",
+        "modelCode": "WL3M400-KWK",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판 완료 건\n    ※ 온라인 지점 실판건은 실적 미포함 \n    ※ 진열코드 판매건 특당 미지급"
+      },
+      {
+        "id": "NOV26-071",
+        "category": "원액기",
+        "modelCode": "H-400-BFC05MB",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건은 실적 미포함)"
+      },
+      {
+        "id": "NOV26-072",
+        "category": "원액기",
+        "modelCode": "H-400-BFC05SB",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건은 실적 미포함)"
+      },
+      {
+        "id": "NOV26-073",
+        "category": "원액기",
+        "modelCode": "KHS-650SK",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건은 실적 미포함)"
+      },
+      {
+        "id": "NOV26-074",
+        "category": "커피머신",
+        "modelCode": "D113-KR-WH-KIT2",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "11월 내 실판 완료건 /진열 미운영점도 타사 발주 가능"
+      },
+      {
+        "id": "NOV26-075",
+        "category": "커피머신",
+        "modelCode": "D113-KR-BK-KIT2",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "11월 내 실판 완료건 /진열 미운영점도 타사 발주 가능"
+      },
+      {
+        "id": "NOV26-076",
+        "category": "음식물처리기",
+        "modelCode": "QZ-022_PLUS",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-077",
+        "category": "음식물처리기",
+        "modelCode": "MNFD-200G",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-078",
+        "category": "음식물처리기",
+        "modelCode": "MNFD-300G",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-079",
+        "category": "음식물처리기",
+        "modelCode": "CFP-BN303DBIE",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-080",
+        "category": "전기밥솥",
+        "modelCode": "CRT-GPD0641KFI",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-081",
+        "category": "전기밥솥",
+        "modelCode": "CRT-RPD0610TEI",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-082",
+        "category": "전기밥솥",
+        "modelCode": "CRT-RPD1010TEI",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-083",
+        "category": "전기밥솥",
+        "modelCode": "CRT-OPXD0630TETB",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-084",
+        "category": "전기밥솥",
+        "modelCode": "CRT-OPXD1030TETB",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "11월 실판매기준\n(진열 및 온라인지점 실판건 제외)"
+      },
+      {
+        "id": "NOV26-085",
+        "category": "자급제",
+        "modelCode": "POCOX8P/POCOX8PM",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "11월 총판 등록 기준  11월 內 실판 전환 건 한정 지급 \n※ 11월 이전 판매건 재등록 시, 지급 불가\n※ 행사가 판매 조건 (특판 제외)\n※ 특당 지급 모델 상품코드는 자급제 판매가이드 확인"
+      },
+      {
+        "id": "NOV26-086",
+        "category": "자급제",
+        "modelCode": "POCOM85G",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "11월 총판 등록 기준  11월 內 실판 전환 건 한정 지급 \n※ 11월 이전 판매건 재등록 시, 지급 불가\n※ 행사가 판매 조건 (특판 제외)\n※ 특당 지급 모델 상품코드는 자급제 판매가이드 확인"
+      },
+      {
+        "id": "NOV26-087",
+        "category": "자급제",
+        "modelCode": "G57POWER",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "11월 총판 등록 기준  11월 內 실판 전환 건 한정 지급 \n※ 11월 이전 판매건 재등록 시, 지급 불가\n※ 행사가 판매 조건 (특판 제외)\n※ 특당 지급 모델 상품코드는 자급제 판매가이드 확인"
+      },
+      {
+        "id": "NOV26-088",
+        "category": "노트북",
+        "modelCode": "16Z95U-G.AU70K",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-089",
+        "category": "노트북",
+        "modelCode": "16Z95U-G.AS5MK",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-090",
+        "category": "노트북",
+        "modelCode": "16Z95U-G.AS50K",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-091",
+        "category": "노트북",
+        "modelCode": "15Z95U-G.AS50K",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-092",
+        "category": "노트북",
+        "modelCode": "14Z95U-G.AS50K",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-093",
+        "category": "노트북",
+        "modelCode": "16U55U-G.AS50K",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-094",
+        "category": "노트북",
+        "modelCode": "QI9-GR_COVER_PEN_BK",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-095",
+        "category": "노트북",
+        "modelCode": "QZI-00021",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-096",
+        "category": "노트북",
+        "modelCode": "R8N-00046",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-097",
+        "category": "노트북",
+        "modelCode": "XK1-00046",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-098",
+        "category": "노트북",
+        "modelCode": "XKQ-00047",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-099",
+        "category": "노트북",
+        "modelCode": "73231-PL_COVER_BK",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-100",
+        "category": "노트북",
+        "modelCode": "73256-PL_COVER_BK",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-101",
+        "category": "노트북",
+        "modelCode": "73282-BK_COVER_BK",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-102",
+        "category": "노트북",
+        "modelCode": "73334-BK_COVER_BK",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-103",
+        "category": "노트북",
+        "modelCode": "65030-BK_COVER_BK",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-104",
+        "category": "노트북",
+        "modelCode": "65148-BL_COVER_BK",
+        "incentiveAmount": 80000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-105",
+        "category": "노트북",
+        "modelCode": "65397-BK_COVER_BK",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-106",
+        "category": "노트북",
+        "modelCode": "65231-PL_COVER_BK",
+        "incentiveAmount": 120000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-107",
+        "category": "노트북",
+        "modelCode": "EP2-256-PL_COVER_PEN_BK",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-108",
+        "category": "노트북",
+        "modelCode": "EP2-512-PL_COVER_PEN_BK",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-109",
+        "category": "노트북",
+        "modelCode": "EP2-59031",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-110",
+        "category": "노트북",
+        "modelCode": "EP2-59042",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-111",
+        "category": "노트북",
+        "modelCode": "EP2-60098",
+        "incentiveAmount": 80000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-112",
+        "category": "노트북",
+        "modelCode": "EP2-59293",
+        "incentiveAmount": 80000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-113",
+        "category": "노트북",
+        "modelCode": "EP2-59496",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-114",
+        "category": "노트북",
+        "modelCode": "EP2-60136",
+        "incentiveAmount": 90000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-115",
+        "category": "노트북",
+        "modelCode": "EP2-60208",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-116",
+        "category": "노트북",
+        "modelCode": "EP2-60889",
+        "incentiveAmount": 90000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-117",
+        "category": "노트북",
+        "modelCode": "EP2-36997",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-118",
+        "category": "노트북",
+        "modelCode": "EP2-31941",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-119",
+        "category": "노트북",
+        "modelCode": "ZGJ-00021",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-120",
+        "category": "노트북",
+        "modelCode": "ZGM-00057",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-121",
+        "category": "노트북",
+        "modelCode": "ZGM-00075",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-122",
+        "category": "노트북",
+        "modelCode": "ZGM-00078",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-123",
+        "category": "노트북",
+        "modelCode": "ZGP-00057",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-124",
+        "category": "노트북",
+        "modelCode": "ZGP-00075",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-125",
+        "category": "노트북",
+        "modelCode": "ZGP-00078",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월  총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / (J)코드 미포함 양품코드 한정 지급"
+      },
+      {
+        "id": "NOV26-126",
+        "category": "노트북",
+        "modelCode": "SLIM1-15ALC",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-127",
+        "category": "노트북",
+        "modelCode": "SLIM1-15ALC7_WIN11",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-128",
+        "category": "노트북",
+        "modelCode": "SLIM3-15IAH",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-129",
+        "category": "노트북",
+        "modelCode": "LENOVO_LOQ_15ARP9",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-130",
+        "category": "노트북",
+        "modelCode": "ANV16-41-R170",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-131",
+        "category": "노트북",
+        "modelCode": "ANV16S-41-R85L",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-132",
+        "category": "노트북",
+        "modelCode": "ANV16S-41-R6ZQ",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-133",
+        "category": "노트북",
+        "modelCode": "MSI-CYBORG-C5_WIN11",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-134",
+        "category": "노트북",
+        "modelCode": "RAIDER-18-HX-AI-A2XWIG-809KR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-135",
+        "category": "노트북",
+        "modelCode": "VECTOR-17-HX-AI-A2XWJG-060KR",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-136",
+        "category": "노트북",
+        "modelCode": "MSI-PRESTIGE-N16-SPK-32GB",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-137",
+        "category": "노트북",
+        "modelCode": "MSI-PRESTIGE-N16-SPK-64GB",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-138",
+        "category": "노트북",
+        "modelCode": "MSI-PRESTIGE-N16-SPK-128GB",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-139",
+        "category": "노트북",
+        "modelCode": "15-EH3057AU",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-140",
+        "category": "노트북",
+        "modelCode": "14-EM0144AU",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-141",
+        "category": "노트북",
+        "modelCode": "15-EG3106TU",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-142",
+        "category": "노트북",
+        "modelCode": "16-XF0062AX",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-143",
+        "category": "노트북",
+        "modelCode": "17-CM2015TX",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 지급"
+      },
+      {
+        "id": "NOV26-144",
+        "category": "데스크탑",
+        "modelCode": "27-CY0007KR_HM",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 / 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-145",
+        "category": "태블릿PC",
+        "modelCode": "AINOTE_AIR2",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-146",
+        "category": "태블릿PC",
+        "modelCode": "IFLYTEK_AINOTE2",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-147",
+        "category": "프린터",
+        "modelCode": "G2915",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-148",
+        "category": "프린터",
+        "modelCode": "G3980",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-149",
+        "category": "프린터",
+        "modelCode": "G4911",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-150",
+        "category": "프린터",
+        "modelCode": "E3490",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-151",
+        "category": "프린터",
+        "modelCode": "MF6697CX",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "note": "지급기준 : 26년 11월 총판 건 중 26년 11월 내 실판 완료된 건 한정\n온라인 지점 실판건은 실적 미포함 진열코드 미지급"
+      },
+      {
+        "id": "NOV26-152",
+        "category": "전기레인지",
+        "modelCode": "CIR-KS302FB",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-153",
+        "category": "전기레인지",
+        "modelCode": "CIR-JS301FW",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-154",
+        "category": "전기레인지",
+        "modelCode": "CIR-GSFF302FW",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-155",
+        "category": "전기레인지",
+        "modelCode": "CIR-HS302FB",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-156",
+        "category": "전기레인지",
+        "modelCode": "CIR-M301FB",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-157",
+        "category": "전기레인지",
+        "modelCode": "CIR-HP302FB",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-158",
+        "category": "전기레인지",
+        "modelCode": "CIR-CLT301FG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-159",
+        "category": "전기레인지",
+        "modelCode": "CIHR-FL306FB",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-160",
+        "category": "전기레인지",
+        "modelCode": "CIHR-F302HFB",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-161",
+        "category": "전기레인지",
+        "modelCode": "CIR-F302FB",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-162",
+        "category": "전기레인지",
+        "modelCode": "CIHR-HLT313HFS",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "3구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-163",
+        "category": "전기레인지",
+        "modelCode": "CIR-EFF101FW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "1구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-164",
+        "category": "전기레인지",
+        "modelCode": "CIR-CFF102FB",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "1구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-165",
+        "category": "전기레인지",
+        "modelCode": "CHR-D101FB",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "1구 인덕션 레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-166",
+        "category": "가스레인지",
+        "modelCode": "CGC-CFF301SGW",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-167",
+        "category": "가스레인지",
+        "modelCode": "CGC-CFF301SDS",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-168",
+        "category": "가스레인지",
+        "modelCode": "CGC-CFF302SGW",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-169",
+        "category": "가스레인지",
+        "modelCode": "CGC-CFF302SDS",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-170",
+        "category": "가스레인지",
+        "modelCode": "CGC-BFF201SGW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-171",
+        "category": "가스레인지",
+        "modelCode": "CGC-BFF201SDS",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-172",
+        "category": "가스레인지",
+        "modelCode": "CGC-BFF202SGW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-173",
+        "category": "가스레인지",
+        "modelCode": "CGC-BFF202SDS",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "가스레인지",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-174",
+        "category": "김치냉장고",
+        "modelCode": "CKR-DFFD1830MGW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "김치냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-175",
+        "category": "김치냉장고",
+        "modelCode": "CKR-CFFL630NW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "김치냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-176",
+        "category": "김치냉장고",
+        "modelCode": "CKR-BFFD1230GEG",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "김치냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-177",
+        "category": "냉장고",
+        "modelCode": "CRG-CR4830MEW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품·출시예정, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-178",
+        "category": "냉장고",
+        "modelCode": "CRG-BT5630MEW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-179",
+        "category": "냉장고",
+        "modelCode": "CRG-ET3110MEW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-180",
+        "category": "냉장고",
+        "modelCode": "CRG-AT5110MS",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-181",
+        "category": "냉장고",
+        "modelCode": "CRG-CR4810MS",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉장고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-182",
+        "category": "냉동고",
+        "modelCode": "CFZ-DL1010MW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉동고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품·출시예정, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-183",
+        "category": "냉동고",
+        "modelCode": "CFZ-CF2310MS",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉동고",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-184",
+        "category": "레인지후드",
+        "modelCode": "CRH-ACE900ASC",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "레인지후드",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-185",
+        "category": "레인지후드",
+        "modelCode": "CRH-ACE900ASWC",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "레인지후드",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-186",
+        "category": "레인지후드",
+        "modelCode": "CRH-ACE900BSC",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "레인지후드",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-187",
+        "category": "레인지후드",
+        "modelCode": "CRH-ACE900BSWC",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "레인지후드",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-188",
+        "category": "식기세척기",
+        "modelCode": "CDW-CSFF1410BW",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-189",
+        "category": "식기세척기",
+        "modelCode": "CDW-BSGL14BWE",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-190",
+        "category": "식기세척기",
+        "modelCode": "CDW-BSGL14BGIE",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-191",
+        "category": "식기세척기",
+        "modelCode": "CDW-BSST14BWE",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-192",
+        "category": "식기세척기",
+        "modelCode": "CDW-BSST14BGIE",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-193",
+        "category": "식기세척기",
+        "modelCode": "CDW-DGL06TGIE",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-194",
+        "category": "식기세척기",
+        "modelCode": "CDW-CS0620TGWE",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-195",
+        "category": "식기세척기",
+        "modelCode": "CDW-CS0620TWE",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-196",
+        "category": "식기세척기",
+        "modelCode": "CDW-CS0620TGPE",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "식기세척기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-197",
+        "category": "음식물처리기",
+        "modelCode": "CFD-FFF301DCGW",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "음식물처리기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-198",
+        "category": "음식물처리기",
+        "modelCode": "CFD-EFF301DCGW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "음식물처리기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-199",
+        "category": "음식물처리기",
+        "modelCode": "CFD-DDC305NW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "음식물처리기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-200",
+        "category": "전기그릴",
+        "modelCode": "CFR-332FFDG",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "양면멀티그릴",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-201",
+        "category": "프라이팬",
+        "modelCode": "CFP-SF2410H",
+        "incentiveAmount": 2000,
+        "saleTypeFilter": "all",
+        "productName": "기물(프라이팬)",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-202",
+        "category": "프라이팬",
+        "modelCode": "CFP-SF2810H",
+        "incentiveAmount": 2000,
+        "saleTypeFilter": "all",
+        "productName": "기물(프라이팬)",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-203",
+        "category": "프라이팬",
+        "modelCode": "COP-SF2810H",
+        "incentiveAmount": 2000,
+        "saleTypeFilter": "all",
+        "productName": "기물(프라이팬)",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-204",
+        "category": "블렌더",
+        "modelCode": "CFM-G211CW",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "블렌더",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-205",
+        "category": "블렌더",
+        "modelCode": "CFM-RC0410GB",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "블렌더",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-206",
+        "category": "블렌더",
+        "modelCode": "CFM-LF200XG",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "블렌더",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-207",
+        "category": "블렌더",
+        "modelCode": "CFM-H200XB",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "블렌더",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-208",
+        "category": "블렌더",
+        "modelCode": "CFM-JFF150AW",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "블렌더",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-209",
+        "category": "블렌더",
+        "modelCode": "CFM-KCFF30HG",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "블렌더",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-210",
+        "category": "두유제조기",
+        "modelCode": "CNM-ANL1000W",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "두유제조기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-211",
+        "category": "전기오븐",
+        "modelCode": "CMW-MOT2510TW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "전기오븐",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-212",
+        "category": "전기오븐",
+        "modelCode": "CMW-TV2210EW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "전기오븐",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품·출시예정, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-213",
+        "category": "전기오븐",
+        "modelCode": "CMW-KO2510EW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "전기오븐",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-214",
+        "category": "전기오븐",
+        "modelCode": "CMW-C3020OEGW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "전기오븐",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-215",
+        "category": "전기주전자",
+        "modelCode": "CK-C170TW",
+        "incentiveAmount": 1000,
+        "saleTypeFilter": "all",
+        "productName": "전기주전자",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-216",
+        "category": "전기주전자",
+        "modelCode": "CK-E170TS",
+        "incentiveAmount": 1000,
+        "saleTypeFilter": "all",
+        "productName": "전기주전자",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-217",
+        "category": "에어프라이어",
+        "modelCode": "CAFO-E1810EGW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "에어프라이어",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-218",
+        "category": "에어프라이어",
+        "modelCode": "CAF-Q0710EW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "에어프라이어",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (2026 신제품, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-219",
+        "category": "에어프라이어",
+        "modelCode": "CAF-E0820TB",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "에어프라이어",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-220",
+        "category": "에어프라이어",
+        "modelCode": "CAF-L0410EW",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "에어프라이어",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-221",
+        "category": "가습기",
+        "modelCode": "CH-HSFF701FW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "가습기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (계절가전, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-222",
+        "category": "가습기",
+        "modelCode": "CH-MSFF301FW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "가습기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (계절가전, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-223",
+        "category": "가습기",
+        "modelCode": "CH-G0320FW",
+        "incentiveAmount": 3000,
+        "saleTypeFilter": "all",
+        "productName": "가습기",
+        "note": "26년 11월 쿠쿠전자 집중 판매 품목 (계절가전, 전체 수당 현금 / 진열판매분 수당지급 제외)"
+      },
+      {
+        "id": "NOV26-224",
+        "category": "에어컨",
+        "modelCode": "PLX-RAC07AG1WH",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "인버터 7형평 벽걸이 냉방기",
+        "note": "26년 11월 판매수당 [11/1~11/30] (PLUX x BMS)"
+      },
+      {
+        "id": "NOV26-225",
+        "category": "에어컨",
+        "modelCode": "PLX-HAC0725CHWH",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "인버터 7형평 벽걸이 냉난방기",
+        "note": "26년 11월 판매수당 [11/1~11/30] (PLUX x BMS)"
+      },
+      {
+        "id": "NOV26-226",
+        "category": "세탁기",
+        "modelCode": "PLX-WM10ACGY",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "10Kg 세탁기",
+        "note": "26년 11월 판매수당 [11/1~11/30] (PLUX x BMS)"
+      },
+      {
+        "id": "NOV26-227",
+        "category": "TV",
+        "modelCode": "PLX-TV75QLBK",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "75형 4K 구글 QLED TV",
+        "note": "26년 11월 판매수당 [11/1~11/30] (PLUX x BMS)"
+      },
+      {
+        "id": "NOV26-228",
+        "category": "안마의자",
+        "modelCode": "ZPC2221(T)",
+        "incentiveAmount": 500000,
+        "saleTypeFilter": "all",
+        "productName": "모멘티아 안마의자",
+        "note": "11월 제스파 실판매자 수당 (신세계 모바일 상품권 50만원 / 익월 31일 카톡 증정)"
+      },
+      {
+        "id": "NOV26-229",
+        "category": "안마의자",
+        "modelCode": "ZPC2201(T)",
+        "incentiveAmount": 500000,
+        "saleTypeFilter": "all",
+        "productName": "셀라제 안마의자",
+        "note": "11월 제스파 실판매자 수당 (신세계 모바일 상품권 50만원 / 익월 31일 카톡 증정)"
+      },
+      {
+        "id": "NOV26-230",
+        "category": "안마의자",
+        "modelCode": "ZPC3236(T)",
+        "incentiveAmount": 500000,
+        "saleTypeFilter": "all",
+        "productName": "포레체 안마의자",
+        "note": "11월 제스파 실판매자 수당 (신세계 모바일 상품권 50만원 / 익월 31일 카톡 증정)"
+      },
+      {
+        "id": "NOV26-231",
+        "category": "안마의자",
+        "modelCode": "ZPC3800(T)",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "productName": "더 퍼스트 클래스 안마의자",
+        "note": "11월 제스파 실판매자 수당 (하이마트 전용 모델 / 신세계 모바일 상품권 20만원 / 익월 31일 카톡 증정)"
+      },
+      {
+        "id": "NOV26-232",
+        "category": "청소기",
+        "modelCode": "X60 Ultra",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "드리미 로봇청소기 X60 Ultra",
+        "note": "11/1~11/30 실판기준 (11월내 출고완료조건 / 말일자 판매건 익월 1일 출고 인정 / 매출정정·취소건 익월 5일 수량마감)"
+      },
+      {
+        "id": "NOV26-233",
+        "category": "청소기",
+        "modelCode": "X60 Master",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "드리미 로봇청소기 X60 Master",
+        "note": "11/1~11/30 실판기준 (11월내 출고완료조건 / 말일자 판매건 익월 1일 출고 인정 / 매출정정·취소건 익월 5일 수량마감)"
+      },
+      {
+        "id": "NOV26-234",
+        "category": "청소기",
+        "modelCode": "Aqua10 Ultra",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "드리미 로봇청소기 Aqua10 Ultra",
+        "note": "11/1~11/30 실판기준 (11월내 출고완료조건 / 말일자 판매건 익월 1일 출고 인정 / 매출정정·취소건 익월 5일 수량마감)"
+      },
+      {
+        "id": "NOV26-235",
+        "category": "청소기",
+        "modelCode": "S10 MaxV Ultra",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "로보락 로봇청소기 (기본/Steam 모델)",
+        "note": "11/1~11/30 실판 기준"
+      },
+      {
+        "id": "NOV26-236",
+        "category": "청소기",
+        "modelCode": "Saros Z70 실버 (일반형)",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "로보락 로봇청소기 일반형",
+        "note": "11/1~11/30 실판 기준 (일반형 30,000원)"
+      },
+      {
+        "id": "NOV26-237",
+        "category": "청소기",
+        "modelCode": "Saros Z70 실버 (직배수형)",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "productName": "로보락 로봇청소기 직배수형",
+        "note": "11/1~11/30 실판 기준 (직배수형 60,000원)"
+      },
+      {
+        "id": "NOV26-238",
+        "category": "청소기",
+        "modelCode": "H60 Hub Ultra",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "productName": "로보락 건습식청소기",
+        "note": "11/1~11/30 실판 기준"
+      },
+      {
+        "id": "NOV26-239",
+        "category": "세탁기",
+        "modelCode": "Zeo X",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "올인원 세탁 건조기 (세탁 11kg/건조 6kg)",
+        "note": "11/1~11/30 실판 기준 (신제품)"
+      },
+      {
+        "id": "NOV26-240",
+        "category": "세탁기",
+        "modelCode": "H1",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "올인원 세탁 건조기 (세탁 10kg/건조 6kg)",
+        "note": "11/1~11/30 실판 기준"
+      },
+      {
+        "id": "NOV26-241",
+        "category": "세탁기",
+        "modelCode": "H1 LITE",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "올인원 세탁 건조기 (세탁 10kg/건조 6kg)",
+        "note": "11/1~11/30 실판 기준 (전월 대비 2만원 인상)"
+      },
+      {
+        "id": "NOV26-242",
+        "category": "청소기",
+        "modelCode": "RVD120X1KRWH",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 로봇청소기",
+        "note": "샤크/닌자 11월 수당안 (신모델)"
+      },
+      {
+        "id": "NOV26-243",
+        "category": "청소기",
+        "modelCode": "IW5271KRWH",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 무선청소기",
+        "note": "히어로, 전도금 시상 모델 ※ 3대 이상 판매점만 실판 적용"
+      },
+      {
+        "id": "NOV26-244",
+        "category": "청소기",
+        "modelCode": "LC951KRSN",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 무선청소기",
+        "note": "전도금 시상 모델 ※ 3대 이상 판매점만 실판 적용"
+      },
+      {
+        "id": "NOV26-245",
+        "category": "청소기",
+        "modelCode": "IW4271KRCP",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 무선청소기",
+        "note": "전도금 시상 모델 ※ 3대 이상 판매점만 실판 적용"
+      },
+      {
+        "id": "NOV26-246",
+        "category": "청소기",
+        "modelCode": "IW4271KRBK",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 무선청소기",
+        "note": "히어로, 전도금 시상 모델 ※ 3대 이상 판매점만 실판 적용"
+      },
+      {
+        "id": "NOV26-247",
+        "category": "청소기",
+        "modelCode": "IW3241KR",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 무선청소기",
+        "note": "샤크/닌자 11월 수당안 (단종)"
+      },
+      {
+        "id": "NOV26-248",
+        "category": "청소기",
+        "modelCode": "LC351KR",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "샤크 무선청소기",
+        "note": "샤크/닌자 11월 수당안 (단종)"
+      },
+      {
+        "id": "NOV26-249",
+        "category": "에어프라이어",
+        "modelCode": "FN100KRGY",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 에어프라이어",
+        "note": "샤크/닌자 11월 수당안"
+      },
+      {
+        "id": "NOV26-250",
+        "category": "에어프라이어",
+        "modelCode": "FN100KRGN",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 에어프라이어",
+        "note": "샤크/닌자 11월 수당안"
+      },
+      {
+        "id": "NOV26-251",
+        "category": "에어프라이어",
+        "modelCode": "FN100KRSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 에어프라이어",
+        "note": "샤크/닌자 11월 수당안"
+      },
+      {
+        "id": "NOV26-252",
+        "category": "블렌더",
+        "modelCode": "TB201KR",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 블렌더",
+        "note": "샤크/닌자 11월 수당안 (하이라이트)"
+      },
+      {
+        "id": "NOV26-253",
+        "category": "블렌더",
+        "modelCode": "TB401KR",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 블렌더",
+        "note": "샤크/닌자 11월 수당안"
+      },
+      {
+        "id": "NOV26-254",
+        "category": "블렌더",
+        "modelCode": "BN500KR",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 블렌더",
+        "note": "샤크/닌자 11월 수당안 (히어로)"
+      },
+      {
+        "id": "NOV26-255",
+        "category": "블렌더",
+        "modelCode": "BC251KR",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "닌자 무선 블렌더",
+        "note": "샤크/닌자 11월 수당안"
+      },
+      {
+        "id": "NOV26-256",
+        "category": "냉장고",
+        "modelCode": "SFNSDH5267",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "productName": "리페르 Prime 냉장고",
+        "note": "Liebherr 11월 실판매수당 (SRBSDH5260과 Set 판매 시 총 300,000원)"
+      },
+      {
+        "id": "NOV26-257",
+        "category": "냉동고",
+        "modelCode": "SRBSDH5260",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "productName": "리페르 Prime 냉동고",
+        "note": "Liebherr 11월 실판매수당 (SFNSDH5267과 Set 판매 시 총 300,000원)"
+      },
+      {
+        "id": "NOV26-258",
+        "category": "냉장고",
+        "modelCode": "SFNSDH5227",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "productName": "리페르 Plus 냉장고",
+        "note": "Liebherr 11월 실판매수당 (SRSDH5220과 Set 판매 시 총 300,000원)"
+      },
+      {
+        "id": "NOV26-259",
+        "category": "냉동고",
+        "modelCode": "SRSDH5220",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "productName": "리페르 Plus 냉동고",
+        "note": "Liebherr 11월 실판매수당 (SFNSDH5227과 Set 판매 시 총 300,000원)"
+      },
+      {
+        "id": "NOV26-260",
+        "category": "냉장고",
+        "modelCode": "SCNSDH5253",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "리페르 Combi 콤비(냉장/냉동고)",
+        "note": "Liebherr 11월 실판매수당"
+      },
+      {
+        "id": "NOV26-261",
+        "category": "에어컨",
+        "modelCode": "EARP-0071GAWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 인버터 (실내기: EARP-0071GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (히어로 모델)"
+      },
+      {
+        "id": "NOV26-262",
+        "category": "에어컨",
+        "modelCode": "EARP-0091GAWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 인버터 (실내기: EARP-0091GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-263",
+        "category": "에어컨",
+        "modelCode": "EARP-0121GAWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 인버터 (실내기: EARP-0121GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (하이라이트 모델)"
+      },
+      {
+        "id": "NOV26-264",
+        "category": "에어컨",
+        "modelCode": "EARP-0141GAWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 인버터 (실내기: EARP-0141GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-265",
+        "category": "에어컨",
+        "modelCode": "EARP-0161GAWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 인버터 (실내기: EARP-0161GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-266",
+        "category": "에어컨",
+        "modelCode": "ARQ07VA",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 1등급 (실내기: ARQ07VAI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-267",
+        "category": "에어컨",
+        "modelCode": "ARQ09VA",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 1등급 (실내기: ARQ09VAI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-268",
+        "category": "에어컨",
+        "modelCode": "ARQ11VA",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 RAC 1등급 (실내기: ARQ11VAI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-269",
+        "category": "에어컨",
+        "modelCode": "ESQC163XAWWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC X (실내기: ESQC163XAWWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-270",
+        "category": "에어컨",
+        "modelCode": "ESQD183XAWWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC X (실내기: ESQD183XAWWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-271",
+        "category": "에어컨",
+        "modelCode": "ESQD233XAWWSD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC X (실내기: ESQD233XAWWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-272",
+        "category": "에어컨",
+        "modelCode": "ESQC161AAWWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC A (실내기: ESQC161AAWWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-273",
+        "category": "에어컨",
+        "modelCode": "ESQC181AAWWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC A (실내기: ESQC181AAWWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (하이라이트 모델)"
+      },
+      {
+        "id": "NOV26-274",
+        "category": "에어컨",
+        "modelCode": "ESQC231AAWWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC A (실내기: ESQC231AAWWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-275",
+        "category": "에어컨",
+        "modelCode": "AASQ-0161RAASD",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC OPUS (실내기: AASQ-0161RAASDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-276",
+        "category": "에어컨",
+        "modelCode": "AASQ-0181RAASD",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC OPUS (실내기: AASQ-0181RAASDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-277",
+        "category": "에어컨",
+        "modelCode": "AASQ-0231RAASD",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 SPAC OPUS (실내기: AASQ-0231RAASDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-278",
+        "category": "에어컨",
+        "modelCode": "EAMQ-0902LAWSD",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 단상 (실내기: EAMQ-0902LAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-279",
+        "category": "에어컨",
+        "modelCode": "EAMQ-1101EAWSD",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 단상 (실내기: EAMQ-1101EAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-280",
+        "category": "에어컨",
+        "modelCode": "DAMQ-1101EAWSD",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 단상 (실내기: DAMQ-1101EAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-281",
+        "category": "에어컨",
+        "modelCode": "EAMQ-1101KAWSX",
+        "incentiveAmount": 200000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 삼상 (실내기: EAMQ-1101KAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (단종 소진)"
+      },
+      {
+        "id": "NOV26-282",
+        "category": "에어컨",
+        "modelCode": "EAMQ-1452KAWSX",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 삼상 (실내기: EAMQ-1452KAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-283",
+        "category": "에어컨",
+        "modelCode": "DALQ-2303LAWSX",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 삼상 (실내기: DALQ-2303LAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-284",
+        "category": "에어컨",
+        "modelCode": "DALQ-2903LAWSX",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 LPAC 삼상 (실내기: DALQ-2903LAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-285",
+        "category": "에어컨",
+        "modelCode": "DATQ-0851GAWSD",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 천장형 4Way (실내기: DATQ-0851GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-286",
+        "category": "에어컨",
+        "modelCode": "DATQ-1101GAWSXT",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 천장형 4Way (실내기: DATQ-1101GAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-287",
+        "category": "에어컨",
+        "modelCode": "DATQ-1451GAWSXT",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "냉난방기 천장형 4Way (실내기: DATQ-1451GAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-288",
+        "category": "에어컨",
+        "modelCode": "EARB-0062GDWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 인버터 (실내기: EARB-0062GDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-289",
+        "category": "에어컨",
+        "modelCode": "EARB-0082GDWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 인버터 (실내기: EARB-0082GDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-290",
+        "category": "에어컨",
+        "modelCode": "EARB-0102GDWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 인버터 (실내기: EARB-0102GDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-291",
+        "category": "에어컨",
+        "modelCode": "EARB-0132GDWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 인버터 (실내기: EARB-0132GDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-292",
+        "category": "에어컨",
+        "modelCode": "EARB-0162GDWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 인버터 (실내기: EARB-0162GDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-293",
+        "category": "에어컨",
+        "modelCode": "EARB-0061GAWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 1등급 (실내기: EARB-0061GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-294",
+        "category": "에어컨",
+        "modelCode": "EARB-0101GAWSD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 RAC 1등급 (실내기: EARB-0101GAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-295",
+        "category": "에어컨",
+        "modelCode": "EAMB-0702QDWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC QM (실내기: EAMB-0702QDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (단종 소진)"
+      },
+      {
+        "id": "NOV26-296",
+        "category": "에어컨",
+        "modelCode": "EAMB-0702QDWMD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC QM (실내기: EAMB-0702QDWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (단종 소진)"
+      },
+      {
+        "id": "NOV26-297",
+        "category": "에어컨",
+        "modelCode": "EAMB-0772QDWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC QM (실내기: EAMB-0772QDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (단종 소진)"
+      },
+      {
+        "id": "NOV26-298",
+        "category": "에어컨",
+        "modelCode": "EAMB-0772QDWMD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC QM (실내기: EAMB-0772QDWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-299",
+        "category": "에어컨",
+        "modelCode": "EAMB-0852QDWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC QM (실내기: EAMB-0852QDWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-300",
+        "category": "에어컨",
+        "modelCode": "EAMB-0852QDWMD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC QM (실내기: EAMB-0852QDWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-301",
+        "category": "에어컨",
+        "modelCode": "EASB-0183XAWMDG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC X (실내기: EASB-0183XAWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (단종 소진)"
+      },
+      {
+        "id": "NOV26-302",
+        "category": "에어컨",
+        "modelCode": "EASB-0161AAWMDG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC A (실내기: EASB-0161AAWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (히어로 모델)"
+      },
+      {
+        "id": "NOV26-303",
+        "category": "에어컨",
+        "modelCode": "EASB-0181AAWMDG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC A (실내기: EASB-0181AAWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-304",
+        "category": "에어컨",
+        "modelCode": "EASB-0231AAWMDG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC A (실내기: EASB-0231AAWMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-305",
+        "category": "에어컨",
+        "modelCode": "EASB-0181RAAMDG",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC OPUS (실내기: EASB-0181RAAMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-306",
+        "category": "에어컨",
+        "modelCode": "EASB-0181RHAMDG",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 SPAC 1등급 (실내기: EASB-0181RHAMDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-307",
+        "category": "에어컨",
+        "modelCode": "DAMC-1101EAWSD",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 LPAC 단상 (실내기: DAMC-1101EAWSDI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-308",
+        "category": "에어컨",
+        "modelCode": "DAMC-1451EAWSX",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 LPAC 삼상 (실내기: DAMC-1451EAWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-309",
+        "category": "에어컨",
+        "modelCode": "DLCF2301LAWWSX",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 LPAC 삼상 (실내기: DLCF2301LAWWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-310",
+        "category": "에어컨",
+        "modelCode": "DLCF2901LAWWSX",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "냉방기 LPAC 삼상 (실내기: DLCF2901LAWWSXI)",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-311",
+        "category": "에어컨",
+        "modelCode": "CAWB-0061YAWSD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "창문형 냉방기",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급"
+      },
+      {
+        "id": "NOV26-312",
+        "category": "제습기",
+        "modelCode": "CDHB-200AXLWWXH",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "캐리어 제습기",
+        "note": "캐리어 11월 수당안 ※실판 기준 / 싱글 동일 지급 (하이라이트 모델)"
+      },
+      {
+        "id": "NOV26-313",
+        "category": "세탁가전",
+        "modelCode": "MD200H100B_WW-KRH",
+        "incentiveAmount": 25000,
+        "saleTypeFilter": "all",
+        "productName": "10kg 건조기",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-314",
+        "category": "세탁기",
+        "modelCode": "MF200W120B_WW-KRH",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "12kg 드럼세탁기",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-315",
+        "category": "세탁기",
+        "modelCode": "MA512W150D_WK-KR",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "15kg 통돌이세탁기(1등급)",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-316",
+        "category": "세탁기",
+        "modelCode": "MA512W190D_WK-KR",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "19kg 통돌이세탁기(1등급)",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-317",
+        "category": "세탁기",
+        "modelCode": "MF110W100B_WW-KR",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "10kg 드럼세탁기",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-318",
+        "category": "세탁가전",
+        "modelCode": "MD110H80_WW-KR",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "8kg 건조기",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-319",
+        "category": "세탁기",
+        "modelCode": "MF210D150WB_WK-KR",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "15kg+9kg 일체형 세탁건조기",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-320",
+        "category": "냉장고",
+        "modelCode": "MDRS791MYF46H",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "592L 양문형냉장고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-321",
+        "category": "냉장고",
+        "modelCode": "MDRB424FGO50H",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "302L 콤비냉장고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-322",
+        "category": "냉동고",
+        "modelCode": "MDRU385FEG21H",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "272L 냉동고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-323",
+        "category": "냉장고",
+        "modelCode": "MDRD502FGO21H",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "362L 냉장고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-324",
+        "category": "냉장고",
+        "modelCode": "MDRS925FGO50",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "698L 양문형냉장고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-325",
+        "category": "냉장고",
+        "modelCode": "MDRM923FGO50",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "657L 4도어냉장고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-326",
+        "category": "냉동고",
+        "modelCode": "MDRU255FEG01",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "178L 6단 저온냉동고",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-327",
+        "category": "전기오븐",
+        "modelCode": "MTO2300WH",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "23L 복합오븐",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-328",
+        "category": "전자레인지",
+        "modelCode": "MMOP02OK-AMPBWH",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "23L 무회전 전자레인지",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-329",
+        "category": "에어컨",
+        "modelCode": "MSEZ-06CN8-1A_Set",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "6평 1등급 벽걸이에어컨",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-330",
+        "category": "에어컨",
+        "modelCode": "MSEZ-08CN8-1A_Set",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "8평 1등급 벽걸이에어컨",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-331",
+        "category": "에어컨",
+        "modelCode": "MSEZ-10CN8-1A_Set",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "10평 1등급 벽걸이에어컨",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-332",
+        "category": "에어컨",
+        "modelCode": "MSEF-06CN8-5A_SET",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "6평 5등급 벽걸이에어컨",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-333",
+        "category": "에어컨",
+        "modelCode": "MSLL-17_6CN8-1B_SET",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "17평+6평 1등급 2in1 에어컨",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-334",
+        "category": "에어컨",
+        "modelCode": "MSLL-17CN8-1B_Set",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "17평 1등급 스탠드에어컨",
+        "note": "11/1~11/30 실판매 조건 (판매사원 개인별/상품군별 합산 2대 이상 판매 시 전액 지급)"
+      },
+      {
+        "id": "NOV26-335",
+        "category": "TV",
+        "modelCode": "DEC75G100",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "DEC Google TV 75형",
+        "note": "11월 판매수당 (구독상품 판매 시 대당 +1만원 상품권 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-336",
+        "category": "TV",
+        "modelCode": "DEC65G100",
+        "incentiveAmount": 60000,
+        "saleTypeFilter": "all",
+        "productName": "DEC Google TV 65형",
+        "note": "11월 판매수당 (구독상품 판매 시 대당 +1만원 상품권 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-337",
+        "category": "TV",
+        "modelCode": "DEC55QG",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "DEC QLED Google TV 55형",
+        "note": "11월 판매수당 (하이마트 행사모델 / 구독상품 판매 시 대당 +1만원 상품권 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-338",
+        "category": "TV",
+        "modelCode": "DEC55G100",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "DEC Google TV 55형",
+        "note": "11월 판매수당 (단종예정·추가 입고 없음 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-339",
+        "category": "TV",
+        "modelCode": "DEC50U100",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "DEC 일반 UHD TV 50형",
+        "note": "11월 판매수당 (할인 특가 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-340",
+        "category": "TV",
+        "modelCode": "DEC40F100",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "DEC 일반 FHD TV 40형",
+        "note": "11월 판매수당 (POG 모델 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-341",
+        "category": "TV",
+        "modelCode": "DEC32H100",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "DEC 일반 HD TV 32형",
+        "note": "11월 판매수당 (할인 특가 / 첫 판매 상품권 1만원 지급 ※담당 영수증 전송)"
+      },
+      {
+        "id": "NOV26-342",
+        "category": "정수기",
+        "modelCode": "CP-AQS100",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "얼음정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-343",
+        "category": "정수기",
+        "modelCode": "CP-AHSC100",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "얼음정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-344",
+        "category": "정수기",
+        "modelCode": "CP-AHS101",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "얼음정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-345",
+        "category": "정수기",
+        "modelCode": "CP-AHS100",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "얼음정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-346",
+        "category": "정수기",
+        "modelCode": "CP-SS100",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "얼음정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-347",
+        "category": "정수기",
+        "modelCode": "CP-AMS100",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-348",
+        "category": "정수기",
+        "modelCode": "CP-ABSC100GW_R",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (하이마트 구독 상품용)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 매입확정분 기준 / 하이마트 구독 상품용 코드 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-349",
+        "category": "정수기",
+        "modelCode": "CP-ABSC100GP_R",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (하이마트 구독 상품용)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 매입확정분 기준 / 하이마트 구독 상품용 코드 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-350",
+        "category": "정수기",
+        "modelCode": "CP-ABS100GPN_R",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (하이마트 구독 상품용)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 매입확정분 기준 / 하이마트 구독 상품용 코드 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-351",
+        "category": "정수기",
+        "modelCode": "CP-ABS100GWT_R",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (하이마트 구독 상품용)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 매입확정분 기준 / 하이마트 구독 상품용 코드 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-352",
+        "category": "정수기",
+        "modelCode": "CP-ABSC100",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-353",
+        "category": "정수기",
+        "modelCode": "CP-ABS100",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-354",
+        "category": "정수기",
+        "modelCode": "CP-TS100",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-355",
+        "category": "정수기",
+        "modelCode": "CP-AAS100",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-356",
+        "category": "정수기",
+        "modelCode": "CP-AK011",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-357",
+        "category": "정수기",
+        "modelCode": "CP-AKS011",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (셀프 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-358",
+        "category": "정수기",
+        "modelCode": "CP-W602SW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (방문)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (방문 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-359",
+        "category": "정수기",
+        "modelCode": "CP-AF1601SW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "정수기 (방문)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (방문 기준, [현금] 매입확정분 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-360",
+        "category": "공기청정기",
+        "modelCode": "AC-28AHFF20FNW",
+        "incentiveAmount": 35000,
+        "saleTypeFilter": "all",
+        "productName": "공기청정기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-361",
+        "category": "공기청정기",
+        "modelCode": "AC-35U20FWGH",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "공기청정기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-362",
+        "category": "공기청정기",
+        "modelCode": "AC-20TV20FNG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "공기청정기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-363",
+        "category": "공기청정기",
+        "modelCode": "AC-12R20FNW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "공기청정기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-364",
+        "category": "청소기",
+        "modelCode": "CRVC-CFFAC1610W",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "로봇청소기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 판매집중 必 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-365",
+        "category": "실링팬",
+        "modelCode": "CCF-ABL5210W",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "실링팬",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-366",
+        "category": "실링팬",
+        "modelCode": "CCF-ABL5210WD",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "실링팬",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-367",
+        "category": "실링팬",
+        "modelCode": "CCF-BBL4210W",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "실링팬",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-368",
+        "category": "제습기",
+        "modelCode": "DH-X22721EB",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "제습기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-369",
+        "category": "제습기",
+        "modelCode": "DH-Y18521NG",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "제습기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-370",
+        "category": "에어컨",
+        "modelCode": "CA-BWFFDE0640EG",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "창문형에어컨 (셀프/42KIT/84KIT)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 셀프·42KIT·84KIT / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-371",
+        "category": "에어컨",
+        "modelCode": "CA-AWE0610W",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "창문형에어컨 (셀프/54KIT/98KIT)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 셀프·54KIT·98KIT / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-372",
+        "category": "에어컨",
+        "modelCode": "CA-BWDE0610W",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "창문형에어컨 (셀프/42KIT/84KIT)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 셀프·42KIT·84KIT / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-373",
+        "category": "에어컨",
+        "modelCode": "CA-DRH0710W(SET)",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "벽걸이에어컨",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-374",
+        "category": "에어컨",
+        "modelCode": "CA-DRH1110W(SET)",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "벽걸이에어컨",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-375",
+        "category": "에어컨",
+        "modelCode": "CA-DRC0610W(SET)",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "벽걸이에어컨",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-376",
+        "category": "에어컨",
+        "modelCode": "CA-CRC1010W(SET)",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "벽걸이에어컨",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-377",
+        "category": "에어컨",
+        "modelCode": "CA-CRC0610W(SET)",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "벽걸이에어컨",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-378",
+        "category": "세탁가전",
+        "modelCode": "CCD-A0310AG",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "건조기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-379",
+        "category": "세탁기",
+        "modelCode": "CWM-ETFF1610B",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "세탁기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-380",
+        "category": "세탁기",
+        "modelCode": "CWM-ATFF1210B",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "세탁기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-381",
+        "category": "욕실환풍기",
+        "modelCode": "CVT-AHL10W",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "욕실환풍기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-382",
+        "category": "싱크볼",
+        "modelCode": "CKS-A860ST",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "싱크볼",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신모델 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-383",
+        "category": "싱크볼",
+        "modelCode": "CKS-A882ST",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "싱크볼",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신모델 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-384",
+        "category": "싱크볼",
+        "modelCode": "CKS-A953ST",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "싱크볼",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신모델 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-385",
+        "category": "싱크볼",
+        "modelCode": "CKS-A982ST",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "싱크볼",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신모델 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-386",
+        "category": "수전",
+        "modelCode": "CKSF-A410S",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "수전",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신모델 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-387",
+        "category": "커피머신",
+        "modelCode": "CCM-CAESW2010LB",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "커피머신",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 판매집중 必 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-388",
+        "category": "커피머신",
+        "modelCode": "CCM-CAESW2010LW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "커피머신",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 판매집중 必 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-389",
+        "category": "청소기",
+        "modelCode": "CVC-DFFEM2530NW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "건타입/핸디형 청소기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 판매집중 必 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-390",
+        "category": "청소기",
+        "modelCode": "CVC-LFF1620EG",
+        "incentiveAmount": 25000,
+        "saleTypeFilter": "all",
+        "productName": "건타입/핸디형 청소기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-391",
+        "category": "청소기",
+        "modelCode": "CVC-JE10NW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "건타입/핸디형 청소기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-392",
+        "category": "청소기",
+        "modelCode": "CVC-G08FF30NW",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "건타입/핸디형 청소기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-393",
+        "category": "청소기",
+        "modelCode": "CVC-EH20NG",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "건타입/핸디형 청소기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-394",
+        "category": "비데",
+        "modelCode": "CBT-QSF1041RW",
+        "incentiveAmount": 35000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-395",
+        "category": "비데",
+        "modelCode": "CBT-QSB1041W",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-396",
+        "category": "비데",
+        "modelCode": "CBT-KFFS31RW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-397",
+        "category": "비데",
+        "modelCode": "CBT-KS1031W",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-398",
+        "category": "비데",
+        "modelCode": "CBT-G3031W",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-399",
+        "category": "비데",
+        "modelCode": "CBT-IS1031RW (설치)",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "비데 (설치)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준, 설치 20,000원 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-400",
+        "category": "비데",
+        "modelCode": "CBT-D2031W",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-401",
+        "category": "비데",
+        "modelCode": "CBT-G1031W",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "비데 (설치/셀프 공통)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준, 설치·셀프 동일 10,000원 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-402",
+        "category": "비데",
+        "modelCode": "CBT-IS1031RW (셀프)",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "비데 (셀프)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 셀프 10,000원 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-403",
+        "category": "비데",
+        "modelCode": "CBT-C3031W",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "비데 (설치)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (설치 기준, [현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-404",
+        "category": "비데",
+        "modelCode": "CBT-PFF31RW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-405",
+        "category": "비데",
+        "modelCode": "CBT-RFF1310W",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "비데 (설치/셀프 공통)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준, 설치·셀프 동일 5,000원 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-406",
+        "category": "비데",
+        "modelCode": "CBT-RFF1321W",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "비데",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([현금] 설치 완료 기준 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-407",
+        "category": "헤어아이론",
+        "modelCode": "CBI-ACLTS10LW",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "헤어아이론 (스트레이트너)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-408",
+        "category": "헤어아이론",
+        "modelCode": "CBI-BCS10LW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "헤어아이론 (스트레이트너)",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-409",
+        "category": "헤어드라이기",
+        "modelCode": "CBD-GS10LW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "헤어드라이어",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-410",
+        "category": "헤어드라이기",
+        "modelCode": "CBD-D10LW",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "헤어드라이어",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] 2026년 신제품 / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-411",
+        "category": "헤어드라이기",
+        "modelCode": "CBD-BF10LW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "헤어드라이어",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-412",
+        "category": "김치냉장고",
+        "modelCode": "CKR-AFFD1410MS",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "김치냉장고",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-413",
+        "category": "마사지기",
+        "modelCode": "CLM-A10NW",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "종아리·발 마사지기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-414",
+        "category": "카본매트",
+        "modelCode": "CHM-BCFF11S",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "카본매트",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-415",
+        "category": "카본매트",
+        "modelCode": "CHM-BCFF11Q",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "카본매트",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-416",
+        "category": "카본매트",
+        "modelCode": "CHM-DCFF11S",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "카본매트",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-417",
+        "category": "카본매트",
+        "modelCode": "CHM-DCFF11Q",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "카본매트",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 (진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-418",
+        "category": "버블클렌저",
+        "modelCode": "CWS-A0201W",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "버블클렌저",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-419",
+        "category": "제빙기",
+        "modelCode": "CIM-AS09M10S",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "제빙기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-420",
+        "category": "제빙기",
+        "modelCode": "CIM-BS18M10NW",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "제빙기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-421",
+        "category": "정수기",
+        "modelCode": "CPWP-C3801W",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "필터형정수기",
+        "note": "26년 11월 쿠쿠홈시스 집중 판매 품목 ([상품권] / 진열 판매분 수당 지급 제외)"
+      },
+      {
+        "id": "NOV26-422",
+        "category": "면도기",
+        "modelCode": "X-9001",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 면도기 (동시구매행사/구독 서비스)",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] (구매시 NT-3650 콧털정리기 증정 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-423",
+        "category": "면도기",
+        "modelCode": "X-9002",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 면도기 (하이라이트 메인 히어로 SKU)",
+        "note": "필립스 11월 중점 판매 요청 품목 [11/1~11/30] (섬진열 요청 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-424",
+        "category": "면도기",
+        "modelCode": "XP-9204",
+        "incentiveAmount": 35000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 면도기 (하이라이트 메인 히어로 SKU)",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] (하이마트 단독 300대 한정수량, NT1620+니베아 쉐이빙폼 증정 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-425",
+        "category": "면도기",
+        "modelCode": "XP-9201",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 면도기",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] (실판매자 수당 추가 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-426",
+        "category": "면도기",
+        "modelCode": "XP-9402",
+        "incentiveAmount": 40000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 면도기",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] (실판매자 수당 추가 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-427",
+        "category": "면도기",
+        "modelCode": "XP-9405",
+        "incentiveAmount": 50000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 면도기",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] (실판매자 수당 추가 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-428",
+        "category": "헤어드라이기",
+        "modelCode": "BHD-837",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 BLDC 찰랑케어 드라이기",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] (동시구매행사 40대 한정수량 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-429",
+        "category": "구강용품",
+        "modelCode": "HX-7110",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "필립스 전동칫솔 ((+)HX-3911 구독서비스)",
+        "note": "필립스 11월 행사 수당안 [11/1~11/30] ((+)HX-3911 구독서비스 / 지급일: 12/25, 지급주체: 우림맨테크)"
+      },
+      {
+        "id": "NOV26-430",
+        "category": "가스레인지",
+        "modelCode": "GRF-1052ND/PD",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 가스레인지",
+        "note": "나비엔 매직 11월 판매수당"
+      },
+      {
+        "id": "NOV26-431",
+        "category": "가스레인지",
+        "modelCode": "GRF-2112ND/PD",
+        "incentiveAmount": 15000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 가스레인지",
+        "note": "나비엔 매직 11월 판매수당"
+      },
+      {
+        "id": "NOV26-432",
+        "category": "가스레인지",
+        "modelCode": "PLX-GRF0325CSN/CSP",
+        "incentiveAmount": 5000,
+        "saleTypeFilter": "all",
+        "productName": "PLUX x 나비엔 매직 가스레인지",
+        "note": "나비엔 매직 11월 판매수당"
+      },
+      {
+        "id": "NOV26-433",
+        "category": "가스레인지",
+        "modelCode": "빌트인 가스레인지 전모델",
+        "incentiveAmount": 20000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 빌트인 가스레인지 전모델",
+        "note": "나비엔 매직 11월 판매수당"
+      },
+      {
+        "id": "NOV26-434",
+        "category": "전기레인지",
+        "modelCode": "ERI-6203AF",
+        "incentiveAmount": 70000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 전기레인지",
+        "note": "나비엔 매직 11월 한정 수당 (기본 50,000원 + 추가 20,000원 = 총 70,000원 / 인덕션 2종 냄비세트 증정)"
+      },
+      {
+        "id": "NOV26-435",
+        "category": "레인지후드",
+        "modelCode": "RAC552-09TCA(B)C",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 3D 에어후드",
+        "note": "나비엔 매직 11월 판매수당 (11월 한정 전기레인지+3D 에어후드 동시 구매시 총 10만원 할인)"
+      },
+      {
+        "id": "NOV26-436",
+        "category": "전기오븐",
+        "modelCode": "EOF-1403NT",
+        "incentiveAmount": 10000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 전기오븐",
+        "note": "나비엔 매직 11월 판매수당"
+      },
+      {
+        "id": "NOV26-437",
+        "category": "욕실환풍기",
+        "modelCode": "TMA551/531-012F(살균형)",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 매직 복합욕실팬(바스캐어 살균형)",
+        "note": "나비엔 매직 11월 판매수당 (살균형 기준)"
+      },
+      {
+        "id": "NOV26-438",
+        "category": "숙면매트",
+        "modelCode": "EMF520-K/Q/S",
+        "incentiveAmount": 30000,
+        "saleTypeFilter": "all",
+        "productName": "나비엔 숙면매트 사계절",
+        "note": "나비엔 매직 11월 판매수당 (3대 이상 판매시 추가 3만원 지급, 3대 판매시 총 12만원)"
+      },
+      {
+        "id": "NOV26-439",
+        "category": "안마의자",
+        "modelCode": "메디컬파라오",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "바디프랜드 메디컬파라오 안마의자",
+        "note": "바디프랜드 11월 하이마트 인센티브 (지급주체: 우림 / 11월 사은품: 무릎담요 / 기존 폐가전 안마의자 회수 가능)"
+      },
+      {
+        "id": "NOV26-440",
+        "category": "안마의자",
+        "modelCode": "메디컬팬텀",
+        "incentiveAmount": 150000,
+        "saleTypeFilter": "all",
+        "productName": "바디프랜드 메디컬팬텀 안마의자",
+        "note": "바디프랜드 11월 하이마트 인센티브 (지급주체: 우림 / 11월 사은품: 무릎담요 / 기존 폐가전 안마의자 회수 가능)"
+      },
+      {
+        "id": "NOV26-441",
+        "category": "안마의자",
+        "modelCode": "뉴팔콘SV",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "바디프랜드 뉴팔콘SV 안마의자",
+        "note": "바디프랜드 11월 하이마트 인센티브 (지급주체: 우림 / 11월 사은품: 무릎담요 / 기존 폐가전 안마의자 회수 가능)"
+      },
+      {
+        "id": "NOV26-442",
+        "category": "안마의자",
+        "modelCode": "카르나로보",
+        "incentiveAmount": 100000,
+        "saleTypeFilter": "all",
+        "productName": "바디프랜드 카르나로보 안마의자",
+        "note": "바디프랜드 11월 하이마트 인센티브 (지급주체: 우림 / 11월 사은품: 무릎담요 / 기존 폐가전 안마의자 회수 가능)"
+      }
+    ]
+  }
+};

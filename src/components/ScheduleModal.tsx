@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
+import {
+  parseModelIncentiveExcelWithMeta,
+  upsertMonthlyIncentiveSheet,
+} from '../crm/utils/settlementEngine';
 import { GoogleGenAI, Type } from '@google/genai';
 import { toPng } from 'html-to-image';
 import {
@@ -2249,6 +2253,17 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         | undefined;
 
       if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+        if (file.name.includes('수당') || file.name.includes('단가표')) {
+          const incMeta = await parseModelIncentiveExcelWithMeta(file);
+          const incYm = incMeta.detectedYearMonth || targetYearMonth;
+          const savedSheet = upsertMonthlyIncentiveSheet(incYm, incMeta.rules, file.name, false);
+          setNotice({
+            type: 'success',
+            text: `✅ [${incYm} 모델 수당 단가표] 총 ${savedSheet.rules.length}개 모델이 [통합 고객관리 > 모델수당]에 반영되었습니다!`,
+          });
+          setIsUploading(false);
+          return;
+        }
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: 'array', cellDates: false });
         const parsedResult = await parseUniversalExcelSchedule(

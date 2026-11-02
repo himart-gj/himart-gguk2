@@ -1,4 +1,9 @@
+import * as XLSXModule from 'xlsx';
 import { GitHubSyncConfig, loadGitHubSyncConfig, saveGitHubSyncConfig } from '../../utils/careTableParser';
+import { DEFAULT_MODEL_INCENTIVE_SHEETS } from '../data/defaultModelIncentiveData';
+
+const XLSX: typeof XLSXModule =
+  ((XLSXModule as any).read ? XLSXModule : (XLSXModule as any).default) || XLSXModule;
 import { idbMirrorGet, idbMirrorSet } from '../../utils/offlineDbQueue';
 import { compressImageFile, GEMINI_MODELS, getEffectiveGeminiApiKey } from '../../utils/aiImageParser';
 import {
@@ -599,11 +604,59 @@ export function resolveCustomerPerformanceProfile(
 
 export function normalizeModelMatchKey(raw?: string): string {
   if (!raw) return '';
-  return raw
+  return String(raw)
     .trim()
     .toUpperCase()
     .replace(/\.(AKOR\d*|AKR\d*|KOR\d*)$/i, '')
-    .replace(/[\s\-_()[\]·/.,]+/g, '');
+    .replace(/[^A-Z0-9가-힣]+/g, '');
+}
+
+function expandRuleCandidateKeys(rule: ModelIncentiveRule): string[] {
+  const keys = new Set<string>();
+  const raw = String(rule.modelCode || '').trim();
+  if (!raw) return [];
+  const fullKey = normalizeModelMatchKey(raw);
+  if (fullKey) keys.add(fullKey);
+
+  // 괄호 앞 베이스 코드 (예: ZPC2221(T) -> ZPC2221, CA-DRH0710W(SET) -> CADRH0710W)
+  const noParen = raw.replace(/\([^)]*\)/g, '').trim();
+  const noParenKey = normalizeModelMatchKey(noParen);
+  if (noParenKey && noParenKey.length >= 2 && !raw.includes('설치') && !raw.includes('셀프') && !raw.includes('직배수') && !raw.includes('일반형')) {
+    keys.add(noParenKey);
+  }
+
+  // 슬래시 조합 코드 전개 (예: POCOX8P/POCOX8PM, GRF-1052ND/PD, EMF520-K/Q/S)
+  if (noParen.includes('/')) {
+    const parts = noParen.split('/').map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const first = parts[0];
+      const firstKey = normalizeModelMatchKey(first);
+      if (firstKey.length >= 4) keys.add(firstKey);
+      for (let i = 1; i < parts.length; i++) {
+        const sub = parts[i];
+        const subKey = normalizeModelMatchKey(sub);
+        if (subKey.length >= 5) {
+          keys.add(subKey);
+        } else if (subKey.length >= 1 && first.length > sub.length) {
+          // 접미사 변형 (GRF-1052ND/PD -> GRF-1052PD, EMF520-K/Q/S -> EMF520-Q, EMF520-S)
+          const rebuilt = first.slice(0, first.length - sub.length) + sub;
+          const rebuiltKey = normalizeModelMatchKey(rebuilt);
+          if (rebuiltKey.length >= 4) keys.add(rebuiltKey);
+        }
+      }
+    }
+  }
+
+  // 상품명에 실내기 모델명이 병기된 경우 (예: 실내기: EARP-0071GAWSDI)
+  if (rule.productName) {
+    const indoorMatch = rule.productName.match(/실내기\s*[:：]?\s*([A-Za-z0-9\-_]+)/);
+    if (indoorMatch?.[1]) {
+      const indoorKey = normalizeModelMatchKey(indoorMatch[1]);
+      if (indoorKey.length >= 5) keys.add(indoorKey);
+    }
+  }
+
+  return Array.from(keys);
 }
 
 export function matchModelToIncentiveRule(
@@ -629,9 +682,11 @@ export function matchModelToIncentiveRule(
   });
 
   for (const r of eligibleRules) {
-    const rKey = normalizeModelMatchKey(r.modelCode);
-    if (rKey.length >= 2 && targetCode === rKey) {
-      return r;
+    const candidateKeys = expandRuleCandidateKeys(r);
+    for (const rKey of candidateKeys) {
+      if (rKey.length >= 2 && targetCode === rKey) {
+        return r;
+      }
     }
   }
 
@@ -881,16 +936,53 @@ function emitModelIncentiveUpdated(): void {
   }
 }
 
+let memoryModelIncentiveCache: ModelIncentivesMap | null = null;
+
+function mergeWithBundledDefaults(rawMap: ModelIncentivesMap): ModelIncentivesMap {
+  const out: ModelIncentivesMap = { ...DEFAULT_MODEL_INCENTIVE_SHEETS };
+  for (const [ym, sheet] of Object.entries(rawMap || {})) {
+    if (!sheet || typeof sheet !== 'object' || !Array.isArray(sheet.rules)) continue;
+    const bundled = DEFAULT_MODEL_INCENTIVE_SHEETS[ym];
+    if (
+      bundled &&
+      sheet.rules.length < bundled.rules.length &&
+      parseIsoMs(sheet.updatedAt) < parseIsoMs(bundled.updatedAt)
+    ) {
+      out[ym] = {
+        ...bundled,
+        rules: mergeModelIncentiveRules(bundled.rules, sheet.rules),
+      };
+    } else {
+      out[ym] = sheet;
+    }
+  }
+  return out;
+}
+
 export function loadAllModelIncentiveSheets(): ModelIncentivesMap {
-  if (typeof localStorage === 'undefined') return {};
+  if (memoryModelIncentiveCache) {
+    return memoryModelIncentiveCache;
+  }
+  if (typeof localStorage === 'undefined') {
+    memoryModelIncentiveCache = { ...DEFAULT_MODEL_INCENTIVE_SHEETS };
+    return memoryModelIncentiveCache;
+  }
   try {
     const raw = localStorage.getItem(MODEL_INCENTIVE_STORAGE_KEY);
-    if (!raw) return {};
+    if (!raw) {
+      memoryModelIncentiveCache = { ...DEFAULT_MODEL_INCENTIVE_SHEETS };
+      return memoryModelIncentiveCache;
+    }
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed as ModelIncentivesMap;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      memoryModelIncentiveCache = { ...DEFAULT_MODEL_INCENTIVE_SHEETS };
+      return memoryModelIncentiveCache;
+    }
+    memoryModelIncentiveCache = mergeWithBundledDefaults(parsed as ModelIncentivesMap);
+    return memoryModelIncentiveCache;
   } catch {
-    return {};
+    memoryModelIncentiveCache = { ...DEFAULT_MODEL_INCENTIVE_SHEETS };
+    return memoryModelIncentiveCache;
   }
 }
 
@@ -899,19 +991,32 @@ export async function hydrateModelIncentiveSheetsFromIdb(): Promise<ModelIncenti
   try {
     const mirrored = await idbMirrorGet<ModelIncentivesMap>(MODEL_INCENTIVE_STORAGE_KEY);
     if (mirrored && typeof mirrored === 'object' && !Array.isArray(mirrored)) {
-      const localCount = Object.keys(local).length;
-      const mirrorCount = Object.keys(mirrored).length;
-      if (mirrorCount > 0 && localCount === 0) {
+      const merged: ModelIncentivesMap = mergeWithBundledDefaults({ ...local });
+      let changed = false;
+      for (const [ym, mSheet] of Object.entries(mirrored)) {
+        if (!mSheet || !Array.isArray(mSheet.rules)) continue;
+        const cur = merged[ym];
+        if (
+          !cur ||
+          parseIsoMs(mSheet.updatedAt) > parseIsoMs(cur.updatedAt) ||
+          (mSheet.rules.length > cur.rules.length && parseIsoMs(mSheet.updatedAt) >= parseIsoMs(cur.updatedAt))
+        ) {
+          merged[ym] = mSheet;
+          changed = true;
+        }
+      }
+      memoryModelIncentiveCache = merged;
+      if (changed) {
         if (typeof localStorage !== 'undefined') {
-          localStorage.setItem(MODEL_INCENTIVE_STORAGE_KEY, JSON.stringify(mirrored));
+          try {
+            localStorage.setItem(MODEL_INCENTIVE_STORAGE_KEY, JSON.stringify(merged));
+          } catch {
+            // Quota fallback handled by memoryModelIncentiveCache + IDB
+          }
         }
         emitModelIncentiveUpdated();
-        return mirrored;
       }
-      if (mirrorCount > 0) {
-        const merged: ModelIncentivesMap = { ...mirrored, ...local };
-        return merged;
-      }
+      return merged;
     }
   } catch {
     // Ignore IDB fallback errors
@@ -936,12 +1041,13 @@ export function saveAllModelIncentiveSheets(
   map: ModelIncentivesMap,
   options?: { skipServerSync?: boolean }
 ): void {
-  const safeMap = map && typeof map === 'object' ? map : {};
+  const safeMap = map && typeof map === 'object' ? { ...map } : {};
+  memoryModelIncentiveCache = safeMap;
   if (typeof localStorage !== 'undefined') {
     try {
       localStorage.setItem(MODEL_INCENTIVE_STORAGE_KEY, JSON.stringify(safeMap));
     } catch {
-      // Ignore storage quota warning; IDB mirror still persists
+      // Ignore storage quota warning; memory cache + IDB mirror still persist immediately
     }
   }
   void idbMirrorSet(MODEL_INCENTIVE_STORAGE_KEY, safeMap);
@@ -1183,11 +1289,14 @@ export type { GitHubSyncConfig };
 
 function cleanUploadedModelCode(raw?: string): string {
   if (!raw) return '';
-  let code = String(raw).trim().toUpperCase();
+  let code = String(raw).replace(/_x000d_/gi, '').trim();
   code = code.replace(/^\[[^\]]+\]\s*/, '');
   code = code.replace(/\.(AKOR\d*|KOR\d*)$/i, '');
-  code = code.replace(/\s+/g, '');
-  return code;
+  code = code.replace(/\s{2,}/g, ' ');
+  if (!/[가-힣]/.test(code)) {
+    code = code.toUpperCase();
+  }
+  return code.trim();
 }
 
 export function mergeModelIncentiveRules(
@@ -1294,19 +1403,39 @@ function parseSaleTypeFilterCell(raw?: unknown): 'all' | 'general' | 'subscripti
 
 function looksLikeValidModelCode(candidate: string): boolean {
   const c = cleanUploadedModelCode(candidate);
-  if (c.length < 4 || c.length > 32) return false;
-  if (!/[A-Z]/.test(c) || !/\d/.test(c)) return false;
-  if (/^(MODEL|CODE|TOTAL|PRICE|INCENTIVE|KRW|NO\d*)$/i.test(c)) return false;
-  return /^[A-Z0-9][A-Z0-9._/-]{3,}$/.test(c);
+  if (c.length < 2 || c.length > 60) return false;
+  if (/^(MODEL|CODE|TOTAL|PRICE|INCENTIVE|KRW|NO\d*|합계|총계|소계|모델코드|모델명|상품명|품목)$/i.test(c)) {
+    return false;
+  }
+  if (/[가-힣]/.test(c)) {
+    return c.length >= 2;
+  }
+  const compact = c.replace(/[\s()]/g, '').toUpperCase();
+  if (compact.length < 2) return false;
+  return /[A-Z0-9]/.test(compact) && /^[A-Z0-9._/+()\-\s]+$/i.test(c);
 }
 
-export async function parseModelIncentiveExcelOrCsv(
+export function detectIncentiveYearMonthFromText(raw?: string): string | null {
+  if (!raw) return null;
+  const s = String(raw);
+  const fullMatch = s.match(/(20\d{2})\s*[-._년/\s]\s*(0?[1-9]|1[0-2])(?:\s*월|\b|_)/);
+  if (fullMatch) {
+    return `${fullMatch[1]}-${String(parseInt(fullMatch[2], 10)).padStart(2, '0')}`;
+  }
+  const shortMatch = s.match(/(?:^|\D)(2[5-9])\s*(?:년|\.)\s*(0?[1-9]|1[0-2])\s*월/);
+  if (shortMatch) {
+    return `20${shortMatch[1]}-${String(parseInt(shortMatch[2], 10)).padStart(2, '0')}`;
+  }
+  return null;
+}
+
+export async function parseModelIncentiveExcelWithMeta(
   file: File
-): Promise<ModelIncentiveRule[]> {
-  const XLSX = await import('xlsx');
+): Promise<{ rules: ModelIncentiveRule[]; detectedYearMonth: string | null }> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
   const collected: ModelIncentiveRule[] = [];
+  let detectedYearMonth = detectIncentiveYearMonthFromText(file.name);
 
   const modelAliases = ['모델코드', '모델명', '모델번호', '상품코드', '품번', '제품코드', '모델', 'model'];
   const amountAliases = ['수당', '인센티브', '시상금', '장려금', '판매수당', '모델수당', '지급액', '프로모션수당', '시상', 'incentive'];
@@ -1316,6 +1445,9 @@ export async function parseModelIncentiveExcelOrCsv(
   const noteAliases = ['비고', '특이사항', '메모', '조건'];
 
   for (const sheetName of wb.SheetNames) {
+    if (!detectedYearMonth) {
+      detectedYearMonth = detectIncentiveYearMonthFromText(sheetName);
+    }
     const sheet = wb.Sheets[sheetName];
     if (!sheet) continue;
     const rows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
@@ -1456,7 +1588,14 @@ export async function parseModelIncentiveExcelOrCsv(
       '파일에서 모델코드와 수당 금액 열을 찾지 못했습니다. (헤더에 "모델명/모델코드"와 "수당/인센티브/시상금" 열이 있는지 확인해 주세요.)'
     );
   }
-  return deduped;
+  return { rules: deduped, detectedYearMonth };
+}
+
+export async function parseModelIncentiveExcelOrCsv(
+  file: File
+): Promise<ModelIncentiveRule[]> {
+  const res = await parseModelIncentiveExcelWithMeta(file);
+  return res.rules;
 }
 
 export async function parseModelIncentiveImage(
@@ -1645,7 +1784,6 @@ export async function downloadModelIncentiveExcelTemplate(
   yearMonth: string,
   existingRules: ModelIncentiveRule[] = []
 ): Promise<void> {
-  const XLSX = await import('xlsx');
   const rows =
     existingRules.length > 0
       ? existingRules.map((r) => ({

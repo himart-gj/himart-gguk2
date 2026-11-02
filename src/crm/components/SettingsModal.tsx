@@ -74,10 +74,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     );
   };
 
-  // JSON 백업 파일 불러오기
-  const handleImportBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // JSON 백업 파일 또는 모델 수당 단가표 엑셀(.xlsx/.csv) 불러오기
+  const handleImportBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+      try {
+        const meta = await parseModelIncentiveExcelWithMeta(file);
+        const ym = meta.detectedYearMonth || getCurrentYearMonth();
+        const sheet = upsertMonthlyIncentiveSheet(ym, meta.rules, file.name, false);
+        setBackupNotice(
+          `✅ [${ym}] 모델 수당 단가표 엑셀에서 ${meta.rules.length}개 모델을 반영했습니다! (현재 총 ${sheet.rules.length}개 등록)`
+        );
+      } catch (err: any) {
+        setBackupNotice(`⚠️ 엑셀 수당 단가표 분석 실패: ${err?.message || '파일을 확인해 주세요.'}`);
+      } finally {
+        e.target.value = '';
+      }
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
@@ -195,7 +211,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json"
+                accept=".json,.xlsx,.xls,.csv"
                 onChange={handleImportBackupFile}
                 className="hidden"
               />

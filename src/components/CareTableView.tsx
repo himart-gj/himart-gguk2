@@ -187,6 +187,19 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
       const buf = await file.arrayBuffer();
       const parsed = parseCareExcelBuffer(buf, file.name);
       if (!parsed.items.length) {
+        try {
+          const incMeta = await parseModelIncentiveExcelWithMeta(file);
+          if (incMeta.rules.length > 0) {
+            const targetYm = incMeta.detectedYearMonth || getCurrentYearMonth();
+            const savedSheet = upsertMonthlyIncentiveSheet(targetYm, incMeta.rules, file.name, false);
+            showToast(
+              `✅ [${targetYm} 모델 수당 단가표] 자동 인식 완료! 총 ${savedSheet.rules.length}개 모델이 [통합 고객관리 > 모델수당]에 반영되었습니다.`
+            );
+            return;
+          }
+        } catch {
+          // Not a model incentive sheet either
+        }
         showToast('⚠️ 엑셀에서 모델코드와 금액을 찾지 못했습니다. 안심케어 조견표 파일인지 확인해 주세요.');
         return;
       }

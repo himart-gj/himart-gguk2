@@ -50,6 +50,7 @@ import {
   MODEL_INCENTIVE_UPDATED_EVENT,
   parseIncentiveAmountCell,
   parseModelIncentiveExcelOrCsv,
+  parseModelIncentiveExcelWithMeta,
   parseModelIncentiveFreeText,
   parseModelIncentiveImage,
   publishModelIncentiveSheetsToGitHub,
@@ -125,6 +126,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
   );
   const [isUploading, setIsUploading] = useState<boolean>(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [replaceOnUpload, setReplaceOnUpload] = useState<boolean>(false);
 
   const [showManualDrawer, setShowManualDrawer] = useState<boolean>(false);
@@ -317,21 +319,34 @@ export const CrmSalesAndIncentivePanel: React.FC<
     if (files.length === 0) return;
     setIsUploading(true);
     setUploadError(null);
+    setUploadSuccess(null);
 
     try {
       let totalParsed: ModelIncentiveRule[] = [];
+      let detectedYm: string | null = null;
       for (const f of files) {
-        const rules = await parseModelIncentiveExcelOrCsv(f);
-        totalParsed = [...totalParsed, ...rules];
+        const meta = await parseModelIncentiveExcelWithMeta(f);
+        totalParsed = [...totalParsed, ...meta.rules];
+        if (!detectedYm && meta.detectedYearMonth) {
+          detectedYm = meta.detectedYearMonth;
+        }
+      }
+      const targetYm = detectedYm || selectedYearMonth;
+      if (targetYm !== selectedYearMonth) {
+        onChangeYearMonth(targetYm);
       }
       const nextSheet = upsertMonthlyIncentiveSheet(
-        selectedYearMonth,
+        targetYm,
         totalParsed,
         `${files[0].name}${files.length > 1 ? ` 외 ${files.length - 1}건` : ''}`,
         replaceOnUpload
       );
+      setSheetsMap(loadAllModelIncentiveSheets());
+      setShowRulesDrawer(true);
+      const summaryMsg = `✅ ${formatYearMonthKo(targetYm)} 수당 단가표 업데이트 완료! (업로드 ${totalParsed.length}개 · 현재 총 ${nextSheet.rules.length}개 모델 적용 중)`;
+      setUploadSuccess(summaryMsg);
       await pushSheetsToAllStaff(
-        `📊 ${formatYearMonthKo(selectedYearMonth)} 단가표 ${nextSheet.rules.length}개 반영`
+        `📊 ${formatYearMonthKo(targetYm)} 단가표 ${nextSheet.rules.length}개 모델 반영 완료`
       );
     } catch (err: any) {
       setUploadError(err?.message || '엑셀 파일 분석 중 오류가 발생했습니다.');
@@ -679,7 +694,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
             <span className="font-black font-mono text-sky-500 truncate">
               +{formatShortManwon(report.modelIncentiveTotal)}
               <span className={`ml-0.5 text-[10px] font-normal ${mutedCls}`}>
-                ({report.matchedModelUnitCount})
+                ({report.matchedModelUnitCount > 0
+                  ? `${report.matchedModelUnitCount}대`
+                  : currentSheet?.rules.length
+                  ? `단가${currentSheet.rules.length}`
+                  : 0})
               </span>
             </span>
           </button>
@@ -1157,23 +1176,27 @@ export const CrmSalesAndIncentivePanel: React.FC<
                     className="hidden"
                   />
 
-                  <button
-                    type="button"
-                    disabled={isUploading}
-                    onClick={() => excelInputRef.current?.click()}
-                    className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+                  <label
+                    className={`px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer ${
+                      isUploading ? 'opacity-50 pointer-events-none' : ''
+                    }`}
                   >
-                    <FileSpreadsheet className="w-3 h-3" />
-                    <span>엑셀 업로드</span>
-                  </button>
-                  <input
-                    ref={excelInputRef}
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    multiple
-                    onChange={handleExcelUpload}
-                    className="hidden"
-                  />
+                    {isUploading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <FileSpreadsheet className="w-3 h-3" />
+                    )}
+                    <span>{isUploading ? '업로드 중...' : '엑셀 업로드'}</span>
+                    <input
+                      ref={excelInputRef}
+                      type="file"
+                      accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                      multiple
+                      disabled={isUploading}
+                      onChange={handleExcelUpload}
+                      className="sr-only"
+                    />
+                  </label>
 
                   <button
                     type="button"
@@ -1297,6 +1320,19 @@ export const CrmSalesAndIncentivePanel: React.FC<
                   </div>
                 </div>
               </div>
+
+              {uploadSuccess && (
+                <div className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-600 dark:text-emerald-300 text-[11px] font-extrabold flex items-center justify-between gap-2">
+                  <span>{uploadSuccess}</span>
+                  <button
+                    type="button"
+                    onClick={() => setUploadSuccess(null)}
+                    className="opacity-70 hover:opacity-100 cursor-pointer shrink-0"
+                  >
+                    닫기
+                  </button>
+                </div>
+              )}
 
               {uploadError && (
                 <div className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-[11px] font-bold">
