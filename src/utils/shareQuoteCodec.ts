@@ -128,12 +128,18 @@ export function normalizeViewerBaseUrl(rawUrl: string): string {
   }
 }
 
+export const DEFAULT_DEDICATED_VIEWER_URL = 'https://himart-gj.github.io/quote-view';
+
 export function loadCustomViewerBaseUrl(): string {
   try {
-    const stored = (localStorage.getItem(CUSTOM_VIEWER_BASE_URL_KEY) || '').trim();
-    return stored ? normalizeViewerBaseUrl(stored) : '';
+    const stored = localStorage.getItem(CUSTOM_VIEWER_BASE_URL_KEY);
+    if (stored === null) {
+      return DEFAULT_DEDICATED_VIEWER_URL;
+    }
+    const trimmed = stored.trim();
+    return trimmed ? normalizeViewerBaseUrl(trimmed) : '';
   } catch {
-    return '';
+    return DEFAULT_DEDICATED_VIEWER_URL;
   }
 }
 
