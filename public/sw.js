@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'himart-shell-v8';
-const DATA_JSON_CACHE = 'himart-data-v8';
+const APP_SHELL_CACHE = 'himart-shell-v9';
+const DATA_JSON_CACHE = 'himart-data-v9';
 
 const PRECACHE_URLS = [
   './',
@@ -57,12 +57,16 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // 외부 API 호출(GitHub 동기화, Gemini AI, Google Apps Script 등)은 캐싱 제외
+  // 외부 API 호출 및 Vite 개발 모듈/API 라우트는 캐싱 제외
   if (
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('github.com') ||
     url.hostname.includes('githubusercontent.com') ||
-    url.hostname.includes('script.google.com')
+    url.hostname.includes('script.google.com') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@')
   ) {
     return;
   }
@@ -104,7 +108,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() =>
           caches
             .match('./index.html')
-            .then((cached) => cached || caches.match('./'))
+            .then((cached) => cached || caches.match('./') || Response.error())
         )
     );
     return;
@@ -121,7 +125,7 @@ self.addEventListener('fetch', (event) => {
           }
           return networkRes;
         })
-        .catch(() => caches.match(req))
+        .catch(() => caches.match(req).then((cached) => cached || Response.error()))
     );
   }
 });

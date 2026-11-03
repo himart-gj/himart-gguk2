@@ -21,50 +21,19 @@ import {
 } from './utils/shareQuoteCodec';
 import { useOfflineSyncStatus } from './utils/offlineDbQueue';
 
-// React.lazy 코드 분할: 첫 홈 화면 로딩 번들을 대폭 경량화하고 서브 화면은 진입 즉시 로드
-const PopPrinterApp = lazy(() =>
-  import('./pop/PopPrinterApp').then((m) => ({ default: m.PopPrinterApp }))
-);
-const CrmApp = lazy(() =>
-  import('./crm/CrmApp').then((m) => ({ default: m.CrmApp }))
-);
-const HiMobileView = lazy(() =>
-  import('./components/HiMobileView').then((m) => ({ default: m.HiMobileView }))
-);
-const InsuranceGuideView = lazy(() =>
-  import('./components/InsuranceGuideView').then((m) => ({
-    default: m.InsuranceGuideView,
-  }))
-);
-const CareTableView = lazy(() =>
-  import('./components/CareTableView').then((m) => ({ default: m.CareTableView }))
-);
-const LottePlanCalcView = lazy(() =>
-  import('./components/LottePlanCalcView').then((m) => ({
-    default: m.LottePlanCalcView,
-  }))
-);
-const AllCareGuideView = lazy(() =>
-  import('./components/AllCareGuideView').then((m) => ({
-    default: m.AllCareGuideView,
-  }))
-);
-const CardInstallmentModal = lazy(() =>
-  import('./components/CardInstallmentModal').then((m) => ({
-    default: m.CardInstallmentModal,
-  }))
-);
-const ScheduleModal = lazy(() =>
-  import('./components/ScheduleModal').then((m) => ({ default: m.ScheduleModal }))
-);
+import { PopPrinterApp } from './pop/PopPrinterApp';
+import { CrmApp } from './crm/CrmApp';
+import { HiMobileView } from './components/HiMobileView';
+import { InsuranceGuideView } from './components/InsuranceGuideView';
+import { CareTableView } from './components/CareTableView';
+import { LottePlanCalcView } from './components/LottePlanCalcView';
+import { AllCareGuideView } from './components/AllCareGuideView';
+import { CardInstallmentModal } from './components/CardInstallmentModal';
+import { ScheduleModal } from './components/ScheduleModal';
 import { AiCommandModal } from './components/AiCommandModal';
 import { CommandOmnibarModal } from './components/CommandOmnibarModal';
 import { PartnerLinksModal } from './components/PartnerLinksModal';
-const CustomerShareQuoteView = lazy(() =>
-  import('./components/CustomerShareQuoteView').then((m) => ({
-    default: m.CustomerShareQuoteView,
-  }))
-);
+import { CustomerShareQuoteView } from './components/CustomerShareQuoteView';
 import { CustomerItem, QuoteRecord, SettlementTabId } from './crm/types/crm';
 import {
   CRM_CUSTOMERS_UPDATED_EVENT,

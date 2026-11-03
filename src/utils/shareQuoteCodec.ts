@@ -642,12 +642,29 @@ function hasVerifiedStaffFootprint(): boolean {
     if (localStorage.getItem(CUSTOMER_DEVICE_VIEWER_ONLY_KEY) === '1') {
       return false;
     }
-    if (localStorage.getItem(STAFF_VERIFIED_V2_KEY) === '1') return true;
-    // 기존부터 실제 사용 중이던 국지현님 단말기 자동 승격 (저장된 CRM 데이터 / 단가표 / 상담사 프로필 / API 키 존재 시)
     if (
+      localStorage.getItem(STAFF_VERIFIED_V2_KEY) === '1' ||
+      localStorage.getItem(STAFF_TRUSTED_DEVICE_KEY) === '1'
+    ) {
+      localStorage.setItem(STAFF_VERIFIED_V2_KEY, '1');
+      return true;
+    }
+    // AI Studio 개발/프리뷰 환경이거나 기존부터 실제 사용 중이던 직원 단말기 자동 승격
+    const host =
+      typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
+    const isAiStudioPreview =
+      host.startsWith('ais-dev-') ||
+      host.startsWith('ais-pre-') ||
+      host === 'localhost' ||
+      host === '127.0.0.1';
+    if (
+      isAiStudioPreview ||
       localStorage.getItem('gookji_crm_customers_cache_v3') ||
+      localStorage.getItem('himart_crm_model_incentives_v1') ||
       localStorage.getItem('himart_crm_model_incentive_sheets_v1') ||
       localStorage.getItem('himart_gj_consultant_profile_v1') ||
+      localStorage.getItem('himart_gj_my_name') ||
+      localStorage.getItem('himart_gj_schedules_v5') ||
       localStorage.getItem('gemini_api_key')
     ) {
       localStorage.setItem(STAFF_VERIFIED_V2_KEY, '1');
