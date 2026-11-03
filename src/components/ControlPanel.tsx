@@ -8,8 +8,10 @@ import {
   calculateSubscriptionSummary,
   isSubTierCashbackEligibleCard,
   copyPlan1ToPlan2InState,
-  GENERAL_CARD_OPTIONS,
+  AFFILIATE_GENERAL_CARD_OPTIONS,
   GENERAL_CATEGORY_PRESETS,
+  isAffiliateGeneralCardType,
+  MAX_LIFECARE_TOTAL_ACCOUNTS,
   GENERAL_HIPREED_PLANS,
   GeneralExtraBenefitItem,
   GeneralExtraBenefitType,
@@ -358,11 +360,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         (counts.hf150 || 0) +
         (counts.hf225 || 0) +
         (counts.hf300 || 0);
+      const hybridSubTotal =
+        prev.quoteMode === 'hybrid'
+          ? (prev.hiPlusCounts.hi72 || 0) +
+            (prev.hiPlusCounts.hi90 || 0) +
+            (prev.hiPlusCounts.hi108 || 0)
+          : 0;
       const currentVal = counts[key] || 0;
       const nextVal = currentVal + delta;
 
       if (nextVal < 0) return prev;
-      if (delta > 0 && currentTotal >= MAX_GENERAL_HIPREED_ACCOUNTS) return prev;
+      if (delta > 0 && currentTotal + hybridSubTotal >= MAX_LIFECARE_TOTAL_ACCOUNTS) return prev;
 
       return {
         ...prev,
@@ -510,14 +518,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const handleAdjustHiPlus = (key: HiPlusKey, delta: number) => {
     onChange((prev) => {
       const currentTotal =
-        prev.hiPlusCounts.hi72 +
-        prev.hiPlusCounts.hi90 +
-        prev.hiPlusCounts.hi108;
-      const currentVal = prev.hiPlusCounts[key];
+        (prev.hiPlusCounts.hi72 || 0) +
+        (prev.hiPlusCounts.hi90 || 0) +
+        (prev.hiPlusCounts.hi108 || 0);
+      const hybridGenTotal =
+        prev.quoteMode === 'hybrid'
+          ? (prev.generalHiPreedCounts.hf75 || 0) +
+            (prev.generalHiPreedCounts.hf150 || 0) +
+            (prev.generalHiPreedCounts.hf225 || 0) +
+            (prev.generalHiPreedCounts.hf300 || 0)
+          : 0;
+      const currentVal = prev.hiPlusCounts[key] || 0;
       const nextVal = currentVal + delta;
 
       if (nextVal < 0) return prev;
-      if (delta > 0 && currentTotal >= MAX_HI_PLUS_ACCOUNTS) return prev;
+      if (delta > 0 && currentTotal + hybridGenTotal >= MAX_LIFECARE_TOTAL_ACCOUNTS) return prev;
 
       return {
         ...prev,
@@ -917,11 +932,15 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </div>
             </div>
 
-            {/* 2. 결제 카드 및 할인/포인트/캐시백 + 추가 혜택 */}
+            {/* 2. 제휴카드 선택 및 할인/포인트/캐시백 + 추가 혜택 */}
             <div className="space-y-2.5 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <label className="text-xs sm:text-sm font-black text-slate-900 block">
-                  2. 결제 카드 및 할인 · 포인트 · 캐시백
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                  <CreditCard className="w-4 h-4 text-blue-600" />
+                  <span>2. 제휴카드 선택 및 할인 · 포인트 · 캐시백</span>
+                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-extrabold">
+                    제휴카드 전용
+                  </span>
                 </label>
                 <button
                   type="button"
@@ -932,8 +951,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-                {GENERAL_CARD_OPTIONS.map((cardOpt) => {
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {AFFILIATE_GENERAL_CARD_OPTIONS.map((cardOpt) => {
                   const active = state.generalCardType === cardOpt;
                   return (
                     <button
@@ -946,16 +965,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                           autoTierCashback: true,
                         }))
                       }
-                      className={`py-1.5 px-1.5 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
+                      className={`py-1.5 sm:py-2 px-2 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
                         active
                           ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
                           : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}
                     >
-                      {cardOpt.replace(' 제휴카드', '카드')}
+                      {cardOpt}
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange((prev) => ({
+                      ...prev,
+                      generalCardType: '미정',
+                      autoTierCashback: true,
+                    }))
+                  }
+                  className={`col-span-2 sm:col-span-1 py-1.5 sm:py-2 px-2 rounded-xl font-extrabold text-[11px] sm:text-xs whitespace-nowrap border transition cursor-pointer ${
+                    !isAffiliateGeneralCardType(state.generalCardType)
+                      ? 'bg-slate-800 text-white border-slate-800 shadow-xs'
+                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  제휴카드 미적용
+                </button>
               </div>
 
               {/* 할인/혜택 입력칸 5개 */}
@@ -1036,9 +1072,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       (-) 금액대별 캐시백 (원){' '}
                       <span className="text-[9px] font-bold text-blue-600">
                         *실결제가({generalSummary.payPrice.toLocaleString()}원) 기준{' '}
-                        {state.generalCardType === '미정'
-                          ? '(카드 선택 시 자동입력)'
-                          : '(자동 적용됨)'}
+                        {!isAffiliateGeneralCardType(state.generalCardType)
+                          ? '(제휴카드 선택 시 자동입력)'
+                          : '(제휴카드 자동 적용됨)'}
                       </span>
                     </span>
                   </div>
@@ -1067,8 +1103,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       }));
                     }}
                     placeholder={
-                      state.generalCardType === '미정'
-                        ? '위에서 카드를 선택하면 자동 계산됩니다'
+                      !isAffiliateGeneralCardType(state.generalCardType)
+                        ? '위에서 제휴카드를 선택하면 자동 계산됩니다'
                         : '0'
                     }
                     className="w-full px-2.5 py-1 rounded-lg bg-white border border-blue-300 text-xs font-black text-right text-blue-700 focus:outline-none"
@@ -1167,8 +1203,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </label>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                    총 {generalHiPreedSummary.totalAccounts}건 / 최대 6건 (-
-                    {generalHiPreedSummary.totalSupport.toLocaleString()}원)
+                    {state.quoteMode === 'hybrid'
+                      ? `합산 ${generalHiPreedSummary.totalAccounts + hiSummary.totalAccounts}개 / 최대 8개`
+                      : `총 ${generalHiPreedSummary.totalAccounts}개 / 최대 8개`}{' '}
+                    (-{generalHiPreedSummary.totalSupport.toLocaleString()}원)
                   </span>
                   {generalHiPreedSummary.totalAccounts > 0 && (
                     <button
@@ -1187,8 +1225,9 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   const count = state.generalHiPreedCounts[plan.id] || 0;
                   const active = count > 0;
                   const canAdd =
-                    generalHiPreedSummary.totalAccounts <
-                    MAX_GENERAL_HIPREED_ACCOUNTS;
+                    generalHiPreedSummary.totalAccounts +
+                      (state.quoteMode === 'hybrid' ? hiSummary.totalAccounts : 0) <
+                    MAX_LIFECARE_TOTAL_ACCOUNTS;
 
                   return (
                     <div
@@ -1564,9 +1603,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
             {/* 2. 제휴카드 및 월 사용금액 구간 */}
             <div className="space-y-2 pt-2 border-t border-slate-100">
-              <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+              <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
                 <CreditCard className="w-4 h-4 text-blue-600" />
-                2. 제휴카드 및 월 사용금액 구간
+                <span>2. 구독 제휴카드 선택 및 월 사용금액 구간</span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-extrabold">
+                  제휴카드 전용
+                </span>
               </label>
 
               <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
@@ -1608,7 +1650,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  미적용
+                  제휴카드 미적용
                 </button>
               </div>
 
@@ -1687,7 +1729,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   >
                     <div className="flex items-center justify-between gap-1 mb-1">
                       <label className="text-[10.5px] font-extrabold text-blue-950">
-                        (-) 금액대별 캐시백 (삼성·신한 300만↑)
+                        (-) 금액대별 캐시백 (삼성·신한 제휴카드 300만↑)
                       </label>
                       {state.subAutoTierCashback === false ? (
                         <button
@@ -1709,7 +1751,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                             ? totalPrincipal >= 3000000
                               ? '원금기준 자동적용'
                               : '원금 300만 미만'
-                            : '삼성·신한 전용'}
+                            : '삼성·신한 제휴카드 전용'}
                         </span>
                       )}
                     </div>
@@ -1736,7 +1778,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       placeholder={
                         liveSubSummary.isTierCashbackCard
                           ? '300만원 이상 시 자동 계산'
-                          : '삼성·신한 선택 시 자동 계산'
+                          : '삼성·신한 제휴카드 선택 시 자동 계산'
                       }
                       className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-blue-200 text-base sm:text-xs font-black text-right text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -1814,8 +1856,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 </label>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                    총 {hiSummary.totalAccounts}구좌 / 최대 8구좌 (월 -
-                    {hiSummary.monthlyHiPlusSupport.toLocaleString()}원)
+                    {state.quoteMode === 'hybrid'
+                      ? `합산 ${generalHiPreedSummary.totalAccounts + hiSummary.totalAccounts}개 / 최대 8개`
+                      : `총 ${hiSummary.totalAccounts}개 / 최대 8개`}{' '}
+                    (월 -{hiSummary.monthlyHiPlusSupport.toLocaleString()}원)
                   </span>
                   {hiSummary.totalAccounts > 0 && (
                     <button
@@ -1833,7 +1877,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 {HI_PLUS_PLANS.map((plan) => {
                   const count = state.hiPlusCounts[plan.id] || 0;
                   const active = count > 0;
-                  const canAdd = hiSummary.totalAccounts < MAX_HI_PLUS_ACCOUNTS;
+                  const canAdd = hiSummary.totalAccounts + (state.quoteMode === 'hybrid' ? generalHiPreedSummary.totalAccounts : 0) < MAX_LIFECARE_TOTAL_ACCOUNTS;
                   const monthlyUnitSupport =
                     representativePeriod === 36
                       ? plan.monthlySupport36
@@ -1901,7 +1945,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                     {periodLabel})
                   </div>
                   <div className="text-[11px] text-slate-600 font-semibold">
-                    기본 {totalBaseMonthly.toLocaleString()}원 - 카드{' '}
+                    기본 {totalBaseMonthly.toLocaleString()}원 - 제휴카드{' '}
                     {cardDiscount.toLocaleString()}원 - 프리드{' '}
                     {hiPlusMonthly.toLocaleString()}원
                     {liveSubSummary.totalSubCashback > 0 && (

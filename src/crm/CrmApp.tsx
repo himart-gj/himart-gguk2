@@ -85,6 +85,7 @@ interface CrmAppProps {
   ) => void;
   onCustomersChange?: (customers: CustomerItem[]) => void;
   initialSettlementTab?: SettlementTabId;
+  initialSelectedCustomerId?: string | null;
 }
 
 export const CrmApp: React.FC<CrmAppProps> = ({
@@ -93,6 +94,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   onOpenQuoteRecordInQuoteBuilder,
   onCustomersChange,
   initialSettlementTab,
+  initialSelectedCustomerId,
 }) => {
   // 앱 다크모드 실시간 동기화
   const [isDark, setIsDark] = useState<boolean>(() =>
@@ -146,8 +148,15 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
   // 모달 상태
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
-    null
+    initialSelectedCustomerId || null
   );
+
+  useEffect(() => {
+    if (initialSelectedCustomerId) {
+      setCustomers(getCachedCustomers());
+      setSelectedCustomerId(initialSelectedCustomerId);
+    }
+  }, [initialSelectedCustomerId]);
   const [smsCustomer, setSmsCustomer] = useState<CustomerItem | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState<boolean>(false);
   const [prefillNewCustomer, setPrefillNewCustomer] =

@@ -126,7 +126,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
   const [lpointUsed, setLpointUsed] = useState<number>(0);
   const [extraCashback, setExtraCashback] = useState<number>(0);
 
-  // 2) 롯데 플랜 카드 기본 혜택 3종 ON/OFF
+  // 2) 롯데 플랜 제휴카드 기본 혜택 3종 ON/OFF
   const [useBaseCashback40k, setUseBaseCashback40k] = useState<boolean>(true);
   const [useBillingDiscount5p, setUseBillingDiscount5p] = useState<boolean>(true);
   const [useLolaMoney3p, setUseLolaMoney3p] = useState<boolean>(true);
@@ -308,7 +308,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     .filter(Boolean);
   const proposalTitle =
     validItemNames.length === 0
-      ? '롯데 플랜 카드 맞춤 구매 제안서'
+      ? '롯데 플랜 제휴카드 맞춤 구매 제안서'
       : validItemNames.length === 1
       ? `${validItemNames[0]} 롯데 플랜 맞춤 제안서`
       : `${validItemNames[0]} 외 ${validItemNames.length - 1}건 롯데 플랜 제안서`;
@@ -334,7 +334,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     const lines: string[] = [
       '==============================',
       '[롯데하이마트 경기광주점]',
-      '💳 롯데 플랜 카드 맞춤 제안서',
+      '💳 롯데 플랜 제휴카드 맞춤 제안서',
       '==============================',
       '',
       '■ 구매 품목 및 결제 금액',
@@ -351,7 +351,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     }
     lines.push(`▶ 카드 실결제 금액: ${calc.cardPayAmount.toLocaleString()}원`);
     lines.push('');
-    lines.push('■ 롯데 플랜 카드 혜택 상세');
+    lines.push('■ 롯데 플랜 제휴카드 혜택 상세');
     if (calc.baseCashback40k > 0) {
       lines.push(
         `  • 기본 캐시백 (20만원 이상 결제): -${calc.baseCashback40k.toLocaleString()}원`
@@ -655,12 +655,12 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
               </div>
             </div>
 
-            {/* 2. 롯데 플랜 카드 기본 혜택 3종 */}
+            {/* 2. 롯데 플랜 제휴카드 기본 혜택 3종 */}
             <div className="space-y-2.5 pt-3 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                   <CreditCard className="w-4 h-4 text-blue-600" />
-                  2. 롯데 플랜 카드 기본 혜택 3종
+                  2. 롯데 플랜 제휴카드 기본 혜택 3종
                 </label>
                 <span className="text-[11px] font-extrabold text-slate-500">
                   카드 실결제가: {calc.cardPayAmount.toLocaleString()}원
@@ -1067,7 +1067,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                     롯데하이마트 경기광주점
                   </span>
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-extrabold">
-                    롯데 플랜 카드 맞춤 혜택안
+                    롯데 플랜 제휴카드 맞춤 혜택안
                   </span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
@@ -1161,7 +1161,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
 
               <div className="bg-slate-900 text-white rounded-xl px-5 py-3 flex items-center justify-between">
                 <span className="text-sm sm:text-base font-black text-slate-100">
-                  💳 롯데 플랜 카드 실결제 금액
+                  💳 롯데 플랜 제휴카드 실결제 금액
                 </span>
                 <span className="text-xl sm:text-2xl font-black text-amber-400">
                   {calc.cardPayAmount.toLocaleString()}원
@@ -1169,7 +1169,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
               </div>
             </div>
 
-            {/* 3) 롯데 플랜 카드 혜택 3단 요약 */}
+            {/* 3) 롯데 플랜 제휴카드 혜택 3단 요약 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {/* 캐시백 혜택 */}
               <div className="bg-rose-50/70 border border-rose-200 rounded-2xl p-4 flex flex-col justify-between space-y-2">

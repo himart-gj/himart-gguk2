@@ -470,7 +470,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   }
 
   const subFormulaParts = ['월 구독료'];
-  if (cardMonthlyDiscount > 0) subFormulaParts.push(`카드${subCardBenefitLabel}`);
+  if (cardMonthlyDiscount > 0) subFormulaParts.push(`제휴카드${subCardBenefitLabel}`);
   if (hiPlusMonthlySupport > 0) subFormulaParts.push('구독프리드');
   if (subSummary.monthlyCashbackEquiv > 0) subFormulaParts.push('캐시백(월환산)');
   const subFormulaText = subFormulaParts.join(' ➖ ');
@@ -978,7 +978,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     <div className="text-right">
                       <span className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-white">
                         <CreditCard className="w-4 h-4 text-blue-400" />
-                        결제수단: {state.generalCardType}
+                        적용 제휴카드: {state.generalCardType === '미정' || state.generalCardType === '일반카드' ? '제휴카드 미적용' : state.generalCardType}
                       </span>
                     </div>
                   </div>
@@ -1577,7 +1577,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-blue-300">
-                        일반: {state.generalCardType}
+                        일반 제휴카드: {state.generalCardType === '미정' || state.generalCardType === '일반카드' ? '미적용' : state.generalCardType}
                       </span>
                       <span className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs font-extrabold text-rose-300">
                         구독: {periodLabel}

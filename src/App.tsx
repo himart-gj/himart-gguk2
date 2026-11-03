@@ -34,6 +34,14 @@ import { AiCommandModal } from './components/AiCommandModal';
 import { CommandOmnibarModal } from './components/CommandOmnibarModal';
 import { PartnerLinksModal } from './components/PartnerLinksModal';
 import { CustomerShareQuoteView } from './components/CustomerShareQuoteView';
+import {
+  isOwnerMarketingDbUnlocked,
+  loadMarketingDbStore,
+  MARKETING_DB_UPDATED_EVENT,
+  verifyAndUnlockOwnerDb,
+} from './utils/marketingDbEngine';
+
+import MarketingDbManagerView from './components/MarketingDbManagerView';
 import { CustomerItem, QuoteRecord, SettlementTabId } from './crm/types/crm';
 import {
   CRM_CUSTOMERS_UPDATED_EVENT,
@@ -80,6 +88,8 @@ import {
   Moon,
   Sun,
   Columns2,
+  Database,
+  Lock,
   Search,
   WifiOff,
   Wrench,
@@ -664,10 +674,85 @@ export function App() {
     return '📅 기본 조견표 적용중';
   }, [careDataset]);
 
+  // ==================== 국지현 전용 비공개 [마케팅 DB관리] 스텔스 상태 ====================
+  const [isOwnerDbUnlocked, setIsOwnerDbUnlocked] = useState<boolean>(() =>
+    isOwnerMarketingDbUnlocked()
+  );
+  const [ownerDbTick, setOwnerDbTick] = useState<number>(0);
+  const [initialCrmCustomerId, setInitialCrmCustomerId] = useState<
+    string | null
+  >(null);
+  const [isStealthPinOpen, setIsStealthPinOpen] = useState<boolean>(false);
+  const [stealthPinInput, setStealthPinInput] = useState<string>('');
+  const [stealthPinError, setStealthPinError] = useState<boolean>(false);
+  const homeTapTimestampsRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const syncOwnerDb = () => {
+      setIsOwnerDbUnlocked(isOwnerMarketingDbUnlocked());
+      setOwnerDbTick((t) => t + 1);
+    };
+    window.addEventListener(MARKETING_DB_UPDATED_EVENT, syncOwnerDb);
+    return () =>
+      window.removeEventListener(MARKETING_DB_UPDATED_EVENT, syncOwnerDb);
+  }, []);
+
+  const ownerDbQuickSummary = useMemo(() => {
+    if (!isOwnerDbUnlocked) {
+      return { totalActive: 0, newCount: 0, monthRevenue: 0 };
+    }
+    const dbStore = loadMarketingDbStore();
+    const active = dbStore.leads.filter((l) => !l.deletedAt);
+    const now = new Date();
+    const curYm = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}`;
+    const newCount = active.filter((l) => l.status === '신규접수').length;
+    const monthRevenue = active
+      .filter((l) => l.yearMonth === curYm && l.status === '계약완료')
+      .reduce((s, l) => s + (Number(l.revenueAmount) || 0), 0);
+    return {
+      totalActive: active.length,
+      newCount,
+      monthRevenue,
+    };
+  }, [isOwnerDbUnlocked, ownerDbTick, step]);
+
+  const handleHomeButtonClick = () => {
+    setStep('home');
+    const now = Date.now();
+    const recent = homeTapTimestampsRef.current.filter((t) => now - t < 2500);
+    recent.push(now);
+    homeTapTimestampsRef.current = recent;
+    if (recent.length >= 5) {
+      homeTapTimestampsRef.current = [];
+      if (isOwnerMarketingDbUnlocked()) {
+        setStep('marketing-db');
+      } else {
+        setStealthPinInput('');
+        setStealthPinError(false);
+        setIsStealthPinOpen(true);
+      }
+    }
+  };
+
+  const handleConfirmStealthPin = () => {
+    if (verifyAndUnlockOwnerDb(stealthPinInput)) {
+      setIsOwnerDbUnlocked(true);
+      setIsStealthPinOpen(false);
+      setStealthPinInput('');
+      setStep('marketing-db');
+    } else {
+      setStealthPinError(true);
+    }
+  };
+
   // 현재 열려 있는 화면 이름 배지 텍스트
   const currentScreenBadgeLabel = useMemo(() => {
     if (step === 'home') return '메인 홈';
     if (step === 'crm') return '👑 통합 고객관리';
+    if (step === 'marketing-db') return '📊 마케팅 DB관리';
     if (step === 'input' || step === 'proposal') {
       if (activeMode === 'general') return '1. 일반 견적';
       if (activeMode === 'subscription') return '2. 구독 견적';
@@ -1263,7 +1348,7 @@ export function App() {
         <div className="flex-1 flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto py-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
             type="button"
-            onClick={() => setStep('home')}
+            onClick={handleHomeButtonClick}
             className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shrink-0 transition cursor-pointer ${
               step === 'home'
                 ? isDark
@@ -1467,6 +1552,33 @@ export function App() {
                   <ChevronRight className="w-4 h-4 opacity-75" />
                 )}
               </button>
+
+              {isOwnerDbUnlocked && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setStep('marketing-db');
+                  }}
+                  className={`w-full py-2.5 px-4 rounded-2xl font-black text-xs flex items-center justify-between border transition cursor-pointer ${
+                    isDark
+                      ? 'bg-gradient-to-r from-violet-950/80 to-indigo-950/70 text-amber-200 border-amber-400/40 hover:border-amber-300'
+                      : 'bg-gradient-to-r from-[#2E1065] to-[#1E1B4B] text-white border-indigo-900'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Database className="w-3.5 h-3.5 text-amber-300" />
+                    <span>인스타 마케팅 DB관리 (국지현 전용)</span>
+                  </span>
+                  {ownerDbQuickSummary.newCount > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black">
+                      신규 {ownerDbQuickSummary.newCount}건
+                    </span>
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5 opacity-80" />
+                  )}
+                </button>
+              )}
 
               <div className="grid grid-cols-2 gap-1.5">
                 <div className="flex flex-col gap-1.5">
@@ -1799,6 +1911,39 @@ export function App() {
                 )}
               </div>
             </button>
+
+            {/* 0-3) 국지현 전용 비공개 인스타 마케팅 DB관리 배너 (타 직원 기기에서는 아예 렌더링되지 않음) */}
+            {isOwnerDbUnlocked && (
+              <button
+                type="button"
+                onClick={() => setStep('marketing-db')}
+                className={`w-full py-3.5 px-4 sm:px-5 rounded-3xl transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 cursor-pointer shadow-sm hover:shadow-lg border-[1.5px] ${
+                  isDark
+                    ? 'bg-gradient-to-r from-[#1E1B4B] via-[#172036] to-[#142628] text-white border-amber-400/45 hover:border-amber-300'
+                    : 'bg-gradient-to-r from-[#FAF5FF] via-white to-[#ECFDF5] text-[#18181B] border-indigo-300 hover:border-indigo-500'
+                }`}
+              >
+                <div className="text-left min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px] font-black text-indigo-600 dark:text-amber-300">
+                    <Lock className="w-3 h-3 shrink-0" />
+                    <span>PRIVATE · 인스타 광고 전용 DB관리 (나만 보기)</span>
+                  </div>
+                  <div className="text-xs sm:text-sm font-black mt-0.5 truncate">
+                    전체 DB {ownerDbQuickSummary.totalActive}명 · 미발송 신규{' '}
+                    <span className="text-rose-500">
+                      {ownerDbQuickSummary.newCount}건
+                    </span>{' '}
+                    · 이번 달 계약매출{' '}
+                    <span className="text-emerald-600 dark:text-emerald-300 font-mono">
+                      {ownerDbQuickSummary.monthRevenue.toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+                <span className="px-3.5 py-1.5 rounded-2xl sm:rounded-full bg-indigo-600 text-white text-xs font-black text-center shrink-0">
+                  DB관리 열기 ➔
+                </span>
+              </button>
+            )}
 
             {/* STEP 01 · 맞춤 견적 & 카드 혜택 설계 (4종) */}
             <section
@@ -2301,11 +2446,35 @@ export function App() {
         )}
         {step === 'crm' && (
           <CrmApp
-            onBackToHome={() => setStep('home')}
+            onBackToHome={() => {
+              setInitialCrmCustomerId(null);
+              setStep('home');
+            }}
             onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
             onOpenQuoteRecordInQuoteBuilder={handleOpenQuoteRecordInQuoteBuilder}
             onCustomersChange={(list) => setCrmCustomers(list)}
             initialSettlementTab={initialCrmTab}
+            initialSelectedCustomerId={initialCrmCustomerId}
+          />
+        )}
+        {step === 'marketing-db' && isOwnerDbUnlocked && (
+          <MarketingDbManagerView
+            onBackToHome={() => setStep('home')}
+            onLockAndHideMenu={() => {
+              setIsOwnerDbUnlocked(false);
+              setStep('home');
+            }}
+            onOpenCustomerInCrm={(custId) => {
+              setInitialCrmTab(undefined);
+              setInitialCrmCustomerId(custId || null);
+              setCrmCustomers(getCachedCustomers());
+              setStep('crm');
+            }}
+            onOpenCustomerInQuoteBuilder={(cust) => {
+              setCrmCustomers(getCachedCustomers());
+              handleOpenCustomerInQuoteBuilder(cust);
+            }}
+            isDark={isDark}
           />
         )}
         {step === 'himobile' && (
@@ -2526,7 +2695,68 @@ export function App() {
         </div>
       )}
 
-      {step !== 'crm' && (
+      {isStealthPinOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 no-print"
+          onClick={() => setIsStealthPinOpen(false)}
+        >
+          <div
+            className={`w-full max-w-xs rounded-3xl border p-5 space-y-3.5 shadow-2xl ${
+              isDark
+                ? 'bg-[#141923] border-white/15 text-white'
+                : 'bg-white border-[#E4DFD5] text-[#18181B]'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-black flex items-center gap-1.5">
+                <Lock className="w-4 h-4 text-amber-500" />
+                <span>개인 보안 코드 인증</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsStealthPinOpen(false)}
+                className="p-1 rounded-lg opacity-60 hover:opacity-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <input
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              value={stealthPinInput}
+              onChange={(e) => {
+                setStealthPinInput(e.target.value);
+                setStealthPinError(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmStealthPin();
+              }}
+              placeholder="보안 코드 입력"
+              className={`w-full px-3.5 py-2.5 rounded-xl border text-center font-mono text-base font-black ${
+                isDark
+                  ? 'bg-[#0E131D] border-white/15 text-white'
+                  : 'bg-[#FAF8F4] border-[#D6D0C4] text-[#18181B]'
+              }`}
+            />
+            {stealthPinError && (
+              <p className="text-xs font-bold text-rose-500 text-center">
+                코드가 일치하지 않습니다.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={handleConfirmStealthPin}
+              className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
+            >
+              확인
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step !== 'crm' && step !== 'marketing-db' && (
         <PastDeliveryCheckModal
           isOpen={isHomePastDeliveryOpen}
           customers={pastDueCustomersHome}

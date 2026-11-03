@@ -205,7 +205,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   const row1LotteCards = [
     {
       id: 'lotte-card',
-      title: '롯데카드 발급',
+      title: '롯데 제휴카드 발급',
       subtitle: '하이마트 제휴 롯데카드 모바일 간편 신청',
       borderClass: 'border-rose-200 hover:border-rose-300',
       openBtnClass: 'bg-rose-600 hover:bg-rose-500 text-white',
@@ -236,7 +236,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   const row2SamsungShinhanCards = [
     {
       id: 'samsung',
-      title: '삼성카드 발급',
+      title: '삼성 제휴카드 발급',
       subtitle: '내 사번 자동 연동 · 하이마트 제휴 삼성카드 간편 신청',
       borderClass: 'border-blue-200 hover:border-blue-300',
       openBtnClass: 'bg-blue-600 hover:bg-blue-500 text-white',
@@ -245,7 +245,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
     },
     {
       id: 'shinhan',
-      title: '신한카드 발급',
+      title: '신한 제휴카드 발급',
       subtitle: '내 사번 자동 연동 · 하이마트 제휴 신한카드 간편 신청',
       borderClass: 'border-indigo-200 hover:border-indigo-300',
       openBtnClass: 'bg-indigo-600 hover:bg-indigo-500 text-white',
@@ -257,7 +257,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
   // 3번째 줄: 우리카드 단독 1종
   const row3WooriCard = {
     id: 'woori',
-    title: '우리카드 발급',
+    title: '우리 제휴카드 발급',
     subtitle: '일반 구매 캐시백 및 가전 구독 할인 전용 우리카드 신청',
     borderClass: 'border-sky-200 hover:border-sky-300',
     openBtnClass: 'bg-sky-600 hover:bg-sky-500 text-white',

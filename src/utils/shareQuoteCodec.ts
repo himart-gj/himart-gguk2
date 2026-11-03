@@ -41,7 +41,19 @@ export interface EncodedQuoteLinks {
 }
 
 const DEFAULT_STORE_NAME = '롯데하이마트 경기광주점';
-const DEFAULT_ROLE_TITLE = '수석 가전 컨설턴트';
+const DEFAULT_ROLE_TITLE = '고객 맞춤 가전 컨설턴트';
+
+export function normalizeConsultantRoleTitle(raw?: string | null): string {
+  const trimmed = String(raw || '').trim();
+  if (
+    !trimmed ||
+    trimmed === '수석 가전 컨설턴트' ||
+    trimmed === '가전 전문 컨설턴트'
+  ) {
+    return DEFAULT_ROLE_TITLE;
+  }
+  return trimmed;
+}
 const DEFAULT_GREETING =
   '고객님 가계에 가장 유리한 플랜을 직접 비교해 보시고 편하게 연락 주세요!';
 const DEFAULT_WARRANTY = 'AS연장보험 + 가전수리올케어';
@@ -193,7 +205,7 @@ export function loadConsultantProfile(): ConsultantProfile {
       if (parsed && typeof parsed === 'object') {
         return {
           name: String(parsed.name || loadSavedUserName() || '전문 상담사').trim(),
-          roleTitle: String(parsed.roleTitle || DEFAULT_ROLE_TITLE).trim(),
+          roleTitle: normalizeConsultantRoleTitle(parsed.roleTitle),
           phone: String(parsed.phone || '').trim(),
           storeName: String(parsed.storeName || DEFAULT_STORE_NAME).trim(),
           greeting: String(parsed.greeting || DEFAULT_GREETING).trim(),
@@ -205,7 +217,7 @@ export function loadConsultantProfile(): ConsultantProfile {
   }
   return {
     name: loadSavedUserName() || '전문 상담사',
-    roleTitle: '가전 전문 컨설턴트',
+    roleTitle: DEFAULT_ROLE_TITLE,
     phone: '',
     storeName: DEFAULT_STORE_NAME,
     greeting: DEFAULT_GREETING,
@@ -540,7 +552,7 @@ export function packCompactQuoteV2(payload: SharedQuotePayload): any[] {
   const profTuple = trimTrailingZeros([
     c.name || '',
     c.phone || '',
-    c.roleTitle === DEFAULT_ROLE_TITLE ? '' : c.roleTitle || '',
+    normalizeConsultantRoleTitle(c.roleTitle) === DEFAULT_ROLE_TITLE ? '' : normalizeConsultantRoleTitle(c.roleTitle),
     c.storeName === DEFAULT_STORE_NAME ? '' : c.storeName || '',
     c.greeting === DEFAULT_GREETING ? '' : c.greeting || '',
   ]);
@@ -572,7 +584,7 @@ export function unpackCompactQuoteV2(arr: any[]): SharedQuotePayload | null {
   const consultant: ConsultantProfile = {
     name: String(prof[0] || '전문 상담사'),
     phone: String(prof[1] || ''),
-    roleTitle: String(prof[2] || DEFAULT_ROLE_TITLE),
+    roleTitle: normalizeConsultantRoleTitle(prof[2]),
     storeName: String(prof[3] || DEFAULT_STORE_NAME),
     greeting: String(prof[4] || DEFAULT_GREETING),
   };
@@ -811,6 +823,11 @@ export function loadCachedCustomerQuotePayload(): SharedQuotePayload | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SharedQuotePayload;
     if (parsed && typeof parsed === 'object' && parsed.state) {
+      if (parsed.consultant) {
+        parsed.consultant.roleTitle = normalizeConsultantRoleTitle(
+          parsed.consultant.roleTitle
+        );
+      }
       return parsed;
     }
   } catch {
@@ -1109,6 +1126,11 @@ export async function decodeSharedQuoteToken(
     const parsed = JSON.parse(jsonText) as SharedQuotePayload;
     if (!parsed || typeof parsed !== 'object' || !parsed.state) {
       return null;
+    }
+    if (parsed.consultant) {
+      parsed.consultant.roleTitle = normalizeConsultantRoleTitle(
+        parsed.consultant.roleTitle
+      );
     }
     cacheCustomerQuotePayload(parsed);
     return parsed;
