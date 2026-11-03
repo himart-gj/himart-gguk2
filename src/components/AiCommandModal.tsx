@@ -3161,11 +3161,11 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto no-print"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto no-print"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden my-auto max-h-[94dvh] flex flex-col"
+        className="w-full max-w-4xl h-[93dvh] sm:h-auto sm:my-auto max-h-[94dvh] rounded-t-3xl sm:rounded-3xl bg-white border border-slate-200 shadow-2xl overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 상단 헤더 */}

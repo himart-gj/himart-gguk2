@@ -271,7 +271,7 @@ export const CardIssueModal: React.FC<CardIssueModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl max-h-[94dvh] rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-4xl h-[93dvh] sm:h-auto sm:max-h-[94dvh] rounded-t-3xl sm:rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 모달 상단 헤더 */}
@@ -1053,7 +1053,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-5xl max-h-[94dvh] rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-5xl h-[93dvh] sm:h-auto sm:max-h-[94dvh] rounded-t-3xl sm:rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 모달 상단 헤더 */}

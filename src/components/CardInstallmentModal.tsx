@@ -75,7 +75,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
   const [dataset, setDataset] = useState<InstallmentDataset>(() =>
     loadLocalInstallmentDataset()
   );
-  const [activeTab, setActiveTab] = useState<'table' | 'summary'>('table');
+  const [activeTab, setActiveTab] = useState<'table' | 'summary'>(() => (typeof window !== 'undefined' && window.innerWidth < 640 ? 'summary' : 'table'));
   const [selectedBrand, setSelectedBrand] = useState<string>('전체');
 
   // 업로드 / AI 파싱 상태
@@ -427,11 +427,11 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 no-print"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 no-print"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-[1440px] max-h-[94dvh] rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
+        className="w-full max-w-[1440px] h-[94dvh] sm:h-auto sm:max-h-[94dvh] rounded-t-3xl sm:rounded-3xl bg-white border border-slate-200 shadow-2xl flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 숨김 파일 업로드 input (사진 / 엑셀 / JSON) */}
@@ -780,7 +780,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
           {/* 탭 전환 + 카드사 필터 + 색상 범례 */}
           <div className="flex flex-wrap items-center justify-between gap-2">
             {/* 뷰 탭 */}
-            <div className="flex items-center bg-white p-1 rounded-xl border border-slate-300 shadow-2xs">
+            <div className="grid grid-cols-2 sm:flex items-center w-full sm:w-auto bg-white p-1 rounded-xl border border-slate-300 shadow-2xs">
               <button
                 type="button"
                 onClick={() => setActiveTab('table')}
@@ -791,7 +791,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                 }`}
               >
                 <Table2 className="w-3.5 h-3.5" />
-                <span>📊 전체 비교표 (원본 표)</span>
+                <span className="truncate">📊 전체 비교표</span>
               </button>
               <button
                 type="button"
@@ -808,7 +808,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
                 }`}
               >
                 <LayoutGrid className="w-3.5 h-3.5" />
-                <span>🔍 카드사별 퀵 요약 카드</span>
+                <span className="truncate">🔍 카드사별 요약</span>
               </button>
             </div>
 

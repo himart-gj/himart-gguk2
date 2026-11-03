@@ -1120,7 +1120,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                             key={product.id}
                             className="w-[148.5mm] h-[210mm] flex items-center justify-center box-border shrink-0"
                           >
-                            <div className="w-full h-full flex items-center justify-center print:p-[6mm]">
+                            <div className="w-full h-full flex items-center justify-center">
                               <div className="w-full h-full relative">
                                 <PopCard
                                   product={product}

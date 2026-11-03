@@ -83,69 +83,123 @@ function normalizeCareLabel(rawText?: string): string {
     .replace(/3년\s*(무상|A\/?S)/gi, '5년 $1')
     .replace(/_+\d+\b/g, '')
     .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
 }
 
 /**
- * 긴 케어 명칭이나 서비스 내용을 단어·괄호 중간 절단 없이 읽기 좋게 1~2줄로 분할
+ * 긴 제품 모델명을 괄호·하이픈 단위로 자연스럽게 분할 (절대 '(PK' / 'G)'처럼 괄호 중간이 잘리지 않도록 보호)
  */
-function formatSmartCareLines(rawText: string, maxSingleLineLen = 16): string[] {
-  const text = (rawText || '').trim().replace(/\s+/g, ' ');
-  if (!text) return [];
+function formatSmartModelLines(rawModel?: string): { lines: string[]; fontCls: string } {
+  const text = (rawModel || '').trim().replace(/\s+/g, ' ');
+  if (!text) return { lines: [''], fontCls: 'text-[13.5px] whitespace-nowrap' };
 
-  // 괄호 '(' 가 포함되어 있고 전체 길이가 조금이라도 길면 괄호 앞에서 깔끔하게 줄바꿈
-  // 예: "샤크 정품 배터리 배송 (1회 24개월)" -> ["샤크 정품 배터리 배송", "(1회 24개월)"]
+  const len = text.length;
+  // 20자 이하(예: '15U50U-G.AR50K(PKG)' 19자)는 A5 모델명 칸(약 186px) 안에 한 줄로 깔끔하게 수용
+  if (len <= 12) {
+    return { lines: [text], fontCls: 'text-[13.5px] whitespace-nowrap' };
+  }
+  if (len <= 16) {
+    return { lines: [text], fontCls: 'text-[11.5px] whitespace-nowrap' };
+  }
+  if (len <= 20) {
+    return { lines: [text], fontCls: 'text-[10.2px] whitespace-nowrap' };
+  }
+
+  // 21자 이상 초장문 모델명: 1순위 '(' 앞, 2순위 공백, 3순위 중앙 근처 '-' 또는 '.' 뒤에서 자연스러운 2줄 분리
+  const parenIdx = text.lastIndexOf('(');
+  if (parenIdx >= 6 && parenIdx < len - 2) {
+    return {
+      lines: [text.slice(0, parenIdx).trim(), text.slice(parenIdx).trim()],
+      fontCls: 'text-[10px] leading-tight whitespace-nowrap',
+    };
+  }
+
+  const mid = Math.floor(len / 2);
+  let bestSplit = -1;
+  let bestDist = Infinity;
+  for (let i = 5; i < len - 4; i++) {
+    const ch = text[i];
+    if (ch === ' ' || ch === '-' || ch === '/' || ch === '.') {
+      const splitPos = ch === ' ' ? i : i + 1;
+      const dist = Math.abs(splitPos - mid);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestSplit = splitPos;
+      }
+    }
+  }
+  if (bestSplit > 0) {
+    return {
+      lines: [text.slice(0, bestSplit).trim(), text.slice(bestSplit).trim()],
+      fontCls: 'text-[9.5px] leading-tight whitespace-nowrap',
+    };
+  }
+
+  return { lines: [text], fontCls: 'text-[9px] leading-tight break-all' };
+}
+
+/**
+ * 긴 케어 명칭이나 서비스 내용을 줄바꿈(\n) 및 의미 구분자(·, /, ,) 기준으로 먼저 나눈 뒤
+ * 단어·숫자('20%')·괄호('(60개월)') 중간 절단 없이 자연스럽게 줄바꿈
+ */
+function splitSingleCareSegment(seg: string, maxLen: number): string[] {
+  const text = seg.trim();
+  if (!text) return [];
+  if (text.length <= maxLen) return [text];
+
+  // 1순위: 구분자(·, /, +, |, ,) 기준 분할
+  const delimiterRegex = /\s*(?:,|\/|\+|·|\|)\s*/;
+  if (delimiterRegex.test(text)) {
+    const parts = text
+      .split(/\s*(?:,|\/|\+|·|\|)\s*/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (parts.length >= 2) {
+      const merged: string[] = [];
+      for (const p of parts) {
+        if (merged.length > 0 && (merged[merged.length - 1] + ' · ' + p).length <= maxLen) {
+          merged[merged.length - 1] = merged[merged.length - 1] + ' · ' + p;
+        } else {
+          merged.push(p);
+        }
+      }
+      return merged.flatMap((m) => (m.length > maxLen + 4 ? splitByWordsOrParen(m, maxLen) : [m]));
+    }
+  }
+
+  return splitByWordsOrParen(text, maxLen);
+}
+
+function splitByWordsOrParen(text: string, maxLen: number): string[] {
+  if (text.length <= maxLen) return [text];
+
+  // 괄호 앞에 공백이 있거나 짧은 접두부가 있을 때만 괄호 앞에서 분리 (문장 맨 끝 '(60개월)' 때문에 앞 35자가 통째로 남는 현상 방지)
   const parenIdx = text.indexOf('(');
-  if (parenIdx > 3 && text.length > maxSingleLineLen) {
+  if (parenIdx > 3 && parenIdx <= maxLen) {
     const beforeParen = text.slice(0, parenIdx).trim();
     const fromParen = text.slice(parenIdx).trim();
-    if (beforeParen && fromParen) {
+    if (beforeParen && fromParen && fromParen.length <= maxLen + 4) {
       return [beforeParen, fromParen];
     }
   }
 
-  if (text.length <= maxSingleLineLen) return [text];
-
-  const delimiterRegex = /\s*(?:,|\/|\+|·|\|)\s*/;
-  if (delimiterRegex.test(text)) {
-    const tokens = text
-      .split(/\s*(?:,|\/|\+|·|\|)\s*/)
-      .map((t) => t.trim())
-      .filter(Boolean);
-
-    if (tokens.length === 2) {
-      return [tokens[0], tokens[1]];
-    }
-    if (tokens.length >= 3) {
-      let bestIdx = 1;
-      let bestDiff = Infinity;
-      for (let i = 1; i < tokens.length; i++) {
-        const line1 = tokens.slice(0, i).join(' · ');
-        const line2 = tokens.slice(i).join(' · ');
-        const diff = Math.abs(line1.length - line2.length);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestIdx = i;
-        }
-      }
-      return [
-        tokens.slice(0, bestIdx).join(' · '),
-        tokens.slice(bestIdx).join(' · '),
-      ];
-    }
-  }
-
+  // 어절(공백) 기준 균형 2줄 분할 ('파손수리액의 20%' 처럼 짧은 단위어는 앞 단어와 함께 묶음)
   const words = text.split(' ');
   if (words.length >= 2) {
     let bestSplit = 1;
-    let minDiff = Infinity;
+    let bestScore = Infinity;
     for (let i = 1; i < words.length; i++) {
       const l1 = words.slice(0, i).join(' ');
       const l2 = words.slice(i).join(' ');
-      const diff = Math.abs(l1.length - l2.length);
-      if (diff < minDiff) {
-        minDiff = diff;
+      // 마지막 줄이 '20%' 처럼 4글자 이하 고아 단어가 되지 않도록 패널티 부여
+      const orphanPenalty = l2.length <= 4 ? 20 : 0;
+      const overPenalty = Math.max(0, l1.length - (maxLen + 3)) * 4 + Math.max(0, l2.length - (maxLen + 3)) * 4;
+      const score = Math.abs(l1.length - l2.length) + orphanPenalty + overPenalty;
+      if (score < bestScore) {
+        bestScore = score;
         bestSplit = i;
       }
     }
@@ -156,6 +210,21 @@ function formatSmartCareLines(rawText: string, maxSingleLineLen = 16): string[] 
   }
 
   return [text];
+}
+
+function formatSmartCareLines(rawText: string, maxSingleLineLen = 18): string[] {
+  const cleaned = (rawText || '').trim();
+  if (!cleaned) return [];
+  const rawSegments = cleaned
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const out: string[] = [];
+  for (const seg of rawSegments) {
+    out.push(...splitSingleCareSegment(seg, maxSingleLineLen));
+  }
+  return out.slice(0, 4);
 }
 
 export default function PopCard({
@@ -244,19 +313,12 @@ export default function PopCard({
   );
   const careDetailLines = formatSmartCareLines(
     cleanCareServiceDetail || '5년 무상 A/S + 정기 케어',
-    16
+    19
   );
 
-  // 모델명·원금 글자 수 기반 자동 폰트 크기 조절 (절대 겹침/줄바꿈 깨짐 방지)
-  const modelLen = (product.modelName || '').trim().length;
-  const modelFontCls =
-    modelLen <= 12
-      ? 'text-[13.5px] whitespace-nowrap'
-      : modelLen <= 16
-      ? 'text-[11.5px] whitespace-nowrap'
-      : modelLen <= 22
-      ? 'text-[10px] leading-tight break-all'
-      : 'text-[9px] leading-tight break-all';
+  // 모델명·원금 글자 수 기반 자동 폰트 크기 및 자연스러운 줄바꿈 (괄호 중간 절단 원천 방지)
+  const smartModel = formatSmartModelLines(product.modelName);
+  const modelFontCls = smartModel.fontCls;
 
   const catText = (product.category || '').trim();
   const modelHeaderLabel = catText.length >= 5 ? '🏷️ 모델명' : '🏷️ 제품 모델명';
@@ -491,7 +553,9 @@ export default function PopCard({
                 </span>
               </div>
               <div className={`${modelFontCls} font-black text-slate-900 tracking-tight px-0.5`}>
-                {product.modelName}
+                {smartModel.lines.map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
               </div>
             </div>
 
@@ -613,7 +677,7 @@ export default function PopCard({
                 <div className="bg-slate-800 text-white text-center py-1 font-extrabold text-[11px] whitespace-nowrap">
                   카드 사용 꿀팁!
                 </div>
-                <div className="px-2.5 py-2 flex-1 grid grid-cols-2 gap-x-1.5 gap-y-1.5 items-center text-[10px]">
+                <div className="px-2 py-2 flex-1 grid grid-cols-2 gap-x-1 gap-y-1.5 items-center text-[9.5px]">
                   {[
                     '개인 보험 자동이체',
                     '휴대폰 요금 자동이체',
@@ -657,7 +721,7 @@ export default function PopCard({
                   💳 선택 1안 · 제휴카드만
                 </div>
 
-                <div className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-[10.5px] flex flex-col gap-0.5">
+                <div className="w-full bg-white border border-slate-200 rounded-lg px-1.5 py-1.5 text-[10px] tracking-tight flex flex-col gap-0.5">
                   <div className="flex items-center justify-between whitespace-nowrap">
                     <span className="font-bold text-slate-600">기본 월 구독료</span>
                     <span className="font-extrabold text-slate-800">
@@ -705,7 +769,7 @@ export default function PopCard({
                   👑 선택 2안 · 상조서비스 결합
                 </div>
 
-                <div className="w-full bg-white border border-rose-200 rounded-lg px-2 py-1.5 text-[10.5px] flex flex-col gap-0.5">
+                <div className="w-full bg-white border border-rose-200 rounded-lg px-1.5 py-1.5 text-[10px] tracking-tight flex flex-col gap-0.5">
                   <div className="flex items-center justify-between whitespace-nowrap">
                     <span className="font-bold text-slate-600">기본 월 구독료</span>
                     <span className="font-extrabold text-slate-800">
