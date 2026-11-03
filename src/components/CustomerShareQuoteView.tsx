@@ -28,6 +28,7 @@ import {
   saveConsultantProfile,
   saveCustomStaffPin,
   saveCustomViewerBaseUrl,
+  syncViewerBaseUrlFromServer,
   SharedQuotePayload,
   unlockStaffDeviceWithPin,
 } from '../utils/shareQuoteCodec';
@@ -71,115 +72,173 @@ const SecurityDomainConfigBox: React.FC<SecurityDomainConfigBoxProps> = ({
   isDark,
   onDomainChanged,
 }) => {
-  const [expanded, setExpanded] = useState(false);
+  const [savedUrl, setSavedUrl] = useState(() => loadCustomViewerBaseUrl());
   const [viewerUrl, setViewerUrl] = useState(() => loadCustomViewerBaseUrl());
+  const [expanded, setExpanded] = useState(() => !loadCustomViewerBaseUrl());
   const [pinInput, setPinInput] = useState('');
+  const [showPinConfig, setShowPinConfig] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
+  useEffect(() => {
+    let mounted = true;
+    syncViewerBaseUrlFromServer().then((remoteOrLocal) => {
+      if (!mounted) return;
+      if (remoteOrLocal && remoteOrLocal !== savedUrl) {
+        setSavedUrl(remoteOrLocal);
+        setViewerUrl(remoteOrLocal);
+        setExpanded(false);
+        onDomainChanged();
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleSaveDomain = () => {
-    saveCustomViewerBaseUrl(viewerUrl);
+    const normalized = saveCustomViewerBaseUrl(viewerUrl);
+    setSavedUrl(normalized);
+    setViewerUrl(normalized);
     onDomainChanged();
-    setSavedNotice('고객 링크 전용 도메인 설정이 반영되었습니다.');
-    setTimeout(() => setSavedNotice(null), 2500);
+    if (normalized) {
+      setExpanded(false);
+      setSavedNotice('미니 뷰어 주소가 저장되었습니다. 이제 모든 링크가 미니 뷰어로 자동 생성됩니다!');
+    } else {
+      setSavedNotice('별도 뷰어 주소가 해제되어 기본 주소로 발송됩니다.');
+    }
+    setTimeout(() => setSavedNotice(null), 3200);
   };
 
   const handleSavePin = () => {
     if (saveCustomStaffPin(pinInput)) {
       setPinInput('');
-      setSavedNotice('직원 전용 보안 코드가 변경되었습니다.');
+      setSavedNotice('새 기기 등록용 보안 코드가 변경되었습니다.');
       setTimeout(() => setSavedNotice(null), 2500);
     } else {
       setSavedNotice('보안 코드는 4자리 이상 입력해 주세요.');
     }
   };
 
+  const isSeparated = Boolean(savedUrl);
+
   return (
     <div
-      className={`rounded-2xl border px-3.5 py-2.5 text-xs ${
-        isDark
-          ? 'bg-[#111723] border-emerald-500/30 text-slate-200'
-          : 'bg-emerald-50/70 border-emerald-200 text-stone-800'
+      className={`rounded-2xl border px-3.5 py-2.5 text-xs transition ${
+        isSeparated
+          ? isDark
+            ? 'bg-emerald-950/30 border-emerald-500/35 text-slate-100'
+            : 'bg-emerald-50/80 border-emerald-300 text-stone-900'
+          : isDark
+          ? 'bg-amber-950/30 border-amber-400/40 text-amber-100'
+          : 'bg-amber-50/90 border-amber-300 text-stone-900'
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 font-extrabold text-emerald-700 dark:text-emerald-300">
-          <Lock className="w-3.5 h-3.5 shrink-0" />
-          <span>주소 뒷부분 지우고 접속 시 직원앱 자동 차단 중</span>
+        <span
+          className={`flex items-center gap-1.5 font-extrabold min-w-0 ${
+            isSeparated
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-amber-800 dark:text-amber-300'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 shrink-0" />
+          <span className="truncate">
+            {isSeparated
+              ? `미니 뷰어 분리 발송 중 (내 앱 주소 노출 0%)`
+              : `고객 전용 미니 뷰어 주소를 연결해 주세요 (최초 1회)`}
+          </span>
         </span>
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="text-[11px] font-black underline opacity-80 hover:opacity-100 shrink-0 cursor-pointer"
+          className="text-[11px] font-black underline opacity-85 hover:opacity-100 shrink-0 cursor-pointer"
         >
-          {expanded ? '보안설정 닫기' : '보안·도메인 설정'}
+          {expanded ? '접기' : isSeparated ? '주소 변경' : '주소 입력'}
         </button>
       </div>
 
+      {isSeparated && !expanded && (
+        <div className="mt-1 text-[10.5px] font-mono opacity-75 truncate">
+          연결된 뷰어: {savedUrl}
+        </div>
+      )}
+
       {expanded && (
-        <div className="mt-2.5 pt-2.5 border-t border-emerald-500/20 space-y-2.5">
-          <p className="text-[11px] opacity-80 leading-relaxed font-medium">
-            • 고객이나 타인이 링크 뒤쪽(<code>?s=...</code>)을 지우고 기본 깃허브 주소로 들어와도(시크릿 모드·다른 PC 포함) 직원 인증 없이는 관리앱이 절대 열리지 않습니다.
-            <br />• 내 깃허브 아이디 주소 자체도 숨기려면 무료 별도 페이지(예: 새 빈 저장소 <code>quote</code> 또는 Cloudflare Pages) 주소를 아래에 입력하세요.
+        <div className="mt-2.5 pt-2.5 border-t border-current/15 space-y-2.5">
+          <p className="text-[11px] opacity-85 leading-relaxed font-medium">
+            • 별도 배포하신 <strong>고객 전용 미니 웹앱 주소</strong>를 아래에 한 번만 저장해 두시면, 앞으로 복사·발송하는 모든 문자/카톡 단축 링크가 자동으로 미니 뷰어 주소로만 연결되어 <strong>본래 통합관리앱 주소는 절대 노출되지 않습니다.</strong>
           </p>
 
           <div className="space-y-1">
             <label className="block text-[11px] font-black">
-              고객 노출 전용 별도 주소 (선택 · 비워두면 현재 도메인 사용)
+              고객 전용 미니 뷰어 웹앱 주소 (최초 1회 저장 시 영구 유지)
             </label>
             <div className="flex items-center gap-1.5">
               <input
                 type="url"
                 value={viewerUrl}
                 onChange={(e) => setViewerUrl(e.target.value)}
-                placeholder="예: https://gj-quote.pages.dev"
-                className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs font-mono ${
+                placeholder="예: https://아이디.github.io/quote-view"
+                className={`flex-1 px-2.5 py-2 rounded-xl border text-xs font-mono ${
                   isDark
-                    ? 'bg-[#1B2230] border-white/15 text-white'
-                    : 'bg-white border-emerald-300 text-slate-900'
+                    ? 'bg-[#1B2230] border-white/20 text-white'
+                    : 'bg-white border-stone-300 text-slate-900'
                 }`}
               />
               <button
                 type="button"
                 onClick={handleSaveDomain}
-                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black shrink-0 cursor-pointer"
+                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black shrink-0 cursor-pointer"
               >
-                적용
+                저장
               </button>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="block text-[11px] font-black">
-              새 기기 직원 인증 코드 변경 (현재 기본값: {getEffectiveStaffPin()})
-            </label>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="password"
-                inputMode="numeric"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                placeholder="변경할 숫자 4~8자리 입력"
-                className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs font-mono ${
-                  isDark
-                    ? 'bg-[#1B2230] border-white/15 text-white'
-                    : 'bg-white border-emerald-300 text-slate-900'
-                }`}
-              />
-              <button
-                type="button"
-                onClick={handleSavePin}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black shrink-0 cursor-pointer"
-              >
-                코드 변경
-              </button>
-            </div>
+          <div className="pt-1 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowPinConfig((v) => !v)}
+              className="text-[10.5px] font-bold opacity-75 hover:opacity-100 underline cursor-pointer"
+            >
+              {showPinConfig ? '기기 인증 코드 설정 닫기' : '새 기기 스텔스 등록 코드 변경'}
+            </button>
           </div>
 
-          {savedNotice && (
-            <div className="text-[11px] font-black text-emerald-600 dark:text-emerald-300">
-              ✓ {savedNotice}
+          {showPinConfig && (
+            <div className="space-y-1 pt-1">
+              <label className="block text-[11px] font-black">
+                새 기기 스텔스 인증 코드 (방패 아이콘 5회 터치 시 입력 · 현재: {getEffectiveStaffPin()})
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="변경할 숫자 4~8자리 입력"
+                  className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs font-mono ${
+                    isDark
+                      ? 'bg-[#1B2230] border-white/15 text-white'
+                      : 'bg-white border-emerald-300 text-slate-900'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={handleSavePin}
+                  className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black shrink-0 cursor-pointer"
+                >
+                  변경
+                </button>
+              </div>
             </div>
           )}
+        </div>
+      )}
+
+      {savedNotice && (
+        <div className="mt-1.5 text-[11px] font-black text-emerald-600 dark:text-emerald-300">
+          ✓ {savedNotice}
         </div>
       )}
     </div>
@@ -1483,16 +1542,6 @@ export const CustomerShareStandaloneRoot: React.FC = () => {
     };
   }, []);
 
-  const handleStaffUnlock = () => {
-    const pin = window.prompt('직원 전용 인증 코드를 입력해 주세요:');
-    if (!pin) return;
-    if (unlockStaffDeviceWithPin(pin)) {
-      window.location.href = `${window.location.origin}${window.location.pathname}`;
-    } else {
-      window.alert('인증 코드가 일치하지 않습니다.');
-    }
-  };
-
   if (status === 'loading' && !payload) {
     return (
       <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-6 text-center">
@@ -1509,39 +1558,11 @@ export const CustomerShareStandaloneRoot: React.FC = () => {
 
   if (!payload || status === 'invalid') {
     return (
-      <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-5">
-        <div className="w-full max-w-md rounded-3xl bg-white border border-[#E4DFD5] p-6 text-center shadow-sm space-y-3">
-          <div className="w-12 h-12 mx-auto rounded-2xl bg-amber-50 border border-amber-200 text-[#8C5A32] flex items-center justify-center">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h1 className="text-base sm:text-lg font-black">
-            맞춤 견적 링크를 다시 확인해 주세요
-          </h1>
-          <p className="text-xs text-[#57534E] leading-relaxed font-medium">
-            카카오톡 메시지에서 전달받으신 전체 링크를 다시 눌러 접속해 주시거나, 담당 컨설턴트에게 새 비교 견적 링크를 요청해 주세요.
-          </p>
-          <div className="pt-2">
-            <a
-              href="https://map.naver.com/p/search/%EB%A1%AF%EB%8D%B0%ED%95%98%EC%9D%B4%EB%A7%88%ED%8A%B8%20%EA%B2%BD%EA%B8%B0%EA%B4%91%EC%A3%BC%EC%A0%90"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-3 px-4 rounded-2xl bg-[#18181B] text-white text-xs font-black inline-flex items-center justify-center gap-1.5"
-            >
-              <MapPin className="w-4 h-4 text-amber-300" />
-              <span>롯데하이마트 경기광주점 위치 안내</span>
-            </a>
-          </div>
-          <div className="pt-3 border-t border-[#F4F2ED]">
-            <button
-              type="button"
-              onClick={handleStaffUnlock}
-              className="text-[10px] text-stone-400 hover:text-stone-600 underline cursor-pointer"
-            >
-              매장 직원 기기 전환
-            </button>
-          </div>
-        </div>
-      </div>
+      <PublicZeroTrustGateRoot
+        onStaffVerified={() => {
+          window.location.href = `${window.location.origin}${window.location.pathname}`;
+        }}
+      />
     );
   }
 
@@ -1550,16 +1571,37 @@ export const CustomerShareStandaloneRoot: React.FC = () => {
 
 
 // ============================================================================
-// 4. Zero-Trust 기본 주소 차단 게이트
-//    고객이나 외부인이 주소 뒤쪽(?s=...)을 지우고 깃허브 기본 URL로 접속했을 때
-//    직원용 App.tsx를 절대 로드하지 않고 안전한 고객 안내 화면만 노출합니다.
+// 4. 스텔스 Zero-Trust 기본 주소 완전 봉쇄 게이트
+//    외부인에게는 직원용 앱의 존재나 인증 버튼조차 일절 보이지 않으며,
+//    오직 담당자가 상단 방패 아이콘을 5회 연속 터치하거나 ?staff=1 파라미터로 진입했을 때만
+//    기기 등록 창이 열립니다.
 // ============================================================================
 export const PublicZeroTrustGateRoot: React.FC<{
   onStaffVerified: () => void;
 }> = ({ onStaffVerified }) => {
-  const [showPinBox, setShowPinBox] = useState(false);
+  const [showPinBox, setShowPinBox] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('staff') === '1' || p.get('admin') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [tapCount, setTapCount] = useState(0);
   const [pinValue, setPinValue] = useState('');
   const [pinError, setPinError] = useState(false);
+
+  const handleSecretShieldTap = () => {
+    setTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        setShowPinBox(true);
+        return 0;
+      }
+      return next;
+    });
+  };
 
   const handleVerify = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1572,9 +1614,12 @@ export const PublicZeroTrustGateRoot: React.FC<{
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-5">
+    <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-5 select-none">
       <div className="w-full max-w-md rounded-3xl bg-white border border-[#E4DFD5] p-6 text-center shadow-sm space-y-4">
-        <div className="w-12 h-12 mx-auto rounded-2xl bg-[#18181B] text-amber-300 flex items-center justify-center shadow-xs">
+        <div
+          onClick={handleSecretShieldTap}
+          className="w-12 h-12 mx-auto rounded-2xl bg-[#18181B] text-amber-300 flex items-center justify-center shadow-xs"
+        >
           <ShieldCheck className="w-6 h-6" />
         </div>
 
@@ -1583,12 +1628,12 @@ export const PublicZeroTrustGateRoot: React.FC<{
             롯데하이마트 경기광주점
           </div>
           <h1 className="text-base sm:text-lg font-black tracking-tight">
-            고객 전용 맞춤 견적 뷰어
+            전용 견적 링크로만 열람 가능합니다
           </h1>
           <p className="text-xs text-[#57534E] leading-relaxed font-medium">
-            문자(SMS) 또는 카카오톡으로 전달받으신 <strong>전체 전용 견적 링크</strong>를 눌러 접속해 주세요.
+            문자(SMS) 또는 카카오톡으로 전달받으신 <strong>전체 맞춤 견적 링크</strong>를 눌러 접속해 주세요.
             <br />
-            (주소 뒷부분이 생략된 경우 견적서를 불러올 수 없습니다.)
+            (기본 주소로는 열람할 수 없는 페이지입니다.)
           </p>
         </div>
 
@@ -1602,20 +1647,11 @@ export const PublicZeroTrustGateRoot: React.FC<{
           <span>롯데하이마트 경기광주점 위치 안내</span>
         </a>
 
-        <div className="pt-3 border-t border-[#F4F2ED]">
-          {!showPinBox ? (
-            <button
-              type="button"
-              onClick={() => setShowPinBox(true)}
-              className="text-[10px] text-stone-400 hover:text-stone-600 inline-flex items-center gap-1 cursor-pointer"
-            >
-              <Lock className="w-2.5 h-2.5" />
-              <span>담당자 기기 인증 (최초 1회)</span>
-            </button>
-          ) : (
+        {showPinBox && (
+          <div className="pt-3 border-t border-[#F4F2ED]">
             <form onSubmit={handleVerify} className="space-y-2 text-left">
               <label className="block text-[11px] font-black text-stone-700">
-                매장 담당자 보안 코드 입력 (최초 1회 등록 시 자동 유지)
+                담당자 기기 등록 코드 입력 (최초 1회 인증 시 영구 유지)
               </label>
               <div className="flex items-center gap-1.5">
                 <input
@@ -1643,8 +1679,8 @@ export const PublicZeroTrustGateRoot: React.FC<{
                 </p>
               )}
             </form>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -111,25 +111,72 @@ export function saveCustomStaffPin(nextPin: string): boolean {
   }
 }
 
+export function normalizeViewerBaseUrl(rawUrl: string): string {
+  let cleaned = (rawUrl || '').trim();
+  if (!cleaned) return '';
+  if (!/^https?:\/\//i.test(cleaned)) {
+    cleaned = `https://${cleaned}`;
+  }
+  try {
+    const u = new URL(cleaned);
+    const cleanPath = u.pathname
+      .replace(/\/index\.html$/i, '')
+      .replace(/\/+$/, '');
+    return `${u.origin}${cleanPath}`;
+  } catch {
+    return cleaned.split('?')[0].split('#')[0].replace(/\/+$/, '');
+  }
+}
+
 export function loadCustomViewerBaseUrl(): string {
   try {
-    return (localStorage.getItem(CUSTOM_VIEWER_BASE_URL_KEY) || '').trim();
+    const stored = (localStorage.getItem(CUSTOM_VIEWER_BASE_URL_KEY) || '').trim();
+    return stored ? normalizeViewerBaseUrl(stored) : '';
   } catch {
     return '';
   }
 }
 
-export function saveCustomViewerBaseUrl(url: string): void {
+export async function syncViewerBaseUrlFromServer(): Promise<string> {
+  const localVal = loadCustomViewerBaseUrl();
+  if (typeof fetch === 'undefined') return localVal;
   try {
-    const cleaned = (url || '').trim().replace(/\/+$/, '');
-    if (cleaned) {
-      localStorage.setItem(CUSTOM_VIEWER_BASE_URL_KEY, cleaned);
+    const res = await fetch('/api/viewer-config');
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.viewerBaseUrl === 'string' && data.viewerBaseUrl.trim()) {
+        const normalized = normalizeViewerBaseUrl(data.viewerBaseUrl);
+        if (normalized && !localVal) {
+          localStorage.setItem(CUSTOM_VIEWER_BASE_URL_KEY, normalized);
+          return normalized;
+        }
+      }
+    }
+  } catch {
+    // 정적 배포 환경에서는 무시
+  }
+  return localVal;
+}
+
+export function saveCustomViewerBaseUrl(url: string): string {
+  const normalized = normalizeViewerBaseUrl(url);
+  try {
+    if (normalized) {
+      localStorage.setItem(CUSTOM_VIEWER_BASE_URL_KEY, normalized);
     } else {
       localStorage.removeItem(CUSTOM_VIEWER_BASE_URL_KEY);
     }
   } catch {
     // ignore
   }
+  if (typeof fetch !== 'undefined') {
+    fetch('/api/viewer-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ viewerBaseUrl: normalized }),
+    }).catch(() => {});
+  }
+  return normalized;
 }
 
 export function loadConsultantProfile(): ConsultantProfile {
@@ -833,6 +880,58 @@ export async function encodeSharedQuoteUrl(
  * 2순위: 정적 배포(GitHub Pages 등) 환경에서 공개 단축 API(is.gd -> v.gd — 약 22자) 자동 호출
  * 3순위: 오프라인/사내망 환경에서도 문자 발송 가능한 점(.) 없는 V2 초압축 링크(?s=2_... — 기존 대비 82% 단축)
  */
+function shortenUrlViaJsonp(targetUrl: string): Promise<string | null> {
+  if (typeof window === 'undefined' || typeof document === 'undefined' || !document.body) {
+    return Promise.resolve(null);
+  }
+  const providers = ['https://is.gd/create.php', 'https://v.gd/create.php'];
+  const tryProvider = (base: string): Promise<string | null> =>
+    new Promise((resolve) => {
+      const cbName = `__hmShortCb_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const script = document.createElement('script');
+      let settled = false;
+      const cleanup = () => {
+        try {
+          delete (window as any)[cbName];
+        } catch {
+          (window as any)[cbName] = undefined;
+        }
+        if (script.parentNode) script.parentNode.removeChild(script);
+      };
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          cleanup();
+          resolve(null);
+        }
+      }, 2500);
+      (window as any)[cbName] = (data: any) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanup();
+        if (data && typeof data.shorturl === 'string' && data.shorturl.startsWith('http')) {
+          resolve(data.shorturl);
+        } else {
+          resolve(null);
+        }
+      };
+      script.onerror = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanup();
+        resolve(null);
+      };
+      script.src = `${base}?format=json&callback=${cbName}&url=${encodeURIComponent(targetUrl)}`;
+      document.body.appendChild(script);
+    });
+
+  return tryProvider(providers[0]).then((first) =>
+    first ? first : tryProvider(providers[1])
+  );
+}
+
 export async function createShortenedQuoteLinks(
   payload: SharedQuotePayload
 ): Promise<EncodedQuoteLinks> {
@@ -846,15 +945,19 @@ export async function createShortenedQuoteLinks(
     typeof window !== 'undefined' &&
     /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname);
 
-  // 1순위: 별도 고객 도메인이 지정되지 않았고 자체 서버가 있을 때만 /q/:code 사용
-  if (!usingCustomDomain && typeof fetch !== 'undefined' && origin) {
+  // 1순위: 자체 서버 프록시 단축 (미니 뷰어 도메인 사용 시 서버에서 is.gd 외부 단축만 수행해 본 앱 주소 노출 0% 보장)
+  if (typeof fetch !== 'undefined' && origin) {
     try {
       const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 1800);
+      const timer = setTimeout(() => ctrl.abort(), 2200);
       const res = await fetch('/api/share-quote/shorten', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, fullUrl: compactUrl }),
+        body: JSON.stringify({
+          token,
+          fullUrl: compactUrl,
+          externalOnly: usingCustomDomain,
+        }),
         signal: ctrl.signal,
       });
       clearTimeout(timer);
@@ -868,7 +971,7 @@ export async function createShortenedQuoteLinks(
             token,
           };
         }
-        if (data && data.code) {
+        if (!usingCustomDomain && data && data.code) {
           const shortUrl = `${origin}/q/${data.code}`;
           return {
             compactUrl,
@@ -883,32 +986,44 @@ export async function createShortenedQuoteLinks(
     }
   }
 
-  // 2순위: 공개 HTTPS 도메인(GitHub Pages 등)일 때 무인증 CORS 단축 URL(is.gd / v.gd) 자동 생성
-  if (typeof fetch !== 'undefined' && !isLocal && /^https?:\/\//i.test(compactUrl)) {
-    const endpoints = [
-      `https://is.gd/create.php?format=json&url=${encodeURIComponent(compactUrl)}`,
-      `https://v.gd/create.php?format=json&url=${encodeURIComponent(compactUrl)}`,
-    ];
-    for (const ep of endpoints) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 2400);
-        const res = await fetch(ep, { signal: ctrl.signal });
-        clearTimeout(timer);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && typeof data.shorturl === 'string' && data.shorturl.startsWith('http')) {
-            return {
-              compactUrl,
-              shortUrl: data.shorturl,
-              mode: 'external',
-              token,
-            };
+  // 2순위: 공개 HTTPS 도메인(GitHub Pages 등)일 때 CORS fetch + JSONP 이중 폴백으로 is.gd / v.gd 단축 URL 생성
+  if (!isLocal && /^https?:\/\//i.test(compactUrl)) {
+    if (typeof fetch !== 'undefined') {
+      const endpoints = [
+        `https://is.gd/create.php?format=json&url=${encodeURIComponent(compactUrl)}`,
+        `https://v.gd/create.php?format=json&url=${encodeURIComponent(compactUrl)}`,
+      ];
+      for (const ep of endpoints) {
+        try {
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 2400);
+          const res = await fetch(ep, { signal: ctrl.signal });
+          clearTimeout(timer);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && typeof data.shorturl === 'string' && data.shorturl.startsWith('http')) {
+              return {
+                compactUrl,
+                shortUrl: data.shorturl,
+                mode: 'external',
+                token,
+              };
+            }
           }
+        } catch {
+          // JSONP 폴백으로 이어짐
         }
-      } catch {
-        // 다음 폴백 시도
       }
+    }
+
+    const jsonpShort = await shortenUrlViaJsonp(compactUrl);
+    if (jsonpShort) {
+      return {
+        compactUrl,
+        shortUrl: jsonpShort,
+        mode: 'external',
+        token,
+      };
     }
   }
 

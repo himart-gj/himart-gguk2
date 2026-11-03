@@ -163,17 +163,82 @@ async function startServer() {
     }
   }
 
+  const viewerConfigFile = path.join(shortQuoteDir, 'viewer-config.json');
+
+  app.get('/api/viewer-config', (_req, res) => {
+    try {
+      if (fs.existsSync(viewerConfigFile)) {
+        const parsed = JSON.parse(fs.readFileSync(viewerConfigFile, 'utf-8'));
+        res.json({ ok: true, viewerBaseUrl: String(parsed?.viewerBaseUrl || '') });
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    res.json({ ok: true, viewerBaseUrl: '' });
+  });
+
+  app.post('/api/viewer-config', (req, res) => {
+    try {
+      const viewerBaseUrl = String(req.body?.viewerBaseUrl || '').trim();
+      if (!fs.existsSync(shortQuoteDir)) {
+        fs.mkdirSync(shortQuoteDir, { recursive: true });
+      }
+      fs.writeFileSync(
+        viewerConfigFile,
+        JSON.stringify({ viewerBaseUrl, updatedAt: new Date().toISOString() }, null, 2),
+        'utf-8'
+      );
+      res.json({ ok: true, viewerBaseUrl });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || '설정 저장 실패' });
+    }
+  });
+
   app.post('/api/share-quote/shorten', async (req, res) => {
     try {
-      const { token } = req.body || {};
+      const { token, fullUrl, externalOnly } = req.body || {};
       if (!token || typeof token !== 'string' || token.length > 30000) {
         res.status(400).json({ error: '유효하지 않은 견적 토큰입니다.' });
         return;
       }
+
+      // 공개 HTTPS URL(특히 별도 고객 전용 미니 뷰어 URL)인 경우 서버에서 is.gd / v.gd 단축 우선 수행
+      if (
+        typeof fullUrl === 'string' &&
+        /^https:\/\//i.test(fullUrl) &&
+        !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(fullUrl)
+      ) {
+        for (const provider of ['https://is.gd/create.php', 'https://v.gd/create.php']) {
+          try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 2200);
+            const extRes = await fetch(
+              `${provider}?format=json&url=${encodeURIComponent(fullUrl)}`,
+              { signal: ctrl.signal }
+            );
+            clearTimeout(timer);
+            if (extRes.ok) {
+              const extData: any = await extRes.json();
+              if (extData && typeof extData.shorturl === 'string' && extData.shorturl.startsWith('http')) {
+                res.json({ ok: true, externalShortUrl: extData.shorturl });
+                return;
+              }
+            }
+          } catch {
+            // 다음 단축기로 폴백
+          }
+        }
+      }
+
+      if (externalOnly) {
+        res.json({ ok: true, externalShortUrl: null });
+        return;
+      }
+
       const cleanToken = token.trim();
       const map = readShortQuoteMap();
 
-      // 결정적 7자리 Base62 해시 코드 생성 (충돌 시 길이 확장)
       const digest = crypto.createHash('sha256').update(cleanToken).digest('base64url');
       const alphaNum = digest.replace(/[^A-Za-z0-9]/g, '');
       let code = alphaNum.slice(0, 6) || 'hmquote';
