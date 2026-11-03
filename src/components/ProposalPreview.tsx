@@ -14,6 +14,7 @@ import {
   ArrowLeft,
   Award,
   BookOpen,
+  ChevronDown,
   CreditCard,
   Download,
   Eye,

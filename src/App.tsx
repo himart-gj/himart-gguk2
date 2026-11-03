@@ -232,6 +232,16 @@ export function App() {
   const [isSplitConsultation, setIsSplitConsultation] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth >= 1180 : false
   );
+
+  useEffect(() => {
+    const handleSplitResize = () => {
+      if (window.innerWidth < 768) {
+        setIsSplitConsultation(false);
+      }
+    };
+    window.addEventListener('resize', handleSplitResize);
+    return () => window.removeEventListener('resize', handleSplitResize);
+  }, []);
   const { isOnline, pendingCount } = useOfflineSyncStatus();
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);

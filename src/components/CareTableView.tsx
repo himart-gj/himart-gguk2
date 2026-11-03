@@ -34,6 +34,11 @@ import {
   saveLocalCareDataset,
   setAdminDeviceUnlocked,
 } from '../utils/careTableParser';
+import {
+  getCurrentYearMonth,
+  parseModelIncentiveExcelWithMeta,
+  upsertMonthlyIncentiveSheet,
+} from '../crm/utils/settlementEngine';
 
 interface CareTableViewProps {
   onBackToHome: () => void;
