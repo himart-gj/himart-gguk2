@@ -139,6 +139,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
   const [scale, setScale] = useState(1);
   const [sheetH, setSheetH] = useState(860);
+  const [isMobilePhone, setIsMobilePhone] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+  const [mobileReadableMode, setMobileReadableMode] = useState<boolean>(true);
+  const useMobileFluid = isMobilePhone && mobileReadableMode && !isExporting && !embeddedSplitMode;
   const [isExporting, setIsExporting] = useState(false);
   const [exportingMode, setExportingMode] = useState<'full' | 'masked' | null>(null);
   const [isModelMasked, setIsModelMasked] = useState(false);
@@ -255,6 +260,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       setSheetH(nextSheetH);
 
       const viewportWidth = window.innerWidth || availW;
+      setIsMobilePhone(viewportWidth < 640);
       let nextScale: number;
 
       if (viewportWidth < 640) {
@@ -636,9 +642,24 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                     }`}
             </button>
           </div>
+
+          {isMobilePhone && !embeddedSplitMode && (
+            <button
+              type="button"
+              onClick={() => setMobileReadableMode((v) => !v)}
+              className={`sm:hidden inline-flex items-center gap-1 px-2 py-1 rounded-lg font-extrabold text-[11px] border transition cursor-pointer whitespace-nowrap shrink-0 ${
+                mobileReadableMode
+                  ? 'bg-sky-500/20 text-sky-300 border-sky-400/40'
+                  : 'bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+              title="스마트폰 맞춤 가독뷰와 A4 인쇄원본 축소비율 간 전환"
+            >
+              <span>{mobileReadableMode ? '📱가독뷰' : '📄원본비율'}</span>
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
+        <div className={`grid ${onOpenSaveToCrm ? 'grid-cols-3' : 'grid-cols-2'} sm:flex items-center gap-1.5 sm:gap-1 shrink-0 w-full sm:w-auto sm:ml-0`}>
           <div className="relative">
             <button
               type="button"
@@ -646,7 +667,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 setIsSavePrintOpen(false);
                 setIsShareMenuOpen((v) => !v);
               }}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] font-black text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-1 rounded-lg bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] font-black text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
               title="일반 버전 또는 모델명 앞 3자리 외 가림 버전을 선택해 문자·카톡 링크 발송"
             >
               <Share2 className="w-3 h-3" />
@@ -660,7 +681,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                   className="fixed inset-0 z-40"
                   onClick={() => setIsShareMenuOpen(false)}
                 />
-                <div className="fixed sm:absolute right-3 sm:left-0 top-14 sm:top-full sm:mt-2 z-50 w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
+                <div className="fixed sm:absolute left-3 right-3 sm:left-0 sm:right-auto top-24 sm:top-full sm:mt-2 z-50 w-auto sm:w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
                   <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
                     <span className="text-[11px] font-black text-amber-300">
                       📲 문자 · 카톡 견적링크 버전 선택
@@ -724,7 +745,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             <button
               type="button"
               onClick={onOpenSaveToCrm}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-2 py-1.5 sm:py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
             >
               <Save className="w-3 h-3" />
               <span>고객저장</span>
@@ -735,7 +756,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
               type="button"
               onClick={() => { setIsShareMenuOpen(false); setIsSavePrintOpen((v) => !v); }}
               disabled={isExporting}
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-xs border border-blue-400/35 transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-xs border border-blue-400/35 transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
               title="이미지 저장(모델명 가림 / 원본) 및 인쇄 옵션 열기"
             >
               <Download className="w-3 h-3" />
@@ -760,7 +781,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                   className="fixed inset-0 z-40"
                   onClick={() => setIsSavePrintOpen(false)}
                 />
-                <div className="fixed sm:absolute right-3 sm:right-0 top-14 sm:top-full sm:mt-2 z-50 w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
+                <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-24 sm:top-full sm:mt-2 z-50 w-auto sm:w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
                   <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
                     <span className="text-[11px] font-black text-slate-300">
                       📥 제안서 이미지 저장 · 인쇄
@@ -893,27 +914,39 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
         className="print-stage flex-1 min-h-0 w-full flex items-start sm:items-center justify-center overflow-x-hidden p-2 sm:p-3"
       >
         <div
-          style={{
-            width: `${Math.round(920 * scale)}px`,
-            height: `${Math.round(sheetH * scale)}px`,
-          }}
-          className="sheet-scale-wrapper relative overflow-hidden shrink-0"
+          style={
+            useMobileFluid
+              ? { width: '100%', height: 'auto' }
+              : {
+                  width: `${Math.round(920 * scale)}px`,
+                  height: `${Math.round(sheetH * scale)}px`,
+                }
+          }
+          className={`sheet-scale-wrapper relative shrink-0 ${
+            useMobileFluid ? 'w-full overflow-visible' : 'overflow-hidden'
+          }`}
         >
           {/* ===================================================================== */}
-          {/* TAB 1: 고객 맞춤 제안서 (#sheet-proposal) - width: 920px 고정 */}
+          {/* TAB 1: 고객 맞춤 제안서 (#sheet-proposal) - 폴드/PC/출력 시 920px 고정, 스마트폰 열람 시 모바일 가독뷰 */}
           {/* ===================================================================== */}
           {activeTab === 'proposal' && (
             <div
               id="sheet-proposal"
               ref={proposalSheetRef}
-              style={{
-                width: '920px',
-                minWidth: '920px',
-                height: 'auto',
-                transform: `scale(${scale})`,
-                transformOrigin: 'top left',
-              }}
-              className="print-sheet shrink-0 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden p-7 space-y-4 text-slate-900"
+              style={
+                useMobileFluid
+                  ? { width: '100%', minWidth: 0, height: 'auto', transform: 'none' }
+                  : {
+                      width: '920px',
+                      minWidth: '920px',
+                      height: 'auto',
+                      transform: `scale(${scale})`,
+                      transformOrigin: 'top left',
+                    }
+              }
+              className={`print-sheet shrink-0 bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden p-7 space-y-4 text-slate-900 ${
+                useMobileFluid ? 'mobile-fluid-sheet' : ''
+              }`}
             >
               {/* -------------------- CASE A: 일반구매 단독 제안서 -------------------- */}
               {state.quoteMode === 'general' && (

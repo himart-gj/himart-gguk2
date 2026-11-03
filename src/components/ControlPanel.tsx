@@ -645,7 +645,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             : 'max-w-2xl lg:max-w-3xl'
         } mb-3 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-2`}
       >
-        <div className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 max-w-full overflow-x-auto">
+        <div className="grid grid-cols-2 sm:inline-flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 w-full sm:w-auto max-w-full">
           <button
             type="button"
             onClick={() => handleSelectGeneralPlan(1)}
@@ -736,7 +736,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         <button
           type="button"
           onClick={handleCopyPlan1ToPlan2}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs shadow-2xs transition cursor-pointer"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs shadow-2xs transition cursor-pointer"
         >
           <Copy className="w-3.5 h-3.5" />
           {copiedNotice
@@ -833,7 +833,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 ))}
               </div>
 
-              <div className="max-h-[210px] sm:max-h-[168px] overflow-y-auto space-y-1.5 pr-1">
+              <div className="max-h-none sm:max-h-[168px] sm:overflow-y-auto space-y-2 sm:space-y-1.5 sm:pr-1">
                 {state.generalItems.map((item, idx) => (
                   <div
                     key={item.id}
@@ -1383,7 +1383,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               )}
 
               {/* 품목 행 + 품목별 개별 [36개월 | 60개월] 토글 & 케어서비스 선택/입력 줄 */}
-              <div className="max-h-[300px] sm:max-h-[260px] overflow-y-auto space-y-2 pr-1">
+              <div className="max-h-none sm:max-h-[260px] sm:overflow-y-auto space-y-2.5 sm:space-y-2 sm:pr-1">
                 {state.items.map((item, index) => {
                   const itemPeriod: SubscriptionPeriod =
                     item.period === 36
@@ -1569,7 +1569,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 2. 제휴카드 및 월 사용금액 구간
               </label>
 
-              <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                 {AFFILIATE_CARDS.map((card) => {
                   const selected = state.selectedCardId === card.id;
                   const hasPrincipalTier = isSubTierCashbackEligibleCard(card.id);
@@ -1856,8 +1856,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         >
                           {plan.buttonLabel}
                         </div>
-                        <div className="text-[10px] sm:text-[11px] font-extrabold text-rose-600 mt-0.5 whitespace-nowrap">
-                          월 -{monthlyUnitSupport.toLocaleString()}원 지원
+                        <div className="text-[9.5px] sm:text-[11px] font-extrabold text-rose-600 mt-0.5 truncate">
+                          월 -{monthlyUnitSupport.toLocaleString()}원
                         </div>
                       </div>
 
@@ -2056,7 +2056,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       )}
       {/* 모바일 엄지 영역 실시간 체감가 요약 & 제안서 바로보기 고정 독 (스플릿 모드가 아닐 때 노출) */}
       {!embeddedSplitMode && (
-        <div className="fixed bottom-0 inset-x-0 z-30 bg-[#18181B]/95 backdrop-blur-md text-white border-t border-white/15 px-3.5 py-2.5 shadow-2xl md:hidden no-print">
+        <div className="safe-bottom-dock fixed bottom-0 inset-x-0 z-30 bg-[#18181B]/95 backdrop-blur-md text-white border-t border-white/15 px-3 py-2.5 shadow-2xl md:hidden no-print">
           <div className="max-w-xl mx-auto flex items-center justify-between gap-2.5">
             <div className="min-w-0">
               <div className="text-[10px] font-bold text-amber-300 truncate">
@@ -2066,7 +2066,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   ? '실시간 혼합 견적 체감 요약'
                   : `실시간 최종 혜택 체감가 (총 -${liveGenSummary.totalDiscountAndBenefit.toLocaleString()}원)`}
               </div>
-              <div className="text-base font-black text-white font-mono truncate">
+              <div className="text-sm sm:text-base font-black text-white font-mono truncate">
                 {state.quoteMode === 'subscription' ? (
                   <>
                     월 <SpringNumberFlow value={liveSubSummary.finalMonthlyFee} suffix="원" />

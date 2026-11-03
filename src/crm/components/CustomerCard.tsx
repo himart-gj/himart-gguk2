@@ -657,7 +657,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                   예상 수당 +{formatCurrency(draftFreedPreview.totalIncentive)}원
                 </span>
               </div>
-              <div className="grid grid-cols-5 gap-1 text-center">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-1 text-center">
                 {[
                   { key: 'hi90' as const, label: '플러스', unit: '9만' },
                   { key: 'hf75' as const, label: '75형', unit: '6만' },
@@ -803,7 +803,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
         )}
 
         {/* 4행: 금액 박스 (실적기준액 + 고객 체감가) */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2">
           <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
             <div className="text-[10.5px] font-extrabold text-emerald-800">
               {perf.saleType === 'subscription'

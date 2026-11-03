@@ -213,7 +213,7 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
                 onStatusChange(droppedId, col.status);
               }
             }}
-            className={`min-w-[272px] w-[272px] sm:min-w-[290px] sm:w-[290px] shrink-0 rounded-3xl border p-3 flex flex-col gap-2.5 transition-colors ${colBg} ${
+            className={`min-w-[252px] w-[78vw] max-w-[290px] sm:min-w-[290px] sm:w-[290px] snap-start shrink-0 rounded-3xl border p-3 flex flex-col gap-2.5 transition-colors ${colBg} ${
               isOver ? 'ring-2 ring-sky-400' : ''
             }`}
           >

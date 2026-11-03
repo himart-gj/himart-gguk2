@@ -3600,7 +3600,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
                 {/* 저장된 달 빠른 선택 팝오버 */}
                 {isMonthPickerOpen && (
                   <div
-                    className={`absolute left-0 mt-1.5 w-60 rounded-2xl border p-3 shadow-xl z-50 ${cardBg}`}
+                    className={`fixed left-3 right-3 sm:absolute sm:left-0 sm:right-auto mt-1.5 w-auto sm:w-60 rounded-2xl border p-3 shadow-xl z-50 ${cardBg}`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] font-black">📂 저장된 휴무표 월 선택</span>
@@ -3735,7 +3735,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
 
                 {isExportMenuOpen && (
                   <div
-                    className={`absolute right-0 mt-1.5 w-64 rounded-2xl border p-2 shadow-2xl z-50 space-y-1 ${cardBg}`}
+                    className={`fixed left-3 right-3 sm:absolute sm:left-auto sm:right-0 mt-1.5 w-auto sm:w-64 rounded-2xl border p-2 shadow-2xl z-50 space-y-1 ${cardBg}`}
                   >
                     <button
                       type="button"

@@ -59,7 +59,8 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
               title="처음 메뉴로 돌아가기"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>처음으로</span>
+              <span className="hidden sm:inline">처음으로</span>
+              <span className="sm:hidden">홈</span>
             </button>
 
             <div className="w-8 h-8 rounded-xl bg-[#18181B] text-white flex items-center justify-center shadow-xs shrink-0">
@@ -141,7 +142,8 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
               className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-black bg-[#18181B] hover:bg-[#292524] text-white shadow-xs transition cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>고객 등록</span>
+              <span className="hidden sm:inline">고객 등록</span>
+              <span className="sm:hidden">등록</span>
             </button>
           </div>
         </div>

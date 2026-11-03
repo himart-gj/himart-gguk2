@@ -395,7 +395,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
       />
 
       {/* 상단 고정 헤더 */}
-      <div className="sticky top-[44px] z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
+      <div className="sticky top-[52px] z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
         <div className="max-w-5xl mx-auto px-3 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button

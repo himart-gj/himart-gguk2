@@ -1436,7 +1436,7 @@ export function App() {
           {/* [☰ 전체메뉴] 벤토 카드형 드롭다운 메뉴판 */}
           {isMenuOpen && (
             <div
-              className={`absolute right-0 top-[calc(100%+10px)] w-[335px] sm:w-[395px] rounded-3xl border shadow-2xl p-3.5 space-y-2.5 z-50 ${
+              className={`fixed left-2.5 right-2.5 top-[58px] w-auto max-h-[calc(100dvh-70px)] overflow-y-auto sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+10px)] sm:w-[395px] sm:max-h-none rounded-3xl border shadow-2xl p-3.5 space-y-2.5 z-50 ${
                 isDark
                   ? 'bg-[#141924] border-white/15 text-white'
                   : 'bg-[#FAF8F4] border-[#D6D3CD] text-[#18181B]'
@@ -1772,7 +1772,7 @@ export function App() {
             <button
               type="button"
               onClick={() => { setInitialCrmTab(undefined); setStep('crm'); }}
-              className={`w-full py-4 sm:py-5 px-4 sm:px-6 rounded-3xl transition-all flex items-center justify-between group cursor-pointer shadow-md hover:shadow-xl ${
+              className={`w-full py-3.5 sm:py-5 px-4 sm:px-6 rounded-3xl transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-2 group cursor-pointer shadow-md hover:shadow-xl ${
                 isDark
                   ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border-[1.5px] border-[#38BDF8]/45 hover:border-[#38BDF8]'
                   : 'bg-[#18181B] hover:bg-[#27272A] text-white border border-[#18181B]'
@@ -1782,18 +1782,18 @@ export function App() {
                 <div className="text-[11px] sm:text-xs font-extrabold tracking-wider text-[#38BDF8] uppercase">
                   TODAY BRIEFING · 전체 관리 고객 {activeCrmCustomers.length}명
                 </div>
-                <div className="text-base sm:text-xl font-black tracking-tight truncate mt-0.5">
+                <div className="text-sm sm:text-xl font-black tracking-tight sm:truncate leading-snug mt-0.5">
                   긴급 할일 {urgentCount}건 · 물류대기 {unconfirmedLogisticsCountHome}건 · 사은품 미지급 {unpaidGiftCountHome}건
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0 ml-2">
+              <div className="flex items-center gap-2 shrink-0 sm:ml-2">
                 {urgentCount >= 1 ? (
-                  <span className="px-3.5 py-1.5 rounded-full bg-rose-600 text-white text-xs sm:text-sm font-black animate-pulse shadow-xs">
+                  <span className="w-full sm:w-auto text-center px-3.5 py-2 sm:py-1.5 rounded-2xl sm:rounded-full bg-rose-600 text-white text-xs sm:text-sm font-black animate-pulse shadow-xs">
                     VIP 고객관리 열기 ➔
                   </span>
                 ) : (
-                  <span className="px-3.5 py-1.5 rounded-full bg-[#38BDF8] text-[#0B0E14] text-xs sm:text-sm font-black shadow-xs">
+                  <span className="w-full sm:w-auto text-center px-3.5 py-2 sm:py-1.5 rounded-2xl sm:rounded-full bg-[#38BDF8] text-[#0B0E14] text-xs sm:text-sm font-black shadow-xs">
                     VIP 고객관리 열기 ➔
                   </span>
                 )}
@@ -1808,7 +1808,7 @@ export function App() {
                   : 'bg-white border-[#E4DFD5]'
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
                 <span
                   className={`text-xs sm:text-sm font-black tracking-tight ${
                     isDark ? 'text-[#38BDF8]' : 'text-[#8C5A32]'
@@ -1908,7 +1908,7 @@ export function App() {
                   : 'bg-white border-[#E4DFD5]'
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
                 <span
                   className={`text-xs sm:text-sm font-black tracking-tight ${
                     isDark ? 'text-[#34D399]' : 'text-[#8C5A32]'
@@ -1990,7 +1990,7 @@ export function App() {
                   : 'bg-white border-[#E4DFD5]'
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-1.5">
                 <span
                   className={`text-xs sm:text-sm font-black tracking-tight ${
                     isDark ? 'text-slate-200' : 'text-[#8C5A32]'

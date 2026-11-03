@@ -528,7 +528,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
               </div>
 
               {/* 품목 입력 행 (ControlPanel.tsx와 100% 동일한 1줄 12열 그리드) */}
-              <div className="max-h-[210px] sm:max-h-[168px] overflow-y-auto space-y-1.5 pr-1">
+              <div className="max-h-none sm:max-h-[168px] sm:overflow-y-auto space-y-2 sm:space-y-1.5 sm:pr-1">
                 {items.map((item, idx) => (
                   <div
                     key={item.id}
@@ -603,8 +603,8 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                 ))}
               </div>
 
-              {/* 즉시할인, L.Point 사용, 추가 캐시백 3열 배치 */}
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              {/* 즉시할인, L.Point 사용, 추가 캐시백 반응형 배치 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
                 <div className="bg-slate-50 p-2 rounded-xl border border-slate-200">
                   <label className="text-[10px] font-extrabold text-slate-600 block mb-1">
                     (-) 즉시할인 (원)
@@ -946,7 +946,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                       className="fixed inset-0 z-40"
                       onClick={() => setIsSavePrintOpen(false)}
                     />
-                    <div className="fixed sm:absolute right-3 sm:right-0 top-20 sm:top-full sm:mt-2 z-50 w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
+                    <div className="fixed sm:absolute left-3 right-3 sm:left-auto sm:right-0 top-24 sm:top-full sm:mt-2 z-50 w-auto sm:w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
                       <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
                         <span className="text-[11px] font-black text-slate-300">
                           📥 롯데 플랜 제안서 저장 · 인쇄
@@ -1059,7 +1059,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
             className="print-sheet bg-white rounded-3xl border border-slate-200 shadow-xl p-5 sm:p-7 space-y-5 text-slate-900"
           >
             {/* 1) 상단 헤더 */}
-            <div className="bg-slate-900 text-white rounded-2xl px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="bg-slate-900 text-white rounded-2xl px-4 sm:px-6 py-3.5 sm:py-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-400/30 text-xs font-extrabold">
