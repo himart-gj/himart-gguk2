@@ -66,8 +66,15 @@ const CustomerShareQuoteView = lazy(() =>
   }))
 );
 import { CustomerItem, QuoteRecord, SettlementTabId } from './crm/types/crm';
-import { CRM_CUSTOMERS_UPDATED_EVENT, getCachedCustomers } from './crm/services/gasApi';
-import { isUrgentCustomer } from './crm/utils/date';
+import {
+  CRM_CUSTOMERS_UPDATED_EVENT,
+  getCachedCustomers,
+  setCachedCustomers,
+  syncCustomerToGas,
+} from './crm/services/gasApi';
+import { getPastDueDeliveryCustomers, isUrgentCustomer } from './crm/utils/date';
+import { PastDeliveryCheckModal } from './crm/components/PastDeliveryCheckModal';
+import { PAST_DELIVERY_POPUP_DISMISSED_KEY } from './crm/CrmApp';
 import {
   CareTableDataset,
   fetchRemoteCareDataset,
@@ -250,6 +257,7 @@ export function App() {
     useState<boolean>(false);
   const [aiInitialCommand, setAiInitialCommand] = useState<string>('');
   const [isOmnibarOpen, setIsOmnibarOpen] = useState<boolean>(false);
+  const [isHomePastDeliveryOpen, setIsHomePastDeliveryOpen] = useState<boolean>(false);
   const [sharedQuotePayload, setSharedQuotePayload] =
     useState<SharedQuotePayload | null>(null);
   const [isSplitConsultation, setIsSplitConsultation] = useState<boolean>(() =>
@@ -1168,9 +1176,63 @@ export function App() {
     [setCurrentState]
   );
 
-  // 홈 화면 상단 TODAY BRIEFING 배너용 통계 계산
+  // 홈 화면 상단 TODAY BRIEFING 배너용 통계 계산 + 배송일 경과 확인 팝업 연동
   const activeCrmCustomers = useMemo(
     () => crmCustomers.filter((c) => !c.deletedAt),
+    [crmCustomers]
+  );
+  const pastDueCustomersHome = useMemo(
+    () => getPastDueDeliveryCustomers(activeCrmCustomers),
+    [activeCrmCustomers]
+  );
+
+  useEffect(() => {
+    if (
+      step === 'home' &&
+      pastDueCustomersHome.length > 0 &&
+      sessionStorage.getItem(PAST_DELIVERY_POPUP_DISMISSED_KEY) !== '1'
+    ) {
+      setIsHomePastDeliveryOpen(true);
+    }
+  }, [step, pastDueCustomersHome.length]);
+
+  const handleConfirmDeliveredFromHome = useCallback(
+    async (customerId: string) => {
+      const updated = crmCustomers.map((c) =>
+        c.id === customerId
+          ? { ...c, status: '배송완료' as const, logisticsConfirmed: true }
+          : c
+      );
+      const deduped = setCachedCustomers(updated);
+      setCrmCustomers(deduped);
+      await syncCustomerToGas('update', {
+        id: customerId,
+        status: '배송완료',
+        logisticsConfirmed: true,
+      });
+    },
+    [crmCustomers]
+  );
+
+  const handleConfirmAllDeliveredFromHome = useCallback(
+    async (customerIds: string[]) => {
+      const idSet = new Set(customerIds);
+      const updated = crmCustomers.map((c) =>
+        idSet.has(c.id)
+          ? { ...c, status: '배송완료' as const, logisticsConfirmed: true }
+          : c
+      );
+      const deduped = setCachedCustomers(updated);
+      setCrmCustomers(deduped);
+      setIsHomePastDeliveryOpen(false);
+      for (const cid of customerIds) {
+        await syncCustomerToGas('update', {
+          id: cid,
+          status: '배송완료',
+          logisticsConfirmed: true,
+        });
+      }
+    },
     [crmCustomers]
   );
   const unconfirmedLogisticsCountHome = useMemo(
@@ -2483,6 +2545,20 @@ export function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {step !== 'crm' && (
+        <PastDeliveryCheckModal
+          isOpen={isHomePastDeliveryOpen}
+          customers={pastDueCustomersHome}
+          isDark={isDark}
+          onConfirmDelivered={handleConfirmDeliveredFromHome}
+          onConfirmAllDelivered={handleConfirmAllDeliveredFromHome}
+          onClose={() => {
+            sessionStorage.setItem(PAST_DELIVERY_POPUP_DISMISSED_KEY, '1');
+            setIsHomePastDeliveryOpen(false);
+          }}
+        />
       )}
     </div>
   );

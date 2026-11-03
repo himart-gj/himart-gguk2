@@ -151,7 +151,11 @@ export function calculateFreedIncentiveDetail(counts: CustomerFreedCounts) {
 
 export function isConfirmedPurchaseCustomer(c: CustomerItem): boolean {
   if (!c || c.deletedAt) return false;
-  return c.status === '계약완료' || c.status === '발송완료';
+  return (
+    c.status === '계약완료' ||
+    c.status === '발송완료' ||
+    c.status === '배송완료'
+  );
 }
 
 export function getCurrentYearMonth(now = new Date()): string {

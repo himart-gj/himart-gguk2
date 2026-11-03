@@ -821,7 +821,8 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 <option value="신규/미발송">신규/미발송 (미구매)</option>
                 <option value="미구매/고민중">미구매/고민중</option>
                 <option value="계약완료">✅ 계약완료 (구매확정)</option>
-                <option value="발송완료">🚚 발송완료 (배송/인도완료)</option>
+                <option value="발송완료">📩 발송완료 (견적안내 완료)</option>
+                <option value="배송완료">🚚 배송완료 (설치·인도 완료)</option>
                 <option value="취소/보류">취소/보류</option>
               </select>
             </div>

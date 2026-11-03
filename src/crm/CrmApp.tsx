@@ -19,6 +19,7 @@ import {
   SortOrder,
 } from './types/crm';
 import {
+  CRM_CUSTOMERS_UPDATED_EVENT,
   fetchCustomersFromGas,
   getCachedCustomers,
   setCachedCustomers,
@@ -28,7 +29,13 @@ import {
   getBriefingSummary,
   triggerDailyMorningNotification,
 } from './services/notificationService';
-import { getDeliveryDDay, isUrgentCustomer } from './utils/date';
+import {
+  getDeliveryDDay,
+  getPastDueDeliveryCustomers,
+  hasUnpaidGift,
+  isDeliveryDoneAndSettled,
+  isUrgentCustomer,
+} from './utils/date';
 import {
   computeMonthlySettlementReport,
   extractPerformanceFromProposalState,
@@ -42,6 +49,7 @@ import { SMSModal } from './components/SMSModal';
 import { NewCustomerModal } from './components/NewCustomerModal';
 import { SettingsModal } from './components/SettingsModal';
 import { MorningBriefingModal } from './components/MorningBriefingModal';
+import { PastDeliveryCheckModal } from './components/PastDeliveryCheckModal';
 import { CrmSalesAndIncentivePanel } from './components/CrmSalesAndIncentivePanel';
 import {
   CrmAnalyticsStrip,
@@ -59,10 +67,12 @@ const FILTER_TABS: FilterTab[] = [
   '미구매/고민중',
   '계약완료',
   '발송완료',
+  '배송완료',
   '취소/보류',
 ];
 
 const BRIEFING_SHOWN_SESSION_KEY = 'gookji_crm_briefing_shown_session';
+export const PAST_DELIVERY_POPUP_DISMISSED_KEY = 'himart_past_delivery_popup_dismissed_session';
 
 type CrmViewMode = 'grid' | 'kanban' | 'calendar';
 
@@ -144,6 +154,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     useState<Partial<CustomerItem> | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isBriefingOpen, setIsBriefingOpen] = useState<boolean>(false);
+  const [isPastDeliveryModalOpen, setIsPastDeliveryModalOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (
@@ -254,12 +265,75 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
   useEffect(() => {
     loadCustomers();
+    const syncLocal = () => setCustomers(getCachedCustomers());
+    window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, syncLocal);
+    return () => window.removeEventListener(CRM_CUSTOMERS_UPDATED_EVENT, syncLocal);
   }, [loadCustomers]);
 
   const activeCustomers = useMemo(
     () => customers.filter((c) => !c.deletedAt),
     [customers]
   );
+  const pastDueDeliveryCustomers = useMemo(
+    () => getPastDueDeliveryCustomers(activeCustomers),
+    [activeCustomers]
+  );
+
+  useEffect(() => {
+    if (
+      pastDueDeliveryCustomers.length > 0 &&
+      sessionStorage.getItem(PAST_DELIVERY_POPUP_DISMISSED_KEY) !== '1'
+    ) {
+      setIsPastDeliveryModalOpen(true);
+    }
+  }, [pastDueDeliveryCustomers.length]);
+
+  const handleConfirmDelivered = async (customerId: string) => {
+    const target = customers.find((c) => c.id === customerId);
+    if (!target) return;
+    pushUndoSnapshot(`${target.name} 배송완료 처리`);
+    const updated = customers.map((c) =>
+      c.id === customerId
+        ? { ...c, status: '배송완료' as CustomerStatus, logisticsConfirmed: true }
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCustomers(deduped);
+    const keepForGift = hasUnpaidGift(target);
+    showToast(
+      keepForGift
+        ? `🚚 [${target.name}] 배송완료! (🎁 미지급 사은품이 있어 첫 화면에 계속 표시됩니다)`
+        : `✅ [${target.name}] 배송완료 처리되어 첫 화면 목록에서 정리되었습니다.`,
+      true
+    );
+    await syncCustomerToGas('update', {
+      id: customerId,
+      status: '배송완료',
+      logisticsConfirmed: true,
+    });
+  };
+
+  const handleConfirmAllDelivered = async (customerIds: string[]) => {
+    if (customerIds.length === 0) return;
+    const idSet = new Set(customerIds);
+    pushUndoSnapshot(`배송완료 일괄 처리 (${customerIds.length}건)`);
+    const updated = customers.map((c) =>
+      idSet.has(c.id)
+        ? { ...c, status: '배송완료' as CustomerStatus, logisticsConfirmed: true }
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCustomers(deduped);
+    setIsPastDeliveryModalOpen(false);
+    showToast(`✅ 총 ${customerIds.length}건 배송완료 처리되었습니다.`, true);
+    for (const cid of customerIds) {
+      await syncCustomerToGas('update', {
+        id: cid,
+        status: '배송완료',
+        logisticsConfirmed: true,
+      });
+    }
+  };
   const trashedCustomers = useMemo(
     () => customers.filter((c) => Boolean(c.deletedAt)),
     [customers]
@@ -480,7 +554,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       );
 
     return {
-      totalCount: activeCustomers.length,
+      totalCount: activeCustomers.filter((c) => !isDeliveryDoneAndSettled(c)).length,
       urgentCount,
       todayTomorrowDeliveryCount,
       unconfirmedLogisticsCount,
@@ -493,19 +567,17 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
   const tabCounts = useMemo(() => {
     const map: Record<string, number> = {
-      전체: activeCustomers.length,
+      // 첫 화면('전체')에서는 배송완료 고객을 숨기되, 사은품 미지급이 남은 고객은 포함
+      전체: activeCustomers.filter((c) => !isDeliveryDoneAndSettled(c)).length,
       '🔥긴급/오늘할일': activeCustomers.filter((c) => isUrgentCustomer(c))
         .length,
       '🚚물류/배송대기': activeCustomers.filter((c) => {
-        if (c.status === '취소/보류') return false;
+        if (c.status === '취소/보류' || c.status === '배송완료') return false;
         const diff = getDeliveryDDay(c.deliveryDate).diff;
         return diff !== null && diff >= 0 && !c.logisticsConfirmed;
       }).length,
       '🎁사은품미지급': activeCustomers.filter(
-        (c) =>
-          c.status !== '취소/보류' &&
-          Boolean(c.giftItems && c.giftItems.trim()) &&
-          !c.giftSent
+        (c) => c.status !== '취소/보류' && hasUnpaidGift(c)
       ).length,
     };
     FILTER_TABS.forEach((tab) => {
@@ -521,24 +593,26 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
     const filtered = activeCustomers.filter((c) => {
       if (viewMode === 'grid') {
-        if (activeTab === '🔥긴급/오늘할일') {
+        if (activeTab === '전체') {
+          // 검색어를 입력하지 않은 기본 첫 화면에서는 배송완료 고객을 숨김
+          // 단, 사은품 미지급(hasUnpaidGift)이 남아 있는 고객은 반드시 첫 화면에 계속 표시!
+          if (!q && isDeliveryDoneAndSettled(c)) return false;
+        } else if (activeTab === '🔥긴급/오늘할일') {
           if (!isUrgentCustomer(c)) return false;
         } else if (activeTab === '🚚물류/배송대기') {
-          if (c.status === '취소/보류') return false;
+          if (c.status === '취소/보류' || c.status === '배송완료') return false;
           const diff = getDeliveryDDay(c.deliveryDate).diff;
           if (diff === null || diff < 0 || c.logisticsConfirmed) return false;
         } else if (activeTab === '🎁사은품미지급') {
-          if (
-            c.status === '취소/보류' ||
-            !c.giftItems ||
-            !c.giftItems.trim() ||
-            c.giftSent
-          ) {
+          if (c.status === '취소/보류' || !hasUnpaidGift(c)) {
             return false;
           }
-        } else if (activeTab !== '전체') {
+        } else {
           if (c.status !== activeTab) return false;
         }
+      } else if (viewMode === 'kanban') {
+        // 칸반 보드에서도 사은품까지 모두 종결된 배송완료 건은 검색 시에만 노출
+        if (!q && isDeliveryDoneAndSettled(c)) return false;
       }
 
       if (!q) return true;
@@ -589,6 +663,8 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         todayTomorrowDeliveryCount={kpiStats.todayTomorrowDeliveryCount}
         unconfirmedLogisticsCount={kpiStats.unconfirmedLogisticsCount}
         unpaidGiftCount={kpiStats.unpaidGiftCount}
+        pastDueDeliveryCount={pastDueDeliveryCustomers.length}
+        onOpenPastDueModal={() => setIsPastDeliveryModalOpen(true)}
         grossSalesTotal={kpiStats.grossSalesTotal}
         netDeliverySalesTotal={kpiStats.netDeliverySalesTotal}
         pipelineSalesTotal={kpiStats.pipelineSalesTotal}
@@ -965,6 +1041,18 @@ export const CrmApp: React.FC<CrmAppProps> = ({
             giftSent: !c.giftSent,
           })
         }
+      />
+
+      <PastDeliveryCheckModal
+        isOpen={isPastDeliveryModalOpen}
+        customers={pastDueDeliveryCustomers}
+        isDark={isDark}
+        onConfirmDelivered={handleConfirmDelivered}
+        onConfirmAllDelivered={handleConfirmAllDelivered}
+        onClose={() => {
+          sessionStorage.setItem(PAST_DELIVERY_POPUP_DISMISSED_KEY, '1');
+          setIsPastDeliveryModalOpen(false);
+        }}
       />
 
       <SettingsModal

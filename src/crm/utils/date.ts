@@ -233,8 +233,44 @@ export function getFollowUpInfo(customer: CustomerItem): {
 /**
  * 오늘 당장 챙겨야 할 긴급/할일 고객 판별
  */
+/**
+ * 약속된 사은품이 아직 지급되지 않았는지 여부
+ */
+export function hasUnpaidGift(c: CustomerItem): boolean {
+  return Boolean(c.giftItems && c.giftItems.trim()) && !c.giftSent;
+}
+
+/**
+ * 배송완료 처리되었고 미지급 사은품도 없는 고객인지 여부
+ * -> 고객정보 첫 화면(기본 목록)에서는 숨기고, 사은품 미지급이 남아있으면 첫 화면에 계속 표시합니다.
+ */
+export function isDeliveryDoneAndSettled(c: CustomerItem): boolean {
+  return c.status === '배송완료' && !hasUnpaidGift(c);
+}
+
+/**
+ * 저장된 고객 중 배송 예정일(deliveryDate)이 오늘보다 지났으나(diff < 0)
+ * 아직 '배송완료' 처리되지 않은 확인 대상 고객 목록 반환
+ */
+export function getPastDueDeliveryCustomers(
+  customers: CustomerItem[]
+): CustomerItem[] {
+  return (customers || [])
+    .filter((c) => {
+      if (!c || c.deletedAt) return false;
+      if (c.status === '배송완료' || c.status === '취소/보류') return false;
+      const dday = getDeliveryDDay(c.deliveryDate);
+      return dday.diff !== null && dday.diff < 0;
+    })
+    .sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
+}
+
 export function isUrgentCustomer(c: CustomerItem): boolean {
   if (c.status === '취소/보류') return false;
+  // 배송완료 상태인 경우: 미지급 사은품이 남아있는 경우에만 긴급/할일로 표시
+  if (c.status === '배송완료') {
+    return hasUnpaidGift(c);
+  }
   if (c.status === '신규/미발송') return true;
 
   // 재연락 예정일이 오늘이거나 지난 미결/상담 고객
@@ -259,12 +295,7 @@ export function isUrgentCustomer(c: CustomerItem): boolean {
     return true;
   }
   // 배송 완료(과거 또는 오늘)인데 사은품 미지급
-  if (
-    dday.diff !== null &&
-    dday.diff <= 0 &&
-    Boolean(c.giftItems && c.giftItems.trim()) &&
-    !c.giftSent
-  ) {
+  if (dday.diff !== null && dday.diff <= 0 && hasUnpaidGift(c)) {
     return true;
   }
 

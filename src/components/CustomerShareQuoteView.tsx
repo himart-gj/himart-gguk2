@@ -18,30 +18,41 @@ import {
 } from '../types/proposal';
 import {
   ConsultantProfile,
+  createShortenedQuoteLinks,
   decodeSharedQuoteFromHash,
-  encodeSharedQuoteUrl,
+  EncodedQuoteLinks,
+  getEffectiveStaffPin,
   loadCachedCustomerQuotePayload,
   loadConsultantProfile,
+  loadCustomViewerBaseUrl,
   saveConsultantProfile,
+  saveCustomStaffPin,
+  saveCustomViewerBaseUrl,
   SharedQuotePayload,
   unlockStaffDeviceWithPin,
 } from '../utils/shareQuoteCodec';
 import { SpringNumberFlow } from './SpringNumberFlow';
+import { maskProposalStateModels } from '../utils/modelMasker';
 import {
   Check,
   ChevronDown,
   ChevronUp,
   Copy,
   CreditCard,
+  EyeOff,
   ExternalLink,
   Gift,
   Layers,
+  Link2,
+  Lock,
   MapPin,
   MessageSquare,
   Phone,
   RotateCcw,
+  Send,
   Share2,
   ShieldCheck,
+  Smartphone,
   ShoppingBag,
   Sparkles,
   UserCheck,
@@ -51,11 +62,136 @@ import {
 // ============================================================================
 // 1. 상담사용 [카톡 인터랙티브 견적 링크 생성 & 전달 메시지 복사] 모달
 // ============================================================================
+interface SecurityDomainConfigBoxProps {
+  isDark: boolean;
+  onDomainChanged: () => void;
+}
+
+const SecurityDomainConfigBox: React.FC<SecurityDomainConfigBoxProps> = ({
+  isDark,
+  onDomainChanged,
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState(() => loadCustomViewerBaseUrl());
+  const [pinInput, setPinInput] = useState('');
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  const handleSaveDomain = () => {
+    saveCustomViewerBaseUrl(viewerUrl);
+    onDomainChanged();
+    setSavedNotice('고객 링크 전용 도메인 설정이 반영되었습니다.');
+    setTimeout(() => setSavedNotice(null), 2500);
+  };
+
+  const handleSavePin = () => {
+    if (saveCustomStaffPin(pinInput)) {
+      setPinInput('');
+      setSavedNotice('직원 전용 보안 코드가 변경되었습니다.');
+      setTimeout(() => setSavedNotice(null), 2500);
+    } else {
+      setSavedNotice('보안 코드는 4자리 이상 입력해 주세요.');
+    }
+  };
+
+  return (
+    <div
+      className={`rounded-2xl border px-3.5 py-2.5 text-xs ${
+        isDark
+          ? 'bg-[#111723] border-emerald-500/30 text-slate-200'
+          : 'bg-emerald-50/70 border-emerald-200 text-stone-800'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 font-extrabold text-emerald-700 dark:text-emerald-300">
+          <Lock className="w-3.5 h-3.5 shrink-0" />
+          <span>주소 뒷부분 지우고 접속 시 직원앱 자동 차단 중</span>
+        </span>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="text-[11px] font-black underline opacity-80 hover:opacity-100 shrink-0 cursor-pointer"
+        >
+          {expanded ? '보안설정 닫기' : '보안·도메인 설정'}
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="mt-2.5 pt-2.5 border-t border-emerald-500/20 space-y-2.5">
+          <p className="text-[11px] opacity-80 leading-relaxed font-medium">
+            • 고객이나 타인이 링크 뒤쪽(<code>?s=...</code>)을 지우고 기본 깃허브 주소로 들어와도(시크릿 모드·다른 PC 포함) 직원 인증 없이는 관리앱이 절대 열리지 않습니다.
+            <br />• 내 깃허브 아이디 주소 자체도 숨기려면 무료 별도 페이지(예: 새 빈 저장소 <code>quote</code> 또는 Cloudflare Pages) 주소를 아래에 입력하세요.
+          </p>
+
+          <div className="space-y-1">
+            <label className="block text-[11px] font-black">
+              고객 노출 전용 별도 주소 (선택 · 비워두면 현재 도메인 사용)
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="url"
+                value={viewerUrl}
+                onChange={(e) => setViewerUrl(e.target.value)}
+                placeholder="예: https://gj-quote.pages.dev"
+                className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs font-mono ${
+                  isDark
+                    ? 'bg-[#1B2230] border-white/15 text-white'
+                    : 'bg-white border-emerald-300 text-slate-900'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={handleSaveDomain}
+                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black shrink-0 cursor-pointer"
+              >
+                적용
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-[11px] font-black">
+              새 기기 직원 인증 코드 변경 (현재 기본값: {getEffectiveStaffPin()})
+            </label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="password"
+                inputMode="numeric"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                placeholder="변경할 숫자 4~8자리 입력"
+                className={`flex-1 px-2.5 py-1.5 rounded-xl border text-xs font-mono ${
+                  isDark
+                    ? 'bg-[#1B2230] border-white/15 text-white'
+                    : 'bg-white border-emerald-300 text-slate-900'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={handleSavePin}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black shrink-0 cursor-pointer"
+              >
+                코드 변경
+              </button>
+            </div>
+          </div>
+
+          {savedNotice && (
+            <div className="text-[11px] font-black text-emerald-600 dark:text-emerald-300">
+              ✓ {savedNotice}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export interface ShareQuoteLinkModalProps {
   isOpen: boolean;
   onClose: () => void;
   state: ProposalState;
   customerName?: string;
+  customerPhone?: string;
   isDark?: boolean;
 }
 
@@ -64,22 +200,34 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   onClose,
   state,
   customerName = '',
+  customerPhone = '',
   isDark = false,
 }) => {
   const [profile, setProfile] = useState<ConsultantProfile>(() =>
     loadConsultantProfile()
   );
   const [custInput, setCustInput] = useState<string>(customerName);
-  const [generatedUrl, setGeneratedUrl] = useState<string>('');
+  const [custPhoneInput, setCustPhoneInput] = useState<string>(customerPhone);
+  const [channelTab, setChannelTab] = useState<'sms' | 'kakao'>('sms');
+  const [linkBundle, setLinkBundle] = useState<EncodedQuoteLinks | null>(null);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [copiedType, setCopiedType] = useState<'kakao' | 'url' | null>(null);
+  const [copiedType, setCopiedType] = useState<'sms' | 'kakao' | 'url' | null>(
+    null
+  );
+  const [maskSharedModels, setMaskSharedModels] = useState<boolean>(false);
+
+  const effectiveShareState = useMemo(
+    () => (maskSharedModels ? maskProposalStateModels(state) : state),
+    [maskSharedModels, state]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
     setProfile(loadConsultantProfile());
     setCustInput(customerName || '');
+    setCustPhoneInput(customerPhone || '');
     setCopiedType(null);
-  }, [isOpen, customerName]);
+  }, [isOpen, customerName, customerPhone]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -92,13 +240,13 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       createdAt: new Date().toISOString().slice(0, 10),
       customerName: custInput.trim() || undefined,
       consultant: profile,
-      state,
+      state: effectiveShareState,
     };
 
-    encodeSharedQuoteUrl(payload)
-      .then((url) => {
+    createShortenedQuoteLinks(payload)
+      .then((bundle) => {
         if (!cancelled) {
-          setGeneratedUrl(url);
+          setLinkBundle(bundle);
           setIsGenerating(false);
         }
       })
@@ -109,36 +257,59 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, profile, custInput, state]);
+  }, [isOpen, profile, custInput, effectiveShareState]);
 
   if (!isOpen) return null;
 
-  const genSummary = calculateGeneralPurchaseSummary(state);
-  const subSummary = calculateSubscriptionSummary(state);
+  const activeUrl = linkBundle?.shortUrl || '';
+  const genSummary = calculateGeneralPurchaseSummary(effectiveShareState);
+  const subSummary = calculateSubscriptionSummary(effectiveShareState);
 
+  const honorific = custInput.trim() ? `${custInput.trim()} 고객님` : '고객님';
+  const itemLine =
+    effectiveShareState.quoteMode === 'subscription'
+      ? subSummary.validSubNames.join(', ') || '맞춤 가전 구독 패키지'
+      : effectiveShareState.generalItems
+          .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
+          .filter(Boolean)
+          .join(', ') || '맞춤 가전 패키지';
+
+  const priceHighlight =
+    effectiveShareState.quoteMode === 'subscription'
+      ? `월 체감가 ${subSummary.finalMonthlyFee.toLocaleString()}원 (${
+          subSummary.periodLabel
+        }${
+          subSummary.totalSubCashback > 0
+            ? ` · 캐시백 ${subSummary.totalSubCashback.toLocaleString()}원`
+            : ''
+        })`
+      : effectiveShareState.quoteMode === 'hybrid'
+      ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 월 ${subSummary.finalMonthlyFee.toLocaleString()}원`
+      : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원`;
+
+  // [문자(SMS/LMS) 전용 포맷]:
+  // 1) 특수 괘선(━━━) 및 과도한 이모지를 제거해 LMS 바이트 초과 잘림 방지
+  // 2) 링크 위·아래 빈 줄 확보 및 링크 줄에 어떠한 부호도 붙이지 않아 갤럭시·아이폰 문자앱 파란색 자동링크 100% 보장
+  const buildSmsShareMessage = () => {
+    const shortItem =
+      itemLine.length > 42 ? `${itemLine.slice(0, 40)}...` : itemLine;
+    return [
+      `[${profile.storeName}] ${honorific} 맞춤 견적서 안내`,
+      `품목: ${shortItem}`,
+      `혜택: ${priceHighlight}`,
+      ``,
+      `아래 링크를 누르시면 스마트폰에서 1안·2안 및 카드별 체감가를 직접 비교하실 수 있습니다.`,
+      ``,
+      activeUrl,
+      ``,
+      `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
+    ]
+      .join('\n')
+      .trim();
+  };
+
+  // [카카오톡 전용 포맷]
   const buildKakaoShareMessage = () => {
-    const honorific = custInput.trim() ? `${custInput.trim()} 고객님` : '고객님';
-    const itemLine =
-      state.quoteMode === 'subscription'
-        ? subSummary.validSubNames.join(', ') || '맞춤 가전 구독 패키지'
-        : state.generalItems
-            .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
-            .filter(Boolean)
-            .join(', ') || '맞춤 가전 패키지';
-
-    const priceHighlight =
-      state.quoteMode === 'subscription'
-        ? `월 체감가 ${subSummary.finalMonthlyFee.toLocaleString()}원 (${
-            subSummary.periodLabel
-          }${
-            subSummary.totalSubCashback > 0
-              ? ` · 캐시백 ${subSummary.totalSubCashback.toLocaleString()}원 반영`
-              : ''
-          })`
-        : state.quoteMode === 'hybrid'
-        ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 월 ${subSummary.finalMonthlyFee.toLocaleString()}원`
-        : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원 (총 혜택 -${genSummary.totalDiscountAndBenefit.toLocaleString()}원)`;
-
     return [
       `✨ [${profile.storeName}] ${honorific} 맞춤 비교 견적서`,
       `━━━━━━━━━━━━━━`,
@@ -146,20 +317,29 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       `💡 핵심 혜택: ${priceHighlight}`,
       ``,
       `아래 전용 링크를 누르시면 스마트폰에서 [1안 vs 2안] 및 제휴카드·구좌별 체감가를 직접 눌러보며 비교하실 수 있습니다 👇`,
-      generatedUrl,
+      ``,
+      activeUrl,
       ``,
       `👤 담당: ${profile.name} (${profile.roleTitle})${
         profile.phone ? ` / 📞 ${profile.phone}` : ''
       }`,
       profile.greeting ? `💬 "${profile.greeting}"` : '',
     ]
-      .filter(Boolean)
+      .filter((line) => line !== undefined)
       .join('\n');
   };
 
-  const handleCopy = async (mode: 'kakao' | 'url') => {
-    if (!generatedUrl) return;
-    const text = mode === 'kakao' ? buildKakaoShareMessage() : generatedUrl;
+  const previewText =
+    channelTab === 'sms' ? buildSmsShareMessage() : buildKakaoShareMessage();
+
+  const handleCopy = async (mode: 'sms' | 'kakao' | 'url') => {
+    if (!activeUrl) return;
+    const text =
+      mode === 'sms'
+        ? buildSmsShareMessage()
+        : mode === 'kakao'
+        ? buildKakaoShareMessage()
+        : activeUrl;
     try {
       await navigator.clipboard.writeText(text);
       setCopiedType(mode);
@@ -169,10 +349,32 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     }
   };
 
-  const handlePreviewCustomerScreen = () => {
-    if (!generatedUrl) return;
-    window.open(generatedUrl, '_blank', 'noopener,noreferrer');
+  // 안드로이드(갤럭시) / 아이폰 기본 문자(SMS) 앱 즉시 실행 (수신번호 + 단축링크 본문 자동 채움)
+  const handleOpenNativeSmsApp = () => {
+    if (!activeUrl) return;
+    const cleanPhone = custPhoneInput.replace(/[^0-9+]/g, '');
+    const body = encodeURIComponent(buildSmsShareMessage());
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const isIOS = /iPad|iPhone|iPod/i.test(ua);
+    const sep = isIOS ? '&' : '?';
+    const smsHref = cleanPhone
+      ? `sms:${cleanPhone}${sep}body=${body}`
+      : `sms:${sep}body=${body}`;
+    window.location.href = smsHref;
   };
+
+  const handlePreviewCustomerScreen = () => {
+    if (!activeUrl) return;
+    const target = linkBundle?.compactUrl || activeUrl;
+    window.open(target, '_blank', 'noopener,noreferrer');
+  };
+
+  const modeBadgeLabel =
+    linkBundle?.mode === 'server'
+      ? `초단축 링크 완료 (${activeUrl.length}자)`
+      : linkBundle?.mode === 'external'
+      ? `초단축 URL 완료 (${activeUrl.length}자)`
+      : `V2 경량 링크 완료 (${activeUrl.length}자 · 점 제거)`;
 
   const cardCls = isDark
     ? 'bg-[#151A25] text-slate-100 border-white/15'
@@ -191,7 +393,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         <div
-          className={`px-5 py-4 border-b flex items-center justify-between ${
+          className={`px-5 py-3.5 border-b flex items-center justify-between ${
             isDark ? 'bg-[#111622] border-white/10' : 'bg-[#FAF8F4] border-[#E4DFD5]'
           }`}
         >
@@ -201,10 +403,10 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-black">
-                카톡 인터랙티브 비교 견적 링크 공유
+                문자(SMS) · 카톡 비교 견적 단축링크 발송
               </h3>
               <p className="text-[11px] opacity-70 font-medium">
-                고객이 내 폰에서 직접 1안·2안과 카드/구좌 혜택을 눌러보며 비교합니다
+                문자에서도 파란색 클릭 링크가 끊기지 않도록 주소를 초단축하여 전송합니다
               </p>
             </div>
           </div>
@@ -217,8 +419,42 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
           </button>
         </div>
 
-        <div className="p-5 space-y-4 max-h-[80dvh] overflow-y-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="p-5 space-y-3.5 max-h-[82dvh] overflow-y-auto">
+          {/* 발송 채널 선택 탭: 문자(SMS) 기본 선택 */}
+          <div
+            className={`grid grid-cols-2 gap-1.5 p-1 rounded-2xl border ${
+              isDark
+                ? 'bg-[#0B0E14] border-white/10'
+                : 'bg-[#F4F2ED] border-[#E4DFD5]'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setChannelTab('sms')}
+              className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                channelTab === 'sms'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>📩 문자(SMS) 발송용 (권장)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setChannelTab('kakao')}
+              className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                channelTab === 'kakao'
+                  ? 'bg-[#FEE500] text-[#191919] shadow-xs'
+                  : 'opacity-70 hover:opacity-100'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>💬 카카오톡 발송용</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <div>
               <label className="block text-xs font-black mb-1">
                 고객님 성함 (선택)
@@ -233,6 +469,19 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             </div>
             <div>
               <label className="block text-xs font-black mb-1">
+                고객 휴대폰 번호 (문자앱 바로열기용)
+              </label>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={custPhoneInput}
+                onChange={(e) => setCustPhoneInput(e.target.value)}
+                placeholder="010-0000-0000 (비워도 발송 가능)"
+                className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-bold font-mono ${inputCls}`}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-black mb-1">
                 담당 컨설턴트 성함 (자동저장)
               </label>
               <input
@@ -241,13 +490,13 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                 onChange={(e) =>
                   setProfile((p) => ({ ...p, name: e.target.value }))
                 }
-                placeholder="예: 강석원 점장"
+                placeholder="예: 국지현"
                 className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-bold ${inputCls}`}
               />
             </div>
             <div>
               <label className="block text-xs font-black mb-1">
-                담당자 직통 연락처 (하단 전화·문자 버튼 연동)
+                담당자 직통 연락처 (하단 통화·문자 연동)
               </label>
               <input
                 type="tel"
@@ -260,48 +509,78 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                 className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-bold font-mono ${inputCls}`}
               />
             </div>
-            <div>
-              <label className="block text-xs font-black mb-1">
-                직책 / 지점 안내
-              </label>
-              <input
-                type="text"
-                value={profile.roleTitle}
-                onChange={(e) =>
-                  setProfile((p) => ({ ...p, roleTitle: e.target.value }))
-                }
-                placeholder="수석 가전 컨설턴트"
-                className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-bold ${inputCls}`}
-              />
-            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-black mb-1">
-              고객님께 띄울 한 줄 안심 인사말
-            </label>
-            <input
-              type="text"
-              value={profile.greeting}
-              onChange={(e) =>
-                setProfile((p) => ({ ...p, greeting: e.target.value }))
-              }
-              className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-bold ${inputCls}`}
-            />
-          </div>
+          {/* 깃허브 주소 뒤쪽 삭제 방어 & 별도 고객 도메인 보안 설정 */}
+          <SecurityDomainConfigBox
+            isDark={isDark}
+            onDomainChanged={() => {
+              // trigger link regeneration via profile shallow clone
+              setProfile((p) => ({ ...p }));
+            }}
+          />
 
-          {/* 고객 전용 보안 격리 안내 배지 */}
-          <div
-            className={`rounded-2xl border px-3.5 py-2.5 flex items-center gap-2 text-xs font-bold ${
-              isDark
-                ? 'bg-emerald-500/15 border-emerald-400/35 text-emerald-300'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+          {/* 모델명 앞 3글자 외 가리기 토글 */}
+          <button
+            type="button"
+            onClick={() => setMaskSharedModels((v) => !v)}
+            className={`w-full rounded-2xl border px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-bold transition cursor-pointer ${
+              maskSharedModels
+                ? 'bg-violet-600 text-white border-violet-500 shadow-xs'
+                : isDark
+                ? 'bg-[#1B2230] border-white/15 text-slate-200 hover:bg-[#232D40]'
+                : 'bg-[#FAF8F4] border-[#D6D0C4] text-[#18181B] hover:bg-[#F0ECE2]'
             }`}
           >
-            <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>
-              고객 전용 보안 격리 적용: 링크 접속 시 오직 이 견적서만 열리며, 직원용 관리앱·휴무표·수당 메뉴 진입이 원천 차단됩니다.
+            <span className="flex items-center gap-2 text-left">
+              <EyeOff className="w-4 h-4 shrink-0" />
+              <span>모델명 앞 3글자 빼고 가려서 공유하기 (비교견적 방지)</span>
             </span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
+                maskSharedModels
+                  ? 'bg-amber-300 text-slate-950'
+                  : 'bg-black/10 text-current'
+              }`}
+            >
+              {maskSharedModels ? '가림 ON' : '원본 표시'}
+            </span>
+          </button>
+
+          {/* 생성된 단축 URL 단독 복사 바 */}
+          <div
+            className={`rounded-2xl border px-3 py-2 flex items-center justify-between gap-2 ${
+              isDark
+                ? 'bg-emerald-950/35 border-emerald-500/30 text-emerald-200'
+                : 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+            }`}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
+                {isGenerating ? '단축 주소 생성 중...' : `✓ ${modeBadgeLabel}`}
+              </div>
+              <div className="text-xs font-mono font-bold truncate">
+                {activeUrl || '링크 생성 중...'}
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={!activeUrl}
+              onClick={() => handleCopy('url')}
+              className="shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+            >
+              {copiedType === 'url' ? (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>복사됨</span>
+                </>
+              ) : (
+                <>
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>주소만 복사</span>
+                </>
+              )}
+            </button>
           </div>
 
           {/* 생성된 메시지 미리보기 */}
@@ -313,52 +592,105 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             }`}
           >
             <div className="flex items-center justify-between font-black">
-              <span>💬 카카오톡 전달 문구 미리보기</span>
-              <span className="text-[10px] font-mono opacity-70">
-                {isGenerating
-                  ? '링크 압축 중...'
-                  : `압축 URL (${generatedUrl.length}자)`}
+              <span>
+                {channelTab === 'sms'
+                  ? '📩 문자(SMS) 전달 문구 (링크 줄바꿈 보호 적용)'
+                  : '💬 카카오톡 전달 문구 미리보기'}
+              </span>
+              <span className="text-[10px] font-mono opacity-75">
+                총 {previewText.length}자
               </span>
             </div>
-            <pre className="whitespace-pre-wrap break-all font-sans text-[11px] leading-relaxed max-h-32 overflow-y-auto">
-              {buildKakaoShareMessage()}
+            <pre className="whitespace-pre-wrap break-all font-sans text-[11px] leading-relaxed max-h-28 overflow-y-auto">
+              {previewText}
             </pre>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-            <button
-              type="button"
-              disabled={!generatedUrl}
-              onClick={() => handleCopy('kakao')}
-              className="py-3 px-4 rounded-2xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-sm cursor-pointer schedule-tactile"
-            >
-              {copiedType === 'kakao' ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-700" />
-                  <span>카톡 안내문+링크 복사됨!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span>카톡 안내문 + 링크 복사</span>
-                </>
-              )}
-            </button>
+          {channelTab === 'sms' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+              <button
+                type="button"
+                disabled={!activeUrl}
+                onClick={handleOpenNativeSmsApp}
+                className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-sm cursor-pointer schedule-tactile"
+              >
+                <Send className="w-4 h-4" />
+                <span>📲 휴대폰 문자앱 바로 열기</span>
+              </button>
 
-            <button
-              type="button"
-              disabled={!generatedUrl}
-              onClick={handlePreviewCustomerScreen}
-              className={`py-3 px-4 rounded-2xl border text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 cursor-pointer schedule-tactile ${
-                isDark
-                  ? 'bg-[#1B2230] hover:bg-[#242E42] text-sky-300 border-sky-400/30'
-                  : 'bg-[#18181B] hover:bg-stone-800 text-white border-[#18181B]'
-              }`}
-            >
-              <ExternalLink className="w-4 h-4" />
-              <span>고객 화면 새 탭 미리보기</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                disabled={!activeUrl}
+                onClick={() => handleCopy('sms')}
+                className="py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-sm cursor-pointer schedule-tactile"
+              >
+                {copiedType === 'sms' ? (
+                  <>
+                    <Check className="w-4 h-4 text-amber-300" />
+                    <span>문자 안내문+링크 복사됨!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>📩 문자 안내문 + 링크 복사</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+              <button
+                type="button"
+                disabled={!activeUrl}
+                onClick={() => handleCopy('kakao')}
+                className="py-3 px-4 rounded-2xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-sm cursor-pointer schedule-tactile"
+              >
+                {copiedType === 'kakao' ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-700" />
+                    <span>카톡 안내문+링크 복사됨!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" />
+                    <span>💬 카톡 안내문 + 링크 복사</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={!activeUrl}
+                onClick={handlePreviewCustomerScreen}
+                className={`py-3 px-4 rounded-2xl border text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 cursor-pointer schedule-tactile ${
+                  isDark
+                    ? 'bg-[#1B2230] hover:bg-[#242E42] text-sky-300 border-sky-400/30'
+                    : 'bg-[#18181B] hover:bg-stone-800 text-white border-[#18181B]'
+                }`}
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>고객 화면 새 탭 미리보기</span>
+              </button>
+            </div>
+          )}
+
+          {channelTab === 'sms' && (
+            <div className="flex items-center justify-between pt-0.5">
+              <span className="text-[11px] opacity-70 font-medium flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                고객 보안 격리 적용 (직원 앱 진입 차단)
+              </span>
+              <button
+                type="button"
+                disabled={!activeUrl}
+                onClick={handlePreviewCustomerScreen}
+                className="text-[11px] font-black text-indigo-500 hover:underline inline-flex items-center gap-1 cursor-pointer"
+              >
+                <ExternalLink className="w-3 h-3" />
+                <span>고객 화면 미리보기</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1214,4 +1546,106 @@ export const CustomerShareStandaloneRoot: React.FC = () => {
   }
 
   return <CustomerShareQuoteView payload={payload} />;
+};
+
+
+// ============================================================================
+// 4. Zero-Trust 기본 주소 차단 게이트
+//    고객이나 외부인이 주소 뒤쪽(?s=...)을 지우고 깃허브 기본 URL로 접속했을 때
+//    직원용 App.tsx를 절대 로드하지 않고 안전한 고객 안내 화면만 노출합니다.
+// ============================================================================
+export const PublicZeroTrustGateRoot: React.FC<{
+  onStaffVerified: () => void;
+}> = ({ onStaffVerified }) => {
+  const [showPinBox, setShowPinBox] = useState(false);
+  const [pinValue, setPinValue] = useState('');
+  const [pinError, setPinError] = useState(false);
+
+  const handleVerify = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (unlockStaffDeviceWithPin(pinValue)) {
+      setPinError(false);
+      onStaffVerified();
+    } else {
+      setPinError(true);
+    }
+  };
+
+  return (
+    <div className="min-h-[100dvh] bg-[#F4F2ED] text-[#18181B] flex flex-col items-center justify-center p-5">
+      <div className="w-full max-w-md rounded-3xl bg-white border border-[#E4DFD5] p-6 text-center shadow-sm space-y-4">
+        <div className="w-12 h-12 mx-auto rounded-2xl bg-[#18181B] text-amber-300 flex items-center justify-center shadow-xs">
+          <ShieldCheck className="w-6 h-6" />
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-extrabold text-[#8C5A32]">
+            롯데하이마트 경기광주점
+          </div>
+          <h1 className="text-base sm:text-lg font-black tracking-tight">
+            고객 전용 맞춤 견적 뷰어
+          </h1>
+          <p className="text-xs text-[#57534E] leading-relaxed font-medium">
+            문자(SMS) 또는 카카오톡으로 전달받으신 <strong>전체 전용 견적 링크</strong>를 눌러 접속해 주세요.
+            <br />
+            (주소 뒷부분이 생략된 경우 견적서를 불러올 수 없습니다.)
+          </p>
+        </div>
+
+        <a
+          href="https://map.naver.com/p/search/%EB%A1%AF%EB%8D%B0%ED%95%98%EC%9D%B4%EB%A7%88%ED%8A%B8%20%EA%B2%BD%EA%B8%B0%EA%B4%91%EC%A3%BC%EC%A0%90"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full py-3 px-4 rounded-2xl bg-[#18181B] hover:bg-stone-800 text-white text-xs font-black inline-flex items-center justify-center gap-1.5 transition"
+        >
+          <MapPin className="w-4 h-4 text-amber-300" />
+          <span>롯데하이마트 경기광주점 위치 안내</span>
+        </a>
+
+        <div className="pt-3 border-t border-[#F4F2ED]">
+          {!showPinBox ? (
+            <button
+              type="button"
+              onClick={() => setShowPinBox(true)}
+              className="text-[10px] text-stone-400 hover:text-stone-600 inline-flex items-center gap-1 cursor-pointer"
+            >
+              <Lock className="w-2.5 h-2.5" />
+              <span>담당자 기기 인증 (최초 1회)</span>
+            </button>
+          ) : (
+            <form onSubmit={handleVerify} className="space-y-2 text-left">
+              <label className="block text-[11px] font-black text-stone-700">
+                매장 담당자 보안 코드 입력 (최초 1회 등록 시 자동 유지)
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus
+                  value={pinValue}
+                  onChange={(e) => {
+                    setPinValue(e.target.value);
+                    setPinError(false);
+                  }}
+                  placeholder="보안 코드 입력"
+                  className="flex-1 px-3 py-2 rounded-xl border border-[#D6D0C4] bg-[#FAF8F4] text-sm font-mono font-bold focus:outline-none focus:border-[#18181B]"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shrink-0 cursor-pointer"
+                >
+                  인증
+                </button>
+              </div>
+              {pinError && (
+                <p className="text-[11px] font-bold text-rose-600">
+                  보안 코드가 일치하지 않습니다.
+                </p>
+              )}
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 };

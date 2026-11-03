@@ -59,30 +59,33 @@ export async function sendSystemNotification(
 export function getBriefingSummary(customers: CustomerItem[]) {
   const active = customers.filter((c) => c.status !== '취소/보류');
 
-  const todayDelivery = active.filter(
+  const notDeliveredYet = active.filter((c) => c.status !== '배송완료');
+
+  const todayDelivery = notDeliveredYet.filter(
     (c) => getDeliveryDDay(c.deliveryDate).diff === 0
   );
-  const tomorrowDelivery = active.filter(
+  const tomorrowDelivery = notDeliveredYet.filter(
     (c) => getDeliveryDDay(c.deliveryDate).diff === 1
   );
-  const unconfirmedLogistics = active.filter((c) => {
+  const unconfirmedLogistics = notDeliveredYet.filter((c) => {
     const diff = getDeliveryDDay(c.deliveryDate).diff;
     return diff !== null && diff >= 0 && diff <= 3 && !c.logisticsConfirmed;
   });
-  const unsentQuotes = active.filter((c) => c.status === '신규/미발송');
-  const undecided = active.filter(
+  const unsentQuotes = notDeliveredYet.filter((c) => c.status === '신규/미발송');
+  const undecided = notDeliveredYet.filter(
     (c) => c.status === '미구매/고민중' || c.status === '상담진행중'
   );
+  // 사은품 미지급은 '배송완료' 고객이라도 지급 전까지 반드시 계속 표시
   const unpaidGifts = active.filter((c) => {
     const diff = getDeliveryDDay(c.deliveryDate).diff;
+    const isDeliveredOrPast = c.status === '배송완료' || (diff !== null && diff <= 0);
     return (
-      diff !== null &&
-      diff <= 0 &&
+      isDeliveredOrPast &&
       Boolean(c.giftItems && c.giftItems.trim()) &&
       !c.giftSent
     );
   });
-  const happyCallNeeded = active.filter(
+  const happyCallNeeded = notDeliveredYet.filter(
     (c) => getDeliveryDDay(c.deliveryDate).diff === -1
   );
   // 오늘 또는 지난 재연락 예정 고객 (미구매/고민중, 상담진행중 등)

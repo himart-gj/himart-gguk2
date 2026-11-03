@@ -31,7 +31,7 @@ export const CrmAnalyticsStrip: React.FC<CrmAnalyticsStripProps> = ({
 }) => {
   const metrics = useMemo(() => {
     const closed = customers.filter(
-      (c) => c.status === '계약완료' || c.status === '발송완료'
+      (c) => c.status === '계약완료' || c.status === '발송완료' || c.status === '배송완료'
     );
     const activeLeads = customers.filter(
       (c) =>
@@ -147,12 +147,12 @@ const KANBAN_COLUMNS: {
     status: '계약완료',
     title: '계약 완료 (배송대기)',
     accentDot: 'bg-emerald-500',
-    nextStatus: '발송완료',
+    nextStatus: '배송완료',
   },
   {
-    status: '발송완료',
-    title: '발송 · 인도 완료',
-    accentDot: 'bg-sky-500',
+    status: '배송완료',
+    title: '배송 완료 (사은품 미지급건)',
+    accentDot: 'bg-teal-500',
   },
 ];
 

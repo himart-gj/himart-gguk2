@@ -88,6 +88,12 @@ const STATUS_STYLES: Record<
     border: 'border-emerald-200',
     dot: 'bg-emerald-500',
   },
+  배송완료: {
+    bg: 'bg-teal-50',
+    text: 'text-teal-800',
+    border: 'border-teal-300',
+    dot: 'bg-teal-500',
+  },
   '취소/보류': {
     bg: 'bg-slate-100',
     text: 'text-slate-600',
@@ -102,6 +108,7 @@ const ALL_STATUSES: CustomerStatus[] = [
   '상담진행중',
   '미구매/고민중',
   '계약완료',
+  '배송완료',
   '취소/보류',
 ];
 

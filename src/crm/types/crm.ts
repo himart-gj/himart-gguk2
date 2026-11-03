@@ -4,6 +4,7 @@ export type CustomerStatus =
   | '상담진행중'
   | '미구매/고민중'
   | '계약완료'
+  | '배송완료'
   | '취소/보류';
 
 export type SortOrder = 'regDesc' | 'deliveryAsc' | 'amountDesc' | 'urgentFirst';

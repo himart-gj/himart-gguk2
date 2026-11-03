@@ -6,6 +6,7 @@ import {
   RefreshCw,
   Settings,
   Store,
+  Truck,
 } from 'lucide-react';
 
 interface CRMHeaderProps {
@@ -14,6 +15,8 @@ interface CRMHeaderProps {
   todayTomorrowDeliveryCount: number;
   unconfirmedLogisticsCount: number;
   unpaidGiftCount: number;
+  pastDueDeliveryCount?: number;
+  onOpenPastDueModal?: () => void;
   grossSalesTotal: number;
   netDeliverySalesTotal: number;
   pipelineSalesTotal: number;
@@ -33,6 +36,8 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
   todayTomorrowDeliveryCount,
   unconfirmedLogisticsCount,
   unpaidGiftCount,
+  pastDueDeliveryCount = 0,
+  onOpenPastDueModal,
   isLoading,
   onRefresh,
   onOpenNewModal,
@@ -69,6 +74,20 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
 
           {/* 우측 액션 버튼 */}
           <div className="flex items-center gap-1.5 shrink-0">
+            {pastDueDeliveryCount > 0 && onOpenPastDueModal && (
+              <button
+                type="button"
+                onClick={onOpenPastDueModal}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xs transition cursor-pointer"
+                title="배송일 경과 고객 배송완료 확인"
+              >
+                <Truck className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">배송확인</span>
+                <span className="px-1.5 rounded-full bg-white text-emerald-700 text-[10px] font-black">
+                  {pastDueDeliveryCount}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onOpenBriefing}

@@ -34,6 +34,7 @@ const STATUS_BADGE_LIGHT: Record<CustomerStatus, string> = {
   상담진행중: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   '미구매/고민중': 'bg-amber-50 text-amber-800 border-amber-200',
   계약완료: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  배송완료: 'bg-teal-50 text-teal-800 border-teal-300',
   '취소/보류': 'bg-slate-100 text-slate-500 border-slate-200',
 };
 
@@ -43,6 +44,7 @@ const STATUS_BADGE_DARK: Record<CustomerStatus, string> = {
   상담진행중: 'bg-indigo-500/20 text-indigo-300 border-indigo-400/30',
   '미구매/고민중': 'bg-amber-400/20 text-amber-300 border-amber-400/30',
   계약완료: 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30',
+  배송완료: 'bg-teal-500/20 text-teal-300 border-teal-400/30',
   '취소/보류': 'bg-slate-700/50 text-slate-400 border-white/10',
 };
 
@@ -158,6 +160,11 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                   >
                     <FolderKanban className="w-2.5 h-2.5" />
                     견적 {quoteCount}
+                  </span>
+                )}
+                {customer.status === '배송완료' && hasUnpaidGift && (
+                  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white border border-rose-500 animate-pulse">
+                    🎁 사은품 미지급
                   </span>
                 )}
                 {perf.freedDetail.totalCount > 0 && (

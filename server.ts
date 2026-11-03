@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -128,6 +129,87 @@ async function startServer() {
 
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+  // ==================== 고객 문자(SMS)·카톡 견적 6자리 초단축 링크 저장소 ====================
+  const shortQuoteDir = path.join(__dirname, 'data');
+  const shortQuoteFile = path.join(shortQuoteDir, 'short-quotes.json');
+
+  function readShortQuoteMap(): Record<string, { token: string; createdAt: string }> {
+    try {
+      if (fs.existsSync(shortQuoteFile)) {
+        const parsed = JSON.parse(fs.readFileSync(shortQuoteFile, 'utf-8'));
+        if (parsed && typeof parsed === 'object') return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return {};
+  }
+
+  function writeShortQuoteMap(map: Record<string, { token: string; createdAt: string }>) {
+    try {
+      if (!fs.existsSync(shortQuoteDir)) {
+        fs.mkdirSync(shortQuoteDir, { recursive: true });
+      }
+      // 최대 5,000건 유지 (오래된 항목 정리)
+      const entries = Object.entries(map);
+      const trimmed =
+        entries.length > 5000
+          ? Object.fromEntries(entries.slice(entries.length - 5000))
+          : map;
+      fs.writeFileSync(shortQuoteFile, JSON.stringify(trimmed), 'utf-8');
+    } catch {
+      // ignore
+    }
+  }
+
+  app.post('/api/share-quote/shorten', async (req, res) => {
+    try {
+      const { token } = req.body || {};
+      if (!token || typeof token !== 'string' || token.length > 30000) {
+        res.status(400).json({ error: '유효하지 않은 견적 토큰입니다.' });
+        return;
+      }
+      const cleanToken = token.trim();
+      const map = readShortQuoteMap();
+
+      // 결정적 7자리 Base62 해시 코드 생성 (충돌 시 길이 확장)
+      const digest = crypto.createHash('sha256').update(cleanToken).digest('base64url');
+      const alphaNum = digest.replace(/[^A-Za-z0-9]/g, '');
+      let code = alphaNum.slice(0, 6) || 'hmquote';
+      let cursor = 6;
+      while (map[code] && map[code].token !== cleanToken && cursor < alphaNum.length) {
+        cursor += 1;
+        code = alphaNum.slice(0, cursor);
+      }
+
+      map[code] = {
+        token: cleanToken,
+        createdAt: new Date().toISOString(),
+      };
+      writeShortQuoteMap(map);
+
+      res.json({ ok: true, code });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || '단축 링크 생성 실패' });
+    }
+  });
+
+  app.get('/api/share-quote/:code', (req, res) => {
+    const code = String(req.params.code || '').trim();
+    const map = readShortQuoteMap();
+    const entry = map[code];
+    if (!entry || !entry.token) {
+      res.status(404).json({ error: '만료되었거나 존재하지 않는 견적 코드입니다.' });
+      return;
+    }
+    res.json({ ok: true, token: entry.token, createdAt: entry.createdAt });
+  });
+
+  app.get('/q/:code', (req, res) => {
+    const code = encodeURIComponent(String(req.params.code || '').trim());
+    res.redirect(302, `/?q=${code}`);
+  });
 
   // 로컬/개발 서버 환경에서 업로드·수정한 휴무표를 public/schedule-data.json에 즉시 반영
   app.post('/api/schedule/save', (req, res) => {

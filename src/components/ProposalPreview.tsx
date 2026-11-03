@@ -16,7 +16,10 @@ import {
   BookOpen,
   CreditCard,
   Download,
+  Eye,
+  EyeOff,
   FileText,
+  Lock,
   Gift,
   HeartHandshake,
   Info,
@@ -33,6 +36,10 @@ import {
 import { toPng } from 'html-to-image';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import { ShareQuoteLinkModal } from './CustomerShareQuoteView';
+import {
+  maskEmbeddedModelInCategory,
+  maskModelCodeAfter3,
+} from '../utils/modelMasker';
 
 interface ProposalPreviewProps {
   state: ProposalState;
@@ -130,6 +137,17 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const [scale, setScale] = useState(1);
   const [sheetH, setSheetH] = useState(860);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportingMode, setExportingMode] = useState<'full' | 'masked' | null>(null);
+  const [isModelMasked, setIsModelMasked] = useState(false);
+  const [tempMaskOverride, setTempMaskOverride] = useState<boolean | null>(null);
+  const [isSavePrintOpen, setIsSavePrintOpen] = useState(false);
+  const effectiveMaskModels =
+    tempMaskOverride !== null ? tempMaskOverride : isModelMasked;
+
+  const fmtModel = (raw?: string | null) =>
+    effectiveMaskModels ? maskModelCodeAfter3(raw) : (raw || '').trim();
+  const fmtCat = (raw?: string | null) =>
+    effectiveMaskModels ? maskEmbeddedModelInCategory(raw) : (raw || '').trim();
   const [activeTab, setActiveTab] = useState<
     'proposal' | 'guide-general' | 'guide-sub'
   >('proposal');
@@ -278,14 +296,24 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     onChange((prev) => switchGeneralPlanInState(prev, targetPlan));
   };
 
-  const handleDownloadPng = async () => {
+  const handleDownloadPng = async (maskModels = false) => {
+    setIsSavePrintOpen(false);
     const targetNode = isGuideTab
       ? guideSheetRef.current
       : proposalSheetRef.current;
     if (!targetNode || isExporting) return;
 
     setIsExporting(true);
+    setExportingMode(maskModels ? 'masked' : 'full');
+    setTempMaskOverride(maskModels);
+
     try {
+      // React DOM에 모델명 마스킹(또는 원본) 텍스트가 완전히 반영될 때까지 2프레임 대기
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
       const exportW = SHEET_WIDTH;
       const exportH = Math.max(
         720,
@@ -308,6 +336,8 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           ? '하이프리드안내서'
           : activeTab === 'guide-sub'
           ? '구독프리드안내서'
+          : maskModels
+          ? '맞춤제안서_모델가림'
           : '맞춤제안서';
       link.download = `고객_${suffix}_${new Date()
         .toISOString()
@@ -317,17 +347,30 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     } catch (error) {
       console.error('이미지 저장 실패:', error);
     } finally {
+      setTempMaskOverride(null);
+      setExportingMode(null);
       setIsExporting(false);
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async (maskOverride?: boolean) => {
+    setIsSavePrintOpen(false);
+    if (typeof maskOverride === 'boolean' && !isGuideTab) {
+      setTempMaskOverride(maskOverride);
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      window.print();
+      setTempMaskOverride(null);
+      return;
+    }
     window.print();
   };
 
-  // 품목 요약 타이틀 생성
+  // 품목 요약 타이틀 생성 (모델가림 활성 시 품목 칸 내 모델코드도 자동 마스킹)
   const validGeneralNames = state.generalItems
-    .map((it) => it.category.trim())
+    .map((it) => fmtCat(it.category))
     .filter(Boolean);
   const generalHeaderTitle =
     validGeneralNames.length === 0
@@ -337,7 +380,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       : `${validGeneralNames[0]} 외 ${validGeneralNames.length - 1}건 맞춤 구매 제안서`;
 
   const validSubNames = state.items
-    .map((it) => it.category.trim())
+    .map((it) => fmtCat(it.category))
     .filter(Boolean);
   const subHeaderTitle =
     validSubNames.length === 0
@@ -600,7 +643,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             title="고객이 스마트폰에서 직접 1안·2안과 혜택을 비교하는 전용 링크 공유"
           >
             <Share2 className="w-3 h-3" />
-            <span>카톡 비교링크</span>
+            <span>문자·카톡링크</span>
           </button>
           {onOpenSaveToCrm && (
             <button
@@ -612,23 +655,160 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
               <span>고객저장</span>
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleDownloadPng}
-            disabled={isExporting}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
-          >
-            <Download className="w-3 h-3" />
-            <span>{isExporting ? '저장중' : '이미지'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-[11px] shadow-xs transition cursor-pointer whitespace-nowrap"
-          >
-            <Printer className="w-3 h-3" />
-            <span>인쇄</span>
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsSavePrintOpen((v) => !v)}
+              disabled={isExporting}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-black text-[11px] shadow-xs border border-blue-400/35 transition cursor-pointer disabled:opacity-50 whitespace-nowrap"
+              title="이미지 저장(모델명 가림 / 원본) 및 인쇄 옵션 열기"
+            >
+              <Download className="w-3 h-3" />
+              <span>
+                {isExporting
+                  ? exportingMode === 'masked'
+                    ? '가림저장중...'
+                    : '저장중...'
+                  : '저장 · 인쇄'}
+              </span>
+              {!isGuideTab && isModelMasked && (
+                <span className="px-1 py-0.2 rounded bg-amber-300 text-slate-950 text-[9px] font-black">
+                  가림ON
+                </span>
+              )}
+              <ChevronDown className="w-3 h-3 opacity-85" />
+            </button>
+
+            {isSavePrintOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsSavePrintOpen(false)}
+                />
+                <div className="fixed sm:absolute right-3 sm:right-0 top-14 sm:top-full sm:mt-2 z-50 w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
+                  <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
+                    <span className="text-[11px] font-black text-slate-300">
+                      📥 제안서 이미지 저장 · 인쇄
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsSavePrintOpen(false)}
+                      className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {!isGuideTab ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadPng(true)}
+                        className="w-full text-left px-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition flex items-start gap-2.5 cursor-pointer"
+                      >
+                        <Lock className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs font-black flex items-center gap-1.5">
+                            <span>모델가림 이미지 저장</span>
+                            <span className="px-1.5 py-0.2 rounded bg-amber-300 text-slate-950 text-[9px] font-black">
+                              비교방지
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-violet-100 font-medium mt-0.5">
+                            앞 3글자만 남기고 뒷자리를 ***로 가려 저장
+                          </div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadPng(false)}
+                        className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 transition flex items-center justify-between gap-2 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2 text-xs font-extrabold">
+                          <Download className="w-3.5 h-3.5 text-sky-400" />
+                          <span>원본 이미지 저장 (전체 모델명)</span>
+                        </span>
+                      </button>
+
+                      <div className="border-t border-slate-800 my-1" />
+
+                      <button
+                        type="button"
+                        onClick={() => handlePrint(true)}
+                        className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 transition flex items-center justify-between gap-2 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2 text-xs font-extrabold">
+                          <Printer className="w-3.5 h-3.5 text-amber-300" />
+                          <span>모델가림 상태로 인쇄 (앞 3글자만)</span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePrint(false)}
+                        className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 transition flex items-center justify-between gap-2 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2 text-xs font-extrabold">
+                          <Printer className="w-3.5 h-3.5 text-rose-400" />
+                          <span>원본 제안서 인쇄 (전체 모델명)</span>
+                        </span>
+                      </button>
+
+                      <div className="border-t border-slate-800 my-1" />
+
+                      <button
+                        type="button"
+                        onClick={() => setIsModelMasked((v) => !v)}
+                        className={`w-full px-3 py-2 rounded-xl border text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                          isModelMasked
+                            ? 'bg-emerald-600/25 border-emerald-400/50 text-emerald-200'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {isModelMasked ? (
+                            <EyeOff className="w-3.5 h-3.5 text-amber-300" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                          <span>화면 미리보기 모델가림</span>
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                            isModelMasked
+                              ? 'bg-emerald-400 text-slate-950'
+                              : 'bg-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {isModelMasked ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadPng(false)}
+                        className="w-full text-left px-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center gap-2 cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>안내서 이미지 저장</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrint()}
+                        className="w-full text-left px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-black flex items-center gap-2 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4 text-rose-400" />
+                        <span>안내서 인쇄</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -721,11 +901,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                   {idx + 1}
                                 </span>
                                 <span className="text-sm font-black text-slate-900">
-                                  {item.category || `가전품목 ${idx + 1}`}
+                                  {fmtCat(item.category) || `가전품목 ${idx + 1}`}
                                 </span>
                                 {item.modelName && (
-                                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                    {item.modelName}
+                                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
+                                    {fmtModel(item.modelName)}
                                   </span>
                                 )}
                                 {item.quantity > 1 && (
@@ -762,12 +942,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <span className="text-xl font-black text-slate-900">
-                              {state.generalItems[0]?.category ||
+                              {fmtCat(state.generalItems[0]?.category) ||
                                 '맞춤 가전 패키지'}
                             </span>
                             {state.generalItems[0]?.modelName && (
-                              <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
-                                {state.generalItems[0].modelName}
+                              <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md font-mono">
+                                {fmtModel(state.generalItems[0].modelName)}
                               </span>
                             )}
                             {(state.generalItems[0]?.quantity || 1) > 1 && (
@@ -1038,11 +1218,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                     {idx + 1}
                                   </span>
                                   <span className="text-sm font-black text-slate-900">
-                                    {item.category || `구독 가전 ${idx + 1}`}
+                                    {fmtCat(item.category) || `구독 가전 ${idx + 1}`}
                                   </span>
                                   {item.modelName && (
-                                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                                      {item.modelName}
+                                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
+                                      {fmtModel(item.modelName)}
                                     </span>
                                   )}
                                   <span className="text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
@@ -1101,11 +1281,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                               </div>
                               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                 <span className="text-xl font-black text-slate-900">
-                                  {singleItem?.category || '맞춤 구독 가전'}
+                                  {fmtCat(singleItem?.category) || '맞춤 구독 가전'}
                                 </span>
                                 {singleItem?.modelName && (
-                                  <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">
-                                    {singleItem.modelName}
+                                  <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md font-mono">
+                                    {fmtModel(singleItem.modelName)}
                                   </span>
                                 )}
                                 <span className="text-xs font-black text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
@@ -1324,7 +1504,8 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                 className="flex items-center justify-between text-xs font-bold text-slate-700"
                               >
                                 <span>
-                                  {idx + 1}. {it.category || `일반가전 ${idx + 1}`}
+                                  {idx + 1}. {fmtCat(it.category) || `일반가전 ${idx + 1}`}
+                                  {it.modelName ? ` (${fmtModel(it.modelName)})` : ''}
                                   {it.quantity > 1 ? ` ×${it.quantity}` : ''}
                                 </span>
                                 <span className="font-black text-slate-900">
@@ -1349,7 +1530,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                               구매 품목
                             </div>
                             <div className="text-sm font-black text-slate-900">
-                              {state.generalItems[0]?.category || '일반구매 가전'}
+                              {fmtCat(state.generalItems[0]?.category) || '일반구매 가전'}
+                              {state.generalItems[0]?.modelName
+                                ? ` (${fmtModel(state.generalItems[0].modelName)})`
+                                : ''}
                             </div>
                           </div>
                           <div className="text-right">
@@ -1473,8 +1657,8 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                 <div>
                                   <div className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
                                     <span>
-                                      {idx + 1}. {it.category || `구독가전 ${idx + 1}`}
-                                      {it.modelName ? ` (${it.modelName})` : ''}
+                                      {idx + 1}. {fmtCat(it.category) || `구독가전 ${idx + 1}`}
+                                      {it.modelName ? ` (${fmtModel(it.modelName)})` : ''}
                                     </span>
                                     <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-md">
                                       [{itemPeriod}개월 구독]
@@ -1526,9 +1710,9 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                                 </div>
                                 <div className="text-sm font-black text-slate-900 flex items-center gap-1.5 flex-wrap">
                                   <span>
-                                    {singleItem?.category || '구독 가전'}
+                                    {fmtCat(singleItem?.category) || '구독 가전'}
                                     {singleItem?.modelName
-                                      ? ` (${singleItem.modelName})`
+                                      ? ` (${fmtModel(singleItem.modelName)})`
                                       : ''}
                                   </span>
                                   <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-md">
@@ -2046,6 +2230,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
         onClose={() => setIsShareLinkOpen(false)}
         state={state}
         customerName={activeCustomer?.name || ''}
+        customerPhone={activeCustomer?.phone || ''}
         isDark={isDark}
       />
     </div>

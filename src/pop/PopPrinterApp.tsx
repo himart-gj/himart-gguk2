@@ -4,7 +4,7 @@ import { ProductData, CARD_BENEFITS, PopPaperSize } from './types';
 import { parseExcel } from './excel';
 import PopCard from './PopCard';
 import ImageScannerModal from './ImageScannerModal';
-import domToImage from 'dom-to-image-more';
+import { toJpeg } from 'html-to-image';
 import jsPDF from 'jspdf';
 
 export interface PopPrinterAppProps {
@@ -304,18 +304,29 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
     setIsDownloading(true);
     const originalCssText = printArea.style.cssText;
     try {
-      // PDF 저장을 위해 임시로 print-area 활성화
+      // 모바일/갤럭시폴드/태블릿의 좁은 화면 폭에 눌리지 않도록 1200px 고정 오프스크린 스테이지에서 렌더링
       printArea.classList.remove('hidden', 'print:block');
       printArea.style.cssText =
-        'display: block; position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;';
+        'display: block; position: fixed; left: -20000px; top: 0; width: 1200px; min-width: 1200px; background: #ffffff; z-index: -1; pointer-events: none;';
 
-      // 레이아웃 및 폰트가 완전히 잡힐 때까지 대기
-      await new Promise((resolve) => setTimeout(resolve, 420));
-
-      const pages = printArea.querySelectorAll('.print-page');
-      if (pages.length === 0) return;
+      // 웹폰트(Pretendard) 및 레이아웃 완료 대기
+      if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+        try {
+          await (document as any).fonts.ready;
+        } catch {
+          // ignore
+        }
+      }
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 220));
 
       const isA3 = targetPaper === 'a3-portrait';
+      const selector = isA3 ? '.print-page-a3-pdf' : '.print-page-a4';
+      const pages = printArea.querySelectorAll(selector);
+      if (pages.length === 0) return;
+
       const pdf = new jsPDF({
         orientation: isA3 ? 'portrait' : 'landscape',
         unit: 'mm',
@@ -327,10 +338,15 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i] as HTMLElement;
-        const pageDataUrl = await domToImage.toJpeg(page, {
-          quality: 0.96,
-          bgcolor: '#ffffff',
-          scale: isA3 ? 1.75 : 1.5,
+        const captureW = page.offsetWidth;
+        const captureH = page.offsetHeight;
+        // scale(1) 원본 비율 상태에서 pixelRatio 3.4로 초고해상도 래스터화 -> 폰트 자간 팽창·깨짐 0% 보장
+        const pageDataUrl = await toJpeg(page, {
+          quality: 0.97,
+          backgroundColor: '#ffffff',
+          width: captureW,
+          height: captureH,
+          pixelRatio: isA3 ? 3.4 : 2.4,
           style: {
             transform: 'none',
             margin: '0',
@@ -435,7 +451,18 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans flex flex-col">
       <style>{
         effectivePaperSize === 'a3-portrait'
-          ? `@media print { @page { size: A3 portrait !important; margin: 0 !important; } .print-page.print-page-a3 { transform: none !important; } }`
+          ? `@media print {
+              @page { size: A3 portrait !important; margin: 0 !important; }
+              .print-page-a3-pdf { display: none !important; }
+              .print-page.print-page-a3 {
+                display: flex !important;
+                width: 297mm !important;
+                height: 418mm !important;
+                transform: none !important;
+                break-inside: avoid !important;
+                page-break-inside: avoid !important;
+              }
+            }`
           : `@media print { @page { size: A4 landscape !important; margin: 0 !important; } }`
       }</style>
       {/* Header (Hidden on Print) */}
@@ -1041,32 +1068,47 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
               <div id="print-area" className="hidden print:block w-full">
                 {effectivePaperSize === 'a3-portrait'
                   ? activePrintProducts.map((product, idx) => (
-                      <div
-                        key={`a3-${product.id}-${idx}`}
-                        className="print-page print-page-a3 w-[297mm] h-[420mm] mx-auto flex items-center justify-center relative overflow-hidden bg-white"
-                        style={
-                          idx < activePrintProducts.length - 1
-                            ? { pageBreakAfter: 'always', breakAfter: 'page' }
-                            : undefined
-                        }
-                      >
-                        <PopCard
-                          product={product}
-                          cardBenefit={selectedCard}
-                          popMode={popMode}
-                          paperSize="a3-portrait"
-                          isA3PrintSheet={true}
-                        />
-                      </div>
+                      <React.Fragment key={`a3-wrap-${product.id}-${idx}`}>
+                        {/* (A) PDF 전용 무변형(scale 1) 1:√2 시트 -> pixelRatio 3.4로 초고해상도 캡처하여 A3 용지에 100% 무왜곡 매핑 */}
+                        <div className="print-page-a3-pdf w-[156mm] h-[220.62mm] mx-auto flex items-center justify-center relative overflow-hidden bg-white print:hidden">
+                          <PopCard
+                            product={product}
+                            cardBenefit={selectedCard}
+                            popMode={popMode}
+                            paperSize="a3-portrait"
+                            isPrintSheet={true}
+                            isA3BrowserPrintScale={false}
+                          />
+                        </div>
+
+                        {/* (B) 브라우저 직접 인쇄(window.print) 전용 A3 시트 (418mm 안전 높이로 빈 2페이지 넘침 차단) */}
+                        <div
+                          className="print-page print-page-a3 hidden print:flex w-[297mm] h-[418mm] mx-auto items-center justify-center relative overflow-hidden bg-white"
+                          style={
+                            idx < activePrintProducts.length - 1
+                              ? { pageBreakAfter: 'always', breakAfter: 'page' }
+                              : { pageBreakAfter: 'auto', breakAfter: 'auto' }
+                          }
+                        >
+                          <PopCard
+                            product={product}
+                            cardBenefit={selectedCard}
+                            popMode={popMode}
+                            paperSize="a3-portrait"
+                            isPrintSheet={true}
+                            isA3BrowserPrintScale={true}
+                          />
+                        </div>
+                      </React.Fragment>
                     ))
                   : productPairs.map((pair, idx) => (
                       <div
                         key={`a4-${idx}`}
-                        className="print-page w-[297mm] h-[210mm] mx-auto flex relative overflow-hidden bg-white"
+                        className="print-page print-page-a4 w-[297mm] h-[210mm] mx-auto flex relative overflow-hidden bg-white"
                         style={
                           idx < productPairs.length - 1
                             ? { pageBreakAfter: 'always', breakAfter: 'page' }
-                            : undefined
+                            : { pageBreakAfter: 'auto', breakAfter: 'auto' }
                         }
                       >
                         {/* 중앙 재단선 (Cutting Line) */}
@@ -1085,7 +1127,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                                   cardBenefit={selectedCard}
                                   popMode={popMode}
                                   paperSize="a4-2up"
-                                  onToggleAllCare={handleToggleAllCare}
+                                  isPrintSheet={true}
                                 />
                               </div>
                             </div>

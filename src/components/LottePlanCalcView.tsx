@@ -4,11 +4,15 @@ import {
   ArrowRight,
   Calculator,
   Check,
+  ChevronDown,
   CheckCircle2,
   Coins,
   Copy,
   CreditCard,
   Download,
+  Eye,
+  EyeOff,
+  Lock,
   Info,
   Plus,
   Printer,
@@ -18,6 +22,10 @@ import {
   X,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import {
+  maskEmbeddedModelInCategory,
+  maskModelCodeAfter3,
+} from '../utils/modelMasker';
 
 interface LottePlanCalcViewProps {
   onBackToHome: () => void;
@@ -130,7 +138,18 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
 
   // 내보내기 / 복사 피드백 상태
   const proposalRef = useRef<HTMLDivElement>(null);
-  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportingMode, setExportingMode] = useState<'full' | 'masked' | null>(null);
+  const [isModelMasked, setIsModelMasked] = useState(false);
+  const [tempMaskOverride, setTempMaskOverride] = useState<boolean | null>(null);
+  const [isSavePrintOpen, setIsSavePrintOpen] = useState(false);
+  const effectiveMaskModels =
+    tempMaskOverride !== null ? tempMaskOverride : isModelMasked;
+
+  const fmtModel = (raw?: string | null) =>
+    effectiveMaskModels ? maskModelCodeAfter3(raw) : (raw || '').trim();
+  const fmtCat = (raw?: string | null) =>
+    effectiveMaskModels ? maskEmbeddedModelInCategory(raw) : (raw || '').trim();
   const [copiedKakao, setCopiedKakao] = useState<boolean>(false);
 
   // 초기화 핸들러
@@ -285,7 +304,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
 
   // 제안서 제목
   const validItemNames = items
-    .map((it) => it.category.trim())
+    .map((it) => fmtCat(it.category))
     .filter(Boolean);
   const proposalTitle =
     validItemNames.length === 0
@@ -301,9 +320,15 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
       .map((it, idx) => {
         const lineAmt =
           (Number(it.unitPrice) || 0) * Math.max(1, Number(it.quantity) || 1);
-        const modelStr = it.modelName ? ` (${it.modelName})` : '';
+        const dispMod = isModelMasked
+          ? maskModelCodeAfter3(it.modelName)
+          : it.modelName;
+        const dispCat = isModelMasked
+          ? maskEmbeddedModelInCategory(it.category)
+          : it.category;
+        const modelStr = dispMod ? ` (${dispMod})` : '';
         const qtyStr = it.quantity > 1 ? ` × ${it.quantity}개` : '';
-        return `  ${idx + 1}. ${it.category || '가전품목'}${modelStr}${qtyStr}: ${lineAmt.toLocaleString()}원`;
+        return `  ${idx + 1}. ${dispCat || '가전품목'}${modelStr}${qtyStr}: ${lineAmt.toLocaleString()}원`;
       });
 
     const lines: string[] = [
@@ -391,17 +416,26 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     }
   };
 
-  const handleDownloadImage = async () => {
+  const handleDownloadImage = async (maskModels = false) => {
+    setIsSavePrintOpen(false);
     if (!proposalRef.current || isExporting) return;
     setIsExporting(true);
+    setExportingMode(maskModels ? 'masked' : 'full');
+    setTempMaskOverride(maskModels);
     try {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+
       const dataUrl = await toPng(proposalRef.current, {
         quality: 1,
         pixelRatio: 2,
         backgroundColor: '#ffffff',
       });
       const link = document.createElement('a');
-      link.download = `롯데플랜_맞춤제안서_${new Date()
+      const suffix = maskModels ? '롯데플랜_맞춤제안서_모델가림' : '롯데플랜_맞춤제안서';
+      link.download = `${suffix}_${new Date()
         .toISOString()
         .slice(0, 10)}.png`;
       link.href = dataUrl;
@@ -409,11 +443,24 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     } catch (err) {
       console.error('제안서 이미지 저장 실패:', err);
     } finally {
+      setTempMaskOverride(null);
+      setExportingMode(null);
       setIsExporting(false);
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async (maskOverride?: boolean) => {
+    setIsSavePrintOpen(false);
+    if (typeof maskOverride === 'boolean') {
+      setTempMaskOverride(maskOverride);
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      );
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      window.print();
+      setTempMaskOverride(null);
+      return;
+    }
     window.print();
   };
 
@@ -870,26 +917,121 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
             </button>
 
             <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={handleDownloadImage}
-                disabled={isExporting}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-xs transition cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>
-                  {isExporting ? '이미지 저장중...' : '📸 제안서 이미지 저장'}
-                </span>
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsSavePrintOpen((v) => !v)}
+                  disabled={isExporting}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-xs transition cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>
+                    {isExporting
+                      ? exportingMode === 'masked'
+                        ? '가림 저장중...'
+                        : '이미지 저장중...'
+                      : '📥 저장 · 인쇄'}
+                  </span>
+                  {isModelMasked && (
+                    <span className="px-1.5 py-0.2 rounded bg-amber-300 text-slate-950 text-[10px] font-black">
+                      가림ON
+                    </span>
+                  )}
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
 
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-xs transition cursor-pointer"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>🖨️ 제안서 인쇄</span>
-              </button>
+                {isSavePrintOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsSavePrintOpen(false)}
+                    />
+                    <div className="fixed sm:absolute right-3 sm:right-0 top-20 sm:top-full sm:mt-2 z-50 w-72 rounded-2xl bg-slate-900 text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5 no-print">
+                      <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
+                        <span className="text-[11px] font-black text-slate-300">
+                          📥 롯데 플랜 제안서 저장 · 인쇄
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsSavePrintOpen(false)}
+                          className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadImage(true)}
+                        className="w-full text-left px-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition flex items-start gap-2.5 cursor-pointer"
+                      >
+                        <Lock className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs font-black">
+                            모델가림 이미지 저장 (앞 3글자만)
+                          </div>
+                          <div className="text-[10px] text-violet-100 font-medium mt-0.5">
+                            비교견적 방지용 *** 마스킹 이미지 저장
+                          </div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadImage(false)}
+                        className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-extrabold flex items-center gap-2 cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-sky-400" />
+                        <span>원본 이미지 저장 (전체 모델명)</span>
+                      </button>
+
+                      <div className="border-t border-slate-800 my-1" />
+
+                      <button
+                        type="button"
+                        onClick={() => handlePrint(true)}
+                        className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-extrabold flex items-center gap-2 cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-300" />
+                        <span>모델가림 상태로 인쇄 (앞 3글자만)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePrint(false)}
+                        className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-extrabold flex items-center gap-2 cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-rose-400" />
+                        <span>원본 제안서 인쇄 (전체 모델명)</span>
+                      </button>
+
+                      <div className="border-t border-slate-800 my-1" />
+
+                      <button
+                        type="button"
+                        onClick={() => setIsModelMasked((v) => !v)}
+                        className={`w-full px-3 py-2 rounded-xl border text-xs font-extrabold flex items-center justify-between transition cursor-pointer ${
+                          isModelMasked
+                            ? 'bg-emerald-600/25 border-emerald-400/50 text-emerald-200'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          {isModelMasked ? (
+                            <EyeOff className="w-3.5 h-3.5 text-amber-300" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                          <span>화면·카톡복사 모델가림</span>
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-700">
+                          {isModelMasked ? 'ON' : 'OFF'}
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
 
               <button
                 type="button"
@@ -974,11 +1116,11 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                           {idx + 1}
                         </span>
                         <span className="text-sm font-black text-slate-900">
-                          {item.category || `품목 ${idx + 1}`}
+                          {fmtCat(item.category) || `품목 ${idx + 1}`}
                         </span>
                         {item.modelName && (
-                          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
-                            {item.modelName}
+                          <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
+                            {fmtModel(item.modelName)}
                           </span>
                         )}
                         {item.quantity > 1 && (
