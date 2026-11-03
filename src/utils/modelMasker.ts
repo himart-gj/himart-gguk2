@@ -57,11 +57,11 @@ export function maskEmbeddedModelInCategory(rawCategory?: string | null): string
     }
   );
 
-  // 2) 영문+숫자가 섞인 5글자 이상 모델코드 토큰 마스킹 (예: "워시타워 WL21EGZ" -> "워시타워 WL2****", 단 "2in1" 등은 제외)
+  // 2) 영문+숫자가 섞인 4글자 이상 모델코드 토큰 마스킹 (예: "워시타워 WL21EGZ" -> "워시타워 WL2****", 단 "2in1", "36M", "60M" 등은 제외)
   result = result.replace(
-    /\b([A-Za-z0-9._-]{5,})\b/g,
+    /([A-Za-z0-9._-]{4,})/g,
     (token: string) => {
-      if (/^2in1$/i.test(token)) return token;
+      if (/^(?:2in1|3in1|4in1|36M|60M|100V|220V|2024|2025|2026)$/i.test(token)) return token;
       const hasAlpha = /[A-Za-z]/.test(token);
       const hasDigit = /\d/.test(token);
       if (hasAlpha && hasDigit) {

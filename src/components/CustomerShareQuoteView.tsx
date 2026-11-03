@@ -33,14 +33,16 @@ import {
   unlockStaffDeviceWithPin,
 } from '../utils/shareQuoteCodec';
 import { SpringNumberFlow } from './SpringNumberFlow';
-import { maskProposalStateModels } from '../utils/modelMasker';
+import { maskModelCodeAfter3, maskProposalStateModels } from '../utils/modelMasker';
 import {
   Check,
   ChevronDown,
   ChevronUp,
   Copy,
   CreditCard,
+  Eye,
   EyeOff,
+  FileText,
   ExternalLink,
   Gift,
   Layers,
@@ -251,6 +253,7 @@ export interface ShareQuoteLinkModalProps {
   state: ProposalState;
   customerName?: string;
   customerPhone?: string;
+  initialMaskModels?: boolean;
   isDark?: boolean;
 }
 
@@ -260,6 +263,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   state,
   customerName = '',
   customerPhone = '',
+  initialMaskModels = false,
   isDark = false,
 }) => {
   const [profile, setProfile] = useState<ConsultantProfile>(() =>
@@ -273,7 +277,20 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   const [copiedType, setCopiedType] = useState<'sms' | 'kakao' | 'url' | null>(
     null
   );
-  const [maskSharedModels, setMaskSharedModels] = useState<boolean>(false);
+  const [maskSharedModels, setMaskSharedModels] = useState<boolean>(
+    initialMaskModels
+  );
+
+  const sampleRawModel = useMemo(() => {
+    const genMod = (state.generalItems || [])
+      .map((it) => (it.modelName || '').trim())
+      .find(Boolean);
+    if (genMod) return genMod;
+    const subMod = (state.items || [])
+      .map((it) => (it.modelName || '').trim())
+      .find(Boolean);
+    return subMod || 'RF85DB9581APW';
+  }, [state]);
 
   const effectiveShareState = useMemo(
     () => (maskSharedModels ? maskProposalStateModels(state) : state),
@@ -285,8 +302,9 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     setProfile(loadConsultantProfile());
     setCustInput(customerName || '');
     setCustPhoneInput(customerPhone || '');
+    setMaskSharedModels(Boolean(initialMaskModels));
     setCopiedType(null);
-  }, [isOpen, customerName, customerPhone]);
+  }, [isOpen, customerName, customerPhone, initialMaskModels]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -479,6 +497,94 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         </div>
 
         <div className="p-5 space-y-3.5 max-h-[82dvh] overflow-y-auto">
+          {/* [핵심] 발송 견적서 버전 선택: 일반 버전 vs 앞 3글자 외 가림 버전 */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-violet-500" />
+                <span>발송할 견적서 버전 선택</span>
+              </span>
+              <span className="text-[10.5px] font-bold opacity-75">
+                선택 즉시 전용 단축링크 자동 전환
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMaskSharedModels(false);
+                  setCopiedType(null);
+                }}
+                className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer schedule-tactile ${
+                  !maskSharedModels
+                    ? isDark
+                      ? 'bg-emerald-950/50 border-emerald-400 text-white shadow-sm'
+                      : 'bg-emerald-50 border-emerald-600 text-emerald-950 shadow-sm'
+                    : isDark
+                    ? 'bg-[#1B2230] border-white/10 text-slate-300 opacity-75 hover:opacity-100'
+                    : 'bg-[#FAF8F4] border-[#E4DFD5] text-stone-600 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-black flex items-center gap-1">
+                    <Eye className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                    <span>일반 버전</span>
+                  </span>
+                  {!maskSharedModels && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-600 text-white text-[9px] font-black">
+                      선택됨
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10.5px] font-bold opacity-80 mt-1">
+                  모델명 전체 그대로 표시
+                </div>
+                <div className="mt-1.5 px-2 py-0.5 rounded-lg bg-black/5 dark:bg-black/25 font-mono text-[10px] font-bold truncate">
+                  예: {sampleRawModel}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMaskSharedModels(true);
+                  setCopiedType(null);
+                }}
+                className={`p-3 rounded-2xl border-2 text-left transition cursor-pointer schedule-tactile ${
+                  maskSharedModels
+                    ? isDark
+                      ? 'bg-violet-950/60 border-violet-400 text-white shadow-sm'
+                      : 'bg-violet-50 border-violet-600 text-violet-950 shadow-sm'
+                    : isDark
+                    ? 'bg-[#1B2230] border-white/10 text-slate-300 opacity-75 hover:opacity-100'
+                    : 'bg-[#FAF8F4] border-[#E4DFD5] text-stone-600 opacity-80 hover:opacity-100'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-black flex items-center gap-1">
+                    <EyeOff className="w-3.5 h-3.5 shrink-0 text-violet-500" />
+                    <span>모델명 가림 버전</span>
+                  </span>
+                  {maskSharedModels ? (
+                    <span className="px-1.5 py-0.5 rounded-full bg-violet-600 text-white text-[9px] font-black">
+                      선택됨
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded-full bg-amber-300 text-slate-950 text-[9px] font-black">
+                      비교방지
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10.5px] font-bold opacity-80 mt-1">
+                  앞 3글자만 표시 · 뒤쪽 가림
+                </div>
+                <div className="mt-1.5 px-2 py-0.5 rounded-lg bg-black/5 dark:bg-black/25 font-mono text-[10px] font-bold truncate">
+                  예: {maskModelCodeAfter3(sampleRawModel)}
+                </div>
+              </button>
+            </div>
+          </div>
+
           {/* 발송 채널 선택 탭: 문자(SMS) 기본 선택 */}
           <div
             className={`grid grid-cols-2 gap-1.5 p-1 rounded-2xl border ${
@@ -579,44 +685,31 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             }}
           />
 
-          {/* 모델명 앞 3글자 외 가리기 토글 */}
-          <button
-            type="button"
-            onClick={() => setMaskSharedModels((v) => !v)}
-            className={`w-full rounded-2xl border px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs font-bold transition cursor-pointer ${
-              maskSharedModels
-                ? 'bg-violet-600 text-white border-violet-500 shadow-xs'
-                : isDark
-                ? 'bg-[#1B2230] border-white/15 text-slate-200 hover:bg-[#232D40]'
-                : 'bg-[#FAF8F4] border-[#D6D0C4] text-[#18181B] hover:bg-[#F0ECE2]'
-            }`}
-          >
-            <span className="flex items-center gap-2 text-left">
-              <EyeOff className="w-4 h-4 shrink-0" />
-              <span>모델명 앞 3글자 빼고 가려서 공유하기 (비교견적 방지)</span>
-            </span>
-            <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${
-                maskSharedModels
-                  ? 'bg-amber-300 text-slate-950'
-                  : 'bg-black/10 text-current'
-              }`}
-            >
-              {maskSharedModels ? '가림 ON' : '원본 표시'}
-            </span>
-          </button>
-
-          {/* 생성된 단축 URL 단독 복사 바 */}
+          {/* 생성된 단축 URL 단독 복사 바 (일반 버전 vs 모델가림 버전 명확히 구분 표시) */}
           <div
             className={`rounded-2xl border px-3 py-2 flex items-center justify-between gap-2 ${
-              isDark
+              maskSharedModels
+                ? isDark
+                  ? 'bg-violet-950/40 border-violet-400/35 text-violet-100'
+                  : 'bg-violet-50/95 border-violet-300 text-violet-950'
+                : isDark
                 ? 'bg-emerald-950/35 border-emerald-500/30 text-emerald-200'
                 : 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
             }`}
           >
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">
-                {isGenerating ? '단축 주소 생성 중...' : `✓ ${modeBadgeLabel}`}
+              <div
+                className={`text-[10px] font-black ${
+                  maskSharedModels
+                    ? 'text-violet-700 dark:text-violet-300'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }`}
+              >
+                {isGenerating
+                  ? '전용 단축 주소 생성 중...'
+                  : maskSharedModels
+                  ? `🔒 [앞 3글자 외 가림 버전] ${modeBadgeLabel}`
+                  : `📄 [일반 전체 모델명 버전] ${modeBadgeLabel}`}
               </div>
               <div className="text-xs font-mono font-bold truncate">
                 {activeUrl || '링크 생성 중...'}
@@ -626,7 +719,11 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
               type="button"
               disabled={!activeUrl}
               onClick={() => handleCopy('url')}
-              className="shrink-0 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+              className={`shrink-0 px-2.5 py-1.5 rounded-xl text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer ${
+                maskSharedModels
+                  ? 'bg-violet-600 hover:bg-violet-500'
+                  : 'bg-emerald-600 hover:bg-emerald-500'
+              }`}
             >
               {copiedType === 'url' ? (
                 <>
