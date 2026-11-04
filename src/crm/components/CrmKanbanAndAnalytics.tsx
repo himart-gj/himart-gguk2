@@ -9,6 +9,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Gift,
+  MailOpen,
   MessageSquare,
   Phone,
   TrendingUp,
@@ -306,13 +307,22 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
                       >
                         <div className="flex items-center gap-1">
                           {c.phone && (
-                            <a
-                              href={`tel:${c.phone.replace(/[^0-9]/g, '')}`}
-                              className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-500"
-                              title="전화"
-                            >
-                              <Phone className="w-3 h-3" />
-                            </a>
+                            <>
+                              <a
+                                href={`tel:${c.phone.replace(/[^0-9]/g, '')}`}
+                                className="p-1.5 rounded-lg bg-emerald-500/15 text-emerald-500"
+                                title="전화"
+                              >
+                                <Phone className="w-3 h-3" />
+                              </a>
+                              <a
+                                href={`sms:${c.phone.replace(/[^0-9+]/g, '')}`}
+                                className="p-1.5 rounded-lg bg-indigo-500/15 text-indigo-500"
+                                title="문자 대화내역 열기 (문구 자동입력 없음)"
+                              >
+                                <MailOpen className="w-3 h-3" />
+                              </a>
+                            </>
                           )}
                           <button
                             type="button"

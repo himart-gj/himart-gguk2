@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Check,
   Copy,
+  MailOpen,
   MessageSquare,
   Send,
   Smartphone,
@@ -99,13 +100,26 @@ export const SMSModal: React.FC<SMSModalProps> = ({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {cleanPhone && (
+              <a
+                href={`sms:${cleanPhone}`}
+                onClick={onClose}
+                className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black inline-flex items-center gap-1 transition"
+                title="자동 문구 없이 이 번호와의 문자 대화내역만 바로 확인"
+              >
+                <MailOpen className="w-3.5 h-3.5" />
+                <span>문자내역만 보기</span>
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* 본문 */}

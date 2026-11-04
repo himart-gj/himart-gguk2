@@ -31,27 +31,37 @@ export const MARKETING_DB_STORAGE_KEY = 'himart_gj_marketing_db_state_v1';
 export const MARKETING_DB_UPDATED_EVENT = 'himart_gj_marketing_db_updated';
 
 export type MarketingLeadStatus =
-  | '신규접수'
+  | '신규'
   | '문자전송'
-  | '상담전환'
+  | '상담진행중'
   | '무응답'
+  | '타직원인계'
   | '계약완료';
 
 export const MARKETING_LEAD_STATUSES: MarketingLeadStatus[] = [
-  '신규접수',
+  '신규',
   '문자전송',
-  '상담전환',
+  '상담진행중',
   '무응답',
+  '타직원인계',
   '계약완료',
 ];
 
-export function normalizeLeadStatusValue(raw: unknown): MarketingLeadStatus {
+export function normalizeLeadStatusValue(
+  raw: unknown,
+  handoverStaff?: string | null
+): MarketingLeadStatus {
   const s = String(raw || '').trim();
   if (s === '계약완료') return '계약완료';
-  if (s === '상담전환' || s === '응답') return '상담전환';
+  if (s === '타직원인계' || s === '타 직원 인계') return '타직원인계';
+  // 기존 데이터에 인계 직원이 지정되어 있고 계약완료가 아니면 자동으로 '타직원인계' 탭으로 매핑
+  if (handoverStaff && String(handoverStaff).trim()) {
+    return '타직원인계';
+  }
+  if (s === '상담진행중' || s === '상담전환' || s === '응답') return '상담진행중';
   if (s === '무응답') return '무응답';
   if (s === '문자전송') return '문자전송';
-  return '신규접수';
+  return '신규';
 }
 
 export interface MarketingSmsTemplate {
@@ -451,7 +461,7 @@ const INITIAL_SHEET_SEED_ROWS: RawSeedRow[] = [
     phone: '010-3797-5442',
     benefit: '이사,혼수 세트가전(삼성,lg 오픈점 최대 지원)',
     contact: '비대면 카톡/문자/전화로 견적 먼저 받기',
-    memoStatus: '신규접수',
+    memoStatus: '신규',
     memo: '',
   },
   {
@@ -461,7 +471,7 @@ const INITIAL_SHEET_SEED_ROWS: RawSeedRow[] = [
     phone: '010-5568-4564',
     benefit: '상조 결합 가전 최대지원 혜택(구매 부담 경감)',
     contact: '비대면 카톡/문자/전화로 견적 먼저 받기',
-    memoStatus: '신규접수',
+    memoStatus: '신규',
     memo: '',
   },
   {
@@ -551,7 +561,7 @@ const INITIAL_SHEET_SEED_ROWS: RawSeedRow[] = [
     phone: '010-5174-5672',
     benefit: '이사,혼수 세트가전(삼성,lg 오픈점 최대 지원)',
     contact: '비대면 카톡/문자/전화로 견적 먼저 받기',
-    memoStatus: '신규접수',
+    memoStatus: '신규',
     memo: '테스트 접수',
   },
 ];
@@ -617,7 +627,7 @@ export function loadMarketingDbStore(): MarketingDbStore {
     if (!parsed || !Array.isArray(parsed.leads)) return fallback;
     const migratedLeads = parsed.leads.map((l) => ({
       ...l,
-      status: normalizeLeadStatusValue((l as any).status),
+      status: normalizeLeadStatusValue((l as any).status, l.handoverStaff),
     }));
     return {
       version: 1,
@@ -664,7 +674,7 @@ export async function hydrateMarketingDbStoreFromIdb(): Promise<MarketingDbStore
       ...idbVal,
       leads: idbVal.leads.map((l) => ({
         ...l,
-        status: normalizeLeadStatusValue((l as any).status),
+        status: normalizeLeadStatusValue((l as any).status, l.handoverStaff),
       })),
     };
     saveMarketingDbStore(normalizedIdb);
@@ -777,18 +787,20 @@ function mapSheetStatusToLeadStatus(
 ): MarketingLeadStatus {
   const s = `${rawStatus || ''} ${rawMemo || ''}`.trim();
   if (s.includes('계약완료') || s.includes('결제완료')) return '계약완료';
+  if (s.includes('인계')) return '타직원인계';
   if (
+    s.includes('상담진행') ||
     s.includes('상담전환') ||
     s.includes('방문예약') ||
     s.includes('견적발송') ||
     s.includes('응답') ||
     s.includes('답장')
   )
-    return '상담전환';
+    return '상담진행중';
   if (s.includes('무응답') || s.includes('부재')) return '무응답';
   if (s.includes('문자전송') || s.includes('문자보냄') || s.includes('문자발송'))
     return '문자전송';
-  return '신규접수';
+  return '신규';
 }
 
 export interface ParsedIncomingLead {
@@ -859,7 +871,7 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
         preferredContact: contact,
         platform,
         campaignName: campIdx >= 0 ? cols[campIdx] : undefined,
-        initialStatus: '신규접수',
+        initialStatus: '신규',
         initialMemo: '',
       });
     }
@@ -975,7 +987,7 @@ export function mergeIncomingLeadsIntoStore(
         platform: inc.platform || '인스타그램',
         campaignName: inc.campaignName,
         autoSummary: freshSummary,
-        status: inc.initialStatus || '신규접수',
+        status: inc.initialStatus || '신규',
         handoverStaff: '',
         revenueAmount: 0,
         memo: inc.initialMemo || '',
@@ -996,8 +1008,8 @@ export function mergeIncomingLeadsIntoStore(
           changed = true;
         }
         if (
-          nextItem.status === '신규접수' &&
-          inc.initialStatus !== '신규접수'
+          nextItem.status === '신규' &&
+          inc.initialStatus !== '신규'
         ) {
           nextItem.status = inc.initialStatus;
           changed = true;
@@ -1118,7 +1130,7 @@ export async function syncLeadsFromGoogleSheet(
             if (!cl) return loc;
             return {
               ...loc,
-              status: loc.status !== '신규접수' ? normalizeLeadStatusValue(loc.status) : normalizeLeadStatusValue(cl.status),
+              status: loc.status !== '신규' ? normalizeLeadStatusValue(loc.status, loc.handoverStaff || cl.handoverStaff) : normalizeLeadStatusValue(cl.status, loc.handoverStaff || cl.handoverStaff),
               revenueAmount: loc.revenueAmount || cl.revenueAmount || 0,
               handoverStaff: loc.handoverStaff || cl.handoverStaff || '',
               handoverStaffRole: loc.handoverStaffRole || cl.handoverStaffRole,
@@ -1233,7 +1245,7 @@ export async function pushMarketingStateToGasBackup(
 
 function mapLeadStatusToCrmStatus(st: MarketingLeadStatus): CustomerStatus {
   if (st === '계약완료') return '계약완료';
-  if (st === '상담전환') return '상담진행중';
+  if (st === '상담진행중') return '상담진행중';
   if (st === '무응답') return '미구매/고민중';
   return '신규/미발송';
 }

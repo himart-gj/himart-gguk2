@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   FolderKanban,
   Gift,
+  MailOpen,
   MessageSquare,
   Phone,
   PhoneCall,
@@ -923,19 +924,29 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
       <div className="px-4 py-3 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5 flex-1">
           {customer.phone ? (
-            <a
-              href={`tel:${customer.phone.replace(/[^0-9]/g, '')}`}
-              className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/90 shadow-2xs transition"
-              title="전화 걸기"
-            >
-              <Phone className="w-3.5 h-3.5 text-emerald-600" />
-              <span>전화</span>
-            </a>
+            <>
+              <a
+                href={`tel:${customer.phone.replace(/[^0-9]/g, '')}`}
+                className="flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/90 shadow-2xs transition shrink-0"
+                title="전화 걸기"
+              >
+                <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                <span>전화</span>
+              </a>
+              <a
+                href={`sms:${customer.phone.replace(/[^0-9+]/g, '')}`}
+                className="flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl text-xs font-extrabold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-2xs transition shrink-0"
+                title="자동 문구 없이 주고받은 문자 내역만 확인하기 위해 빈 문자앱으로 바로 이동"
+              >
+                <MailOpen className="w-3.5 h-3.5 text-indigo-600" />
+                <span>문자내역</span>
+              </a>
+            </>
           ) : (
             <button
               type="button"
               disabled
-              className="flex items-center justify-center gap-1 px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+              className="flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
             >
               <Phone className="w-3.5 h-3.5" />
               <span>전화</span>

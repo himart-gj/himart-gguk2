@@ -3,27 +3,26 @@ import {
   ArrowLeft,
   Calculator,
   Calendar,
-  Check,
   CheckCircle2,
   ClipboardPaste,
   Coins,
   Copy,
   CreditCard,
-  Image as ImageIcon,
-  Share2,
   Database,
   ExternalLink,
   EyeOff,
   FileSpreadsheet,
+  Image as ImageIcon,
   Lock,
+  MailOpen,
   MessageSquare,
   Phone,
   Plus,
   RefreshCw,
-  RotateCcw,
   Search,
   Send,
   Settings,
+  Share2,
   Sparkles,
   Trash2,
   Upload,
@@ -75,6 +74,8 @@ import { SMSModal } from '../crm/components/SMSModal';
 import { CustomerItem, CustomerStatus, QuoteRecord } from '../crm/types/crm';
 import { safeCopyText } from '../utils/mobileQaRuntime';
 
+export const UNASSIGNED_HANDOVER_STAFF = '담당 미지정';
+
 export interface MarketingDbManagerViewProps {
   onBackToHome: () => void;
   onLockAndHideMenu: () => void;
@@ -87,11 +88,11 @@ export interface MarketingDbManagerViewProps {
   isDark?: boolean;
 }
 
-type StatusFilterTab = '전체' | MarketingLeadStatus | '휴지통';
+type StatusFilterTab = MarketingLeadStatus | '휴지통';
 
 function getStatusBadgeStyle(status: MarketingLeadStatus, isDark: boolean): string {
   switch (status) {
-    case '신규접수':
+    case '신규':
       return isDark
         ? 'bg-rose-500/20 text-rose-300 border-rose-400/40'
         : 'bg-rose-50 text-rose-700 border-rose-300';
@@ -99,7 +100,7 @@ function getStatusBadgeStyle(status: MarketingLeadStatus, isDark: boolean): stri
       return isDark
         ? 'bg-blue-500/20 text-blue-300 border-blue-400/40'
         : 'bg-blue-50 text-blue-700 border-blue-300';
-    case '상담전환':
+    case '상담진행중':
       return isDark
         ? 'bg-violet-500/20 text-violet-300 border-violet-400/40'
         : 'bg-violet-50 text-violet-800 border-violet-300';
@@ -107,6 +108,10 @@ function getStatusBadgeStyle(status: MarketingLeadStatus, isDark: boolean): stri
       return isDark
         ? 'bg-slate-500/20 text-slate-300 border-slate-400/35'
         : 'bg-stone-100 text-stone-600 border-stone-300';
+    case '타직원인계':
+      return isDark
+        ? 'bg-amber-500/20 text-amber-300 border-amber-400/45'
+        : 'bg-amber-50 text-amber-800 border-amber-400';
     case '계약완료':
       return isDark
         ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50'
@@ -116,14 +121,16 @@ function getStatusBadgeStyle(status: MarketingLeadStatus, isDark: boolean): stri
 
 function getStatusActiveBtnStyle(status: MarketingLeadStatus): string {
   switch (status) {
-    case '신규접수':
+    case '신규':
       return 'bg-rose-600 text-white border-rose-600 shadow-2xs';
     case '문자전송':
       return 'bg-blue-600 text-white border-blue-600 shadow-2xs';
-    case '상담전환':
+    case '상담진행중':
       return 'bg-violet-600 text-white border-violet-600 shadow-2xs';
     case '무응답':
       return 'bg-stone-600 text-white border-stone-600 shadow-2xs';
+    case '타직원인계':
+      return 'bg-amber-600 text-white border-amber-600 shadow-2xs';
     case '계약완료':
       return 'bg-emerald-600 text-white border-emerald-600 shadow-2xs';
   }
@@ -160,15 +167,21 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     getCachedCustomers()
   );
 
-  // 필터 상태
+  // 필터 상태 (전체 보기 없이 '신규' 탭 기본 진입)
   const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
-  const [statusTab, setStatusTab] = useState<StatusFilterTab>('전체');
-  const [handoverFilter, setHandoverFilter] = useState<string>('ALL');
+  const [statusTab, setStatusTab] = useState<StatusFilterTab>('신규');
+  // 1) '타직원인계' 탭 전용 하단 직원 서브탭 ('ALL' | 직원명)
+  const [handoverSubTab, setHandoverSubTab] = useState<string>('ALL');
+  // 2) '계약완료' 탭 전용 하단 판매자 서브탭 ('ALL' | 'DIRECT' | 직원명)
+  const [contractSellerTab, setContractSellerTab] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // 다중 선택 삭제 모드
+  // 다중 선택 일괄 처리 모드 (일괄 인계 / 일괄 계약완료 / 일괄 삭제)
   const [isSelectMode, setIsSelectMode] = useState<boolean>(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkHandoverTarget, setBulkHandoverTarget] = useState<string>(
+    UNASSIGNED_HANDOVER_STAFF
+  );
 
   // 모달 & 알림 토스트 상태
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -183,12 +196,13 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   const [smsPreviewTplId, setSmsPreviewTplId] = useState<string>('');
   const [smsPreviewIncludeCard, setSmsPreviewIncludeCard] =
     useState<boolean>(true);
-  // 카드별 명함 동봉 선택 상태: 신규접수는 기본 true(자동), 나머지 상태는 기본 false(선택사항)
+  // 카드별 명함 동봉 선택 상태: '신규'는 기본 true(자동), 나머지 상태는 기본 false(선택사항)
   const [cardAttachOverrides, setCardAttachOverrides] = useState<
     Record<string, boolean>
   >({});
   const businessCardInputRef = useRef<HTMLInputElement>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+
   // DB관리 화면 이탈 없이 바로 위에서 열리는 고객 요약/상세 카드 모달 상태
   const [inlineDetailCustomerId, setInlineDetailCustomerId] = useState<
     string | null
@@ -198,15 +212,19 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
   // 수동 추가 폼 상태
   const [newLeadName, setNewLeadName] = useState('');
-  const [newLeadPlatform, setNewLeadPlatform] = useState<'인스타그램' | '페이스북'>('인스타그램');
+  const [newLeadPlatform, setNewLeadPlatform] = useState<'인스타그램' | '페이스북'>(
+    '인스타그램'
+  );
   const [newLeadPhone, setNewLeadPhone] = useState('');
   const [newLeadBenefit, setNewLeadBenefit] = useState(
     '이사,혼수 세트가전(삼성,lg 오픈점 최대 지원)'
   );
-  const [newLeadContact, setNewLeadContact] = useState(
-    '비대면 카톡/문자/전화로 견적 먼저 받기'
-  );
+  const [newLeadContact] = useState('비대면 카톡/문자/전화로 견적 먼저 받기');
   const [newLeadMemo, setNewLeadMemo] = useState('');
+  const [newLeadIsHandover, setNewLeadIsHandover] = useState<boolean>(false);
+  const [newLeadHandoverStaff, setNewLeadHandoverStaff] = useState<string>(
+    UNASSIGNED_HANDOVER_STAFF
+  );
 
   // 시트 복붙/설정 상태
   const [pasteRawText, setPasteRawText] = useState('');
@@ -224,7 +242,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     setToastMsg(msg);
     setTimeout(() => {
       setToastMsg((prev) => (prev === msg ? null : prev));
-    }, 3200);
+    }, 3600);
   };
 
   // IndexedDB 복구 및 초기 자동 동기화 시도
@@ -349,7 +367,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     });
   };
 
-  // CRM 매칭 맵 (이미 고객관리 카드에 등록된 고객인지 실시간 판별)
+  // CRM 매칭 맵 (내가 직접 관리하는 고객카드와 연결되었는지 실시간 판별)
   const crmLookupByIdAndPhone = useMemo(() => {
     const byId = new Map<string, CustomerItem>();
     const byPhone = new Map<string, CustomerItem>();
@@ -400,90 +418,197 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [activeLeads]);
 
-  // 월별 필터링된 리드 목록
+  // 월별 필터링된 전체 활성 리드 목록
   const monthFilteredLeads = useMemo(() => {
     if (selectedMonth === 'ALL') return activeLeads;
     return activeLeads.filter((l) => l.yearMonth === selectedMonth);
   }, [activeLeads, selectedMonth]);
 
-  // 상단 KPI & 발생매출 합계 통계
+  // 상단 회사 보고용 DB 매출 합계 & 상태별 통계 (직접 판매 + 타직원 판매 통합 보고 + 상세 내역 분리)
   const stats = useMemo(() => {
-    const allTimeContractLeads = activeLeads.filter(
-      (l) => l.status === '계약완료'
-    );
-    const allTimeRevenue = allTimeContractLeads.reduce(
+    const allTimeContracts = activeLeads.filter((l) => l.status === '계약완료');
+    const allTimeTotalRevenue = allTimeContracts.reduce(
       (sum, l) => sum + (Number(l.revenueAmount) || 0),
       0
     );
+    const allTimeDirectRevenue = allTimeContracts
+      .filter((l) => !l.handoverStaff)
+      .reduce((sum, l) => sum + (Number(l.revenueAmount) || 0), 0);
+    const allTimeStaffRevenue = allTimeContracts
+      .filter((l) => Boolean(l.handoverStaff))
+      .reduce((sum, l) => sum + (Number(l.revenueAmount) || 0), 0);
 
     const statusCounts: Record<MarketingLeadStatus, number> = {
-      신규접수: 0,
+      신규: 0,
       문자전송: 0,
-      상담전환: 0,
+      상담진행중: 0,
       무응답: 0,
+      타직원인계: 0,
       계약완료: 0,
     };
 
     let periodRevenue = 0;
-    let directRevenue = 0;
-    let handoverRevenue = 0;
-    let handoverCount = 0;
+    let directPeriodRevenue = 0;
+    let staffPeriodRevenue = 0;
+    let directContractCount = 0;
+    let staffContractCount = 0;
 
     for (const l of monthFilteredLeads) {
       statusCounts[l.status] = (statusCounts[l.status] || 0) + 1;
-      if (l.handoverStaff) handoverCount++;
       if (l.status === '계약완료') {
         const rev = Number(l.revenueAmount) || 0;
         periodRevenue += rev;
-        if (l.handoverStaff) handoverRevenue += rev;
-        else directRevenue += rev;
+        if (l.handoverStaff) {
+          staffPeriodRevenue += rev;
+          staffContractCount += 1;
+        } else {
+          directPeriodRevenue += rev;
+          directContractCount += 1;
+        }
       }
     }
 
     const totalPeriod = monthFilteredLeads.length;
-    const responseOrHigher =
-      statusCounts['상담전환'] + statusCounts['계약완료'];
     const conversionRate =
       totalPeriod > 0
         ? ((statusCounts['계약완료'] / totalPeriod) * 100).toFixed(1)
-        : '0.0';
-    const responseRate =
-      totalPeriod > 0
-        ? ((responseOrHigher / totalPeriod) * 100).toFixed(1)
         : '0.0';
 
     return {
       totalPeriod,
       statusCounts,
       periodRevenue,
-      allTimeRevenue,
-      directRevenue,
-      handoverRevenue,
-      handoverCount,
+      directPeriodRevenue,
+      staffPeriodRevenue,
+      directContractCount,
+      staffContractCount,
+      allTimeTotalRevenue,
+      allTimeDirectRevenue,
+      allTimeStaffRevenue,
       conversionRate,
-      responseRate,
     };
   }, [activeLeads, monthFilteredLeads]);
 
+  // [타직원인계 탭 전용] 인계 직원별 하단 서브탭 집계
+  const handoverStaffTabs = useMemo(() => {
+    const inHandover = monthFilteredLeads.filter(
+      (l) => l.status === '타직원인계'
+    );
+    const map = new Map<string, number>();
+    for (const l of inHandover) {
+      const staffKey = l.handoverStaff || UNASSIGNED_HANDOVER_STAFF;
+      map.set(staffKey, (map.get(staffKey) || 0) + 1);
+    }
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [monthFilteredLeads]);
+
+  // [계약완료 탭 전용] 직접 판매 vs 타 직원 이름별 판매 건수 & 누적 판매 금액 집계!
+  const contractSellerBreakdown = useMemo(() => {
+    const allTimeContracts = activeLeads.filter((l) => l.status === '계약완료');
+    const periodContracts = monthFilteredLeads.filter(
+      (l) => l.status === '계약완료'
+    );
+
+    const directAll = allTimeContracts.filter((l) => !l.handoverStaff);
+    const directPeriod = periodContracts.filter((l) => !l.handoverStaff);
+
+    // 계약완료에 한 번이라도 등장한 타 직원 목록 (전체 누적 기준 + 현재 기간 기준 통합)
+    const staffNamesSet = new Set<string>();
+    for (const l of allTimeContracts) {
+      if (l.handoverStaff) staffNamesSet.add(l.handoverStaff);
+    }
+
+    const staffSellers = Array.from(staffNamesSet).map((staffName) => {
+      const pList = periodContracts.filter((l) => l.handoverStaff === staffName);
+      const aList = allTimeContracts.filter((l) => l.handoverStaff === staffName);
+      return {
+        staffName,
+        periodCount: pList.length,
+        periodRevenue: pList.reduce(
+          (s, l) => s + (Number(l.revenueAmount) || 0),
+          0
+        ),
+        allTimeCount: aList.length,
+        allTimeRevenue: aList.reduce(
+          (s, l) => s + (Number(l.revenueAmount) || 0),
+          0
+        ),
+      };
+    });
+
+    staffSellers.sort((a, b) => b.allTimeRevenue - a.allTimeRevenue || b.allTimeCount - a.allTimeCount);
+
+    return {
+      totalPeriodCount: periodContracts.length,
+      totalAllTimeCount: allTimeContracts.length,
+      hasAnyStaffContract: staffSellers.length > 0,
+      direct: {
+        periodCount: directPeriod.length,
+        periodRevenue: directPeriod.reduce(
+          (s, l) => s + (Number(l.revenueAmount) || 0),
+          0
+        ),
+        allTimeCount: directAll.length,
+        allTimeRevenue: directAll.reduce(
+          (s, l) => s + (Number(l.revenueAmount) || 0),
+          0
+        ),
+      },
+      staffSellers,
+    };
+  }, [activeLeads, monthFilteredLeads]);
+
+  // 선택된 서브탭이 데이터 변동으로 사라졌을 때 안전하게 'ALL'로 복귀
+  useEffect(() => {
+    if (
+      handoverSubTab !== 'ALL' &&
+      !handoverStaffTabs.some((t) => t.name === handoverSubTab)
+    ) {
+      setHandoverSubTab('ALL');
+    }
+  }, [handoverSubTab, handoverStaffTabs]);
+
+  useEffect(() => {
+    if (
+      contractSellerTab !== 'ALL' &&
+      contractSellerTab !== 'DIRECT' &&
+      !contractSellerBreakdown.staffSellers.some(
+        (s) => s.staffName === contractSellerTab
+      )
+    ) {
+      setContractSellerTab('ALL');
+    }
+  }, [contractSellerTab, contractSellerBreakdown.staffSellers]);
+
   // 최종 화면 표시 리드 목록
+  // (검색어 입력 중일 때는 전체 보기 탭이 없더라도 놓치는 고객이 없도록 전 단계 통합 검색 지원!)
+  const isSearchingAll = Boolean(searchQuery.trim()) && statusTab !== '휴지통';
+
   const visibleLeads = useMemo(() => {
     const base =
       statusTab === '휴지통'
         ? trashedLeads
-        : statusTab === '전체'
+        : isSearchingAll
         ? monthFilteredLeads
         : monthFilteredLeads.filter((l) => l.status === statusTab);
 
     return base.filter((l) => {
-      if (handoverFilter === 'DIRECT' && l.handoverStaff) return false;
-      if (handoverFilter === 'HANDOVER_ONLY' && !l.handoverStaff) return false;
-      if (
-        handoverFilter !== 'ALL' &&
-        handoverFilter !== 'DIRECT' &&
-        handoverFilter !== 'HANDOVER_ONLY' &&
-        l.handoverStaff !== handoverFilter
-      ) {
-        return false;
+      if (!isSearchingAll && statusTab === '타직원인계' && handoverSubTab !== 'ALL') {
+        const staffKey = l.handoverStaff || UNASSIGNED_HANDOVER_STAFF;
+        if (staffKey !== handoverSubTab) return false;
+      }
+
+      if (!isSearchingAll && statusTab === '계약완료') {
+        if (contractSellerTab === 'DIRECT' && l.handoverStaff) return false;
+        if (
+          contractSellerTab !== 'ALL' &&
+          contractSellerTab !== 'DIRECT' &&
+          l.handoverStaff !== contractSellerTab
+        ) {
+          return false;
+        }
       }
 
       if (searchQuery.trim()) {
@@ -496,6 +621,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           l.interestBenefit,
           l.memo,
           l.handoverStaff,
+          l.status,
         ]
           .join(' ')
           .toLowerCase();
@@ -506,8 +632,10 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   }, [
     statusTab,
     trashedLeads,
+    isSearchingAll,
     monthFilteredLeads,
-    handoverFilter,
+    handoverSubTab,
+    contractSellerTab,
     searchQuery,
   ]);
 
@@ -519,7 +647,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     setStore(res.nextStore);
     setIsSyncing(false);
     showToast(res.message);
-    if (!res.ok) {
+    if (!res.ok && navigator.onLine !== false) {
       setSettingsTab('sheet');
       setIsSettingsOpen(true);
     }
@@ -529,19 +657,45 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     lead: MarketingLeadItem,
     nextStatus: MarketingLeadStatus
   ) => {
+    const nowStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+    // '타직원인계'로 바꿀 때 아직 인계 직원 이름이 비어 있으면 기본값 세팅
+    // 반대로 '타직원인계'에서 '신규/문자전송/상담진행중/무응답'으로 되돌리면 내 직접 상담으로 복귀(handoverStaff 해제)
+    // 단, '계약완료'로 바꿀 때는 기존 handoverStaff(직접 판매 '' vs 타직원 이름)를 그대로 보존하여 계약완료 탭으로 이동!
+    const nextHandoverStaff =
+      nextStatus === '타직원인계'
+        ? lead.handoverStaff || UNASSIGNED_HANDOVER_STAFF
+        : nextStatus === '계약완료'
+        ? lead.handoverStaff
+        : '';
+
     commitStore((prev) => ({
       ...prev,
       leads: prev.leads.map((item) =>
-        item.id === lead.id ? { ...item, status: nextStatus } : item
+        item.id === lead.id
+          ? {
+              ...item,
+              status: nextStatus,
+              handoverStaff: nextHandoverStaff,
+              handoverAt: nextHandoverStaff
+                ? item.handoverAt || nowStamp
+                : undefined,
+            }
+          : item
       ),
     }));
 
-    // 상담전환 또는 계약완료 전환 시 옵션이 켜져 있으면 고객관리(CRM) 카드에도 자동 저장/갱신
+    // 내가 직접 상담·판매하는 건(!nextHandoverStaff)만 내 개인 고객관리(CRM -> 내 총판/실판)에 자동 동기화!
     if (
+      !nextHandoverStaff &&
       store.config.autoSaveCrmOnConvert &&
-      (nextStatus === '상담전환' || nextStatus === '계약완료')
+      (nextStatus === '상담진행중' || nextStatus === '계약완료')
     ) {
-      const updatedLead: MarketingLeadItem = { ...lead, status: nextStatus };
+      const updatedLead: MarketingLeadItem = {
+        ...lead,
+        status: nextStatus,
+        handoverStaff: '',
+      };
       const { savedCustomer } = await saveMarketingLeadToCrm(updatedLead);
       setCrmCustomers(getCachedCustomers());
       commitStore((prev) => ({
@@ -553,32 +707,134 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         ),
       }));
       showToast(
-        `${lead.customerName} 고객님 상태 [${nextStatus}] 반영 및 고객관리 카드 자동 동기화 완료!`
+        `${lead.customerName} 고객님 [${nextStatus}] 반영 및 내 고객관리(총판·실판) 자동 연동 완료!`
+      );
+    } else if (nextStatus === '계약완료' && nextHandoverStaff) {
+      showToast(
+        `🎉 [${nextHandoverStaff}] 인계 판매 건이 [계약완료] 탭으로 이동했습니다! 발생매출을 입력해 주세요.`
+      );
+    } else if (nextStatus === '타직원인계') {
+      showToast(
+        `↪ ${lead.customerName} 고객님이 [타직원인계] 탭으로 이동했습니다. 인계 직원을 지정해 주세요.`
       );
     }
   };
 
-  const handleChangeHandoverStaff = (
-    leadId: string,
-    staffName: string
-  ) => {
+  // 카드에서 인계 직원을 선택/변경했을 때의 동작
+  const handleChangeHandoverStaff = (lead: MarketingLeadItem, staffName: string) => {
     const found = staffOptions.find((s) => s.name === staffName);
+    const nowStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+    commitStore((prev) => ({
+      ...prev,
+      leads: prev.leads.map((item) => {
+        if (item.id !== lead.id) return item;
+        // 계약완료 상태에서는 판매자(직접 판매 '' vs 타직원 이름)만 전환하고 계약완료 탭 유지
+        // 계약완료가 아닌 상태에서 직원을 선택하면 즉시 '타직원인계' 상태로 전환되어 타직원인계 탭으로 이동!
+        const nextStatus: MarketingLeadStatus =
+          item.status === '계약완료'
+            ? '계약완료'
+            : staffName
+            ? '타직원인계'
+            : item.status === '타직원인계'
+            ? '상담진행중'
+            : item.status;
+
+        return {
+          ...item,
+          status: nextStatus,
+          handoverStaff: staffName,
+          handoverStaffRole: found?.role || undefined,
+          handoverAt: staffName ? item.handoverAt || nowStamp : undefined,
+        };
+      }),
+    }));
+
+    if (staffName) {
+      if (lead.status === '계약완료') {
+        showToast(
+          `판매 담당자가 [${staffName}]으로 설정되었습니다 (DB 총매출 합산 · 내 개인 CRM 제외).`
+        );
+      } else {
+        showToast(
+          `↪ ${lead.customerName} 고객님이 [${staffName}] 인계건으로 [타직원인계] 탭에 배치되었습니다.`
+        );
+      }
+    } else {
+      showToast(
+        `👑 ${lead.customerName} 고객님이 [직접 상담/판매]로 전환되었습니다.`
+      );
+    }
+  };
+
+  // 다중 선택: 일괄 타직원 인계 이동
+  const handleBulkHandoverLeads = (ids: string[], targetStaffName: string) => {
+    if (ids.length === 0 || !targetStaffName) return;
+    const idSet = new Set(ids);
+    const found = staffOptions.find((s) => s.name === targetStaffName);
     const nowStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
     commitStore((prev) => ({
       ...prev,
       leads: prev.leads.map((item) =>
-        item.id === leadId
+        idSet.has(item.id)
           ? {
               ...item,
-              handoverStaff: staffName,
+              status: item.status === '계약완료' ? '계약완료' : '타직원인계',
+              handoverStaff: targetStaffName,
               handoverStaffRole: found?.role || undefined,
-              handoverAt: staffName ? nowStamp : undefined,
+              handoverAt: item.handoverAt || nowStamp,
             }
           : item
       ),
     }));
-    if (staffName) {
-      showToast(`인계 확인 기록됨: ${staffName}${found?.role ? ` (${found.role})` : ''}`);
+    setSelectedIds([]);
+    setIsSelectMode(false);
+    showToast(
+      `↪ 선택한 ${ids.length}명이 [${targetStaffName}] 인계건으로 변경되었습니다.`
+    );
+  };
+
+  // 다중 선택: 타직원인계 등에서 선택 고객 일괄 [계약완료] 전환!
+  const handleBulkMarkContractCompleted = (ids: string[]) => {
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    commitStore((prev) => ({
+      ...prev,
+      leads: prev.leads.map((item) =>
+        idSet.has(item.id)
+          ? {
+              ...item,
+              status: '계약완료',
+            }
+          : item
+      ),
+    }));
+    setSelectedIds([]);
+    setIsSelectMode(false);
+    setStatusTab('계약완료');
+    showToast(
+      `🎉 선택한 ${ids.length}건이 [계약완료] 탭으로 일괄 이동되었습니다! 각 카드의 발생매출을 입력해 주세요.`
+    );
+  };
+
+  const handleCopyStaffHandoverSummary = async (lead: MarketingLeadItem) => {
+    const summaryText = [
+      `[인스타·페북 광고 DB 상담 인계]`,
+      `• 인계 담당: ${lead.handoverStaff || UNASSIGNED_HANDOVER_STAFF}`,
+      `• 고객명: ${lead.customerName} 고객님`,
+      `• 연락처: ${lead.phone || '미입력'}`,
+      `• 유입/접수: ${lead.platform || '인스타그램'} (${lead.createdAt})`,
+      `• 희망혜택: ${lead.interestBenefit || lead.autoSummary}`,
+      lead.preferredContact ? `• 희망방식: ${lead.preferredContact}` : '',
+      lead.memo ? `• 전달메모: ${lead.memo}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    if (await safeCopyText(summaryText)) {
+      showToast(
+        `📋 [${lead.customerName}님] 직원 전달용 요약이 복사되었습니다! 카톡·문자에 붙여넣으세요.`
+      );
     }
   };
 
@@ -593,7 +849,15 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   };
 
   const handleSyncRevenueToCrm = async (lead: MarketingLeadItem) => {
-    const { savedCustomer } = await saveMarketingLeadToCrm(lead, { syncRevenue: true });
+    if (lead.handoverStaff) {
+      showToast(
+        '타 직원 판매 건은 회사 보고용 DB 총매출에만 합산되며 내 개인 고객관리에는 반영되지 않습니다.'
+      );
+      return;
+    }
+    const { savedCustomer } = await saveMarketingLeadToCrm(lead, {
+      syncRevenue: true,
+    });
     setCrmCustomers(getCachedCustomers());
     commitStore((prev) => ({
       ...prev,
@@ -604,7 +868,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       ),
     }));
     showToast(
-      `${lead.customerName} 고객님의 발생매출(${lead.revenueAmount.toLocaleString()}원)이 고객관리 카드에도 반영되었습니다!`
+      `${lead.customerName} 고객님 발생매출(${lead.revenueAmount.toLocaleString()}원)이 내 고객관리 카드에도 반영되었습니다!`
     );
   };
 
@@ -617,12 +881,12 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     }));
   };
 
-  // 신규접수 고객은 명함 동봉이 기본 ON(자동), 나머지 상태 고객은 기본 OFF(선택 시 ON)
+  // 신규 고객은 명함 동봉이 기본 ON(자동), 나머지 상태 고객은 기본 OFF(선택 시 ON)
   const isCardAttachedForLead = (lead: MarketingLeadItem): boolean => {
     if (lead.id in cardAttachOverrides) {
       return cardAttachOverrides[lead.id];
     }
-    return lead.status === '신규접수';
+    return lead.status === '신규';
   };
 
   const toggleCardAttachForLead = (lead: MarketingLeadItem) => {
@@ -658,7 +922,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         item.id === lead.id
           ? {
               ...item,
-              status: item.status === '신규접수' ? '문자전송' : item.status,
+              status: item.status === '신규' ? '문자전송' : item.status,
               smsSentAt: nowStamp,
             }
           : item
@@ -666,7 +930,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     }));
   };
 
-  // 방식 A: 문자앱 바로열기 (수신번호+본문 100% 자동입력, 명함 동봉 ON이면 클립보드에 명함 이미지 자동 복사!)
+  // 방식 A: 자동 문구 포함 문자앱 열기 (명함 동봉 ON이면 클립보드에 명함 이미지 자동 복사)
   const triggerNativeSmsSend = async (
     lead: MarketingLeadItem,
     bodyText: string,
@@ -677,7 +941,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       const imgCopied = await copyBusinessCardImageToClipboard(cardUri);
       if (imgCopied) {
         showToast(
-          '🪪 명함 사진이 키보드 클립보드에 자동 복사되었습니다! 문자창에서 붙여넣기(1터치)로 함께 전송하세요.'
+          '🪪 명함 사진이 클립보드에 복사되었습니다! 문자창에서 붙여넣기(1터치)로 함께 전송하세요.'
         );
       } else {
         await safeCopyText(bodyText);
@@ -698,7 +962,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       : `sms:${sep}body=${encoded}`;
   };
 
-  // 방식 B: OS 공유창(MMS/카톡)으로 명함 이미지 파일 + 문자 본문을 한 번에 첨부 전달 (전화번호 자동 복사)
+  // 방식 B: OS 공유창(MMS/카톡)으로 명함 파일 + 문자 본문을 한 번에 전달
   const triggerDirectFileShareWithCard = async (
     lead: MarketingLeadItem,
     bodyText: string
@@ -715,7 +979,6 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         `🪪 명함 파일+문구 공유 완료! (전화번호 ${lead.phone} 자동 복사됨)`
       );
     } else if (res === 'unsupported') {
-      // PC 등 파일 공유 미지원 브라우저에서는 자동으로 클립보드 명함 복사 + 문자앱 실행으로 폴백
       await triggerNativeSmsSend(lead, bodyText, true);
     }
   };
@@ -774,7 +1037,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     e.target.value = '';
   };
 
-  // 원터치 고객관리(CRM) 카드 저장 / 열기 (고객관리열기는 DB관리 화면 위에서 바로 모달 오픈 -> X 누르면 DB관리 그대로 유지!)
+  // 원터치 내 고객관리(CRM) 카드 저장 / 인라인 열기
   const handleSaveOrOpenCrm = async (
     lead: MarketingLeadItem,
     mode: 'save-only' | 'open-crm' | 'open-quote'
@@ -810,7 +1073,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       showToast(
         isExistingCustomer
           ? `${lead.customerName} 고객님 기존 고객카드(최종혜택가 보존)와 연동되었습니다!`
-          : `${lead.customerName} 고객님이 VIP 고객관리에 새 카드로 저장되었습니다!`
+          : `${lead.customerName} 고객님이 내 VIP 고객관리에 저장되었습니다!`
       );
     }
   };
@@ -981,6 +1244,12 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     const { createdAt, yearMonth } = normalizeLeadDateTime();
     const name = newLeadName.trim() || '인스타 고객';
     const fp = makeLeadFingerprint(name, phone, createdAt, `manual_${Date.now()}`);
+    const assignedStaff = newLeadIsHandover
+      ? newLeadHandoverStaff || UNASSIGNED_HANDOVER_STAFF
+      : '';
+    const foundRole = staffOptions.find((st) => st.name === assignedStaff)?.role;
+    const nowStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
     const newItem: MarketingLeadItem = {
       id: `MDB-${Date.now()}`,
       fingerprint: fp,
@@ -996,8 +1265,10 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         preferredContact: newLeadContact,
         platform: newLeadPlatform,
       }),
-      status: '신규접수',
-      handoverStaff: '',
+      status: assignedStaff ? '타직원인계' : '신규',
+      handoverStaff: assignedStaff,
+      handoverStaffRole: foundRole,
+      handoverAt: assignedStaff ? nowStamp : undefined,
       revenueAmount: 0,
       memo: newLeadMemo.trim(),
     };
@@ -1009,7 +1280,12 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     setNewLeadPhone('');
     setNewLeadMemo('');
     setIsAddModalOpen(false);
-    showToast(`${name} 고객님이 DB관리 목록에 추가되었습니다.`);
+    setStatusTab(assignedStaff ? '타직원인계' : '신규');
+    showToast(
+      assignedStaff
+        ? `${name} 고객님이 [타직원인계 (${assignedStaff})] 탭에 추가되었습니다.`
+        : `${name} 고객님이 [신규] 탭에 추가되었습니다.`
+    );
   };
 
   // 시트 복붙 / CSV 파일 업로드 처리
@@ -1055,6 +1331,30 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   const inputSurface = isDark
     ? 'bg-[#0E131D] border-white/15 text-white placeholder:text-slate-500'
     : 'bg-white border-[#D6D0C4] text-[#18181B] placeholder:text-stone-400';
+
+  // 계약완료 탭에서 특정 판매자(직접 판매 or 특정 직원명) 선택 시 보여줄 누적 판매 금액 프로필
+  const selectedContractSellerProfile = useMemo(() => {
+    if (statusTab !== '계약완료' || contractSellerTab === 'ALL') return null;
+    if (contractSellerTab === 'DIRECT') {
+      return {
+        label: '👑 직접 판매 (국지현 · 내 고객관리/총판·실판 반영)',
+        isDirect: true,
+        ...contractSellerBreakdown.direct,
+      };
+    }
+    const found = contractSellerBreakdown.staffSellers.find(
+      (s) => s.staffName === contractSellerTab
+    );
+    if (!found) return null;
+    return {
+      label: `👤 ${found.staffName} 인계 판매 누적 실적`,
+      isDirect: false,
+      periodCount: found.periodCount,
+      periodRevenue: found.periodRevenue,
+      allTimeCount: found.allTimeCount,
+      allTimeRevenue: found.allTimeRevenue,
+    };
+  }, [statusTab, contractSellerTab, contractSellerBreakdown]);
 
   return (
     <div
@@ -1114,7 +1414,10 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
             <button
               type="button"
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={() => {
+                setNewLeadIsHandover(statusTab === '타직원인계');
+                setIsAddModalOpen(true);
+              }}
               className={`px-2.5 py-1.5 rounded-xl border text-xs font-black inline-flex items-center gap-1 cursor-pointer ${subSurface}`}
             >
               <Plus className="w-3.5 h-3.5 text-emerald-500" />
@@ -1210,39 +1513,40 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           </a>
         </div>
 
-        {/* ==================== 2. 상단 KPI & 계약완료 발생매출 합계 보드 ==================== */}
+        {/* ==================== 2. 상단 KPI & 회사 보고용 DB 발생매출 총합계 보드 ==================== */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
           <div className={`rounded-2xl border p-3.5 space-y-1 ${cardSurface}`}>
             <div className="text-[11px] font-extrabold opacity-70">
               {selectedMonth === 'ALL'
-                ? '전체 유입 DB'
+                ? '유입 DB 현황'
                 : `${formatMonthLabel(selectedMonth)} 유입 DB`}
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono">
               {stats.totalPeriod}명
             </div>
             <div className="text-[11px] font-bold text-rose-500">
-              미발송 신규 {stats.statusCounts['신규접수']}건 · 문자전송{' '}
+              신규 {stats.statusCounts['신규']}건 · 문자전송{' '}
               {stats.statusCounts['문자전송']}건
             </div>
           </div>
 
           <div className={`rounded-2xl border p-3.5 space-y-1 ${cardSurface}`}>
             <div className="text-[11px] font-extrabold opacity-70">
-              상담전환 · 무응답 현황
+              상담진행 · 타직원인계 현황
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-violet-600 dark:text-violet-300">
-              {stats.statusCounts['상담전환']}명
+              {stats.statusCounts['상담진행중'] + stats.statusCounts['타직원인계']}명
             </div>
             <div className="text-[11px] font-bold opacity-75">
-              상담전환 {stats.statusCounts['상담전환']} · 무응답{' '}
-              {stats.statusCounts['무응답']} (전환반응 {stats.responseRate}%)
+              상담진행중 {stats.statusCounts['상담진행중']} · 타직원인계{' '}
+              {stats.statusCounts['타직원인계']} · 무응답{' '}
+              {stats.statusCounts['무응답']}
             </div>
           </div>
 
           <div className={`rounded-2xl border p-3.5 space-y-1 ${cardSurface}`}>
             <div className="text-[11px] font-extrabold opacity-70">
-              계약완료 전환 · 직원 인계
+              계약완료 성과 (직접 + 타직원)
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-emerald-600 dark:text-emerald-300">
               {stats.statusCounts['계약완료']}건{' '}
@@ -1251,11 +1555,12 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
               </span>
             </div>
             <div className="text-[11px] font-bold opacity-75">
-              직원 인계 확인용 매칭: {stats.handoverCount}명
+              직접 판매 {stats.directContractCount}건 · 타직원 판매{' '}
+              {stats.staffContractCount}건
             </div>
           </div>
 
-          {/* 핵심: 계약완료 발생매출 총합계 보드 */}
+          {/* 핵심: 회사 보고용 DB 발생매출 총합계 (직접 판매 + 타직원 판매 전액 합산 / 내 개인 CRM은 직접 판매만 반영) */}
           <div
             className={`rounded-2xl border-2 p-3.5 space-y-1 ${
               isDark
@@ -1268,51 +1573,55 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                 <Coins className="w-3.5 h-3.5" />
                 <span>
                   {selectedMonth === 'ALL'
-                    ? '계약완료 발생매출 총합계'
-                    : `${formatMonthLabel(selectedMonth)} 발생매출 합계`}
+                    ? '회사 보고용 DB 총 발생매출'
+                    : `${formatMonthLabel(selectedMonth)} DB 총 발생매출`}
                 </span>
               </span>
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-emerald-700 dark:text-emerald-300 truncate">
               {stats.periodRevenue.toLocaleString()}원
             </div>
-            <div className="text-[10.5px] font-bold opacity-80 truncate">
-              {selectedMonth === 'ALL'
-                ? stats.handoverRevenue > 0
-                  ? `직접 ${stats.directRevenue.toLocaleString()}원 · 인계 ${stats.handoverRevenue.toLocaleString()}원`
-                  : '계약완료 고객 입력 매출 실시간 합산'
-                : `전체 누적 총매출: ${stats.allTimeRevenue.toLocaleString()}원`}
+            <div className="text-[10.5px] font-bold opacity-85 truncate">
+              직접 {stats.directPeriodRevenue.toLocaleString()}원 · 타직원{' '}
+              {stats.staffPeriodRevenue.toLocaleString()}원
             </div>
           </div>
         </div>
 
-        {/* ==================== 3. 상태별 탭 & 검색 · 인계필터 · 선택삭제 바 ==================== */}
+        {/* ==================== 3. 6대 진행 상태 탭 (전체 보기 없음) & 하위 직원별 서브탭 ==================== */}
         <div className={`rounded-2xl border p-3 space-y-2.5 ${cardSurface}`}>
+          {/* 3-1) 메인 6대 상태 탭 + 휴지통 */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {(
               [
-                { id: '전체', label: `전체 (${monthFilteredLeads.length})` },
                 {
-                  id: '신규접수',
-                  label: `🔥신규접수 (${stats.statusCounts['신규접수']})`,
+                  id: '신규',
+                  label: `🔥 신규 (${stats.statusCounts['신규']})`,
                 },
                 {
                   id: '문자전송',
-                  label: `📩문자전송 (${stats.statusCounts['문자전송']})`,
+                  label: `📩 문자전송 (${stats.statusCounts['문자전송']})`,
                 },
                 {
-                  id: '상담전환',
-                  label: `🤝상담전환 (${stats.statusCounts['상담전환']})`,
+                  id: '상담진행중',
+                  label: `🤝 상담진행중 (${stats.statusCounts['상담진행중']})`,
                 },
                 {
                   id: '무응답',
-                  label: `⏳무응답 (${stats.statusCounts['무응답']})`,
+                  label: `⏳ 무응답 (${stats.statusCounts['무응답']})`,
+                },
+                {
+                  id: '타직원인계',
+                  label: `↪ 타직원인계 (${stats.statusCounts['타직원인계']})`,
                 },
                 {
                   id: '계약완료',
-                  label: `🎉계약완료 (${stats.statusCounts['계약완료']})`,
+                  label: `🎉 계약완료 (${stats.statusCounts['계약완료']})`,
                 },
-                { id: '휴지통', label: `🗑️휴지통 (${trashedLeads.length})` },
+                {
+                  id: '휴지통',
+                  label: `🗑️ 휴지통 (${trashedLeads.length})`,
+                },
               ] as { id: StatusFilterTab; label: string }[]
             ).map((tab) => {
               const active = statusTab === tab.id;
@@ -1320,10 +1629,18 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setStatusTab(tab.id)}
+                  onClick={() => {
+                    setStatusTab(tab.id);
+                    setIsSelectMode(false);
+                    setSelectedIds([]);
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-black border whitespace-nowrap cursor-pointer transition ${
                     active
-                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                      ? tab.id === '타직원인계'
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                        : tab.id === '계약완료'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                        : 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
                       : `${subSurface} opacity-85 hover:opacity-100`
                   }`}
                 >
@@ -1333,6 +1650,177 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
             })}
           </div>
 
+          {/* 3-2) [타직원인계] 탭 선택 시 하단에 열리는 인계 직원별 선택 서브탭 */}
+          {statusTab === '타직원인계' && !isSearchingAll && (
+            <div
+              className={`rounded-2xl border p-2.5 space-y-2 ${
+                isDark
+                  ? 'bg-amber-950/25 border-amber-400/35'
+                  : 'bg-amber-50/75 border-amber-300'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-[11px] font-black text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>인계 직원별 보기 (계약완료로 변경 시 계약완료 탭으로 즉시 이동)</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => setHandoverSubTab('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black border whitespace-nowrap cursor-pointer transition ${
+                    handoverSubTab === 'ALL'
+                      ? 'bg-amber-600 text-white border-amber-600'
+                      : `${subSurface} opacity-85 hover:opacity-100`
+                  }`}
+                >
+                  전체 인계건 ({stats.statusCounts['타직원인계']}명)
+                </button>
+                {handoverStaffTabs.map((stTab) => {
+                  const active = handoverSubTab === stTab.name;
+                  return (
+                    <button
+                      key={stTab.name}
+                      type="button"
+                      onClick={() => setHandoverSubTab(stTab.name)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border whitespace-nowrap cursor-pointer transition ${
+                        active
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : `${subSurface} opacity-90 hover:opacity-100`
+                      }`}
+                    >
+                      👤 {stTab.name} ({stTab.count}명)
+                    </button>
+                  );
+                })}
+                {handoverStaffTabs.length === 0 && (
+                  <span className="text-xs opacity-70 px-1 py-0.5">
+                    현재 진행 중인 타 직원 인계건이 없습니다.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 3-3) [계약완료] 탭 선택 시 하단에 열리는 [직접 판매 vs 타 직원 이름] 선택 서브탭 & 직원별 누적 판매 금액 보드 */}
+          {statusTab === '계약완료' && !isSearchingAll && (
+            <div
+              className={`rounded-2xl border p-2.5 space-y-2.5 ${
+                isDark
+                  ? 'bg-emerald-950/25 border-emerald-400/35'
+                  : 'bg-emerald-50/75 border-emerald-300'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>판매 담당자별 모아보기 &amp; 누적 판매 금액 확인</span>
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => setContractSellerTab('ALL')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black border whitespace-nowrap cursor-pointer transition ${
+                    contractSellerTab === 'ALL'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : `${subSurface} opacity-85 hover:opacity-100`
+                  }`}
+                >
+                  전체 계약완료 ({contractSellerBreakdown.totalPeriodCount}건)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setContractSellerTab('DIRECT')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black border whitespace-nowrap cursor-pointer transition ${
+                    contractSellerTab === 'DIRECT'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : `${subSurface} opacity-90 hover:opacity-100`
+                  }`}
+                >
+                  👑 직접 판매 ({contractSellerBreakdown.direct.periodCount}건)
+                </button>
+
+                {contractSellerBreakdown.staffSellers.map((seller) => {
+                  const active = contractSellerTab === seller.staffName;
+                  return (
+                    <button
+                      key={seller.staffName}
+                      type="button"
+                      onClick={() => setContractSellerTab(seller.staffName)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border whitespace-nowrap cursor-pointer transition ${
+                        active
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : `${subSurface} opacity-90 hover:opacity-100`
+                      }`}
+                    >
+                      👤 {seller.staffName} ({seller.periodCount}건)
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 특정 판매자(직접 판매 or 특정 타 직원) 탭 선택 시 해당 담당자의 누적 판매 금액 박스 표시 */}
+              {selectedContractSellerProfile ? (
+                <div
+                  className={`rounded-xl border px-3.5 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                    isDark
+                      ? 'bg-[#111923] border-white/15'
+                      : 'bg-white border-emerald-300'
+                  }`}
+                >
+                  <div className="text-xs font-black">
+                    {selectedContractSellerProfile.label}
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap font-mono text-xs">
+                    {selectedMonth !== 'ALL' && (
+                      <span className="font-bold opacity-80">
+                        {formatMonthLabel(selectedMonth)}:{' '}
+                        <strong>
+                          {selectedContractSellerProfile.periodCount}건 ·{' '}
+                          {selectedContractSellerProfile.periodRevenue.toLocaleString()}원
+                        </strong>
+                      </span>
+                    )}
+                    <span className="font-black text-sm text-emerald-700 dark:text-emerald-300">
+                      누적 판매 금액: 총{' '}
+                      {selectedContractSellerProfile.allTimeCount}건 ·{' '}
+                      {selectedContractSellerProfile.allTimeRevenue.toLocaleString()}원
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                contractSellerBreakdown.hasAnyStaffContract && (
+                  <div className="flex items-center gap-2 flex-wrap text-[11px] font-bold pt-0.5">
+                    <span className="opacity-75">담당자별 누적 판매액:</span>
+                    <button
+                      type="button"
+                      onClick={() => setContractSellerTab('DIRECT')}
+                      className="px-2 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-mono font-black cursor-pointer"
+                    >
+                      직접 판매{' '}
+                      {contractSellerBreakdown.direct.allTimeRevenue.toLocaleString()}원
+                    </button>
+                    {contractSellerBreakdown.staffSellers.map((s) => (
+                      <button
+                        key={s.staffName}
+                        type="button"
+                        onClick={() => setContractSellerTab(s.staffName)}
+                        className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 font-mono font-black cursor-pointer"
+                      >
+                        {s.staffName} {s.allTimeRevenue.toLocaleString()}원
+                      </button>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          {/* 3-4) 검색창 + 다중 선택 관리 버튼 */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <div className="relative flex-1">
               <Search className="w-4 h-4 opacity-50 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -1340,7 +1828,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="고객명 · 연락처 · 요약내용 · 메모 · 인계직원 검색"
+                placeholder="고객명 · 연락처 · 요약내용 · 메모 · 인계직원 검색 (전 단계 통합검색)"
                 className={`w-full pl-9 pr-8 py-2 rounded-xl border text-base sm:text-xs font-bold ${inputSurface}`}
               />
               {searchQuery && (
@@ -1354,22 +1842,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <select
-                value={handoverFilter}
-                onChange={(e) => setHandoverFilter(e.target.value)}
-                className={`flex-1 sm:flex-none px-3 py-2 rounded-xl border text-base sm:text-xs font-extrabold ${inputSurface}`}
-              >
-                <option value="ALL">👤 상담/인계 전체</option>
-                <option value="DIRECT">국지현 직접상담만</option>
-                <option value="HANDOVER_ONLY">직원 인계건만 모아보기</option>
-                {staffOptions.map((st) => (
-                  <option key={st.name} value={st.name}>
-                    인계: {st.name} ({st.role})
-                  </option>
-                ))}
-              </select>
-
+            <div className="flex items-center gap-2 flex-wrap">
               {statusTab !== '휴지통' && (
                 <button
                   type="button"
@@ -1379,25 +1852,107 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                   }}
                   className={`px-3 py-2 rounded-xl border text-xs font-black whitespace-nowrap cursor-pointer ${
                     isSelectMode
-                      ? 'bg-rose-600 text-white border-rose-600'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
                       : subSurface
                   }`}
                 >
-                  {isSelectMode ? '선택취소' : '선택삭제'}
+                  {isSelectMode
+                    ? '선택닫기'
+                    : statusTab === '타직원인계'
+                    ? '선택 일괄계약·관리'
+                    : '선택 일괄인계·삭제'}
                 </button>
               )}
 
-              {isSelectMode && selectedIds.length > 0 && (
+              {isSelectMode && visibleLeads.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => handleSoftDeleteLeads(selectedIds)}
-                  className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black whitespace-nowrap cursor-pointer"
+                  onClick={() => {
+                    if (selectedIds.length === visibleLeads.length) {
+                      setSelectedIds([]);
+                    } else {
+                      setSelectedIds(visibleLeads.map((l) => l.id));
+                    }
+                  }}
+                  className={`px-2.5 py-2 rounded-xl border text-xs font-black whitespace-nowrap cursor-pointer ${subSurface}`}
                 >
-                  {selectedIds.length}명 삭제
+                  {selectedIds.length === visibleLeads.length
+                    ? '전체해제'
+                    : `전체선택(${visibleLeads.length})`}
                 </button>
               )}
             </div>
           </div>
+
+          {isSearchingAll && (
+            <div className="text-[11px] font-black text-indigo-600 dark:text-sky-300 px-1">
+              🔍 모든 진행 단계에서 &lsquo;{searchQuery}&rsquo; 검색 결과{' '}
+              {visibleLeads.length}건을 표시 중입니다.
+            </div>
+          )}
+
+          {/* 다중 선택 시 열리는 [일괄 직원 인계] / [일괄 계약완료 전환] / [선택 삭제] 바 */}
+          {isSelectMode && selectedIds.length > 0 && statusTab !== '휴지통' && (
+            <div
+              className={`rounded-2xl border p-2.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 ${
+                isDark
+                  ? 'bg-amber-950/35 border-amber-400/40'
+                  : 'bg-amber-50/90 border-amber-300'
+              }`}
+            >
+              <div className="flex items-center gap-2 flex-wrap flex-1">
+                <span className="text-xs font-black text-amber-800 dark:text-amber-200 shrink-0">
+                  ✓ {selectedIds.length}명 선택됨:
+                </span>
+
+                {statusTab === '타직원인계' && (
+                  <button
+                    type="button"
+                    onClick={() => handleBulkMarkContractCompleted(selectedIds)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black whitespace-nowrap cursor-pointer"
+                  >
+                    🎉 {selectedIds.length}명 일괄 계약완료로 넘기기
+                  </button>
+                )}
+
+                <select
+                  value={bulkHandoverTarget}
+                  onChange={(e) => setBulkHandoverTarget(e.target.value)}
+                  className={`flex-1 min-w-[155px] px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-bold ${inputSurface}`}
+                >
+                  <option value={UNASSIGNED_HANDOVER_STAFF}>
+                    ↪ {UNASSIGNED_HANDOVER_STAFF}
+                  </option>
+                  {staffOptions.map((st) => (
+                    <option key={st.name} value={st.name}>
+                      ↪ {st.name} ({st.role} ·{' '}
+                      {st.isOffToday ? `오늘휴무[${st.todayCode}]` : '오늘근무'})
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleBulkHandoverLeads(selectedIds, bulkHandoverTarget)
+                  }
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black whitespace-nowrap cursor-pointer"
+                >
+                  {statusTab === '타직원인계'
+                    ? '담당직원 일괄변경'
+                    : `↪ ${selectedIds.length}명 타직원인계로 이동`}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleSoftDeleteLeads(selectedIds)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black whitespace-nowrap cursor-pointer"
+              >
+                🗑️ {selectedIds.length}명 삭제
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ==================== 4. 고객 DB 카드 리스트 ==================== */}
@@ -1407,10 +1962,10 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           >
             <Database className="w-8 h-8 mx-auto opacity-40" />
             <div className="text-sm font-black">
-              조건에 해당하는 인스타 광고 DB 고객이 없습니다.
+              현재 [{statusTab}] 단계에 해당하는 고객이 없습니다.
             </div>
             <p className="text-xs opacity-70">
-              상단 [시트 동기화] 또는 [직접추가] 버튼으로 새 DB를 불러올 수 있습니다.
+              다른 진행 상태 탭을 눌러 확인하시거나 상단 [시트 동기화] · [직접추가]를 이용해 주세요.
             </p>
           </div>
         ) : (
@@ -1418,6 +1973,9 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
             {visibleLeads.map((lead) => {
               const linkedCrm = findLinkedCrmCustomer(lead);
               const isChecked = selectedIds.includes(lead.id);
+              const cleanPhoneDigits = (lead.phone || '').replace(/[^0-9+]/g, '');
+              const isHandedOverLead =
+                lead.status === '타직원인계' || Boolean(lead.handoverStaff);
 
               return (
                 <div
@@ -1427,10 +1985,14 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                       ? isDark
                         ? 'bg-[#13221E] border-emerald-500/45'
                         : 'bg-white border-2 border-emerald-500'
+                      : lead.status === '타직원인계'
+                      ? isDark
+                        ? 'bg-[#1E1910] border-amber-500/45'
+                        : 'bg-white border-2 border-amber-400'
                       : cardSurface
                   }`}
                 >
-                  {/* 1) 고객명 · 전화번호 · 접수일시 · 삭제 버튼 */}
+                  {/* 1) 고객명 · 전화번호 · [문자내역 바로보기] · 접수일시 · 삭제 버튼 */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2.5 min-w-0">
                       {isSelectMode && statusTab !== '휴지통' && (
@@ -1446,7 +2008,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                               );
                             }
                           }}
-                          className="mt-1 w-4 h-4 accent-rose-600 cursor-pointer shrink-0"
+                          className="mt-1 w-4 h-4 accent-indigo-600 cursor-pointer shrink-0"
                         />
                       )}
 
@@ -1463,32 +2025,55 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                           >
                             {lead.status}
                           </span>
-                          {linkedCrm && (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black">
-                              ✓ 고객관리 연동됨
+                          {lead.handoverStaff ? (
+                            <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-800 dark:text-amber-300 border border-amber-400/45 text-[10px] font-black">
+                              👤 {lead.status === '계약완료' ? '타직원 판매: ' : '인계: '}
+                              {lead.handoverStaff}
                             </span>
+                          ) : (
+                            lead.status === '계약완료' && (
+                              <span className="px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400/35 text-[10px] font-black">
+                                👑 직접 판매
+                              </span>
+                            )
                           )}
-                          {lead.handoverStaff && (
-                            <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-800 dark:text-amber-300 border border-amber-400/40 text-[10px] font-black">
-                              ↪ 인계: {lead.handoverStaff}
+                          {!lead.handoverStaff && linkedCrm && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black">
+                              ✓ 내 고객관리 연동됨
                             </span>
                           )}
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap mt-1 text-xs">
                           {lead.phone ? (
-                            <a
-                              href={`tel:${lead.phone.replace(/\D/g, '')}`}
-                              className="font-mono font-black text-blue-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1"
-                            >
-                              <Phone className="w-3 h-3" />
-                              <span>{lead.phone}</span>
-                            </a>
+                            <>
+                              <a
+                                href={`tel:${cleanPhoneDigits}`}
+                                className="font-mono font-black text-blue-600 dark:text-sky-400 hover:underline inline-flex items-center gap-1"
+                                title="전화 걸기"
+                              >
+                                <Phone className="w-3 h-3" />
+                                <span>{lead.phone}</span>
+                              </a>
+                              {/* 자동 입력 문구 없이 주고받은 문자 내역만 확인하는 빈 문자앱 이동 버튼 */}
+                              <a
+                                href={`sms:${cleanPhoneDigits}`}
+                                className={`px-2 py-0.5 rounded-lg border text-[10.5px] font-black inline-flex items-center gap-1 transition ${
+                                  isDark
+                                    ? 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border-indigo-400/35'
+                                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200'
+                                }`}
+                                title="자동 문구 없이 이 번호와 주고받은 문자 대화내역(문자앱) 바로 보기"
+                              >
+                                <MailOpen className="w-3 h-3 shrink-0" />
+                                <span>문자내역</span>
+                              </a>
+                            </>
                           ) : (
                             <span className="opacity-50 text-xs">연락처 없음</span>
                           )}
                           <span className="text-[11px] font-mono opacity-65">
-                            · {lead.platform || '인스타그램'} · 접수 {lead.createdAt}
+                            · {lead.platform || '인스타그램'} · {lead.createdAt}
                           </span>
                         </div>
                       </div>
@@ -1540,14 +2125,14 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                       type="text"
                       value={lead.memo || ''}
                       onChange={(e) => handleUpdateMemo(lead.id, e.target.value)}
-                      placeholder="진행/상담 요약 메모 입력 (예: 12월 입주, 냉장고·세탁기 견적 희망)"
+                      placeholder="진행/상담/인계 요약 메모 입력 (예: 12월 입주, 냉장고·세탁기 견적 희망)"
                       className={`w-full px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-semibold ${inputSurface}`}
                     />
                   </div>
 
                   {statusTab !== '휴지통' && (
                     <>
-                      {/* 3) 상태 변경 버튼 (신규접수 / 문자전송 / 상담전환 / 무응답 / 계약완료) */}
+                      {/* 3) 6단계 진행 상태 변경 버튼 (신규 / 문자전송 / 상담진행중 / 무응답 / 타직원인계 / 계약완료) */}
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] font-extrabold opacity-75">
                           <span>진행 상태 변경</span>
@@ -1557,7 +2142,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="grid grid-cols-3 min-[380px]:grid-cols-5 gap-1">
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
                           {MARKETING_LEAD_STATUSES.map((st) => {
                             const active = lead.status === st;
                             return (
@@ -1578,7 +2163,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                         </div>
                       </div>
 
-                      {/* 4) 계약완료 시 발생매출 입력 박스 */}
+                      {/* 4) 계약완료 시 발생매출 입력 박스 (회사 보고용 DB 총매출 자동 합산 + 직접 판매는 내 고객관리 연동) */}
                       {lead.status === '계약완료' && (
                         <div
                           className={`rounded-2xl border-2 p-3 space-y-2 ${
@@ -1590,7 +2175,11 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <span className="text-xs font-black text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
                               <Coins className="w-3.5 h-3.5" />
-                              <span>계약완료 발생매출 입력</span>
+                              <span>
+                                {lead.handoverStaff
+                                  ? `계약완료 발생매출 (${lead.handoverStaff} 판매 · DB 총매출 합산)`
+                                  : '계약완료 발생매출 (직접 판매 · DB매출 + 내 실적)'}
+                              </span>
                             </span>
                             <div className="flex items-center gap-1 flex-wrap">
                               {[1000000, 3000000, 5000000, 10000000].map(
@@ -1641,168 +2230,277 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                                 원
                               </span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleSyncRevenueToCrm(lead)}
-                              className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black whitespace-nowrap cursor-pointer shrink-0"
-                            >
-                              고객카드 매출반영
-                            </button>
+                            {!lead.handoverStaff && (
+                              <button
+                                type="button"
+                                onClick={() => handleSyncRevenueToCrm(lead)}
+                                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black whitespace-nowrap cursor-pointer shrink-0"
+                              >
+                                내 고객카드 반영
+                              </button>
+                            )}
                           </div>
 
                           {lead.revenueAmount > 0 && (
                             <div className="text-[11px] font-black text-emerald-800 dark:text-emerald-300 text-right font-mono">
-                              입력 매출: {lead.revenueAmount.toLocaleString()}원 (
+                              {lead.handoverStaff
+                                ? `${lead.handoverStaff} 판매 DB매출: `
+                                : '내 직접판매 DB매출: '}
+                              {lead.revenueAmount.toLocaleString()}원 (
                               {(lead.revenueAmount / 10000).toLocaleString()}만원)
                             </div>
                           )}
                         </div>
                       )}
 
-                      {/* 5) 직원 인계 매칭 (휴무표 내 '미화' 제외 직원 목록 연동 · 인계 확인용) */}
-                      <div className="flex items-center justify-between gap-2 pt-0.5">
-                        <span className="text-[11px] font-extrabold opacity-75 flex items-center gap-1 shrink-0">
-                          <Users className="w-3.5 h-3.5 text-amber-500" />
-                          <span>상담 인계 확인용:</span>
-                        </span>
-                        <select
-                          value={lead.handoverStaff || ''}
-                          onChange={(e) =>
-                            handleChangeHandoverStaff(lead.id, e.target.value)
-                          }
-                          className={`flex-1 max-w-[240px] px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-bold ${inputSurface}`}
+                      {/* 5) 타 직원 인계 이름 지정 / 판매 담당자 선택 바 */}
+                      {isHandedOverLead ? (
+                        <div
+                          className={`rounded-2xl border p-2.5 space-y-2 ${
+                            isDark
+                              ? 'bg-amber-950/30 border-amber-400/40'
+                              : 'bg-amber-50/85 border-amber-300'
+                          }`}
                         >
-                          <option value="">직접 상담 (인계 안 함)</option>
-                          {staffOptions.map((st) => (
-                            <option key={st.name} value={st.name}>
-                              {st.name} ({st.role} ·{' '}
-                              {st.isOffToday
-                                ? `오늘휴무[${st.todayCode}]`
-                                : '오늘근무'}
-                              )
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* 6) 명함 동봉 컨트롤 바 (신규접수 = 기본 자동 ON / 그 외 상태 = 선택사항 토글) */}
-                      <div className="pt-1.5 border-t border-black/5 dark:border-white/10 space-y-1.5">
-                        <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => toggleCardAttachForLead(lead)}
-                            className={`px-2.5 py-1 rounded-xl border text-[11px] font-black inline-flex items-center gap-1.5 cursor-pointer transition ${
-                              isCardAttachedForLead(lead)
-                                ? isDark
-                                  ? 'bg-indigo-500/25 text-amber-200 border-indigo-400/50'
-                                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
-                                : `${subSurface} opacity-75 hover:opacity-100`
-                            }`}
-                          >
-                            <ImageIcon className="w-3.5 h-3.5 shrink-0" />
-                            {lead.status === '신규접수' ? (
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[11px] font-black text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5 shrink-0" />
                               <span>
-                                {isCardAttachedForLead(lead)
-                                  ? '✓ 신규고객 명함사진 자동동봉 ON'
-                                  : '명함사진 동봉 OFF (터치 시 켜기)'}
+                                {lead.status === '계약완료'
+                                  ? '👤 타 직원 판매 담당자'
+                                  : '↪ 인계받은 직원 이름 선택'}
                               </span>
-                            ) : (
-                              <span>
-                                {isCardAttachedForLead(lead)
-                                  ? '✓ 명함사진 함께 보내기 선택됨'
-                                  : '+ 명함사진 함께 보내기 (선택)'}
-                              </span>
-                            )}
-                          </button>
-
-                          {isCardAttachedForLead(lead) && (
+                              {lead.handoverAt && (
+                                <span className="font-mono text-[10px] opacity-75">
+                                  ({lead.handoverAt})
+                                </span>
+                              )}
+                            </span>
                             <button
                               type="button"
-                              onClick={() =>
-                                triggerDirectFileShareWithCard(
-                                  lead,
-                                  getDefaultRenderedTextForLead(lead)
-                                )
-                              }
-                              title="명함 이미지 파일과 문구를 MMS/카톡 공유창으로 직접 첨부하여 보냅니다 (전화번호 자동 복사)"
-                              className="px-2.5 py-1 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-800 dark:text-amber-200 border border-amber-400/40 text-[10.5px] font-black inline-flex items-center gap-1 cursor-pointer"
+                              onClick={() => handleChangeHandoverStaff(lead, '')}
+                              className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-amber-400/50 text-[10.5px] font-black text-amber-800 dark:text-amber-300 cursor-pointer"
                             >
-                              <Share2 className="w-3 h-3 shrink-0" />
-                              <span>MMS·카톡 명함파일 직접첨부</span>
+                              {lead.status === '계약완료'
+                                ? '👑 직접 판매로 변경'
+                                : '↩ 직접 상담으로 복귀'}
                             </button>
-                          )}
-                        </div>
+                          </div>
 
-                        {/* 하단 원터치 실행 버튼 (폴드 커버 등 초소형 320px 화면 2x2 자동배열 보호) */}
-                        <div className="grid grid-cols-2 min-[380px]:grid-cols-12 gap-1.5">
+                          <select
+                            value={lead.handoverStaff || UNASSIGNED_HANDOVER_STAFF}
+                            onChange={(e) =>
+                              handleChangeHandoverStaff(lead, e.target.value)
+                            }
+                            className={`w-full px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-black ${inputSurface}`}
+                          >
+                            <option value={UNASSIGNED_HANDOVER_STAFF}>
+                              ↪ {UNASSIGNED_HANDOVER_STAFF} (직원 선택 전)
+                            </option>
+                            {staffOptions.map((st) => (
+                              <option key={st.name} value={st.name}>
+                                👤 {st.name} ({st.role} ·{' '}
+                                {st.isOffToday
+                                  ? `오늘휴무[${st.todayCode}]`
+                                  : '오늘근무'}
+                                )
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-2 pt-0.5">
+                          <span className="text-[11px] font-extrabold opacity-80 flex items-center gap-1 shrink-0">
+                            <Users className="w-3.5 h-3.5 text-amber-500" />
+                            <span>
+                              {lead.status === '계약완료'
+                                ? '판매 구분 변경:'
+                                : '타 직원 인계 지정:'}
+                            </span>
+                          </span>
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleChangeHandoverStaff(lead, e.target.value);
+                              }
+                            }}
+                            className={`flex-1 max-w-[245px] px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-bold ${inputSurface}`}
+                          >
+                            <option value="">
+                              {lead.status === '계약완료'
+                                ? '👑 직접 판매 (내 고객관리/실적)'
+                                : '👑 내가 직접 상담'}
+                            </option>
+                            <option value={UNASSIGNED_HANDOVER_STAFF}>
+                              ↪ 타직원인계 ({UNASSIGNED_HANDOVER_STAFF})
+                            </option>
+                            {staffOptions.map((st) => (
+                              <option key={st.name} value={st.name}>
+                                ↪ {st.name} ({st.role} ·{' '}
+                                {st.isOffToday
+                                  ? `오늘휴무[${st.todayCode}]`
+                                  : '오늘근무'}
+                                )
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* 6) 하단 액션 바 */}
+                      {isHandedOverLead ? (
+                        <div className="pt-1.5 border-t border-black/5 dark:border-white/10 grid grid-cols-2 min-[400px]:grid-cols-12 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyStaffHandoverSummary(lead)}
+                            className="col-span-2 min-[400px]:col-span-5 py-2.5 px-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                          >
+                            <Copy className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">직원전달 요약복사</span>
+                          </button>
+
+                          {cleanPhoneDigits ? (
+                            <a
+                              href={`sms:${cleanPhoneDigits}`}
+                              className={`col-span-1 min-[400px]:col-span-3 py-2.5 px-2 rounded-xl border text-[11px] font-black flex items-center justify-center gap-1 ${subSurface}`}
+                              title="자동 문구 없이 주고받은 문자 대화내역만 보기"
+                            >
+                              <MailOpen className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                              <span className="truncate">문자내역</span>
+                            </a>
+                          ) : (
+                            <span />
+                          )}
+
                           <button
                             type="button"
                             onClick={() => handleQuickSendDefaultSms(lead)}
-                            className={`col-span-1 min-[380px]:col-span-5 py-2.5 px-2 rounded-xl text-white text-xs font-black flex items-center justify-center gap-1 cursor-pointer shadow-2xs ${
-                              isCardAttachedForLead(lead)
-                                ? 'bg-indigo-600 hover:bg-indigo-500'
-                                : 'bg-blue-600 hover:bg-blue-500'
-                            }`}
+                            className="col-span-1 min-[400px]:col-span-4 py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer"
                           >
-                            <Send className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate">
-                              {isCardAttachedForLead(lead)
-                                ? '명함+문자 발송'
-                                : '정해진 문자발송'}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSmsPreview(lead)}
-                            title="문자 문구 및 명함 미리보기 / 다른 템플릿 선택"
-                            className={`col-span-1 min-[380px]:col-span-2 py-2.5 px-1.5 rounded-xl border text-[11px] font-black flex items-center justify-center cursor-pointer ${subSurface}`}
-                          >
-                            문구변경
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSaveOrOpenCrm(
-                                lead,
-                                linkedCrm ? 'open-crm' : 'save-only'
-                              )
-                            }
-                            className={`col-span-1 min-[380px]:col-span-3 py-2.5 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer border ${
-                              linkedCrm
-                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
-                                : isDark
-                                ? 'bg-[#1B2230] hover:bg-[#253047] text-amber-300 border-amber-400/35'
-                                : 'bg-[#FAF5EB] hover:bg-[#F2E8D5] text-[#6E4423] border-[#D8C3A8]'
-                            }`}
-                          >
-                            {linkedCrm ? (
-                              <>
-                                <UserCheck className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">고객관리열기</span>
-                              </>
-                            ) : (
-                              <>
-                                <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                                <span className="truncate">고객카드저장</span>
-                              </>
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSaveOrOpenCrm(lead, 'open-quote')
-                            }
-                            title="고객카드 자동 저장 후 바로 견적기 화면으로 연결"
-                            className="col-span-1 min-[380px]:col-span-2 py-2.5 px-1.5 rounded-xl bg-[#18181B] dark:bg-sky-500 hover:opacity-90 text-white dark:text-slate-950 text-[11px] font-black flex items-center justify-center gap-0.5 cursor-pointer"
-                          >
-                            <Calculator className="w-3 h-3 shrink-0" />
-                            <span>견적</span>
+                            <Send className="w-3 h-3 shrink-0" />
+                            <span className="truncate">안내문자 발송</span>
                           </button>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="pt-1.5 border-t border-black/5 dark:border-white/10 space-y-1.5">
+                          <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => toggleCardAttachForLead(lead)}
+                              className={`px-2.5 py-1 rounded-xl border text-[11px] font-black inline-flex items-center gap-1.5 cursor-pointer transition ${
+                                isCardAttachedForLead(lead)
+                                  ? isDark
+                                    ? 'bg-indigo-500/25 text-amber-200 border-indigo-400/50'
+                                    : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                                  : `${subSurface} opacity-75 hover:opacity-100`
+                              }`}
+                            >
+                              <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                              {lead.status === '신규' ? (
+                                <span>
+                                  {isCardAttachedForLead(lead)
+                                    ? '✓ 신규고객 명함사진 자동동봉 ON'
+                                    : '명함사진 동봉 OFF (터치 시 켜기)'}
+                                </span>
+                              ) : (
+                                <span>
+                                  {isCardAttachedForLead(lead)
+                                    ? '✓ 명함사진 함께 보내기 선택됨'
+                                    : '+ 명함사진 함께 보내기 (선택)'}
+                                </span>
+                              )}
+                            </button>
+
+                            {isCardAttachedForLead(lead) && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  triggerDirectFileShareWithCard(
+                                    lead,
+                                    getDefaultRenderedTextForLead(lead)
+                                  )
+                                }
+                                title="명함 이미지 파일과 문구를 MMS/카톡 공유창으로 직접 첨부하여 보냅니다 (전화번호 자동 복사)"
+                                className="px-2.5 py-1 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-800 dark:text-amber-200 border border-amber-400/40 text-[10.5px] font-black inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <Share2 className="w-3 h-3 shrink-0" />
+                                <span>MMS·카톡 명함파일 직접첨부</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* 하단 원터치 실행 버튼 (폴드 커버 등 초소형 화면 자동배열 보호) */}
+                          <div className="grid grid-cols-2 min-[380px]:grid-cols-12 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleQuickSendDefaultSms(lead)}
+                              className={`col-span-1 min-[380px]:col-span-5 py-2.5 px-2 rounded-xl text-white text-xs font-black flex items-center justify-center gap-1 cursor-pointer shadow-2xs ${
+                                isCardAttachedForLead(lead)
+                                  ? 'bg-indigo-600 hover:bg-indigo-500'
+                                  : 'bg-blue-600 hover:bg-blue-500'
+                              }`}
+                            >
+                              <Send className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">
+                                {isCardAttachedForLead(lead)
+                                  ? '명함+문자 발송'
+                                  : '정해진 문자발송'}
+                              </span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSmsPreview(lead)}
+                              title="문자 문구 및 명함 미리보기 / 다른 템플릿 선택"
+                              className={`col-span-1 min-[380px]:col-span-2 py-2.5 px-1.5 rounded-xl border text-[11px] font-black flex items-center justify-center cursor-pointer ${subSurface}`}
+                            >
+                              문구변경
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleSaveOrOpenCrm(
+                                  lead,
+                                  linkedCrm ? 'open-crm' : 'save-only'
+                                )
+                              }
+                              className={`col-span-1 min-[380px]:col-span-3 py-2.5 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer border ${
+                                linkedCrm
+                                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                                  : isDark
+                                  ? 'bg-[#1B2230] hover:bg-[#253047] text-amber-300 border-amber-400/35'
+                                  : 'bg-[#FAF5EB] hover:bg-[#F2E8D5] text-[#6E4423] border-[#D8C3A8]'
+                              }`}
+                            >
+                              {linkedCrm ? (
+                                <>
+                                  <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">고객관리열기</span>
+                                </>
+                              ) : (
+                                <>
+                                  <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">고객카드저장</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleSaveOrOpenCrm(lead, 'open-quote')
+                              }
+                              title="고객카드 자동 저장 후 바로 견적기 화면으로 연결"
+                              className="col-span-1 min-[380px]:col-span-2 py-2.5 px-1.5 rounded-xl bg-[#18181B] dark:bg-sky-500 hover:opacity-90 text-white dark:text-slate-950 text-[11px] font-black flex items-center justify-center gap-0.5 cursor-pointer"
+                            >
+                              <Calculator className="w-3 h-3 shrink-0" />
+                              <span>견적</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -1822,18 +2520,31 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
             className={`w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto modal-kb-safe rounded-t-3xl sm:rounded-3xl border p-5 space-y-3.5 shadow-2xl ${cardSurface}`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div className="font-black text-sm sm:text-base flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-blue-500" />
                 <span>{smsPreviewLead.customerName} 고객님 문자 발송</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setSmsPreviewLead(null)}
-                className="p-1 rounded-lg opacity-70 hover:opacity-100 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                {smsPreviewLead.phone && (
+                  <a
+                    href={`sms:${smsPreviewLead.phone.replace(/[^0-9+]/g, '')}`}
+                    onClick={() => setSmsPreviewLead(null)}
+                    className="px-2.5 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black inline-flex items-center gap-1"
+                    title="자동 문구 없이 문자 대화내역만 보기"
+                  >
+                    <MailOpen className="w-3.5 h-3.5" />
+                    <span>문자내역만 보기</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSmsPreviewLead(null)}
+                  className="p-1 rounded-lg opacity-70 hover:opacity-100 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -1872,7 +2583,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                   <span>
                     명함 사진 함께 보내기{' '}
                     <span className="text-[10.5px] opacity-75">
-                      ({smsPreviewLead.status === '신규접수' ? '신규고객 자동 ON' : '선택사항'})
+                      ({smsPreviewLead.status === '신규' ? '신규고객 자동 ON' : '선택사항'})
                     </span>
                   </span>
                 </span>
@@ -2013,7 +2724,6 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
             {settingsTab === 'sms' && (
               <div className="space-y-3">
-                {/* 등록된 내 명함 미리보기 & 원터치 발송 방식 설정 */}
                 <div className={`rounded-2xl border p-3.5 space-y-2.5 ${subSurface}`}>
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className="text-xs font-black flex items-center gap-1.5">
@@ -2112,8 +2822,9 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                     </div>
                   </div>
                 </div>
+
                 <p className="text-xs opacity-80 leading-relaxed">
-                  • 카드 하단 <strong>[정해진 문자발송]</strong> 버튼을 누르면 아래에서 기본으로 지정한 문구가 자동으로 채워져 문자앱이 열립니다.
+                  • 카드 하단 <strong>[정해진 문자발송]</strong> 버튼을 누르면 아래에서 기본으로 지정한 문구가 자동으로 채워져 문자앱이 열립니다. (주고받은 내역만 볼 때는 전화번호 옆 <strong>[문자내역]</strong> 버튼을 누르세요!)
                   <br />• 사용 가능한 자동 치환어:{' '}
                   <code className="font-mono font-bold text-indigo-500">
                     {'{고객명}'} {'{플랫폼}'} {'{희망혜택}'} {'{안내방식}'} {'{요약}'}
@@ -2313,7 +3024,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
                   <label className="flex items-center justify-between pt-2 border-t border-black/10 dark:border-white/10 cursor-pointer">
                     <span className="font-extrabold">
-                      상담전환 · 계약완료 변경 시 자동으로 고객관리(CRM) 카드 생성
+                      내가 직접 상담·계약한 건을 자동으로 내 고객관리(CRM) 카드에 생성
                     </span>
                     <input
                       type="checkbox"
@@ -2391,6 +3102,55 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
             </div>
 
             <div className="space-y-2.5 text-xs">
+              <div>
+                <label className="font-extrabold block mb-1">초기 배정 단계</label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNewLeadIsHandover(false)}
+                    className={`py-2 rounded-xl border text-xs font-black cursor-pointer ${
+                      !newLeadIsHandover
+                        ? 'bg-rose-600 text-white border-rose-600'
+                        : subSurface
+                    }`}
+                  >
+                    🔥 신규 (내가 직접 상담)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewLeadIsHandover(true)}
+                    className={`py-2 rounded-xl border text-xs font-black cursor-pointer ${
+                      newLeadIsHandover
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : subSurface
+                    }`}
+                  >
+                    ↪ 타직원인계
+                  </button>
+                </div>
+              </div>
+              {newLeadIsHandover && (
+                <div>
+                  <label className="font-extrabold block mb-1">
+                    인계 담당 직원 선택
+                  </label>
+                  <select
+                    value={newLeadHandoverStaff}
+                    onChange={(e) => setNewLeadHandoverStaff(e.target.value)}
+                    className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-bold ${inputSurface}`}
+                  >
+                    <option value={UNASSIGNED_HANDOVER_STAFF}>
+                      ↪ {UNASSIGNED_HANDOVER_STAFF}
+                    </option>
+                    {staffOptions.map((st) => (
+                      <option key={st.name} value={st.name}>
+                        👤 {st.name} ({st.role} ·{' '}
+                        {st.isOffToday ? `오늘휴무[${st.todayCode}]` : '오늘근무'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="font-extrabold block mb-1">유입 플랫폼</label>
                 <div className="grid grid-cols-2 gap-1.5">

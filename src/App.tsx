@@ -760,7 +760,7 @@ export function App() {
 
   const ownerDbQuickSummary = useMemo(() => {
     if (!isOwnerDbUnlocked) {
-      return { totalActive: 0, newCount: 0, monthRevenue: 0 };
+      return { totalActive: 0, newCount: 0, handoverTabCount: 0, monthRevenue: 0 };
     }
     const dbStore = loadMarketingDbStore();
     const active = dbStore.leads.filter((l) => !l.deletedAt);
@@ -769,13 +769,15 @@ export function App() {
       2,
       '0'
     )}`;
-    const newCount = active.filter((l) => l.status === '신규접수').length;
+    const newCount = active.filter((l) => l.status === '신규').length;
+    const handoverTabCount = active.filter((l) => l.status === '타직원인계').length;
     const monthRevenue = active
       .filter((l) => l.yearMonth === curYm && l.status === '계약완료')
       .reduce((s, l) => s + (Number(l.revenueAmount) || 0), 0);
     return {
       totalActive: active.length,
       newCount,
+      handoverTabCount,
       monthRevenue,
     };
   }, [isOwnerDbUnlocked, ownerDbTick, step]);
@@ -1622,7 +1624,9 @@ export function App() {
                     setStep('marketing-db');
                   }}
                   className={`w-full py-2.5 px-4 rounded-2xl font-black text-xs flex items-center justify-between border transition cursor-pointer ${
-                    isDark
+                    step === 'marketing-db'
+                      ? 'bg-indigo-600 text-white border-indigo-500'
+                      : isDark
                       ? 'bg-gradient-to-r from-violet-950/80 to-indigo-950/70 text-amber-200 border-amber-400/40 hover:border-amber-300'
                       : 'bg-gradient-to-r from-[#2E1065] to-[#1E1B4B] text-white border-indigo-900'
                   }`}
@@ -1973,7 +1977,7 @@ export function App() {
               </div>
             </button>
 
-            {/* 0-3) 국지현 전용 비공개 인스타 마케팅 DB관리 배너 (타 직원 기기에서는 아예 렌더링되지 않음) */}
+            {/* 0-3) 국지현 전용 비공개 인스타 마케팅 DB관리 배너 (타 직원 기기 노출 0%) */}
             {isOwnerDbUnlocked && (
               <button
                 type="button"
@@ -1990,11 +1994,15 @@ export function App() {
                     <span>PRIVATE · 인스타 광고 전용 DB관리 (나만 보기)</span>
                   </div>
                   <div className="text-xs sm:text-sm font-black mt-0.5 truncate">
-                    전체 DB {ownerDbQuickSummary.totalActive}명 · 미발송 신규{' '}
+                    전체 DB {ownerDbQuickSummary.totalActive}명 · 신규{' '}
                     <span className="text-rose-500">
                       {ownerDbQuickSummary.newCount}건
                     </span>{' '}
-                    · 이번 달 계약매출{' '}
+                    · 인계중{' '}
+                    <span className="text-amber-600 dark:text-amber-300">
+                      {ownerDbQuickSummary.handoverTabCount}건
+                    </span>{' '}
+                    · 당월 DB 총매출{' '}
                     <span className="text-emerald-600 dark:text-emerald-300 font-mono">
                       {ownerDbQuickSummary.monthRevenue.toLocaleString()}원
                     </span>

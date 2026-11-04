@@ -170,7 +170,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
               id: 'menu-owner-marketing-db',
               group: '메뉴',
               title: '📊 인스타 마케팅 DB관리 (국지현 전용 비공개)',
-              subtitle: '구글시트 자동요약 · 고정문자 · 인계확인 · 발생매출 합계',
+              subtitle: '신규 · 문자전송 · 상담진행중 · 무응답 · 타직원인계 · 계약완료 통합관리',
               badge: '비공개',
               onSelect: () => {
                 onClose();
