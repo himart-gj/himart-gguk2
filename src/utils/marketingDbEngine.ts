@@ -129,8 +129,10 @@ export interface MarketingDbConfig {
   autoSaveCrmOnConvert: boolean;
   /** 명함 이미지 Data URI (미지정 시 기본 국지현 명함 자동 사용) */
   businessCardDataUri?: string;
-  /** 카드에서 [명함+문자 발송] 원터치 시 기본 동작 ('sms-clipboard' | 'share-sheet') */
+  /** 카드에서 [명함+문자 발송] 원터치 시 기본 동작 ('share-sheet' | 'sms-clipboard') */
   businessCardSendMethod?: 'sms-clipboard' | 'share-sheet';
+  /** v2 기본값('share-sheet' 실제 파일 첨부) 자동 마이그레이션 완료 플래그 */
+  businessCardSendMethodMigratedV2?: boolean;
   /** 마지막 시트 동기화 시각 */
   lastSyncedAt?: string;
   /** 마지막 실시간 자동연동 성공 상태 ('connected' | 'locked' | 'idle') */
@@ -679,7 +681,8 @@ function createInitialMarketingDbStore(): MarketingDbStore {
       smsTemplates: DEFAULT_SMS_TEMPLATES,
       autoSaveCrmOnConvert: true,
       businessCardDataUri: DEFAULT_OWNER_BUSINESS_CARD_DATA_URI,
-      businessCardSendMethod: 'sms-clipboard',
+      businessCardSendMethod: 'share-sheet',
+      businessCardSendMethodMigratedV2: true,
       lastSyncedAt: '2026-11-04 18:25 (시트 최신 13건 반영됨)',
       lastSyncStatus: 'idle',
     },
@@ -952,6 +955,10 @@ export function loadMarketingDbStore(): MarketingDbStore {
       config: {
         ...fallback.config,
         ...(parsed.config || {}),
+        businessCardSendMethod: parsed.config?.businessCardSendMethodMigratedV2
+          ? parsed.config?.businessCardSendMethod || 'share-sheet'
+          : 'share-sheet',
+        businessCardSendMethodMigratedV2: true,
         smsTemplates:
           Array.isArray(parsed.config?.smsTemplates) &&
           parsed.config.smsTemplates.length > 0
@@ -2181,6 +2188,81 @@ export function dataUriToPngBlob(dataUri: string): Promise<Blob> {
   });
 }
 
+// 모바일 클릭 제스처(Transient User Activation) 만료 방지를 위한 인메모리 명함 Blob/File 캐시
+let cachedCardSourceUri = '';
+let cachedCardPngBlob: Blob | null = null;
+let cachedCardPngPromise: Promise<Blob> | null = null;
+let cachedCardShareFile: File | null = null;
+
+function getOrBuildShareFileSync(dataUri: string): File {
+  if (cachedCardSourceUri === dataUri && cachedCardShareFile) {
+    return cachedCardShareFile;
+  }
+  const blob = dataUriToBlob(dataUri);
+  const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+  const file = new File(
+    [blob],
+    `롯데하이마트_경기광주점_국지현_명함.${ext}`,
+    { type: blob.type || 'image/jpeg' }
+  );
+  cachedCardSourceUri = dataUri;
+  cachedCardShareFile = file;
+  return file;
+}
+
+export function warmUpBusinessCardCache(customDataUri?: string): void {
+  if (typeof window === 'undefined') return;
+  const uri =
+    customDataUri && customDataUri.trim().startsWith('data:image/')
+      ? customDataUri.trim()
+      : getEffectiveBusinessCardDataUri(loadMarketingDbStore().config);
+  try {
+    getOrBuildShareFileSync(uri);
+  } catch {
+    // ignore
+  }
+  if (cachedCardSourceUri === uri && (cachedCardPngBlob || cachedCardPngPromise)) {
+    return;
+  }
+  cachedCardPngBlob = null;
+  cachedCardPngPromise = dataUriToPngBlob(uri)
+    .then((b) => {
+      if (cachedCardSourceUri === uri) {
+        cachedCardPngBlob = b;
+      }
+      return b;
+    })
+    .catch((e) => {
+      cachedCardPngPromise = null;
+      throw e;
+    });
+}
+
+/**
+ * navigator.share 호출 직전 await로 인해 클릭 제스처가 소멸되는 현상을 막기 위한 100% 동기(0ms) 텍스트 복사 헬퍼
+ */
+function copyPhoneSyncPreservingGesture(rawPhone?: string): boolean {
+  const cleanPhone = (rawPhone || '').replace(/\D/g, '');
+  if (!cleanPhone || typeof document === 'undefined') return false;
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = cleanPhone;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    ta.style.left = '-9999px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, cleanPhone.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function copyBusinessCardImageToClipboard(
   dataUri: string
 ): Promise<boolean> {
@@ -2189,11 +2271,27 @@ export async function copyBusinessCardImageToClipboard(
     if (!navigator.clipboard?.write || !ClipboardItemCtor) {
       return false;
     }
-    const item = new ClipboardItemCtor({
-      'image/png': dataUriToPngBlob(dataUri),
-    });
-    await navigator.clipboard.write([item]);
-    return true;
+    // 갤럭시 크롬·삼성인터넷 호환: Promise 대신 사전 변환된 실제 PNG Blob을 전달
+    let pngBlob =
+      cachedCardSourceUri === dataUri && cachedCardPngBlob
+        ? cachedCardPngBlob
+        : null;
+    if (!pngBlob) {
+      warmUpBusinessCardCache(dataUri);
+      pngBlob = await (cachedCardPngPromise || dataUriToPngBlob(dataUri));
+    }
+    try {
+      const item = new ClipboardItemCtor({ 'image/png': pngBlob });
+      await navigator.clipboard.write([item]);
+      return true;
+    } catch {
+      // 일부 구형 iOS Safari 대응 폴백
+      const safariItem = new ClipboardItemCtor({
+        'image/png': Promise.resolve(pngBlob),
+      });
+      await navigator.clipboard.write([safariItem]);
+      return true;
+    }
   } catch {
     return false;
   }
@@ -2208,20 +2306,10 @@ export async function shareBusinessCardFileWithText(params: {
     if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
       return 'unsupported';
     }
-    // 공유 시트에서 메시지 앱 선택 후 받는 사람 칸에 바로 붙여넣을 수 있도록 고객 전화번호를 먼저 복사
-    const cleanPhone = (params.customerPhone || '').replace(/\D/g, '');
-    if (cleanPhone) {
-      await safeCopyText(cleanPhone);
-    }
+    // 중요: navigator.share 이전에 절대 await를 호출하지 않음! (모바일 User Activation 100% 보존)
+    copyPhoneSyncPreservingGesture(params.customerPhone);
 
-    const blob = dataUriToBlob(params.dataUri);
-    const ext = blob.type === 'image/png' ? 'png' : 'jpg';
-    const file = new File(
-      [blob],
-      `롯데하이마트_경기광주점_국지현_명함.${ext}`,
-      { type: blob.type || 'image/jpeg' }
-    );
-
+    const file = getOrBuildShareFileSync(params.dataUri);
     if (
       typeof navigator.canShare === 'function' &&
       !navigator.canShare({ files: [file] })

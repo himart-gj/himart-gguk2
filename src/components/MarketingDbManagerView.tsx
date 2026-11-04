@@ -63,6 +63,7 @@ import {
   shareBusinessCardFileWithText,
   syncLeadsFromGoogleSheet,
   syncMarketingDbTrashFromCrmCustomer,
+  warmUpBusinessCardCache,
 } from '../utils/marketingDbEngine';
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from '../utils/ownerBusinessCardAsset';
 import {
@@ -307,6 +308,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     });
     setStaffOptions(loadHandoverStaffOptions());
     setCrmCustomers(getCachedCustomers());
+    warmUpBusinessCardCache();
     return () => {
       mounted = false;
     };
@@ -1001,17 +1003,22 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   };
 
   // 방식 A: 자동 문구 포함 문자앱 열기 (명함 동봉 ON이면 클립보드에 명함 이미지 자동 복사)
+  useEffect(() => {
+    warmUpBusinessCardCache(getEffectiveBusinessCardDataUri(store.config));
+  }, [store.config.businessCardDataUri]);
+
   const triggerNativeSmsSend = async (
     lead: MarketingLeadItem,
     bodyText: string,
     includeBusinessCard: boolean
   ) => {
+    let copiedCardImg = false;
     if (includeBusinessCard) {
       const cardUri = getEffectiveBusinessCardDataUri(store.config);
-      const imgCopied = await copyBusinessCardImageToClipboard(cardUri);
-      if (imgCopied) {
+      copiedCardImg = await copyBusinessCardImageToClipboard(cardUri);
+      if (copiedCardImg) {
         showToast(
-          '🪪 명함 사진이 클립보드에 복사되었습니다! 문자창에서 붙여넣기(1터치)로 함께 전송하세요.'
+          '🪪 명함 이미지가 키보드 클립보드에 복사되었습니다! 문자 입력칸에서 붙여넣기 해주세요.'
         );
       } else {
         await safeCopyText(bodyText);
@@ -1021,6 +1028,11 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     }
 
     markLeadSmsSent(lead);
+
+    // 갤럭시·안드로이드 클립보드 데몬에 PNG 비트맵이 완전히 커밋되도록 짧은 여유 후 문자앱 전환
+    if (copiedCardImg) {
+      await new Promise((r) => setTimeout(r, 320));
+    }
 
     const cleanPhone = (lead.phone || '').replace(/[^0-9+]/g, '');
     const encoded = encodeURIComponent(bodyText);
@@ -1056,7 +1068,8 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   const handleQuickSendDefaultSms = async (lead: MarketingLeadItem) => {
     const rendered = getDefaultRenderedTextForLead(lead);
     const withCard = isCardAttachedForLead(lead);
-    if (withCard && store.config.businessCardSendMethod === 'share-sheet') {
+    const method = store.config.businessCardSendMethod || 'share-sheet';
+    if (withCard && method === 'share-sheet') {
       await triggerDirectFileShareWithCard(lead, rendered);
     } else {
       await triggerNativeSmsSend(lead, rendered, withCard);
@@ -2580,20 +2593,38 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                             </button>
 
                             {isCardAttachedForLead(lead) && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  triggerDirectFileShareWithCard(
-                                    lead,
-                                    getDefaultRenderedTextForLead(lead)
-                                  )
-                                }
-                                title="명함 이미지 파일과 문구를 MMS/카톡 공유창으로 직접 첨부하여 보냅니다 (전화번호 자동 복사)"
-                                className="px-2.5 py-1 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-800 dark:text-amber-200 border border-amber-400/40 text-[10.5px] font-black inline-flex items-center gap-1 cursor-pointer"
-                              >
-                                <Share2 className="w-3 h-3 shrink-0" />
-                                <span>MMS·카톡 명함파일 직접첨부</span>
-                              </button>
+                              (store.config.businessCardSendMethod || 'share-sheet') === 'share-sheet' ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    triggerNativeSmsSend(
+                                      lead,
+                                      getDefaultRenderedTextForLead(lead),
+                                      true
+                                    )
+                                  }
+                                  title="수신번호와 문구를 문자앱에 먼저 채우고 명함 사진은 키보드 클립보드에 복사합니다"
+                                  className="px-2.5 py-1 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-800 dark:text-amber-200 border border-amber-400/40 text-[10.5px] font-black inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Send className="w-3 h-3 shrink-0" />
+                                  <span>번호자동 문자앱(명함복사)</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    triggerDirectFileShareWithCard(
+                                      lead,
+                                      getDefaultRenderedTextForLead(lead)
+                                    )
+                                  }
+                                  title="명함 이미지 파일과 문구를 MMS/카톡 공유창으로 직접 첨부하여 보냅니다 (전화번호 자동 복사)"
+                                  className="px-2.5 py-1 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-800 dark:text-amber-200 border border-amber-400/40 text-[10.5px] font-black inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Share2 className="w-3 h-3 shrink-0" />
+                                  <span>MMS·카톡 명함파일 직접첨부</span>
+                                </button>
+                              )
                             )}
                           </div>
 
@@ -2949,19 +2980,19 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                       <div className="grid grid-cols-1 gap-1.5">
                         {[
                           {
-                            id: 'sms-clipboard' as const,
-                            label:
-                              '① 문자앱 바로열기 (수신번호·본문 자동입력 + 명함 클립보드 복사)',
-                          },
-                          {
                             id: 'share-sheet' as const,
                             label:
-                              '② 명함파일 직접첨부 공유창 (명함파일+본문 첨부 · 번호 자동복사)',
+                              '① 명함파일 직접첨부 공유창 (추천 · 명함사진+본문 자동첨부, 번호 자동복사)',
+                          },
+                          {
+                            id: 'sms-clipboard' as const,
+                            label:
+                              '② 문자앱 바로열기 (수신번호·본문 자동입력 + 명함 키보드 클립보드 복사)',
                           },
                         ].map((opt) => {
                           const active =
                             (store.config.businessCardSendMethod ||
-                              'sms-clipboard') === opt.id;
+                              'share-sheet') === opt.id;
                           return (
                             <button
                               key={opt.id}

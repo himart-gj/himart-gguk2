@@ -2,15 +2,25 @@ import React, { useEffect, useState } from 'react';
 import {
   Check,
   Copy,
+  Image as ImageIcon,
   MailOpen,
   MessageSquare,
   Send,
+  Share2,
   Smartphone,
   Sparkles,
   X,
 } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
 import { SMS_TEMPLATES } from '../data/mockData';
+import {
+  copyBusinessCardImageToClipboard,
+  getEffectiveBusinessCardDataUri,
+  isOwnerMarketingDbUnlocked,
+  loadMarketingDbStore,
+  shareBusinessCardFileWithText,
+  warmUpBusinessCardCache,
+} from '../../utils/marketingDbEngine';
 
 interface SMSModalProps {
   customer: CustomerItem | null;
@@ -28,6 +38,14 @@ export const SMSModal: React.FC<SMSModalProps> = ({
   );
   const [messageText, setMessageText] = useState<string>('');
   const [copied, setCopied] = useState(false);
+  const [includeOwnerCard, setIncludeOwnerCard] = useState<boolean>(true);
+  const [cardNotice, setCardNotice] = useState<string | null>(null);
+
+  const isOwnerDevice =
+    typeof window !== 'undefined' && isOwnerMarketingDbUnlocked();
+  const ownerCardDataUri = isOwnerDevice
+    ? getEffectiveBusinessCardDataUri(loadMarketingDbStore().config)
+    : '';
 
   useEffect(() => {
     if (customer) {
@@ -42,6 +60,10 @@ export const SMSModal: React.FC<SMSModalProps> = ({
         SMS_TEMPLATES.find((t) => t.id === defaultId) || SMS_TEMPLATES[0];
       setMessageText(tpl.generate(customer));
       setCopied(false);
+      setCardNotice(null);
+      if (isOwnerMarketingDbUnlocked()) {
+        warmUpBusinessCardCache();
+      }
     }
   }, [customer]);
 
@@ -80,9 +102,42 @@ export const SMSModal: React.FC<SMSModalProps> = ({
     messageText
   )}`;
 
+  const handleOpenSmsApp = async () => {
+    onMarkSent(customer.id);
+    if (isOwnerDevice && includeOwnerCard && ownerCardDataUri) {
+      const imgOk = await copyBusinessCardImageToClipboard(ownerCardDataUri);
+      if (imgOk) {
+        setCardNotice(
+          '🪪 명함 이미지가 키보드 클립보드에 복사되었습니다! 문자 입력칸에서 붙여넣기 해주세요.'
+        );
+        await new Promise((r) => setTimeout(r, 320));
+      }
+    }
+    window.location.href = smsHref;
+  };
+
+  const handleDirectShareWithBusinessCard = () => {
+    if (!ownerCardDataUri) return;
+    // 클릭 제스처(User Activation) 보존을 위해 await 없이 즉시 호출!
+    shareBusinessCardFileWithText({
+      dataUri: ownerCardDataUri,
+      bodyText: messageText,
+      customerPhone: customer.phone,
+    }).then((res) => {
+      if (res === 'shared') {
+        onMarkSent(customer.id);
+        setCardNotice(
+          `✅ 명함 사진+문구 공유창 전달 완료! (고객 번호 ${customer.phone} 자동 복사됨)`
+        );
+      } else if (res === 'unsupported') {
+        void handleOpenSmsApp();
+      }
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90dvh] modal-kb-safe">
+      <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92dvh] modal-kb-safe">
         {/* 헤더 */}
         <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -124,6 +179,45 @@ export const SMSModal: React.FC<SMSModalProps> = ({
 
         {/* 본문 */}
         <div className="p-5 overflow-y-auto space-y-4">
+          {cardNotice && (
+            <div className="p-3 rounded-2xl bg-indigo-950 text-amber-200 text-xs font-extrabold leading-relaxed">
+              {cardNotice}
+            </div>
+          )}
+
+          {/* 국지현 전용: 명함 사진 동봉 선택 바 (타 직원 기기 노출 0%) */}
+          {isOwnerDevice && ownerCardDataUri && (
+            <div className="p-3 rounded-2xl bg-indigo-50/90 border border-indigo-200 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <img
+                  src={ownerCardDataUri}
+                  alt="내 명함"
+                  className="w-16 h-auto rounded-lg border border-indigo-200 bg-white shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-xs font-black text-indigo-950 flex items-center gap-1">
+                    <ImageIcon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="truncate">내 명함 사진 함께 보내기</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-800/85 font-semibold leading-snug mt-0.5">
+                    [명함파일 직접첨부]를 누르면 사진+문구가 한번에 첨부되며 고객 번호는 자동 복사됩니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIncludeOwnerCard((v) => !v)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black shrink-0 cursor-pointer transition ${
+                  includeOwnerCard
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-white text-slate-600 border border-slate-300'
+                }`}
+              >
+                {includeOwnerCard ? '동봉 ON' : 'OFF'}
+              </button>
+            </div>
+          )}
+
           {/* 4가지 상황별 템플릿 탭 */}
           <div>
             <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-600 mb-2">
@@ -165,7 +259,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
             </div>
 
             <textarea
-              rows={11}
+              rows={9}
               value={messageText}
               onChange={(e) => setMessageText(e.target.value)}
               className="w-full p-3.5 rounded-2xl border border-slate-300 bg-slate-50/70 text-xs sm:text-sm text-slate-800 leading-relaxed font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -174,40 +268,55 @@ export const SMSModal: React.FC<SMSModalProps> = ({
         </div>
 
         {/* 하단 액션 버튼 */}
-        <div className="px-5 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={handleCopy}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
-              copied
-                ? 'bg-emerald-600 text-white border-emerald-600'
-                : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
-            }`}
-          >
-            {copied ? (
-              <>
-                <Check className="w-4 h-4" />
-                <span>클립보드 복사 완료! (카톡 붙여넣기)</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4 text-slate-600" />
-                <span>문구 복사 (카톡/PC 발송용)</span>
-              </>
-            )}
-          </button>
+        <div className="px-5 py-4 bg-slate-50 border-t border-slate-200 space-y-2">
+          {isOwnerDevice && includeOwnerCard && ownerCardDataUri && (
+            <button
+              type="button"
+              onClick={handleDirectShareWithBusinessCard}
+              className="w-full flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-black bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm transition cursor-pointer"
+            >
+              <Share2 className="w-4 h-4 shrink-0" />
+              <span>🪪 명함파일+문자 자동첨부 발송 (MMS·카톡 추천)</span>
+            </button>
+          )}
 
-          <a
-            href={smsHref}
-            onClick={() => {
-              onMarkSent(customer.id);
-            }}
-            className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs font-extrabold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition text-center"
-          >
-            <Smartphone className="w-4 h-4" />
-            <span>휴대폰 문자앱 바로 열기</span>
-            <Send className="w-3.5 h-3.5 ml-0.5" />
-          </a>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold border transition cursor-pointer ${
+                copied
+                  ? 'bg-emerald-600 text-white border-emerald-600'
+                  : 'bg-white hover:bg-slate-100 text-slate-800 border-slate-300'
+              }`}
+            >
+              {copied ? (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>클립보드 복사 완료!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 text-slate-600" />
+                  <span>문구만 복사</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenSmsApp}
+              className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition cursor-pointer"
+            >
+              <Smartphone className="w-4 h-4" />
+              <span>
+                {isOwnerDevice && includeOwnerCard
+                  ? '번호자동 문자앱 (명함복사)'
+                  : '휴대폰 문자앱 바로 열기'}
+              </span>
+              <Send className="w-3.5 h-3.5 ml-0.5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
