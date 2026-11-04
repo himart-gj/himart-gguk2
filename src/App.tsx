@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppStep,
   extractGeneralPlanData,
@@ -22,7 +22,6 @@ import {
 import { flushPendingOutbox, useOfflineSyncStatus } from './utils/offlineDbQueue';
 import {
   installLifecycleResumeAndUpdateGuard,
-  lazyWithRetry,
 } from './utils/mobileQaRuntime';
 
 import { PopPrinterApp } from './pop/PopPrinterApp';

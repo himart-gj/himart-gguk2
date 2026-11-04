@@ -143,8 +143,8 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   );
   const [mobileReadableMode, setMobileReadableMode] = useState<boolean>(true);
-  const useMobileFluid = isMobilePhone && mobileReadableMode && !isExporting && !embeddedSplitMode;
   const [isExporting, setIsExporting] = useState(false);
+  const useMobileFluid = isMobilePhone && mobileReadableMode && !isExporting && !embeddedSplitMode;
   const [exportingMode, setExportingMode] = useState<'full' | 'masked' | null>(null);
   const [isModelMasked, setIsModelMasked] = useState(false);
   const [tempMaskOverride, setTempMaskOverride] = useState<boolean | null>(null);
