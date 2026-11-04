@@ -142,6 +142,8 @@ export interface MarketingDbStore {
   leads: MarketingLeadItem[];
   deletedFingerprints: string[];
   config: MarketingDbConfig;
+  updatedAtMs?: number;
+  seedInitializedVersion?: number;
 }
 
 export interface HandoverStaffOption {
@@ -251,47 +253,90 @@ export function normalizeLeadDateTime(rawDate?: string | null): {
 } {
   const fallbackNow = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  const formatKst = (d: Date) => {
-    // KST (+09:00) 변환 보장
-    const utcMs = d.getTime() + d.getTimezoneOffset() * 60000;
-    const kst = new Date(utcMs + 9 * 3600 * 1000);
-    const yyyy = kst.getFullYear();
-    const mm = pad(kst.getMonth() + 1);
-    const dd = pad(kst.getDate());
-    const hh = pad(kst.getHours());
-    const mi = pad(kst.getMinutes());
+  const formatKstFromUtcMs = (utcEpochMs: number) => {
+    const kst = new Date(utcEpochMs + 9 * 3600 * 1000);
+    const yyyy = kst.getUTCFullYear();
+    const mm = pad(kst.getUTCMonth() + 1);
+    const dd = pad(kst.getUTCDate());
+    const hh = pad(kst.getUTCHours());
+    const mi = pad(kst.getUTCMinutes());
     return {
       createdAt: `${yyyy}-${mm}-${dd} ${hh}:${mi}`,
       yearMonth: `${yyyy}-${mm}`,
     };
   };
 
-  const s = String(rawDate || '').trim();
-  if (!s) return formatKst(fallbackNow);
+  const s = String(rawDate ?? '').trim();
+  if (!s) return formatKstFromUtcMs(fallbackNow.getTime());
 
-  // 이미 한국형 '2026-11-04 08:09' 또는 '2026. 11. 4. 오전 8:09' 형태인 경우
-  const korSimple = s.match(
-    /^(\d{4})[-./]\s*(\d{1,2})[-./]\s*(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2}))?/
+  // 1) 한국어 '2026. 11. 4. 오후 3:26' 또는 '2026-11-04 오전 8:09'
+  const korAmPm = s.match(
+    /^(\d{4})[-./\s]+(\d{1,2})[-./\s]+(\d{1,2})[.\s]*(?:(오전|오후)\s*)?(\d{1,2})?:?(\d{1,2})?/
   );
-  if (korSimple && !s.includes('T')) {
-    const yyyy = korSimple[1];
-    const mm = pad(Number(korSimple[2]));
-    const dd = pad(Number(korSimple[3]));
-    const hh = pad(Number(korSimple[4] || 0));
-    const mi = pad(Number(korSimple[5] || 0));
+  if (korAmPm && !s.includes('T')) {
+    const yyyy = korAmPm[1];
+    const mm = pad(Number(korAmPm[2]));
+    const dd = pad(Number(korAmPm[3]));
+    let hhNum = Number(korAmPm[5] || 0);
+    const ampm = korAmPm[4];
+    if (ampm === '오후' && hhNum < 12) hhNum += 12;
+    if (ampm === '오전' && hhNum === 12) hhNum = 0;
+    const hh = pad(hhNum);
+    const mi = pad(Number(korAmPm[6] || 0));
     return {
       createdAt: `${yyyy}-${mm}-${dd} ${hh}:${mi}`,
       yearMonth: `${yyyy}-${mm}`,
     };
   }
 
-  // ISO 타임스탬프 (예: 2026-11-03T18:09:39-05:00) -> 정확한 한국시간(KST)으로 자동 변환
-  const parsed = Date.parse(s);
-  if (Number.isFinite(parsed)) {
-    return formatKst(new Date(parsed));
+  // 2) SheetJS 미국식 '11/4/26 15:26' 또는 '11/04/2026 3:26 PM'
+  const usMatch = s.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{1,2})(?::\d{1,2})?(?:\s*(AM|PM))?)?$/i
+  );
+  if (usMatch) {
+    const rawYear = Number(usMatch[3]);
+    const yyyy = String(rawYear < 100 ? 2000 + rawYear : rawYear);
+    const mm = pad(Number(usMatch[1]));
+    const dd = pad(Number(usMatch[2]));
+    let hhNum = Number(usMatch[4] || 0);
+    const ampm = (usMatch[6] || '').toUpperCase();
+    if (ampm === 'PM' && hhNum < 12) hhNum += 12;
+    if (ampm === 'AM' && hhNum === 12) hhNum = 0;
+    const hh = pad(hhNum);
+    const mi = pad(Number(usMatch[5] || 0));
+    return {
+      createdAt: `${yyyy}-${mm}-${dd} ${hh}:${mi}`,
+      yearMonth: `${yyyy}-${mm}`,
+    };
   }
 
-  return formatKst(fallbackNow);
+  // 3) 엑셀 숫자 시리얼 (예: 46330.643)
+  if (/^\d{5}(?:\.\d+)?$/.test(s)) {
+    const serial = parseFloat(s);
+    if (serial > 40000 && serial < 60000) {
+      const utcDays = Math.floor(serial - 25569);
+      const frac = serial - Math.floor(serial);
+      const totalMinutes = Math.round(frac * 24 * 60);
+      const dObj = new Date(utcDays * 86400 * 1000);
+      const yyyy = dObj.getUTCFullYear();
+      const mm = pad(dObj.getUTCMonth() + 1);
+      const dd = pad(dObj.getUTCDate());
+      const hh = pad(Math.floor(totalMinutes / 60) % 24);
+      const mi = pad(totalMinutes % 60);
+      return {
+        createdAt: `${yyyy}-${mm}-${dd} ${hh}:${mi}`,
+        yearMonth: `${yyyy}-${mm}`,
+      };
+    }
+  }
+
+  // 4) ISO 타임스탬프 (예: 2026-11-03T18:09:39-05:00) -> KST(+09:00) 변환
+  const parsed = Date.parse(s);
+  if (Number.isFinite(parsed)) {
+    return formatKstFromUtcMs(parsed);
+  }
+
+  return formatKstFromUtcMs(fallbackNow.getTime());
 }
 
 export function cleanMetaFieldText(raw?: string | null): string {
@@ -625,6 +670,8 @@ function createInitialMarketingDbStore(): MarketingDbStore {
     version: 1,
     leads,
     deletedFingerprints: [],
+    updatedAtMs: 0,
+    seedInitializedVersion: 2,
     config: {
       gasWebAppUrl: '',
       sheetCsvOrShareUrl: DEFAULT_INSTA_SHEET_URL,
@@ -639,7 +686,247 @@ function createInitialMarketingDbStore(): MarketingDbStore {
   };
 }
 
-// ==================== 4. 로컬 + IndexedDB 영구 저장소 ====================
+// ==================== 4. 좀비/중복 원천 차단 지문(Tombstone) & 자가치유 저장소 ====================
+
+const BOGUS_META_SYSTEM_NAMES = new Set([
+  '새 잠재 고객 광고',
+  '새 잠재 고객 광고 세트',
+  '11월 리뉴얼 광고',
+  '인스타 고객',
+  '잠재 고객 광고',
+]);
+
+export function isBogusMetaSystemName(name?: string | null): boolean {
+  const n = String(name || '').trim();
+  if (!n) return true;
+  if (BOGUS_META_SYSTEM_NAMES.has(n)) return true;
+  if (n.startsWith('제목 없는 양식')) return true;
+  if (/^(ag|as|c|f|l):\d+$/i.test(n)) return true;
+  return false;
+}
+
+export function getCanonicalPhoneDigits(rawPhone?: string | null): string {
+  const norm = normalizeKoreanLeadPhone(rawPhone);
+  return norm.replace(/\D/g, '');
+}
+
+export function buildAllLeadTombstoneKeys(item: {
+  fingerprint?: string;
+  phone?: string;
+  customerName?: string;
+  createdAt?: string;
+  metaId?: string;
+}): string[] {
+  const keys = new Set<string>();
+  if (item.fingerprint && item.fingerprint.trim()) {
+    keys.add(item.fingerprint.trim());
+  }
+  if (item.metaId && item.metaId.trim()) {
+    keys.add(`meta_${item.metaId.trim()}`);
+  }
+  const digits = getCanonicalPhoneDigits(item.phone);
+  const date10 = String(item.createdAt || '').slice(0, 10).trim();
+  if (digits.length >= 7) {
+    // 전화번호 자체를 영구 차단 키로 등록하여 탭(한글탭/원본탭)·날짜·포맷이 달라도 100% 재부활 차단!
+    keys.add(`ph_any_${digits}`);
+    if (date10) {
+      keys.add(`ph_${digits}_${date10}`);
+      keys.add(`ph_${digits}__${date10}`);
+    }
+  } else {
+    const cleanName = String(item.customerName || '').trim().toLowerCase();
+    if (cleanName && !isBogusMetaSystemName(cleanName)) {
+      keys.add(`nm_any_${cleanName}`);
+      if (date10) {
+        keys.add(`nm_${cleanName}_${date10}`);
+      }
+    }
+  }
+  return Array.from(keys);
+}
+
+function buildExpandedTombstoneSet(
+  deletedFingerprints: string[],
+  trashedLeads: MarketingLeadItem[]
+): Set<string> {
+  const set = new Set<string>();
+  for (const rawFp of deletedFingerprints || []) {
+    if (!rawFp) continue;
+    set.add(rawFp);
+    // 기존에 저장된 'ph_01051745672_2026-11-01' 또는 'ph_01051745672__2026-11-01'에서 전화번호 추출
+    const phMatch = rawFp.match(/^ph_(\d{7,15})/);
+    if (phMatch?.[1]) {
+      const canon = getCanonicalPhoneDigits(phMatch[1]);
+      if (canon.length >= 7) {
+        set.add(`ph_any_${canon}`);
+      }
+    }
+  }
+  for (const tl of trashedLeads || []) {
+    for (const k of buildAllLeadTombstoneKeys(tl)) {
+      set.add(k);
+    }
+  }
+  return set;
+}
+
+const LEAD_STATUS_PRIORITY: Record<MarketingLeadStatus, number> = {
+  계약완료: 6,
+  타직원인계: 5,
+  상담진행중: 4,
+  무응답: 3,
+  문자전송: 2,
+  신규: 1,
+};
+
+function mergeTwoActiveLeads(a: MarketingLeadItem, b: MarketingLeadItem): MarketingLeadItem {
+  const rankA = LEAD_STATUS_PRIORITY[a.status] || 1;
+  const rankB = LEAD_STATUS_PRIORITY[b.status] || 1;
+  const primary = rankB > rankA ? b : a;
+  const secondary = primary === a ? b : a;
+
+  const realName = !isBogusMetaSystemName(primary.customerName)
+    ? primary.customerName
+    : !isBogusMetaSystemName(secondary.customerName)
+    ? secondary.customerName
+    : primary.customerName;
+
+  const handoverStaff = primary.handoverStaff || secondary.handoverStaff || '';
+  const mergedStatus = normalizeLeadStatusValue(
+    rankB > rankA ? b.status : a.status,
+    handoverStaff
+  );
+
+  return {
+    ...secondary,
+    ...primary,
+    customerName: realName,
+    phone: normalizeKoreanLeadPhone(primary.phone || secondary.phone),
+    fingerprint: primary.fingerprint.startsWith('meta_')
+      ? primary.fingerprint
+      : secondary.fingerprint.startsWith('meta_')
+      ? secondary.fingerprint
+      : primary.fingerprint,
+    status: mergedStatus,
+    handoverStaff,
+    handoverStaffRole: primary.handoverStaffRole || secondary.handoverStaffRole,
+    handoverAt: primary.handoverAt || secondary.handoverAt,
+    revenueAmount: Math.max(
+      Number(primary.revenueAmount) || 0,
+      Number(secondary.revenueAmount) || 0
+    ),
+    memo: primary.memo || secondary.memo || '',
+    smsSentAt: primary.smsSentAt || secondary.smsSentAt,
+    linkedCrmCustomerId: primary.linkedCrmCustomerId || secondary.linkedCrmCustomerId,
+    deletedAt: undefined,
+  };
+}
+
+/**
+ * [자가 치유 & 좀비 완벽 정화 엔진]
+ * 1) 메타 원본 탭 'ad_name' 오인식으로 생성됐던 '새 잠재 고객 광고' 유령 카드 즉시 제거·복원
+ * 2) 휴지통에 있는 고객(deletedAt)과 동일한 전화번호/지문의 활성 중복 카드를 100% 제거 (이중 노출 원천 차단)
+ * 3) 영구삭제된 차단 목록(deletedFingerprints)에 해당하는 부활 카드 100% 제거
+ * 4) 동일 전화번호 중복 카드를 진행단계·매출·인계정보 손실 없이 단일 카드로 통합
+ */
+export function sanitizeMarketingDbStore(rawStore: MarketingDbStore): MarketingDbStore {
+  const seedLookupByPhone = new Map<string, RawSeedRow>();
+  for (const sr of INITIAL_SHEET_SEED_ROWS) {
+    const d = getCanonicalPhoneDigits(sr.phone);
+    if (d) seedLookupByPhone.set(d, sr);
+  }
+
+  // 실제 고객명 사전 구축 (유령 카드 이름 복원용)
+  const realNameByPhone = new Map<string, string>();
+  for (const [d, sr] of seedLookupByPhone.entries()) {
+    if (!isBogusMetaSystemName(sr.name)) {
+      realNameByPhone.set(d, sr.name);
+    }
+  }
+  for (const l of rawStore.leads || []) {
+    if (!l) continue;
+    const d = getCanonicalPhoneDigits(l.phone);
+    if (d && !isBogusMetaSystemName(l.customerName)) {
+      realNameByPhone.set(d, l.customerName.trim());
+    }
+  }
+
+  const normalizedAll: MarketingLeadItem[] = [];
+  for (const rawLead of rawStore.leads || []) {
+    if (!rawLead) continue;
+    const phone = normalizeKoreanLeadPhone(rawLead.phone);
+    const digits = getCanonicalPhoneDigits(phone);
+    let customerName = String(rawLead.customerName || '').trim();
+    if (isBogusMetaSystemName(customerName)) {
+      const recovered = digits ? realNameByPhone.get(digits) : undefined;
+      if (recovered) {
+        customerName = recovered;
+      } else if (!digits) {
+        // 전화번호도 없고 이름도 광고 제목인 유령 데이터는 즉시 폐기
+        continue;
+      }
+    }
+    normalizedAll.push({
+      ...rawLead,
+      customerName: customerName || '인스타 상담고객',
+      phone,
+      status: normalizeLeadStatusValue((rawLead as any).status, rawLead.handoverStaff),
+    });
+  }
+
+  // 1) 휴지통 리드 중복 정리 (전화번호/지문 기준 1건만 유지)
+  const trashedMap = new Map<string, MarketingLeadItem>();
+  for (const l of normalizedAll) {
+    if (!l.deletedAt) continue;
+    const digits = getCanonicalPhoneDigits(l.phone);
+    const dedupKey = digits.length >= 7 ? `ph_${digits}` : `fp_${l.fingerprint}`;
+    const prev = trashedMap.get(dedupKey);
+    if (!prev || (l.deletedAt || 0) > (prev.deletedAt || 0)) {
+      trashedMap.set(dedupKey, l);
+    }
+  }
+  const cleanTrashed = Array.from(trashedMap.values());
+
+  // 2) 모든 차단 지문 세트 확장 (휴지통 보유분 + 영구삭제 지문)
+  const expandedTombstones = buildExpandedTombstoneSet(
+    rawStore.deletedFingerprints || [],
+    cleanTrashed
+  );
+
+  // 3) 활성 리드 정리: 차단 지문/휴지통과 겹치면 즉시 제거 + 동일 전화번호 단일 병합
+  const activeMap = new Map<string, MarketingLeadItem>();
+  for (const l of normalizedAll) {
+    if (l.deletedAt) continue;
+    const candidateKeys = buildAllLeadTombstoneKeys(l);
+    if (candidateKeys.some((k) => expandedTombstones.has(k))) {
+      // 휴지통에 있거나 영구삭제된 사람 -> 다른 탭에 절대 뜨지 않도록 즉시 제거!
+      continue;
+    }
+    const digits = getCanonicalPhoneDigits(l.phone);
+    const dedupKey =
+      digits.length >= 7
+        ? `ph_${digits}`
+        : `nm_${l.customerName.trim().toLowerCase()}_${(l.createdAt || '').slice(0, 10)}`;
+    const existing = activeMap.get(dedupKey);
+    if (!existing) {
+      activeMap.set(dedupKey, l);
+    } else {
+      activeMap.set(dedupKey, mergeTwoActiveLeads(existing, l));
+    }
+  }
+
+  const combinedLeads = [...Array.from(activeMap.values()), ...cleanTrashed].sort(
+    (a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')
+  );
+
+  return {
+    ...rawStore,
+    version: 1,
+    leads: combinedLeads,
+    deletedFingerprints: Array.from(expandedTombstones),
+    seedInitializedVersion: 2,
+  };
+}
 
 export function loadMarketingDbStore(): MarketingDbStore {
   const fallback = createInitialMarketingDbStore();
@@ -647,42 +934,21 @@ export function loadMarketingDbStore(): MarketingDbStore {
   try {
     const raw = localStorage.getItem(MARKETING_DB_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(fallback));
-      return fallback;
+      const cleanInit = sanitizeMarketingDbStore(fallback);
+      localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(cleanInit));
+      return cleanInit;
     }
     const parsed = JSON.parse(raw) as MarketingDbStore;
     if (!parsed || !Array.isArray(parsed.leads)) return fallback;
-    const migratedLeads = parsed.leads.map((l) => ({
-      ...l,
-      status: normalizeLeadStatusValue((l as any).status, l.handoverStaff),
-    }));
-    const deletedSet = new Set(
-      Array.isArray(parsed.deletedFingerprints) ? parsed.deletedFingerprints : []
-    );
-    const existingFpSet = new Set(migratedLeads.map((l) => l.fingerprint));
-    const existingPdSet = new Set(
-      migratedLeads
-        .filter((l) => l.phone)
-        .map((l) => `${l.phone.replace(/\D/g, '')}__${(l.createdAt || '').slice(0, 10)}`)
-    );
-    for (const seedLead of fallback.leads) {
-      const pdKey = `${seedLead.phone.replace(/\D/g, '')}__${(seedLead.createdAt || '').slice(0, 10)}`;
-      if (deletedSet.has(seedLead.fingerprint) || (seedLead.phone && deletedSet.has(`ph_${pdKey}`))) {
-        continue;
-      }
-      if (!existingFpSet.has(seedLead.fingerprint) && !(seedLead.phone && existingPdSet.has(pdKey))) {
-        migratedLeads.push(seedLead);
-        existingFpSet.add(seedLead.fingerprint);
-        if (seedLead.phone) existingPdSet.add(pdKey);
-      }
-    }
-    migratedLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-    return {
+
+    const baseStore: MarketingDbStore = {
       version: 1,
-      leads: migratedLeads,
+      leads: parsed.leads,
       deletedFingerprints: Array.isArray(parsed.deletedFingerprints)
         ? parsed.deletedFingerprints
         : [],
+      updatedAtMs: Number(parsed.updatedAtMs) || 0,
+      seedInitializedVersion: Number(parsed.seedInitializedVersion) || 0,
       config: {
         ...fallback.config,
         ...(parsed.config || {}),
@@ -709,35 +975,96 @@ export function loadMarketingDbStore(): MarketingDbStore {
             : DEFAULT_SMS_TEMPLATES,
       },
     };
+
+    // 최초 1회만 신규 시드(신정민·제이) 보강 후 seedInitializedVersion=2로 잠가서 영구삭제한 시드가 절대 재주입되지 않도록 보장!
+    if ((baseStore.seedInitializedVersion || 0) < 2) {
+      const preSanitized = sanitizeMarketingDbStore(baseStore);
+      const tombstones = buildExpandedTombstoneSet(
+        preSanitized.deletedFingerprints,
+        preSanitized.leads.filter((l) => Boolean(l.deletedAt))
+      );
+      const existingPhones = new Set(
+        preSanitized.leads.map((l) => getCanonicalPhoneDigits(l.phone)).filter(Boolean)
+      );
+      const nextLeads = [...preSanitized.leads];
+      for (const seedLead of fallback.leads) {
+        const sKeys = buildAllLeadTombstoneKeys(seedLead);
+        if (sKeys.some((k) => tombstones.has(k))) continue;
+        const sDigits = getCanonicalPhoneDigits(seedLead.phone);
+        if (sDigits && existingPhones.has(sDigits)) continue;
+        nextLeads.push(seedLead);
+        if (sDigits) existingPhones.add(sDigits);
+      }
+      const upgraded = sanitizeMarketingDbStore({
+        ...preSanitized,
+        leads: nextLeads,
+        seedInitializedVersion: 2,
+      });
+      try {
+        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(upgraded));
+      } catch {
+        // ignore quota
+      }
+      return upgraded;
+    }
+
+    const sanitized = sanitizeMarketingDbStore(baseStore);
+    if (
+      sanitized.leads.length !== parsed.leads.length ||
+      parsed.leads.some((l) => isBogusMetaSystemName(l?.customerName))
+    ) {
+      try {
+        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(sanitized));
+      } catch {
+        // ignore quota
+      }
+    }
+    return sanitized;
   } catch {
     return fallback;
   }
 }
 
 export async function hydrateMarketingDbStoreFromIdb(): Promise<MarketingDbStore> {
+  const hasLocalRaw =
+    typeof localStorage !== 'undefined' &&
+    Boolean(localStorage.getItem(MARKETING_DB_STORAGE_KEY));
   const local = loadMarketingDbStore();
   const idbVal = await idbMirrorGet<MarketingDbStore>(MARKETING_DB_STORAGE_KEY);
-  if (idbVal && Array.isArray(idbVal.leads) && idbVal.leads.length > local.leads.length) {
-    const normalizedIdb: MarketingDbStore = {
+  // 주의: 절대 leads.length 크기로 비교하지 않음! (삭제 시 개수가 줄어드는 것이 정상이므로 updatedAtMs 타임스탬프로만 비교)
+  if (
+    idbVal &&
+    Array.isArray(idbVal.leads) &&
+    (!hasLocalRaw || (Number(idbVal.updatedAtMs) || 0) > (Number(local.updatedAtMs) || 0))
+  ) {
+    const sanitizedIdb = sanitizeMarketingDbStore({
+      ...local,
       ...idbVal,
-      leads: idbVal.leads.map((l) => ({
-        ...l,
-        status: normalizeLeadStatusValue((l as any).status, l.handoverStaff),
-      })),
-    };
-    saveMarketingDbStore(normalizedIdb);
-    return normalizedIdb;
+      seedInitializedVersion: 2,
+    });
+    saveMarketingDbStore(sanitizedIdb, { preserveTimestamp: true });
+    return sanitizedIdb;
   }
   return local;
 }
 
-export function saveMarketingDbStore(next: MarketingDbStore): void {
+export function saveMarketingDbStore(
+  next: MarketingDbStore,
+  options?: { preserveTimestamp?: boolean }
+): void {
+  const sanitized = sanitizeMarketingDbStore({
+    ...next,
+    updatedAtMs: options?.preserveTimestamp
+      ? next.updatedAtMs || Date.now()
+      : Date.now(),
+    seedInitializedVersion: 2,
+  });
   try {
-    localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(sanitized));
   } catch {
     // ignore quota warning — mirrored to IndexedDB below
   }
-  idbMirrorSet(MARKETING_DB_STORAGE_KEY, next).catch(() => {});
+  idbMirrorSet(MARKETING_DB_STORAGE_KEY, sanitized).catch(() => {});
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(MARKETING_DB_UPDATED_EVENT));
   }
@@ -759,7 +1086,6 @@ export function loadHandoverStaffOptions(): HandoverStaffOption[] {
     const name = String(emp.name || '').trim();
     const role = String(emp.role || '').trim();
     if (!name || seen.has(name)) continue;
-    // '미화' 역할 및 이름에 '미화'가 포함된 항목 100% 제외, 본인(국지현)도 인계 대상에서 분리
     if (role.includes('미화') || name.includes('미화')) continue;
     if (name === '국지현') continue;
 
@@ -776,7 +1102,7 @@ export function loadHandoverStaffOptions(): HandoverStaffOption[] {
   return result;
 }
 
-// ==================== 6. 구글시트 CSV / JSON / 복붙 텍스트 지능형 파서 & 병합기 ====================
+// ==================== 6. 구글시트 CSV / XLSX / 복붙 지능형 파서 & 무충돌 병합기 ====================
 
 function parseCsvMatrix(text: string): string[][] {
   const rows: string[][] = [];
@@ -865,12 +1191,40 @@ export interface ParsedIncomingLead {
   initialMemo: string;
 }
 
+const META_SYSTEM_HEADERS = new Set([
+  'id',
+  'ad_id',
+  'ad_name',
+  'adset_id',
+  'adset_name',
+  'campaign_id',
+  'campaign_name',
+  'form_id',
+  'form_name',
+  'is_organic',
+  'lead_status',
+]);
+
 export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[] {
   if (!matrix || matrix.length < 2) return [];
-  const header = matrix[0].map((h) => h.trim().toLowerCase());
+  const header = matrix[0].map((h) => String(h ?? '').trim().toLowerCase());
 
-  const findCol = (keywords: string[]) =>
-    header.findIndex((h) => keywords.some((kw) => h.includes(kw)));
+  // 키워드 우선순위대로 ① 정확 일치 먼저 탐색 -> ② 시스템 열(ad_name 등)을 제외한 부분 일치 탐색!
+  const findCol = (keywords: string[], allowMetaSystem = false): number => {
+    for (const kw of keywords) {
+      const exactIdx = header.indexOf(kw);
+      if (exactIdx >= 0) return exactIdx;
+    }
+    for (const kw of keywords) {
+      const subIdx = header.findIndex((h) => {
+        if (!h) return false;
+        if (!allowMetaSystem && META_SYSTEM_HEADERS.has(h)) return false;
+        return h.includes(kw);
+      });
+      if (subIdx >= 0) return subIdx;
+    }
+    return -1;
+  };
 
   const isMetaRawTab =
     header.includes('full_name') ||
@@ -881,20 +1235,20 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
 
   if (isMetaRawTab) {
     const idIdx = header.indexOf('id');
-    const timeIdx = findCol(['created_time', '접수일시']);
-    const campIdx = findCol(['campaign_name', 'ad_name']);
-    const platIdx = findCol(['platform', '플랫폼']);
-    const nameIdx = findCol(['full_name', 'name', '고객명', '이름']);
-    const phoneIdx = findCol(['phone_number', 'phone', '연락처', '전화']);
-    const benefitIdx = findCol(['혜택', '품목', '관심', '궁금']);
-    const contactIdx = findCol(['방식', '안내', '상담']);
+    const timeIdx = findCol(['created_time', '접수일시'], true);
+    const campIdx = findCol(['campaign_name', 'ad_name'], true);
+    const platIdx = findCol(['platform', '플랫폼'], true);
+    const nameIdx = findCol(['full_name', '고객명', '성함', '이름', 'name'], false);
+    const phoneIdx = findCol(['phone_number', '연락처', '전화번호', '휴대폰', 'phone'], false);
+    const benefitIdx = findCol(['혜택', '품목', '관심', '궁금'], false);
+    const contactIdx = findCol(['방식', '안내', '상담'], false);
 
     for (let r = 1; r < matrix.length; r++) {
       const cols = matrix[r];
       const rawName = (nameIdx >= 0 ? cols[nameIdx] : '') || '';
       const rawPhone = (phoneIdx >= 0 ? cols[phoneIdx] : '') || '';
       const phone = normalizeKoreanLeadPhone(rawPhone);
-      if (!rawName.trim() && !phone) continue;
+      if ((!rawName.trim() || isBogusMetaSystemName(rawName)) && !phone) continue;
 
       const { createdAt, yearMonth } = normalizeLeadDateTime(
         timeIdx >= 0 ? cols[timeIdx] : ''
@@ -913,7 +1267,7 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
         metaId: idIdx >= 0 ? cols[idIdx] : undefined,
         createdAt,
         yearMonth,
-        customerName: rawName.trim() || '인스타 고객',
+        customerName: !isBogusMetaSystemName(rawName) ? rawName.trim() : '인스타 상담고객',
         phone,
         interestBenefit: benefit,
         preferredContact: contact,
@@ -925,10 +1279,16 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
     }
   } else {
     // ⭐한글_고객명부 또는 일반 한글 시트 구조
-    // 주의: '이사,혼수 세트가전(삼성,lg 오픈점 최대 지원)'처럼 따옴표 없는 쉼표가 섞인 CSV 행도 안전하게 복원!
+    // 빈 열 패딩 제거 후 실제 유효 헤더 길이 산출
+    let effectiveHeaderLen = header.length;
+    while (effectiveHeaderLen > 0 && !header[effectiveHeaderLen - 1]) {
+      effectiveHeaderLen--;
+    }
+    if (effectiveHeaderLen < 2) return [];
+
     const dateIdx = findCol(['접수일시', '일시', '날짜', 'date']);
-    const nameIdx = findCol(['고객명', '이름', '성함', 'name']);
-    const phoneIdx = findCol(['연락처', '전화', '휴대폰', 'phone']);
+    const nameIdx = findCol(['고객명', '이름', '성함', 'full_name', 'name']);
+    const phoneIdx = findCol(['연락처', '전화번호', '전화', '휴대폰', 'phone']);
     const benefitIdx = findCol(['혜택', '품목', '관심', '문의']);
     const contactIdx = findCol(['방식', '안내']);
     const platIdx = findCol(['플랫폼', '채널', '유입']);
@@ -936,15 +1296,20 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
     const memoIdx = findCol(['진행 메모', '메모', '비고']);
 
     for (let r = 1; r < matrix.length; r++) {
-      const cols = matrix[r];
+      const rawCols = matrix[r];
+      let effectiveColLen = rawCols.length;
+      while (effectiveColLen > effectiveHeaderLen && !String(rawCols[effectiveColLen - 1] || '').trim()) {
+        effectiveColLen--;
+      }
+      const cols = rawCols.slice(0, Math.max(effectiveHeaderLen, effectiveColLen));
+
       const rawDate = dateIdx >= 0 ? cols[dateIdx] : cols[0] || '';
       const rawName = nameIdx >= 0 ? cols[nameIdx] : cols[1] || '';
       const rawPhone = phoneIdx >= 0 ? cols[phoneIdx] : cols[2] || '';
       const phone = normalizeKoreanLeadPhone(rawPhone);
-      if (!rawName.trim() && !phone) continue;
+      if ((!rawName.trim() || isBogusMetaSystemName(rawName)) && !phone) continue;
 
-      // 만약 쉼표 때문에 열 개수가 헤더(8열)보다 늘어난 경우 가운데(혜택 열)를 자연스럽게 합침
-      const extraCols = Math.max(0, cols.length - header.length);
+      const extraCols = Math.max(0, cols.length - effectiveHeaderLen);
       const rawBenefit =
         benefitIdx >= 0
           ? cols.slice(benefitIdx, benefitIdx + 1 + extraCols).join(', ')
@@ -962,7 +1327,7 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
       out.push({
         createdAt,
         yearMonth,
-        customerName: rawName.trim() || '인스타 고객',
+        customerName: !isBogusMetaSystemName(rawName) ? rawName.trim() : '인스타 상담고객',
         phone,
         interestBenefit: cleanMetaFieldText(rawBenefit),
         preferredContact: cleanMetaFieldText(rawContact),
@@ -984,22 +1349,32 @@ export function mergeIncomingLeadsIntoStore(
   addedCount: number;
   updatedCount: number;
 } {
-  const deletedSet = new Set(store.deletedFingerprints || []);
-  const existingByFp = new Map<string, MarketingLeadItem>();
-  const existingByPhoneDate = new Map<string, MarketingLeadItem>();
-  const existingByNameMinute = new Map<string, MarketingLeadItem>();
+  const cleanBase = sanitizeMarketingDbStore(store);
+  const trashedList = cleanBase.leads.filter((l) => Boolean(l.deletedAt));
+  const tombstoneSet = buildExpandedTombstoneSet(
+    cleanBase.deletedFingerprints || [],
+    trashedList
+  );
 
-  for (const lead of store.leads) {
+  const existingByFp = new Map<string, MarketingLeadItem>();
+  const existingByPhone = new Map<string, MarketingLeadItem>();
+  const existingByNameDate = new Map<string, MarketingLeadItem>();
+
+  for (const lead of cleanBase.leads) {
     existingByFp.set(lead.fingerprint, lead);
-    const pdKey = `${lead.phone.replace(/\D/g, '')}__${lead.createdAt.slice(0, 10)}`;
-    if (lead.phone) existingByPhoneDate.set(pdKey, lead);
-    const nmKey = `${lead.customerName.trim().toLowerCase()}__${lead.createdAt.slice(0, 15)}`;
-    if (lead.customerName.trim()) existingByNameMinute.set(nmKey, lead);
+    const digits = getCanonicalPhoneDigits(lead.phone);
+    if (digits.length >= 7) {
+      existingByPhone.set(digits, lead);
+    }
+    const nmKey = `${lead.customerName.trim().toLowerCase()}__${lead.createdAt.slice(0, 10)}`;
+    if (lead.customerName.trim() && !isBogusMetaSystemName(lead.customerName)) {
+      existingByNameDate.set(nmKey, lead);
+    }
   }
 
   let addedCount = 0;
   let updatedCount = 0;
-  const mergedList = [...store.leads];
+  const mergedList = [...cleanBase.leads];
 
   for (const inc of incoming) {
     const fp = makeLeadFingerprint(
@@ -1008,18 +1383,28 @@ export function mergeIncomingLeadsIntoStore(
       inc.createdAt,
       inc.metaId
     );
-    const pdKey = `${inc.phone.replace(/\D/g, '')}__${inc.createdAt.slice(0, 10)}`;
+    const incKeys = buildAllLeadTombstoneKeys({
+      fingerprint: fp,
+      phone: inc.phone,
+      customerName: inc.customerName,
+      createdAt: inc.createdAt,
+      metaId: inc.metaId,
+    });
 
-    // 사용자가 앱에서 삭제한 고객이면 시트에 남아있어도 절대 다시 부활시키지 않음
-    if (deletedSet.has(fp) || (inc.phone && deletedSet.has(`ph_${pdKey}`))) {
+    // 휴지통에 있거나 영구삭제된 고객이면 어떤 탭(한글탭/원본탭)에서 읽히든 100% 재부활 차단!
+    if (incKeys.some((k) => tombstoneSet.has(k))) {
       continue;
     }
 
-    const nmKey = `${inc.customerName.trim().toLowerCase()}__${inc.createdAt.slice(0, 15)}`;
+    const digits = getCanonicalPhoneDigits(inc.phone);
+    const nmKey = `${inc.customerName.trim().toLowerCase()}__${inc.createdAt.slice(0, 10)}`;
+
     const matched =
       existingByFp.get(fp) ||
-      (inc.phone ? existingByPhoneDate.get(pdKey) : undefined) ||
-      (inc.customerName.trim() ? existingByNameMinute.get(nmKey) : undefined);
+      (digits.length >= 7 ? existingByPhone.get(digits) : undefined) ||
+      (!isBogusMetaSystemName(inc.customerName)
+        ? existingByNameDate.get(nmKey)
+        : undefined);
 
     const freshSummary = buildLeadAutoSummary({
       interestBenefit: inc.interestBenefit,
@@ -1035,7 +1420,7 @@ export function mergeIncomingLeadsIntoStore(
         createdAt: inc.createdAt,
         yearMonth: inc.yearMonth,
         customerName: inc.customerName,
-        phone: inc.phone,
+        phone: normalizeKoreanLeadPhone(inc.phone),
         interestBenefit: inc.interestBenefit,
         preferredContact: inc.preferredContact,
         platform: inc.platform || '인스타그램',
@@ -1048,24 +1433,29 @@ export function mergeIncomingLeadsIntoStore(
       };
       mergedList.push(createdItem);
       existingByFp.set(fp, createdItem);
-      if (inc.phone) existingByPhoneDate.set(pdKey, createdItem);
-      if (inc.customerName.trim()) existingByNameMinute.set(nmKey, createdItem);
+      if (digits.length >= 7) existingByPhone.set(digits, createdItem);
+      if (!isBogusMetaSystemName(createdItem.customerName)) {
+        existingByNameDate.set(nmKey, createdItem);
+      }
       addedCount++;
     } else if (!matched.deletedAt) {
-      // 시트에서 추가 메모나 항목이 보강된 경우 기존 앱 상태(매출·인계·진행단계)는 보존하면서 요약만 최신화
       let changed = false;
       const idx = mergedList.findIndex((x) => x.id === matched.id);
       if (idx >= 0) {
         const nextItem = { ...mergedList[idx] };
+        if (
+          isBogusMetaSystemName(nextItem.customerName) &&
+          !isBogusMetaSystemName(inc.customerName)
+        ) {
+          nextItem.customerName = inc.customerName;
+          changed = true;
+        }
         if (!nextItem.interestBenefit && inc.interestBenefit) {
           nextItem.interestBenefit = inc.interestBenefit;
           nextItem.autoSummary = freshSummary;
           changed = true;
         }
-        if (
-          nextItem.status === '신규' &&
-          inc.initialStatus !== '신규'
-        ) {
+        if (nextItem.status === '신규' && inc.initialStatus !== '신규') {
           nextItem.status = inc.initialStatus;
           changed = true;
         }
@@ -1075,14 +1465,12 @@ export function mergeIncomingLeadsIntoStore(
         }
         if (changed) {
           mergedList[idx] = nextItem;
+          if (digits.length >= 7) existingByPhone.set(digits, nextItem);
           updatedCount++;
         }
       }
     }
   }
-
-  // 최신 접수일시 순 정렬
-  mergedList.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   const now = new Date();
   const syncStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
@@ -1092,15 +1480,17 @@ export function mergeIncomingLeadsIntoStore(
     now.getHours()
   ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  return {
-    nextStore: {
-      ...store,
-      leads: mergedList,
-      config: {
-        ...store.config,
-        lastSyncedAt: syncStamp,
-      },
+  const finalized = sanitizeMarketingDbStore({
+    ...cleanBase,
+    leads: mergedList,
+    config: {
+      ...cleanBase.config,
+      lastSyncedAt: syncStamp,
     },
+  });
+
+  return {
+    nextStore: finalized,
     addedCount,
     updatedCount,
   };
@@ -1119,11 +1509,20 @@ export function importLeadsFromRawText(
   return mergeIncomingLeadsIntoStore(store, incoming);
 }
 
+// 동시 네트워크 요청 충돌(Race Condition) 원천 차단용 단일 실행 락
+let inFlightGoogleSheetSync: Promise<{
+  ok: boolean;
+  nextStore: MarketingDbStore;
+  addedCount: number;
+  updatedCount: number;
+  message: string;
+}> | null = null;
+
 /**
- * 실시간 구글시트 동기화 실행 (1순위: 전용 Apps Script 웹앱 / 2순위: 게시된 CSV 또는 공유 시트 URL)
+ * 실시간 구글시트 동기화 실행 (동시 실행 락 + 네트워크 응답 직후 최신 로컬 상태 재조회로 사용자 삭제/수정 덮어쓰기 0% 보장!)
  */
 export async function syncLeadsFromGoogleSheet(
-  store: MarketingDbStore
+  storeSnapshot?: MarketingDbStore
 ): Promise<{
   ok: boolean;
   nextStore: MarketingDbStore;
@@ -1131,200 +1530,188 @@ export async function syncLeadsFromGoogleSheet(
   updatedCount: number;
   message: string;
 }> {
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return {
-      ok: false,
-      nextStore: store,
-      addedCount: 0,
-      updatedCount: 0,
-      message:
-        '현재 오프라인(네트워크 끊김) 상태입니다. 변경하신 내역은 기기에 안전하게 자동 보관되며 인터넷 연결 후 동기화됩니다.',
-    };
+  if (inFlightGoogleSheetSync) {
+    return inFlightGoogleSheetSync;
   }
-  const gasUrl = (store.config.gasWebAppUrl || '').trim();
 
-  // 1순위: 비공개 시트 보안 유지 + 전 탭 자동 스캔이 가능한 Apps Script Web App URL
-  if (gasUrl && /^https?:\/\//i.test(gasUrl)) {
-    try {
-      const sep = gasUrl.includes('?') ? '&' : '?';
-      const res = await fetch(`${gasUrl}${sep}action=syncLeads&_t=${Date.now()}`);
-      if (res.ok) {
-        const data = await res.json();
-        let allIncoming: ParsedIncomingLead[] = [];
-        if (Array.isArray(data?.sheets)) {
-          for (const sh of data.sheets) {
-            if (Array.isArray(sh?.rows)) {
-              const strMatrix = sh.rows.map((r: any[]) =>
-                r.map((cell) => String(cell ?? ''))
-              );
-              allIncoming = allIncoming.concat(extractLeadsFromMatrix(strMatrix));
-            }
-          }
-        } else if (Array.isArray(data?.rows)) {
-          const strMatrix = data.rows.map((r: any[]) =>
-            r.map((cell) => String(cell ?? ''))
-          );
-          allIncoming = extractLeadsFromMatrix(strMatrix);
-        }
-
-        // 클라우드 백업 상태가 있으면 로컬과 스마트 병합
-        let workingStore = store;
-        if (data?.backupState && Array.isArray(data.backupState.leads)) {
-          const cloudMap = new Map<string, MarketingLeadItem>();
-          for (const cl of data.backupState.leads as MarketingLeadItem[]) {
-            if (cl?.fingerprint) cloudMap.set(cl.fingerprint, cl);
-          }
-          const combinedDeleted = Array.from(
-            new Set([
-              ...(store.deletedFingerprints || []),
-              ...(data.backupState.deletedFingerprints || []),
-            ])
-          );
-          const mergedLocal = store.leads.map((loc) => {
-            const cl = cloudMap.get(loc.fingerprint);
-            if (!cl) return loc;
-            return {
-              ...loc,
-              status: loc.status !== '신규' ? normalizeLeadStatusValue(loc.status, loc.handoverStaff || cl.handoverStaff) : normalizeLeadStatusValue(cl.status, loc.handoverStaff || cl.handoverStaff),
-              revenueAmount: loc.revenueAmount || cl.revenueAmount || 0,
-              handoverStaff: loc.handoverStaff || cl.handoverStaff || '',
-              handoverStaffRole: loc.handoverStaffRole || cl.handoverStaffRole,
-              memo: loc.memo || cl.memo || '',
-              linkedCrmCustomerId:
-                loc.linkedCrmCustomerId || cl.linkedCrmCustomerId,
-            };
-          });
-          workingStore = {
-            ...store,
-            leads: mergedLocal,
-            deletedFingerprints: combinedDeleted,
-          };
-        }
-
-        const merged = mergeIncomingLeadsIntoStore(workingStore, allIncoming);
-        merged.nextStore.config.lastSyncStatus = 'connected';
-        saveMarketingDbStore(merged.nextStore);
-        return {
-          ok: true,
-          ...merged,
-          message:
-            merged.addedCount > 0
-              ? `신규 인스타 DB ${merged.addedCount}건이 자동 요약되어 추가되었습니다!`
-              : '시트와 최신 상태로 동기화되었습니다 (신규 추가 0건).',
-        };
-      }
-    } catch {
-      // 폴백으로 진행
+  const runSync = async () => {
+    const initialStore = storeSnapshot || loadMarketingDbStore();
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return {
+        ok: false,
+        nextStore: loadMarketingDbStore(),
+        addedCount: 0,
+        updatedCount: 0,
+        message:
+          '현재 오프라인(네트워크 끊김) 상태입니다. 변경하신 내역은 기기에 안전하게 자동 보관되며 인터넷 연결 후 동기화됩니다.',
+      };
     }
-  }
 
-  // 2순위: 인스타 DB 구글시트(DEFAULT_INSTA_SHEET_ID 또는 사용자 지정 링크/웹에 게시 주소) 전 탭 실시간 직접 읽기
-  const rawUrl = (store.config.sheetCsvOrShareUrl || DEFAULT_INSTA_SHEET_URL).trim();
-  if (rawUrl) {
-    // 2-A) '웹에 게시(/pub)' 링크인 경우 CSV 즉시 수신
-    if (rawUrl.includes('/pub?') || rawUrl.includes('/pubhtml') || rawUrl.endsWith('/pub')) {
-      let pubTarget = rawUrl
-        .replace('/pubhtml', '/pub')
-        .replace(/output=[a-z]+/i, 'output=csv');
-      if (!pubTarget.includes('output=csv')) {
-        pubTarget += (pubTarget.includes('?') ? '&' : '?') + 'output=csv';
-      }
+    const gasUrl = (initialStore.config.gasWebAppUrl || '').trim();
+
+    // 1순위: Apps Script Web App URL
+    if (gasUrl && /^https?:\/\//i.test(gasUrl)) {
       try {
-        const res = await fetch(`${pubTarget}${pubTarget.includes('?') ? '&' : '?'}_t=${Date.now()}`, {
+        const sep = gasUrl.includes('?') ? '&' : '?';
+        const res = await fetch(`${gasUrl}${sep}action=syncLeads&_t=${Date.now()}`, {
           cache: 'no-store',
         });
         if (res.ok) {
-          const text = await res.text();
-          if (
-            text &&
-            !text.trim().toLowerCase().startsWith('<!doctype') &&
-            !text.trim().toLowerCase().startsWith('<html') &&
-            !text.includes('accounts.google.com')
-          ) {
-            const merged = importLeadsFromRawText(store, text);
-            merged.nextStore.config.lastSyncStatus = 'connected';
-            saveMarketingDbStore(merged.nextStore);
-            return {
-              ok: true,
-              ...merged,
-              message:
-                merged.addedCount > 0
-                  ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건을 자동 반영했습니다!`
-                  : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
-            };
-          }
-        }
-      } catch {
-        // 다음 후보 엔드포인트 시도
-      }
-    }
-
-    // 2-B) 표준 구글시트 ID 추출 후 ① 전체 탭 XLSX 추출 -> ② CSV export -> ③ gviz CSV 순서로 자동 시도
-    const idMatch = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{15,})/);
-    const sheetId = idMatch ? idMatch[1] : DEFAULT_INSTA_SHEET_ID;
-    const gidMatch = rawUrl.match(/[?#&]gid=(\d+)/);
-    const gidSuffix = gidMatch?.[1] ? `&gid=${gidMatch[1]}` : '';
-
-    // ① 전 탭(⭐한글_고객명부 + 메타 광고 원본 탭 전체) XLSX 무손실 스캔
-    try {
-      const xlsxRes = await fetch(
-        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&_t=${Date.now()}`,
-        { cache: 'no-store' }
-      );
-      const ct = (xlsxRes.headers.get('content-type') || '').toLowerCase();
-      if (xlsxRes.ok && !ct.includes('text/html')) {
-        const buf = await xlsxRes.arrayBuffer();
-        if (buf.byteLength > 200) {
-          const wb = XLSX.read(buf, { type: 'array' });
+          const data = await res.json();
           let allIncoming: ParsedIncomingLead[] = [];
-          for (const sheetName of wb.SheetNames) {
-            if (sheetName === '_앱DB관리백업') continue;
-            const sh = wb.Sheets[sheetName];
-            if (!sh) continue;
-            const rows: any[][] = XLSX.utils.sheet_to_json(sh, {
-              header: 1,
-              raw: false,
-              defval: '',
-            });
-            const strMatrix = rows.map((r) => r.map((c) => String(c ?? '').trim()));
-            allIncoming = allIncoming.concat(extractLeadsFromMatrix(strMatrix));
+          if (Array.isArray(data?.sheets)) {
+            for (const sh of data.sheets) {
+              if (Array.isArray(sh?.rows)) {
+                const strMatrix = sh.rows.map((r: any[]) =>
+                  r.map((cell) => String(cell ?? ''))
+                );
+                allIncoming = allIncoming.concat(extractLeadsFromMatrix(strMatrix));
+              }
+            }
+          } else if (Array.isArray(data?.rows)) {
+            const strMatrix = data.rows.map((r: any[]) =>
+              r.map((cell) => String(cell ?? ''))
+            );
+            allIncoming = extractLeadsFromMatrix(strMatrix);
           }
-          const merged = mergeIncomingLeadsIntoStore(store, allIncoming);
+
+          // 네트워크 대기 중 사용자가 휴지통 이동·상태 변경한 최신 상태를 즉시 다시 읽어와 절대 덮어쓰지 않음!
+          let workingStore = loadMarketingDbStore();
+          if (data?.backupState && Array.isArray(data.backupState.leads)) {
+            const cloudMap = new Map<string, MarketingLeadItem>();
+            for (const cl of data.backupState.leads as MarketingLeadItem[]) {
+              if (cl?.fingerprint) cloudMap.set(cl.fingerprint, cl);
+            }
+            const combinedDeleted = Array.from(
+              new Set([
+                ...(workingStore.deletedFingerprints || []),
+                ...(data.backupState.deletedFingerprints || []),
+              ])
+            );
+            const mergedLocal = workingStore.leads.map((loc) => {
+              const cl = cloudMap.get(loc.fingerprint);
+              if (!cl) return loc;
+              if (loc.deletedAt) return loc;
+              return {
+                ...loc,
+                deletedAt: loc.deletedAt || cl.deletedAt,
+                status:
+                  loc.status !== '신규'
+                    ? normalizeLeadStatusValue(
+                        loc.status,
+                        loc.handoverStaff || cl.handoverStaff
+                      )
+                    : normalizeLeadStatusValue(
+                        cl.status,
+                        loc.handoverStaff || cl.handoverStaff
+                      ),
+                revenueAmount: loc.revenueAmount || cl.revenueAmount || 0,
+                handoverStaff: loc.handoverStaff || cl.handoverStaff || '',
+                handoverStaffRole: loc.handoverStaffRole || cl.handoverStaffRole,
+                memo: loc.memo || cl.memo || '',
+                linkedCrmCustomerId:
+                  loc.linkedCrmCustomerId || cl.linkedCrmCustomerId,
+              };
+            });
+            workingStore = sanitizeMarketingDbStore({
+              ...workingStore,
+              leads: mergedLocal,
+              deletedFingerprints: combinedDeleted,
+            });
+          }
+
+          const merged = mergeIncomingLeadsIntoStore(workingStore, allIncoming);
           merged.nextStore.config.lastSyncStatus = 'connected';
-          saveMarketingDbStore(merged.nextStore);
+          saveMarketingDbStore(merged.nextStore, { preserveTimestamp: true });
           return {
             ok: true,
             ...merged,
             message:
               merged.addedCount > 0
-                ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건이 자동 추가되었습니다!`
-                : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
+                ? `신규 인스타 DB ${merged.addedCount}건이 자동 요약되어 추가되었습니다!`
+                : '시트와 최신 상태로 동기화되었습니다 (신규 추가 0건).',
           };
         }
+      } catch {
+        // 폴백으로 진행
       }
-    } catch {
-      // CSV 폴백으로 진행
     }
 
-    // ② CSV 엔드포인트 2종 폴백
-    for (const csvUrl of [
-      `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gidSuffix}&_t=${Date.now()}`,
-      `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidSuffix}&_t=${Date.now()}`,
-    ]) {
+    // 2순위: 인스타 DB 구글시트 직접 읽기
+    const rawUrl = (initialStore.config.sheetCsvOrShareUrl || DEFAULT_INSTA_SHEET_URL).trim();
+    if (rawUrl) {
+      if (rawUrl.includes('/pub?') || rawUrl.includes('/pubhtml') || rawUrl.endsWith('/pub')) {
+        let pubTarget = rawUrl
+          .replace('/pubhtml', '/pub')
+          .replace(/output=[a-z]+/i, 'output=csv');
+        if (!pubTarget.includes('output=csv')) {
+          pubTarget += (pubTarget.includes('?') ? '&' : '?') + 'output=csv';
+        }
+        try {
+          const res = await fetch(`${pubTarget}${pubTarget.includes('?') ? '&' : '?'}_t=${Date.now()}`, {
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const text = await res.text();
+            if (
+              text &&
+              !text.trim().toLowerCase().startsWith('<!doctype') &&
+              !text.trim().toLowerCase().startsWith('<html') &&
+              !text.includes('accounts.google.com')
+            ) {
+              const latestStore = loadMarketingDbStore();
+              const merged = importLeadsFromRawText(latestStore, text);
+              merged.nextStore.config.lastSyncStatus = 'connected';
+              saveMarketingDbStore(merged.nextStore, { preserveTimestamp: true });
+              return {
+                ok: true,
+                ...merged,
+                message:
+                  merged.addedCount > 0
+                    ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건을 자동 반영했습니다!`
+                    : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
+              };
+            }
+          }
+        } catch {
+          // 다음 후보 엔드포인트 시도
+        }
+      }
+
+      const idMatch = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{15,})/);
+      const sheetId = idMatch ? idMatch[1] : DEFAULT_INSTA_SHEET_ID;
+      const gidMatch = rawUrl.match(/[?#&]gid=(\d+)/);
+      const gidSuffix = gidMatch?.[1] ? `&gid=${gidMatch[1]}` : '';
+
+      // ① 전 탭(⭐한글_고객명부 + 메타 원본 탭) XLSX 무손실 스캔
       try {
-        const res = await fetch(csvUrl, { cache: 'no-store' });
-        const ct = (res.headers.get('content-type') || '').toLowerCase();
-        if (res.ok && !ct.includes('text/html')) {
-          const text = await res.text();
-          if (
-            text &&
-            !text.trim().toLowerCase().startsWith('<!doctype') &&
-            !text.trim().toLowerCase().startsWith('<html') &&
-            !text.includes('accounts.google.com')
-          ) {
-            const merged = importLeadsFromRawText(store, text);
+        const xlsxRes = await fetch(
+          `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&_t=${Date.now()}`,
+          { cache: 'no-store' }
+        );
+        const ct = (xlsxRes.headers.get('content-type') || '').toLowerCase();
+        if (xlsxRes.ok && !ct.includes('text/html')) {
+          const buf = await xlsxRes.arrayBuffer();
+          if (buf.byteLength > 200) {
+            const wb = XLSX.read(buf, { type: 'array' });
+            let allIncoming: ParsedIncomingLead[] = [];
+            for (const sheetName of wb.SheetNames) {
+              if (sheetName === '_앱DB관리백업') continue;
+              const sh = wb.Sheets[sheetName];
+              if (!sh) continue;
+              const rows: any[][] = XLSX.utils.sheet_to_json(sh, {
+                header: 1,
+                raw: false,
+                defval: '',
+              });
+              const strMatrix = rows.map((r) => r.map((c) => String(c ?? '').trim()));
+              allIncoming = allIncoming.concat(extractLeadsFromMatrix(strMatrix));
+            }
+            // 반드시 네트워크 완료 직후 최신 로컬 저장소를 읽어 병합!
+            const latestStore = loadMarketingDbStore();
+            const merged = mergeIncomingLeadsIntoStore(latestStore, allIncoming);
             merged.nextStore.config.lastSyncStatus = 'connected';
-            saveMarketingDbStore(merged.nextStore);
+            saveMarketingDbStore(merged.nextStore, { preserveTimestamp: true });
             return {
               ok: true,
               ...merged,
@@ -1336,28 +1723,69 @@ export async function syncLeadsFromGoogleSheet(
           }
         }
       } catch {
-        // 비공개 시트 차단 시 아래 안내 반환
+        // CSV 폴백으로 진행
+      }
+
+      // ② CSV 엔드포인트 2종 폴백
+      for (const csvUrl of [
+        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gidSuffix}&_t=${Date.now()}`,
+        `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidSuffix}&_t=${Date.now()}`,
+      ]) {
+        try {
+          const res = await fetch(csvUrl, { cache: 'no-store' });
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (res.ok && !ct.includes('text/html')) {
+            const text = await res.text();
+            if (
+              text &&
+              !text.trim().toLowerCase().startsWith('<!doctype') &&
+              !text.trim().toLowerCase().startsWith('<html') &&
+              !text.includes('accounts.google.com')
+            ) {
+              const latestStore = loadMarketingDbStore();
+              const merged = importLeadsFromRawText(latestStore, text);
+              merged.nextStore.config.lastSyncStatus = 'connected';
+              saveMarketingDbStore(merged.nextStore, { preserveTimestamp: true });
+              return {
+                ok: true,
+                ...merged,
+                message:
+                  merged.addedCount > 0
+                    ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건이 자동 추가되었습니다!`
+                    : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
+              };
+            }
+          }
+        } catch {
+          // 비공개 시트 차단 시 아래 안내 반환
+        }
       }
     }
-  }
 
-  const lockedStore: MarketingDbStore = {
-    ...store,
-    config: {
-      ...store.config,
-      lastSyncStatus: 'locked',
-    },
-  };
-  saveMarketingDbStore(lockedStore);
+    const latestForLock = loadMarketingDbStore();
+    const lockedStore: MarketingDbStore = {
+      ...latestForLock,
+      config: {
+        ...latestForLock.config,
+        lastSyncStatus: 'locked',
+      },
+    };
+    saveMarketingDbStore(lockedStore, { preserveTimestamp: true });
 
-  return {
-    ok: false,
-    nextStore: lockedStore,
-    addedCount: 0,
-    updatedCount: 0,
-    message:
-      '구글시트가 아직 [제한됨(나만 보기)] 상태입니다. 시트에서 [공유 → 링크가 있는 모든 사용자(뷰어)]를 1회만 켜주시거나 전용 Apps Script 주소를 연결하면 즉시 실시간 자동연동됩니다!',
+    return {
+      ok: false,
+      nextStore: lockedStore,
+      addedCount: 0,
+      updatedCount: 0,
+      message:
+        '구글시트가 아직 [제한됨(나만 보기)] 상태입니다. 시트에서 [공유 → 링크가 있는 모든 사용자(뷰어)]를 1회만 켜주시거나 전용 Apps Script 주소를 연결하면 즉시 실시간 자동연동됩니다!',
+    };
   };
+
+  inFlightGoogleSheetSync = runSync().finally(() => {
+    inFlightGoogleSheetSync = null;
+  });
+  return inFlightGoogleSheetSync;
 }
 
 /**
@@ -1382,8 +1810,67 @@ export async function pushMarketingStateToGasBackup(
       }),
     });
   } catch {
-    // 정적/오프라인 시 무시 (로컬+IndexedDB에는 이미 안전하게 저장됨)
+    // 정적/오프라인 시 무시
   }
+}
+
+/**
+ * [양방향 휴지통 동기화]
+ * VIP 통합 고객관리(CRM)에서 고객을 휴지통으로 이동/복원했을 때,
+ * 인스타 DB관리의 직접 상담건(타직원 인계건 제외)도 함께 휴지통 이동/복원하여 다른 화면에 유령처럼 뜨는 현상을 차단합니다.
+ */
+export function syncMarketingDbTrashFromCrmCustomer(
+  customer: Pick<CustomerItem, 'id' | 'name' | 'phone'>,
+  trashed: boolean
+): void {
+  const digits = getCanonicalPhoneDigits(customer.phone);
+  const store = loadMarketingDbStore();
+  let changed = false;
+  const nowMs = Date.now();
+  const extraTombstones: string[] = [];
+  const removeTombstones = new Set<string>();
+
+  const nextLeads = store.leads.map((l) => {
+    const lDigits = getCanonicalPhoneDigits(l.phone);
+    const isMatch =
+      (customer.id && l.linkedCrmCustomerId === customer.id) ||
+      (digits.length >= 7 && lDigits === digits);
+    if (!isMatch) return l;
+
+    if (trashed) {
+      // 타직원에게 인계한 DB는 내 개인 CRM에서만 지운 것이므로 DB관리의 타직원인계 탭에는 안전하게 유지
+      if (l.handoverStaff && l.handoverStaff.trim()) {
+        return { ...l, linkedCrmCustomerId: undefined };
+      }
+      if (!l.deletedAt) {
+        changed = true;
+        extraTombstones.push(...buildAllLeadTombstoneKeys(l));
+        return { ...l, deletedAt: nowMs };
+      }
+      return l;
+    } else {
+      if (l.deletedAt) {
+        changed = true;
+        for (const k of buildAllLeadTombstoneKeys(l)) {
+          removeTombstones.add(k);
+        }
+        return { ...l, deletedAt: undefined };
+      }
+      return l;
+    }
+  });
+
+  if (!changed) return;
+
+  const nextDeletedFp = trashed
+    ? Array.from(new Set([...(store.deletedFingerprints || []), ...extraTombstones]))
+    : (store.deletedFingerprints || []).filter((fp) => !removeTombstones.has(fp));
+
+  saveMarketingDbStore({
+    ...store,
+    leads: nextLeads,
+    deletedFingerprints: nextDeletedFp,
+  });
 }
 
 // ==================== 7. 통합 고객관리(CRM) 원터치 카드 자동저장 & 연결 브릿지 ====================
@@ -1426,7 +1913,7 @@ function mergeLeadMemoWithoutDuplicates(
 
 export async function saveMarketingLeadToCrm(
   lead: MarketingLeadItem,
-  options?: { syncRevenue?: boolean }
+  options?: { syncRevenue?: boolean; allowRestoreFromTrash?: boolean }
 ): Promise<{
   savedCustomer: CustomerItem;
   isExistingCustomer: boolean;
@@ -1434,26 +1921,24 @@ export async function saveMarketingLeadToCrm(
   const current = getCachedCustomers();
   const nowStr = getNowDateTimeStr();
   const todayStr = getTodayStr();
-  const targetPhoneDigits = String(lead.phone || '').replace(/\D/g, '');
+  const targetPhoneDigits = getCanonicalPhoneDigits(lead.phone);
   const targetNameLower = String(lead.customerName || '').trim().toLowerCase();
 
+  // 휴지통 포함 전체 CRM 목록에서 먼저 매칭 확인 (휴지통 고객과 같은 번호로 새 중복 카드가 생성되는 현상 원천 차단!)
   let existingIndex = -1;
   if (lead.linkedCrmCustomerId) {
-    existingIndex = current.findIndex(
-      (c) => c.id === lead.linkedCrmCustomerId && !c.deletedAt
-    );
+    existingIndex = current.findIndex((c) => c.id === lead.linkedCrmCustomerId);
   }
   if (existingIndex < 0 && targetPhoneDigits) {
     existingIndex = current.findIndex(
-      (c) => !c.deletedAt && String(c.phone || '').replace(/\D/g, '') === targetPhoneDigits
+      (c) => getCanonicalPhoneDigits(c.phone) === targetPhoneDigits
     );
   }
   if (existingIndex < 0 && targetNameLower && !targetPhoneDigits) {
     existingIndex = current.findIndex(
       (c) =>
-        !c.deletedAt &&
         String(c.name || '').trim().toLowerCase() === targetNameLower &&
-        !String(c.phone || '').replace(/\D/g, '')
+        !getCanonicalPhoneDigits(c.phone)
     );
   }
 
@@ -1461,9 +1946,14 @@ export async function saveMarketingLeadToCrm(
   const revAmt = Math.max(0, Number(lead.revenueAmount) || 0);
 
   if (existingIndex >= 0) {
-    // [핵심 보호] 이미 고객카드가 있는 고객은 기존 견적서(quotes)·최종혜택가(netAmount)·실결제가·구매품목·프리드를 100% 보존합니다!
-    // 더미 0원 견적(QuoteRecord)을 절대 추가하지 않습니다!
     const existing = current[existingIndex];
+    // 만약 CRM 휴지통에 들어가 있는 고객인데 자동 저장(allowRestoreFromTrash 아님)으로 호출된 경우 절대 부활시키지 않음!
+    if (existing.deletedAt && !options?.allowRestoreFromTrash) {
+      return {
+        savedCustomer: existing,
+        isExistingCustomer: true,
+      };
+    }
     const isAlreadyConfirmed =
       existing.status === '계약완료' ||
       existing.status === '발송완료' ||
@@ -1506,6 +1996,7 @@ export async function saveMarketingLeadToCrm(
           ? revAmt
           : existing.performanceAmount,
       deletedAt: undefined,
+      updatedAtMs: Date.now(),
     };
 
     const nextList = current.map((c, idx) =>
@@ -1546,6 +2037,7 @@ export async function saveMarketingLeadToCrm(
     giftSent: false,
     logisticsConfirmed: false,
     quotes: [],
+    updatedAtMs: Date.now(),
   };
 
   const deduped = setCachedCustomers([newCustomer, ...current]);

@@ -109,6 +109,8 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
 
   // 관리자 권한 상태 (비밀번호 462846 인증 기기 또는 GitHub 토큰 보유 기기)
   const [isAdmin, setIsAdmin] = useState<boolean>(() => isAdminDevice());
+  const [isAdminPinOpen, setIsAdminPinOpen] = useState<boolean>(false);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
   const adminTapCountRef = useRef<number>(0);
   const adminTapTimerRef = useRef<number | null>(null);
 
@@ -130,24 +132,30 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
     }
     if (adminTapCountRef.current >= 5) {
       adminTapCountRef.current = 0;
-      const pin = window.prompt('관리자 비밀번호를 입력하세요:');
-      if (pin?.trim() === ADMIN_PIN_CODE) {
-        setAdminDeviceUnlocked(true);
-        setStatusMessage({
-          type: 'success',
-          text: '🔓 관리자 모드가 활성화되었습니다. (무이자 자료 업로드 · 전 직원 동기화 · 셀 직접 수정 가능)',
-        });
-      } else if (pin !== null) {
-        setStatusMessage({
-          type: 'error',
-          text: '⚠️ 관리자 비밀번호가 일치하지 않습니다.',
-        });
-      }
+      setAdminPinInput('');
+      setIsAdminPinOpen(true);
       return;
     }
     adminTapTimerRef.current = window.setTimeout(() => {
       adminTapCountRef.current = 0;
     }, 1800);
+  };
+
+  const handleConfirmAdminPin = () => {
+    if (adminPinInput.trim() === ADMIN_PIN_CODE) {
+      setAdminDeviceUnlocked(true);
+      setIsAdminPinOpen(false);
+      setAdminPinInput('');
+      setStatusMessage({
+        type: 'success',
+        text: '🔓 관리자 모드가 활성화되었습니다. (무이자 자료 업로드 · 전 직원 동기화 · 셀 직접 수정 가능)',
+      });
+    } else {
+      setStatusMessage({
+        type: 'error',
+        text: '⚠️ 관리자 비밀번호가 일치하지 않습니다.',
+      });
+    }
   };
 
   // 모달 열릴 때 최신 로컬 & 원격 데이터 동기화 확인
@@ -181,6 +189,11 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     (window as any).__modalInternalBackHandler = (): boolean => {
+      if (isAdminPinOpen) {
+        setIsAdminPinOpen(false);
+        setAdminPinInput('');
+        return true;
+      }
       if (editingCell !== null) {
         setEditingCell(null);
         return true;
@@ -198,7 +211,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
     return () => {
       delete (window as any).__modalInternalBackHandler;
     };
-  }, [isOpen, editingCell, isSyncPanelOpen, activeTab]);
+  }, [isOpen, isAdminPinOpen, editingCell, isSyncPanelOpen, activeTab]);
 
   if (!isOpen) return null;
 
@@ -444,6 +457,42 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
         />
 
         {/* 1) 모달 상단 헤더 + 관리자 전용 [📤 무이자 자료 업로드] & [☁️ 전 직원 동기화 설정] */}
+        {isAdminPinOpen && !isAdmin && (
+          <div className="bg-amber-400 text-slate-950 px-4 sm:px-6 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 border-b border-amber-500">
+            <span className="text-xs sm:text-sm font-black">🔐 관리자 비밀번호 입력</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                value={adminPinInput}
+                onChange={(e) => setAdminPinInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmAdminPin();
+                }}
+                placeholder="비밀번호"
+                className="w-28 px-2.5 py-1 rounded-lg bg-white border border-slate-900/25 text-xs font-mono font-black text-center text-slate-950 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleConfirmAdminPin}
+                className="px-3 py-1 rounded-lg bg-slate-950 text-white text-xs font-black cursor-pointer"
+              >
+                확인
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAdminPinOpen(false);
+                  setAdminPinInput('');
+                }}
+                className="px-2.5 py-1 rounded-lg bg-black/10 hover:bg-black/20 text-slate-950 text-xs font-bold cursor-pointer"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
         <div className="bg-slate-900 text-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
             <div

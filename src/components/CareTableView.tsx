@@ -42,11 +42,14 @@ import {
 
 interface CareTableViewProps {
   onBackToHome: () => void;
+  backLabel?: string;
 }
 
-export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) => {
+export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome, backLabel }) => {
   const [dataset, setDataset] = useState<CareTableDataset | null>(() => loadLocalCareDataset());
   const [isAdmin, setIsAdmin] = useState<boolean>(() => isAdminDevice());
+  const [isAdminPinOpen, setIsAdminPinOpen] = useState<boolean>(false);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
   const adminTapCountRef = useRef<number>(0);
   const adminTapTimerRef = useRef<number | null>(null);
 
@@ -99,6 +102,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
 
   // 조견표 내부에서 한 단계씩 뒤로 가는 공통 함수 (화면 버튼 & 휴대폰 뒤로가기 버튼 공용)
   const careStateRef = useRef({
+    isAdminPinOpen,
     isSyncModalOpen,
     searchQuery,
     selectedCategory,
@@ -108,16 +112,22 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
 
   useEffect(() => {
     careStateRef.current = {
+      isAdminPinOpen,
       isSyncModalOpen,
       searchQuery,
       selectedCategory,
       selectedSection,
       selectedFolder,
     };
-  }, [isSyncModalOpen, searchQuery, selectedCategory, selectedSection, selectedFolder]);
+  }, [isAdminPinOpen, isSyncModalOpen, searchQuery, selectedCategory, selectedSection, selectedFolder]);
 
   const stepBackInsideCareTable = (): boolean => {
     const cur = careStateRef.current;
+    if (cur.isAdminPinOpen) {
+      setIsAdminPinOpen(false);
+      setAdminPinInput('');
+      return true;
+    }
     if (cur.isSyncModalOpen) {
       setIsSyncModalOpen(false);
       return true;
@@ -370,18 +380,24 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
     }
     if (adminTapCountRef.current >= 5) {
       adminTapCountRef.current = 0;
-      const pin = window.prompt('관리자 비밀번호를 입력하세요:');
-      if (pin?.trim() === ADMIN_PIN_CODE) {
-        setAdminDeviceUnlocked(true);
-        showToast('🔓 관리자 모드가 활성화되었습니다. (업로드 및 전 직원 동기화 버튼 표시)');
-      } else if (pin !== null) {
-        showToast('⚠️ 관리자 비밀번호가 일치하지 않습니다.');
-      }
+      setAdminPinInput('');
+      setIsAdminPinOpen(true);
       return;
     }
     adminTapTimerRef.current = window.setTimeout(() => {
       adminTapCountRef.current = 0;
     }, 1800);
+  };
+
+  const handleConfirmAdminPin = () => {
+    if (adminPinInput.trim() === ADMIN_PIN_CODE) {
+      setAdminDeviceUnlocked(true);
+      setIsAdminPinOpen(false);
+      setAdminPinInput('');
+      showToast('🔓 관리자 모드가 활성화되었습니다. (업로드 및 전 직원 동기화 버튼 표시)');
+    } else {
+      showToast('⚠️ 관리자 비밀번호가 일치하지 않습니다.');
+    }
   };
 
   return (
@@ -404,7 +420,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
               className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black flex items-center gap-1 cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>메인</span>
+              <span>{backLabel || '홈으로'}</span>
             </button>
             <div>
               <h1
@@ -468,6 +484,43 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
       </div>
 
       <div className="max-w-5xl mx-auto px-3 sm:px-5 pt-4 space-y-4">
+        {isAdminPinOpen && !isAdmin && (
+          <div className="p-3.5 rounded-2xl bg-slate-900 text-white flex flex-wrap items-center justify-between gap-2 shadow-md">
+            <span className="text-xs sm:text-sm font-black">🔐 관리자 비밀번호 입력</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                value={adminPinInput}
+                onChange={(e) => setAdminPinInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmAdminPin();
+                }}
+                placeholder="비밀번호"
+                className="w-28 px-2.5 py-1.5 rounded-xl bg-slate-800 border border-slate-600 text-xs font-mono font-black text-center text-white focus:outline-none focus:border-orange-400"
+              />
+              <button
+                type="button"
+                onClick={handleConfirmAdminPin}
+                className="px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black cursor-pointer"
+              >
+                확인
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAdminPinOpen(false);
+                  setAdminPinInput('');
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-bold cursor-pointer"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+
         {notice && (
           <div className="p-3 rounded-2xl bg-slate-900 text-white text-xs sm:text-sm font-black flex items-center justify-between gap-2 shadow-md">
             <span>{notice}</span>

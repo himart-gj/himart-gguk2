@@ -43,6 +43,7 @@ import {
   getCurrentYearMonth,
   resolveCustomerPerformanceProfile,
 } from './utils/settlementEngine';
+import { syncMarketingDbTrashFromCrmCustomer } from '../utils/marketingDbEngine';
 import { CRMHeader } from './components/CRMHeader';
 import { CompactCustomerCard } from './components/CompactCustomerCard';
 import { CustomerDetailModal } from './components/CustomerDetailModal';
@@ -76,8 +77,11 @@ export const PAST_DELIVERY_POPUP_DISMISSED_KEY = 'himart_past_delivery_popup_dis
 
 type CrmViewMode = 'grid' | 'kanban' | 'calendar';
 
+const CRM_LAST_ACTIVE_TAB_KEY = 'himart_crm_last_tab_v1';
+
 interface CrmAppProps {
   onBackToHome: () => void;
+  backLabel?: string;
   onOpenCustomerInQuoteBuilder: (customer: CustomerItem) => void;
   onOpenQuoteRecordInQuoteBuilder: (
     customer: CustomerItem,
@@ -90,6 +94,7 @@ interface CrmAppProps {
 
 export const CrmApp: React.FC<CrmAppProps> = ({
   onBackToHome,
+  backLabel,
   onOpenCustomerInQuoteBuilder,
   onOpenQuoteRecordInQuoteBuilder,
   onCustomersChange,
@@ -139,12 +144,28 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   const [viewMode, setViewMode] = useState<CrmViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<FilterTab>(() => {
+    try {
+      const saved = sessionStorage.getItem(CRM_LAST_ACTIVE_TAB_KEY) as FilterTab | null;
+      if (saved && (FILTER_TABS as readonly string[]).includes(saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
     const cached = getCachedCustomers().filter((c) => !c.deletedAt);
     if (cached.some((c) => isUrgentCustomer(c))) return '🔥긴급/오늘할일';
     if (cached.some((c) => c.status === '상담진행중')) return '상담진행중';
     if (cached.some((c) => c.status === '계약완료')) return '계약완료';
     return '🔥긴급/오늘할일';
   });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CRM_LAST_ACTIVE_TAB_KEY, activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
   const [sortOrder, setSortOrder] = useState<SortOrder>('urgentFirst');
 
   // Undo 실행 취소 히스토리 스택 (최대 15단계)
@@ -496,10 +517,13 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     const target = customers.find((c) => c.id === id);
     pushUndoSnapshot(`${target?.name || '고객'} 휴지통 이동`);
     const updated = customers.map((c) =>
-      c.id === id ? { ...c, deletedAt } : c
+      c.id === id ? { ...c, deletedAt, updatedAtMs: deletedAt } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    if (target) {
+      syncMarketingDbTrashFromCrmCustomer(target, true);
+    }
     showToast(
       `🗑️ [${target?.name || '고객'}]님이 휴지통으로 이동되었습니다.`,
       true
@@ -509,26 +533,38 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
   const handleRestoreCustomer = async (id: string) => {
     const target = customers.find((c) => c.id === id);
+    const nowMs = Date.now();
     const updated = customers.map((c) =>
-      c.id === id ? { ...c, deletedAt: undefined } : c
+      c.id === id ? { ...c, deletedAt: undefined, updatedAtMs: nowMs } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    if (target) {
+      syncMarketingDbTrashFromCrmCustomer(target, false);
+    }
     showToast(`♻️ [${target?.name || '고객'}]님 데이터가 복원되었습니다!`);
     await syncCustomerToGas('update', { id, deletedAt: undefined });
   };
 
   const handlePermanentDeleteCustomer = async (id: string) => {
+    const target = customers.find((c) => c.id === id);
     const updated = customers.filter((c) => c.id !== id);
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    if (target) {
+      syncMarketingDbTrashFromCrmCustomer(target, true);
+    }
     await syncCustomerToGas('delete', { id });
   };
 
   const handleEmptyTrash = () => {
+    const trashedList = customers.filter((c) => Boolean(c.deletedAt));
     const updated = customers.filter((c) => !c.deletedAt);
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    for (const tc of trashedList) {
+      syncMarketingDbTrashFromCrmCustomer(tc, true);
+    }
     showToast('🗑️ 휴지통을 모두 비웠습니다.');
   };
 
@@ -728,6 +764,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
             ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }}
         onBackToHome={onBackToHome}
+        backLabel={backLabel}
       />
 
       {/* Sonner 스타일 하단 플로팅 토스트 (Undo 되돌리기 버튼 내장) */}

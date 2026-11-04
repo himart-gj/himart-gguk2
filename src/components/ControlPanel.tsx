@@ -64,6 +64,7 @@ interface ControlPanelProps {
   parseGeneralError?: string | null;
   onShowProposal: () => void;
   onBackToHome: () => void;
+  backLabel?: string;
   activeCustomer?: { id: string; name: string; phone?: string } | null;
   onClearActiveCustomer?: () => void;
   onOpenSaveToCrm?: () => void;
@@ -82,6 +83,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   parseGeneralError = null,
   onShowProposal,
   onBackToHome,
+  backLabel,
   activeCustomer,
   onClearActiveCustomer,
   onOpenSaveToCrm,
@@ -594,7 +596,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-200 text-slate-700 text-xs font-extrabold border border-slate-200 shadow-xs transition cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            처음 메뉴로
+            {backLabel || '홈으로'}
           </button>
 
           {activeCustomer && (

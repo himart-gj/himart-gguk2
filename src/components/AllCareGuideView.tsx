@@ -18,12 +18,14 @@ import {
 
 interface AllCareGuideViewProps {
   onBackToHome: () => void;
+  backLabel?: string;
 }
 
 const REGISTRATION_URL = 'https://hiwarranty.co.kr';
 
 export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
   onBackToHome,
+  backLabel,
 }) => {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedKakao, setCopiedKakao] = useState(false);
@@ -85,7 +87,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
               onClick={onBackToHome}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-extrabold text-xs shadow-2xs transition cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> 메인 화면으로
+              <ArrowLeft className="w-3.5 h-3.5" /> {backLabel || '홈으로'}
             </button>
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 text-white font-black text-xs shadow-xs">

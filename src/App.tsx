@@ -75,6 +75,7 @@ import {
   sanitizeFiveYearWarrantyText,
 } from './utils/aiImageParser';
 import {
+  ArrowLeft,
   Calculator,
   Calendar,
   CreditCard,
@@ -177,9 +178,41 @@ const createInitialState = (mode: QuoteMode): ProposalState => {
   };
 };
 
+function getStepShortLabel(s: AppStep): string {
+  switch (s) {
+    case 'home':
+      return '홈';
+    case 'crm':
+      return '통합고객관리';
+    case 'marketing-db':
+      return '인스타DB';
+    case 'input':
+      return '견적서';
+    case 'proposal':
+      return '제안서';
+    case 'care-table':
+      return '조견표';
+    case 'lotte-plan':
+      return '플랜계산기';
+    case 'pop-printer':
+      return '구독POP';
+    case 'himobile':
+      return '하이모바일';
+    case 'allcare-guide':
+      return '올케어';
+    case 'insurance':
+      return '보험안내';
+    default:
+      return '홈';
+  }
+}
+
 export function App() {
   const [activeMode, setActiveMode] = useState<QuoteMode>('subscription');
   const [step, setStep] = useState<AppStep>('home');
+  const [stepHistory, setStepHistory] = useState<AppStep[]>([]);
+  const stepHistoryRef = useRef<AppStep[]>([]);
+  const currentStepRef = useRef<AppStep>('home');
 
   // 3개 메뉴 완전 개별 상태 분리
   const [generalState, setGeneralState] = useState<ProposalState>(() =>
@@ -249,6 +282,75 @@ export function App() {
   const [initialCrmCustomerId, setInitialCrmCustomerId] = useState<
     string | null
   >(null);
+
+  useEffect(() => {
+    currentStepRef.current = step;
+  }, [step]);
+
+  // 스마트 화면 이동 스택 (어느 화면에서 넘어왔든 1단계씩 직전 화면으로 정확히 복귀)
+  const navigateToStep = useCallback(
+    (nextStep: AppStep, opts?: { reset?: boolean }) => {
+      const cur = currentStepRef.current;
+      if (opts?.reset || nextStep === 'home') {
+        stepHistoryRef.current = [];
+        setStepHistory([]);
+        currentStepRef.current = 'home';
+        setInitialCrmCustomerId(null);
+        setStep('home');
+        return;
+      }
+      if (nextStep === cur) {
+        if (nextStep === 'crm') {
+          setCrmCustomers(getCachedCustomers());
+        }
+        return;
+      }
+      const prevStack = stepHistoryRef.current;
+      const existingIdx = prevStack.indexOf(nextStep);
+      const nextStack =
+        existingIdx >= 0
+          ? prevStack.slice(0, existingIdx)
+          : [...prevStack, cur].slice(-12);
+      stepHistoryRef.current = nextStack;
+      setStepHistory(nextStack);
+      currentStepRef.current = nextStep;
+      if (cur === 'crm' && nextStep !== 'crm') {
+        setInitialCrmCustomerId(null);
+      }
+      if (nextStep === 'crm') {
+        setCrmCustomers(getCachedCustomers());
+      }
+      setStep(nextStep);
+    },
+    []
+  );
+
+  const handleNavigateBack = useCallback(() => {
+    const prevStack = stepHistoryRef.current;
+    if (prevStack.length > 0) {
+      const target = prevStack[prevStack.length - 1];
+      const nextStack = prevStack.slice(0, -1);
+      stepHistoryRef.current = nextStack;
+      setStepHistory(nextStack);
+      currentStepRef.current = target;
+      if (target === 'crm') {
+        setInitialCrmCustomerId(null);
+        setCrmCustomers(getCachedCustomers());
+      }
+      setStep(target);
+      return;
+    }
+    stepHistoryRef.current = [];
+    setStepHistory([]);
+    currentStepRef.current = 'home';
+    setInitialCrmCustomerId(null);
+    setStep('home');
+  }, []);
+
+  const previousStep: AppStep =
+    stepHistory.length > 0 ? stepHistory[stepHistory.length - 1] : 'home';
+  const backButtonLabel =
+    previousStep === 'home' ? '홈으로' : `${getStepShortLabel(previousStep)}로`;
   const [isStealthPinOpen, setIsStealthPinOpen] = useState<boolean>(false);
   const [stealthPinInput, setStealthPinInput] = useState<string>('');
   const [stealthPinError, setStealthPinError] = useState<boolean>(false);
@@ -278,6 +380,7 @@ export function App() {
     try {
       const params = new URLSearchParams(window.location.search);
       if (params.get('entry') === 'briefing') {
+        currentStepRef.current = 'crm';
         setStep('crm');
         params.delete('entry');
         const rest = params.toString();
@@ -300,7 +403,7 @@ export function App() {
       onPushNavigate: (targetUrl) => {
         setCrmCustomers(getCachedCustomers());
         if (targetUrl.includes('entry=briefing') || targetUrl.includes('crm')) {
-          setStep('crm');
+          navigateToStep('crm');
         }
       },
     });
@@ -570,7 +673,17 @@ export function App() {
         return;
       }
 
-      // 2순위: 현재 메인 화면 내부의 하위 뷰/팝업 뒤로가기 핸들러(__subViewBackHandler) 실행
+      // 2순위: 좌우 스플릿 상담 모드의 우측 제안서 내부 팝업/프리드안내 탭 뒤로가기
+      const splitPreviewBackHandler = (window as any)
+        .__proposalPreviewSplitBackHandler as (() => boolean) | undefined;
+      if (typeof splitPreviewBackHandler === 'function') {
+        if (splitPreviewBackHandler()) {
+          pushAppHistoryGuard('split-preview-sub');
+          return;
+        }
+      }
+
+      // 2-2순위: 현재 메인 화면 내부의 하위 뷰/팝업 뒤로가기 핸들러(__subViewBackHandler) 실행
       const subBackHandler = (window as any).__subViewBackHandler as
         | (() => boolean)
         | undefined;
@@ -582,17 +695,10 @@ export function App() {
         }
       }
 
-      // 3순위: 제안서 미리보기('proposal') 화면이면 조건 입력('input') 화면으로 이동
-      if (current.step === 'proposal') {
-        setStep('input');
-        pushAppHistoryGuard('back-to-input');
-        return;
-      }
-
-      // 4순위: 그 외 메뉴 화면이면 메인 홈('home')으로 이동
+      // 3순위: 스마트 히스토리 스택(stepHistory)을 따라 직전 화면으로 1단계 복귀 (예: 제안서->견적서->고객관리/DB관리->홈)
       if (current.step !== 'home') {
-        setStep('home');
-        pushAppHistoryGuard('back-to-home');
+        handleNavigateBack();
+        pushAppHistoryGuard('step-back');
         return;
       }
 
@@ -602,7 +708,7 @@ export function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [pushAppHistoryGuard]);
+  }, [pushAppHistoryGuard, handleNavigateBack]);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -759,9 +865,9 @@ export function App() {
       window.removeEventListener(MARKETING_DB_UPDATED_EVENT, syncOwnerDb);
   }, []);
 
-  // 대표님 기기(잠금 해제 상태)에서는 홈 화면에서도 인스타 DB 구글시트를 자동 동기화해 신규 건수 배지를 즉시 갱신
+  // 대표님 기기(잠금 해제 상태)에서는 홈/타 화면에 있을 때만 백그라운드 동기화 수행 (DB관리 화면 내에서는 자체 폴링만 동작해 중복 방지)
   useEffect(() => {
-    if (!isOwnerDbUnlocked) return;
+    if (!isOwnerDbUnlocked || step === 'marketing-db') return;
     const runBgSync = () => {
       void syncLeadsFromGoogleSheet(loadMarketingDbStore());
     };
@@ -775,7 +881,7 @@ export function App() {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [isOwnerDbUnlocked]);
+  }, [isOwnerDbUnlocked, step]);
 
   const ownerDbQuickSummary = useMemo(() => {
     if (!isOwnerDbUnlocked) {
@@ -802,7 +908,7 @@ export function App() {
   }, [isOwnerDbUnlocked, ownerDbTick, step]);
 
   const handleHomeButtonClick = () => {
-    setStep('home');
+    navigateToStep('home', { reset: true });
     const now = Date.now();
     const recent = homeTapTimestampsRef.current.filter((t) => now - t < 2500);
     recent.push(now);
@@ -810,7 +916,7 @@ export function App() {
     if (recent.length >= 5) {
       homeTapTimestampsRef.current = [];
       if (isOwnerMarketingDbUnlocked()) {
-        setStep('marketing-db');
+        navigateToStep('marketing-db');
       } else {
         setStealthPinInput('');
         setStealthPinError(false);
@@ -824,7 +930,7 @@ export function App() {
       setIsOwnerDbUnlocked(true);
       setIsStealthPinOpen(false);
       setStealthPinInput('');
-      setStep('marketing-db');
+      navigateToStep('marketing-db');
     } else {
       setStealthPinError(true);
     }
@@ -897,7 +1003,7 @@ export function App() {
     setActiveMode(mode);
     setParseError(null);
     setParseGeneralError(null);
-    setStep('input');
+    navigateToStep('input');
   };
 
   // CRM에서 저장된 ProposalState 스냅샷 또는 고객 기본 정보를 신규 견적기로 복원
@@ -1009,7 +1115,7 @@ export function App() {
         setActiveMode(targetMode);
         setParseError(null);
         setParseGeneralError(null);
-        setStep('input');
+        navigateToStep('input');
         return;
       }
 
@@ -1050,9 +1156,9 @@ export function App() {
       setActiveMode(targetMode);
       setParseError(null);
       setParseGeneralError(null);
-      setStep('input');
+      navigateToStep('input');
     },
-    []
+    [navigateToStep]
   );
 
   const handleOpenCustomerInQuoteBuilder = useCallback(
@@ -1443,6 +1549,22 @@ export function App() {
             <span className="hidden sm:inline">홈</span>
           </button>
 
+          {step !== 'home' && (
+            <button
+              type="button"
+              onClick={handleNavigateBack}
+              title={`직전 화면(${backButtonLabel})으로 바로 돌아가기`}
+              className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1 shrink-0 border transition cursor-pointer ${
+                isDark
+                  ? 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border-sky-400/35'
+                  : 'bg-[#F4ECE1] hover:bg-[#EAE0D0] text-[#6E4423] border-[#D8C6AA]'
+              }`}
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>{backButtonLabel}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
@@ -1612,7 +1734,7 @@ export function App() {
                 onClick={() => {
                   setIsMenuOpen(false);
                   setInitialCrmTab(undefined);
-                  setStep('crm');
+                  navigateToStep('crm');
                 }}
                 className={`w-full py-3 px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-between border transition cursor-pointer ${
                   isDark
@@ -1638,7 +1760,7 @@ export function App() {
                   type="button"
                   onClick={() => {
                     setIsMenuOpen(false);
-                    setStep('marketing-db');
+                    navigateToStep('marketing-db');
                   }}
                   className={`w-full py-2.5 px-4 rounded-2xl font-black text-xs flex items-center justify-between border transition cursor-pointer ${
                     step === 'marketing-db'
@@ -1725,7 +1847,7 @@ export function App() {
                     type="button"
                     onClick={() => {
                       setIsMenuOpen(false);
-                      setStep('lotte-plan');
+                      navigateToStep('lotte-plan');
                     }}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'lotte-plan'
@@ -1745,7 +1867,7 @@ export function App() {
                     type="button"
                     onClick={() => {
                       setIsMenuOpen(false);
-                      setStep('pop-printer');
+                      navigateToStep('pop-printer');
                     }}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'pop-printer'
@@ -1763,7 +1885,7 @@ export function App() {
                     type="button"
                     onClick={() => {
                       setIsMenuOpen(false);
-                      setStep('himobile');
+                      navigateToStep('himobile');
                     }}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'himobile'
@@ -1781,7 +1903,7 @@ export function App() {
                     type="button"
                     onClick={() => {
                       setIsMenuOpen(false);
-                      setStep('allcare-guide');
+                      navigateToStep('allcare-guide');
                     }}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'allcare-guide'
@@ -1799,7 +1921,7 @@ export function App() {
                     type="button"
                     onClick={() => {
                       setIsMenuOpen(false);
-                      setStep('insurance');
+                      navigateToStep('insurance');
                     }}
                     className={`w-full py-2.5 px-3 rounded-xl text-left text-xs font-black flex items-center gap-2 border transition cursor-pointer ${
                       step === 'insurance'
@@ -1819,7 +1941,7 @@ export function App() {
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
-                  setStep('care-table');
+                  navigateToStep('care-table');
                 }}
                 className={`w-full py-2.5 px-3.5 rounded-xl font-black text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
                   isDark
@@ -1958,14 +2080,14 @@ export function App() {
               }}
               onOpenIncentiveTab={(targetTab) => {
                 setInitialCrmTab(targetTab);
-                setStep('crm');
+                navigateToStep('crm');
               }}
             />
 
             {/* 0-2) TODAY BRIEFING · VIP 통합 고객관리 히어로 배너 */}
             <button
               type="button"
-              onClick={() => { setInitialCrmTab(undefined); setStep('crm'); }}
+              onClick={() => { setInitialCrmTab(undefined); navigateToStep('crm'); }}
               className={`w-full py-3.5 sm:py-5 px-4 sm:px-6 rounded-3xl transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-2 group cursor-pointer shadow-md hover:shadow-xl ${
                 isDark
                   ? 'bg-gradient-to-r from-[#172542] to-[#0F172A] text-white border-[1.5px] border-[#38BDF8]/45 hover:border-[#38BDF8]'
@@ -1998,7 +2120,7 @@ export function App() {
             {isOwnerDbUnlocked && (
               <button
                 type="button"
-                onClick={() => setStep('marketing-db')}
+                onClick={() => navigateToStep('marketing-db')}
                 className={`w-full py-3.5 px-4 sm:px-5 rounded-3xl transition-all flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 cursor-pointer shadow-sm hover:shadow-lg border-[1.5px] ${
                   isDark
                     ? 'bg-gradient-to-r from-[#1E1B4B] via-[#172036] to-[#142628] text-white border-amber-400/45 hover:border-amber-300'
@@ -2110,7 +2232,7 @@ export function App() {
 
                 <button
                   type="button"
-                  onClick={() => setStep('lotte-plan')}
+                  onClick={() => navigateToStep('lotte-plan')}
                   className={`p-3.5 sm:p-4 rounded-2xl text-center flex flex-col items-center justify-center gap-1 border transition cursor-pointer ${
                     isDark
                       ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
@@ -2161,7 +2283,7 @@ export function App() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setStep('pop-printer')}
+                  onClick={() => navigateToStep('pop-printer')}
                   className={`p-4 rounded-2xl text-left flex items-center justify-between border transition cursor-pointer ${
                     isDark
                       ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
@@ -2185,7 +2307,7 @@ export function App() {
 
                 <button
                   type="button"
-                  onClick={() => setStep('care-table')}
+                  onClick={() => navigateToStep('care-table')}
                   className={`p-4 rounded-2xl text-left flex items-center justify-between border-[1.5px] transition cursor-pointer ${
                     isDark
                       ? 'bg-[#16222F] hover:bg-[#1D2D3E] text-white border-[#34D399]/45'
@@ -2288,7 +2410,7 @@ export function App() {
               <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setStep('allcare-guide')}
+                  onClick={() => navigateToStep('allcare-guide')}
                   className={`p-3 sm:p-3.5 rounded-2xl border text-center flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
                     isDark
                       ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
@@ -2309,7 +2431,7 @@ export function App() {
 
                 <button
                   type="button"
-                  onClick={() => setStep('insurance')}
+                  onClick={() => navigateToStep('insurance')}
                   className={`p-3 sm:p-3.5 rounded-2xl border text-center flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
                     isDark
                       ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
@@ -2330,7 +2452,7 @@ export function App() {
 
                 <button
                   type="button"
-                  onClick={() => setStep('himobile')}
+                  onClick={() => navigateToStep('himobile')}
                   className={`p-3 sm:p-3.5 rounded-2xl border text-center flex flex-col items-center justify-center gap-0.5 transition cursor-pointer ${
                     isDark
                       ? 'bg-[#1B2230] hover:bg-[#232C3D] text-white border-white/10'
@@ -2442,7 +2564,7 @@ export function App() {
               </button>
               <button
                 type="button"
-                onClick={() => setStep('proposal')}
+                onClick={() => navigateToStep('proposal')}
                 className="px-3 py-1 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black cursor-pointer"
               >
                 전체화면 제안서 전환 →
@@ -2463,8 +2585,9 @@ export function App() {
                   onParseGeneralImage={handleParseGeneralImage}
                   isParsingGeneral={isParsingGeneral}
                   parseGeneralError={parseGeneralError}
-                  onShowProposal={() => setStep('proposal')}
-                  onBackToHome={() => setStep('home')}
+                  onShowProposal={() => navigateToStep('proposal')}
+                  onBackToHome={handleNavigateBack}
+                  backLabel={backButtonLabel}
                   activeCustomer={activeCustomer}
                   onClearActiveCustomer={() => setActiveCustomer(null)}
                   onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
@@ -2494,8 +2617,9 @@ export function App() {
               onParseGeneralImage={handleParseGeneralImage}
               isParsingGeneral={isParsingGeneral}
               parseGeneralError={parseGeneralError}
-              onShowProposal={() => setStep('proposal')}
-              onBackToHome={() => setStep('home')}
+              onShowProposal={() => navigateToStep('proposal')}
+              onBackToHome={handleNavigateBack}
+              backLabel={backButtonLabel}
               activeCustomer={activeCustomer}
               onClearActiveCustomer={() => setActiveCustomer(null)}
               onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
@@ -2509,7 +2633,7 @@ export function App() {
         <ProposalPreview
           state={currentState}
           onChange={setCurrentState}
-          onBackToInput={() => setStep('input')}
+          onBackToInput={handleNavigateBack}
           activeCustomer={activeCustomer}
           onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
           isDark={isDark}
@@ -2525,17 +2649,21 @@ export function App() {
         }
       >
         {step === 'lotte-plan' && (
-          <LottePlanCalcView onBackToHome={() => setStep('home')} />
+          <LottePlanCalcView
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
+          />
         )}
         {step === 'pop-printer' && (
-          <PopPrinterApp onBackToHome={() => setStep('home')} />
+          <PopPrinterApp
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
+          />
         )}
         {step === 'crm' && (
           <CrmApp
-            onBackToHome={() => {
-              setInitialCrmCustomerId(null);
-              setStep('home');
-            }}
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
             onOpenCustomerInQuoteBuilder={handleOpenCustomerInQuoteBuilder}
             onOpenQuoteRecordInQuoteBuilder={handleOpenQuoteRecordInQuoteBuilder}
             onCustomersChange={(list) => setCrmCustomers(list)}
@@ -2545,16 +2673,17 @@ export function App() {
         )}
         {step === 'marketing-db' && isOwnerDbUnlocked && (
           <MarketingDbManagerView
-            onBackToHome={() => setStep('home')}
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
             onLockAndHideMenu={() => {
               setIsOwnerDbUnlocked(false);
-              setStep('home');
+              navigateToStep('home', { reset: true });
             }}
             onOpenCustomerInCrm={(custId) => {
               setInitialCrmTab(undefined);
               setInitialCrmCustomerId(custId || null);
               setCrmCustomers(getCachedCustomers());
-              setStep('crm');
+              navigateToStep('crm');
             }}
             onOpenCustomerInQuoteBuilder={(cust) => {
               setCrmCustomers(getCachedCustomers());
@@ -2568,16 +2697,28 @@ export function App() {
           />
         )}
         {step === 'himobile' && (
-          <HiMobileView onBackToHome={() => setStep('home')} />
+          <HiMobileView
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
+          />
         )}
         {step === 'insurance' && (
-          <InsuranceGuideView onBackToHome={() => setStep('home')} />
+          <InsuranceGuideView
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
+          />
         )}
         {step === 'allcare-guide' && (
-          <AllCareGuideView onBackToHome={() => setStep('home')} />
+          <AllCareGuideView
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
+          />
         )}
         {step === 'care-table' && (
-          <CareTableView onBackToHome={() => setStep('home')} />
+          <CareTableView
+            onBackToHome={handleNavigateBack}
+            backLabel={backButtonLabel}
+          />
         )}
       </Suspense>
 
@@ -2621,10 +2762,10 @@ export function App() {
             isOpen={isOmnibarOpen}
             onClose={() => setIsOmnibarOpen(false)}
             isDark={isDark}
-            customers={crmCustomers}
+            customers={activeCrmCustomers}
             careDataset={careDataset}
             installmentDataset={installmentDataset}
-            onNavigateStep={(nextStep) => setStep(nextStep)}
+            onNavigateStep={(nextStep) => navigateToStep(nextStep)}
             onEnterQuoteMode={(mode) => handleEnterMode(mode)}
             onOpenCustomerQuote={(cust) =>
               handleOpenCustomerInQuoteBuilder(cust)
@@ -2658,7 +2799,7 @@ export function App() {
             setActiveMode(nextState.quoteMode);
             setParseError(null);
             setParseGeneralError(null);
-            setStep(targetStep);
+            navigateToStep(targetStep);
           }}
           onCustomerSaved={(savedCust, nextState) => {
             setActiveCustomer({
@@ -2677,11 +2818,11 @@ export function App() {
             setActiveMode(nextState.quoteMode);
           }}
           onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
-          onOpenCareTable={() => setStep('care-table')}
+          onOpenCareTable={() => navigateToStep('care-table')}
           onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
           onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
-          onOpenInsuranceView={() => setStep('insurance')}
-          onOpenCrmScreen={() => { setInitialCrmTab(undefined); setStep('crm'); }}
+          onOpenInsuranceView={() => navigateToStep('insurance')}
+          onOpenCrmScreen={() => { setInitialCrmTab(undefined); navigateToStep('crm'); }}
           onLoadCrmCustomerQuote={(cust) => {
             const latestQuote =
               Array.isArray(cust.quotes) && cust.quotes.length > 0

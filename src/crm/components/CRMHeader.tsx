@@ -28,6 +28,7 @@ interface CRMHeaderProps {
   onQuickFilter: (tab: any) => void;
   onFocusSettlement?: () => void;
   onBackToHome: () => void;
+  backLabel?: string;
 }
 
 export const CRMHeader: React.FC<CRMHeaderProps> = ({
@@ -45,6 +46,7 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
   onOpenBriefing,
   onQuickFilter,
   onBackToHome,
+  backLabel,
 }) => {
   return (
     <header className="sticky top-0 z-30 bg-[#FAF8F4]/95 backdrop-blur-md border-b border-[#E4DFD5] shadow-2xs">
@@ -56,11 +58,10 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
               type="button"
               onClick={onBackToHome}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#EAE5DC] text-[#18181B] text-xs font-extrabold border border-[#D6D3CD] shadow-2xs transition cursor-pointer shrink-0"
-              title="처음 메뉴로 돌아가기"
+              title={`${backLabel || '홈으로'} 돌아가기`}
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">처음으로</span>
-              <span className="sm:hidden">홈</span>
+              <span>{backLabel || '홈으로'}</span>
             </button>
 
             <div className="w-8 h-8 rounded-xl bg-[#18181B] text-white flex items-center justify-center shadow-xs shrink-0">

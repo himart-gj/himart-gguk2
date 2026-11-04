@@ -124,6 +124,8 @@ export interface CustomerItem {
 
   // 휴지통 (소프트 삭제: 삭제된 시각 타임스탬프 ms)
   deletedAt?: number;
+  // 최종 상태 변경 시각 (중복 병합 시 최신 삭제/복원 우선 적용)
+  updatedAtMs?: number;
 }
 
 export interface SMSTemplate {

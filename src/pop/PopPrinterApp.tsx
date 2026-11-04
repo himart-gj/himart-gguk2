@@ -9,6 +9,7 @@ import jsPDF from 'jspdf';
 
 export interface PopPrinterAppProps {
   onBackToHome: () => void;
+  backLabel?: string;
 }
 
 // PWA Install Hook
@@ -66,7 +67,7 @@ function usePWAInstall() {
   return { isInstallable: !!deferredPrompt, isInstalled, isIOS, install };
 }
 
-export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
+export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   
@@ -74,6 +75,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   const [loading, setLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string>(CARD_BENEFITS[0].id);
   const [popMode, setPopMode] = useState<'standard' | 'preed'>('standard');
   const [paperSize, setPaperSize] = useState<PopPaperSize>('a4-2up');
@@ -281,11 +283,10 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
   };
 
   const handleClearData = () => {
-    if (confirm('모든 데이터를 삭제하시겠습니까?')) {
-      setProducts([]);
-      setSelectedA3Ids([]);
-      setOnlySelectedInA3(false);
-    }
+    setProducts([]);
+    setSelectedA3Ids([]);
+    setOnlySelectedInA3(false);
+    setConfirmClearAll(false);
   };
 
   const handleToggleA3Select = (id: string) => {
@@ -361,7 +362,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
       pdf.save(customFileName || defaultName);
     } catch (err) {
       console.error(err);
-      alert('PDF 저장 중 오류가 발생했습니다: ' + (err as Error).message);
+      setError('PDF 저장 중 오류가 발생했습니다: ' + (err as Error).message);
     } finally {
       printArea.style.cssText = originalCssText;
       printArea.classList.add('hidden', 'print:block');
@@ -477,7 +478,7 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                처음 메뉴로
+                {backLabel || '홈으로'}
               </button>
               <div className="flex items-center gap-1.5">
                 <FileSpreadsheet className="text-blue-600 w-5 h-5 shrink-0" />
@@ -1241,14 +1242,35 @@ export function PopPrinterApp({ onBackToHome }: PopPrinterAppProps) {
                   />
                 </label>
 
-                <button
-                  onClick={handleClearData}
-                  disabled={products.length === 0}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  기존 자료 모두 삭제
-                </button>
+                {confirmClearAll ? (
+                  <div className="w-full flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleClearData}
+                      className="flex-1 flex items-center justify-center gap-1.5 px-4 py-3 text-sm font-black text-white bg-red-600 rounded-xl hover:bg-red-700 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      네, 전체 삭제합니다
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmClearAll(false)}
+                      className="px-4 py-3 text-sm font-bold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
+                    >
+                      취소
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearAll(true)}
+                    disabled={products.length === 0}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 text-sm font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    기존 자료 모두 삭제
+                  </button>
+                )}
               </div>
 
               {error && (

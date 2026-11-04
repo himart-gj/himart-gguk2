@@ -273,7 +273,12 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
       }
       const mergedQuotes = Array.from(mergedQuotesMap.values()).slice(0, 5);
 
-      const isItemNewer = (item.regDate || '') >= (existing.regDate || '');
+      const itemTouch = item.updatedAtMs || item.deletedAt || 0;
+      const existTouch = existing.updatedAtMs || existing.deletedAt || 0;
+      const isItemNewer =
+        itemTouch !== existTouch
+          ? itemTouch > existTouch
+          : (item.regDate || '') >= (existing.regDate || '');
       const primary = isItemNewer ? item : existing;
       const secondary = isItemNewer ? existing : item;
 
@@ -318,7 +323,8 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
         followUpDate: primary.followUpDate ?? secondary.followUpDate ?? '',
         memo: primary.memo || secondary.memo || '',
         quotes: mergedQuotes,
-        deletedAt: primary.deletedAt ?? secondary.deletedAt,
+        deletedAt: primary.deletedAt,
+        updatedAtMs: Math.max(primary.updatedAtMs || 0, secondary.updatedAtMs || 0) || undefined,
       };
 
       map.set(key, healCustomerPrimaryQuoteFields(mergedCandidate));
@@ -482,7 +488,6 @@ export async function saveCustomerQuote(payload: {
     const targetNameKey = normalizeNameKey(payload.name);
     const targetPhoneKey = normalizePhoneKey(payload.phone);
     existingIndex = current.findIndex((c) => {
-      if (c.deletedAt) return false;
       const cName = normalizeNameKey(c.name);
       const cPhone = normalizePhoneKey(c.phone);
       if (targetNameKey && targetPhoneKey) {
@@ -537,6 +542,7 @@ export async function saveCustomerQuote(payload: {
       giftItems: payload.giftItems || existing.giftItems,
       quotes: nextQuotes,
       deletedAt: undefined,
+      updatedAtMs: Date.now(),
     };
 
     updatedList = [

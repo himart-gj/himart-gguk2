@@ -76,8 +76,14 @@ import { safeCopyText } from '../utils/mobileQaRuntime';
 
 export const UNASSIGNED_HANDOVER_STAFF = '담당 미지정';
 
+const MDB_LAST_STATUS_TAB_KEY = 'himart_mdb_last_tab_v1';
+const MDB_LAST_HANDOVER_SUB_KEY = 'himart_mdb_last_handover_sub_v1';
+const MDB_LAST_SELLER_SUB_KEY = 'himart_mdb_last_seller_sub_v1';
+const VALID_MDB_TABS: readonly StatusFilterTab[] = ['신규', '문자전송', '상담진행중', '무응답', '타직원인계', '계약완료', '휴지통'];
+
 export interface MarketingDbManagerViewProps {
   onBackToHome: () => void;
+  backLabel?: string;
   onLockAndHideMenu: () => void;
   onOpenCustomerInCrm: (customerId?: string) => void;
   onOpenCustomerInQuoteBuilder: (customer: CustomerItem) => void;
@@ -138,6 +144,7 @@ function getStatusActiveBtnStyle(status: MarketingLeadStatus): string {
 
 export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   onBackToHome,
+  backLabel,
   onLockAndHideMenu,
   onOpenCustomerInQuoteBuilder,
   onOpenQuoteRecordInQuoteBuilder,
@@ -167,13 +174,43 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     getCachedCustomers()
   );
 
-  // 필터 상태 (전체 보기 없이 '신규' 탭 기본 진입)
+  // 필터 상태 (직전 작업 중이던 탭 세션 복원 지원, 최초 기본값 '신규')
   const [selectedMonth, setSelectedMonth] = useState<string>('ALL');
-  const [statusTab, setStatusTab] = useState<StatusFilterTab>('신규');
+  const [statusTab, setStatusTab] = useState<StatusFilterTab>(() => {
+    try {
+      const saved = sessionStorage.getItem(MDB_LAST_STATUS_TAB_KEY) as StatusFilterTab | null;
+      if (saved && VALID_MDB_TABS.includes(saved)) return saved;
+    } catch {
+      // ignore
+    }
+    return '신규';
+  });
   // 1) '타직원인계' 탭 전용 하단 직원 서브탭 ('ALL' | 직원명)
-  const [handoverSubTab, setHandoverSubTab] = useState<string>('ALL');
+  const [handoverSubTab, setHandoverSubTab] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(MDB_LAST_HANDOVER_SUB_KEY) || 'ALL';
+    } catch {
+      return 'ALL';
+    }
+  });
   // 2) '계약완료' 탭 전용 하단 판매자 서브탭 ('ALL' | 'DIRECT' | 직원명)
-  const [contractSellerTab, setContractSellerTab] = useState<string>('ALL');
+  const [contractSellerTab, setContractSellerTab] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(MDB_LAST_SELLER_SUB_KEY) || 'ALL';
+    } catch {
+      return 'ALL';
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(MDB_LAST_STATUS_TAB_KEY, statusTab);
+      sessionStorage.setItem(MDB_LAST_HANDOVER_SUB_KEY, handoverSubTab);
+      sessionStorage.setItem(MDB_LAST_SELLER_SUB_KEY, contractSellerTab);
+    } catch {
+      // ignore
+    }
+  }, [statusTab, handoverSubTab, contractSellerTab]);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // 다중 선택 일괄 처리 모드 (일괄 인계 / 일괄 계약완료 / 일괄 삭제)
@@ -255,10 +292,10 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       setSheetUrlInput(
         hydrated.config.sheetCsvOrShareUrl || DEFAULT_INSTA_SHEET_URL
       );
-      // 진입 즉시 백그라운드 자동 동기화 (Apps Script 웹앱 또는 사전 연결된 인스타 DB 구글시트 전 탭 스캔)
+      // 진입 즉시 백그라운드 자동 동기화 (네트워크 중 로컬 삭제/수정 덮어쓰기 0%)
       syncLeadsFromGoogleSheet(hydrated).then((res) => {
         if (!mounted) return;
-        setStore(res.nextStore);
+        setStore(loadMarketingDbStore());
         if (res.ok && res.addedCount > 0) {
           showToast(res.message);
         }
@@ -271,11 +308,11 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     };
   }, []);
 
-  // 45초 주기 실시간 백그라운드 자동 감지 (Apps Script 또는 구글시트 공유/게시 모두 작동)
+  // 45초 주기 실시간 백그라운드 자동 감지
   useEffect(() => {
     const timer = setInterval(() => {
       syncLeadsFromGoogleSheet(loadMarketingDbStore()).then((res) => {
-        setStore(res.nextStore);
+        setStore(loadMarketingDbStore());
         if (res.ok && res.addedCount > 0) {
           showToast(res.message);
         }
@@ -284,18 +321,21 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     return () => clearInterval(timer);
   }, [store.config.gasWebAppUrl, store.config.sheetCsvOrShareUrl]);
 
-  // 백그라운드 복귀(문자/카톡/전화 후 복귀) 및 CRM 데이터 변동 시 즉시 시트 재동기화
+  // 백그라운드 복귀(문자/카톡/전화 후 복귀) 및 CRM/DB 변동 시 즉시 최신화
   useEffect(() => {
     const refreshLatest = () => {
       setCrmCustomers(getCachedCustomers());
       setStaffOptions(loadHandoverStaffOptions());
       setStore(loadMarketingDbStore());
     };
+    const onDbUpdated = () => {
+      setStore(loadMarketingDbStore());
+    };
     const onVis = () => {
       if (document.visibilityState === 'visible') {
         refreshLatest();
         syncLeadsFromGoogleSheet(loadMarketingDbStore()).then((res) => {
-          setStore(res.nextStore);
+          setStore(loadMarketingDbStore());
           if (res.ok && res.addedCount > 0) {
             showToast(res.message);
           }
@@ -303,9 +343,11 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       }
     };
     window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshLatest);
+    window.addEventListener(MARKETING_DB_UPDATED_EVENT, onDbUpdated);
     document.addEventListener('visibilitychange', onVis);
     return () => {
       window.removeEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshLatest);
+      window.removeEventListener(MARKETING_DB_UPDATED_EVENT, onDbUpdated);
       document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
@@ -715,6 +757,29 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         `🎉 [${nextHandoverStaff}] 인계 판매 건이 [계약완료] 탭으로 이동했습니다! 발생매출을 입력해 주세요.`
       );
     } else if (nextStatus === '타직원인계') {
+      // 타직원 인계로 전환 시, 이전에 자동 생성된 0원 임시 CRM 카드가 있다면 내 개인 고객관리에서 자동 정리
+      const lDigits = getCanonicalPhoneDigits(lead.phone);
+      const latestCrm = getCachedCustomers();
+      const autoPlaceholder = latestCrm.find(
+        (c) =>
+          !c.deletedAt &&
+          (c.id === lead.linkedCrmCustomerId ||
+            (lDigits.length >= 7 && getCanonicalPhoneDigits(c.phone) === lDigits)) &&
+          (!c.quotes || c.quotes.length === 0) &&
+          (Number(c.paidAmount) || 0) === 0 &&
+          (Number(c.netAmount) || 0) === 0
+      );
+      if (autoPlaceholder) {
+        const nowMs = Date.now();
+        const cleanedCrm = setCachedCustomers(
+          latestCrm.map((c) =>
+            c.id === autoPlaceholder.id
+              ? { ...c, deletedAt: nowMs, updatedAtMs: nowMs }
+              : c
+          )
+        );
+        setCrmCustomers(cleanedCrm);
+      }
       showToast(
         `↪ ${lead.customerName} 고객님이 [타직원인계] 탭으로 이동했습니다. 인계 직원을 지정해 주세요.`
       );
@@ -1055,7 +1120,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     }
 
     const { savedCustomer, isExistingCustomer } =
-      await saveMarketingLeadToCrm(lead);
+      await saveMarketingLeadToCrm(lead, { allowRestoreFromTrash: true });
     setCrmCustomers(getCachedCustomers());
     commitStore((prev) => ({
       ...prev,
@@ -1172,7 +1237,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   const handleInlineDeleteCustomer = async (id: string) => {
     const deletedAt = Date.now();
     const updated = crmCustomers.map((c) =>
-      c.id === id ? { ...c, deletedAt } : c
+      c.id === id ? { ...c, deletedAt, updatedAtMs: deletedAt } : c
     );
     const deduped = setCachedCustomers(updated);
     setCrmCustomers(deduped);
@@ -1181,21 +1246,22 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     await syncCustomerToGas('update', { id, deletedAt });
   };
 
-  // 개별 / 선택 고객 삭제 (시트 재동기화 부활 차단 지문 등록)
+  // 개별 / 선택 고객 삭제 (전화번호·지문 전방위 부활 차단 + 연동된 내 고객관리 카드도 함께 휴지통 이동!)
   const handleSoftDeleteLeads = (ids: string[]) => {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     const nowMs = Date.now();
+    const deletedPhoneDigits = new Set<string>();
+    const deletedLinkedCrmIds = new Set<string>();
+
     commitStore((prev) => {
       const extraFingerprints: string[] = [];
       const nextLeads = prev.leads.map((l) => {
         if (!idSet.has(l.id)) return l;
-        extraFingerprints.push(l.fingerprint);
-        if (l.phone) {
-          extraFingerprints.push(
-            `ph_${l.phone.replace(/\D/g, '')}__${l.createdAt.slice(0, 10)}`
-          );
-        }
+        extraFingerprints.push(...buildAllLeadTombstoneKeys(l));
+        const d = getCanonicalPhoneDigits(l.phone);
+        if (d.length >= 7) deletedPhoneDigits.add(d);
+        if (l.linkedCrmCustomerId) deletedLinkedCrmIds.add(l.linkedCrmCustomerId);
         return { ...l, deletedAt: nowMs };
       });
       return {
@@ -1206,36 +1272,98 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         ),
       };
     });
+
+    // 연동되어 있던 내 고객관리(CRM) 카드가 있으면 함께 휴지통으로 보내서 다른 메뉴/홈 브리핑에 뜨지 않도록 동기화!
+    const currentCrm = getCachedCustomers();
+    let crmChanged = false;
+    const updatedCrm = currentCrm.map((c) => {
+      if (c.deletedAt) return c;
+      const cDigits = getCanonicalPhoneDigits(c.phone);
+      const isMatched =
+        deletedLinkedCrmIds.has(c.id) ||
+        (cDigits.length >= 7 && deletedPhoneDigits.has(cDigits));
+      if (!isMatched) return c;
+      crmChanged = true;
+      return { ...c, deletedAt: nowMs, updatedAtMs: nowMs };
+    });
+    if (crmChanged) {
+      const dedupedCrm = setCachedCustomers(updatedCrm);
+      setCrmCustomers(dedupedCrm);
+    }
+
     setSelectedIds([]);
     setIsSelectMode(false);
     showToast(
-      `${ids.length}명의 DB가 삭제(휴지통 이동)되었습니다. 시트 동기화 시에도 다시 뜨지 않습니다.`
+      `🗑️ ${ids.length}명이 휴지통으로 이동되었습니다. (구글시트 동기화 및 다른 메뉴에서도 더 이상 뜨지 않습니다)`
     );
   };
 
   const handleRestoreLead = (lead: MarketingLeadItem) => {
-    const phKey = `ph_${lead.phone.replace(/\D/g, '')}__${lead.createdAt.slice(
-      0,
-      10
-    )}`;
+    const keysToRemove = new Set(buildAllLeadTombstoneKeys(lead));
+    const leadDigits = getCanonicalPhoneDigits(lead.phone);
+
     commitStore((prev) => ({
       ...prev,
       leads: prev.leads.map((l) =>
         l.id === lead.id ? { ...l, deletedAt: undefined } : l
       ),
-      deletedFingerprints: (prev.deletedFingerprints || []).filter(
-        (fp) => fp !== lead.fingerprint && fp !== phKey
-      ),
+      deletedFingerprints: (prev.deletedFingerprints || []).filter((fp) => {
+        if (keysToRemove.has(fp)) return false;
+        if (leadDigits.length >= 7 && fp.startsWith(`ph_${leadDigits}`)) return false;
+        return true;
+      }),
     }));
-    showToast(`${lead.customerName} 고객님 DB가 복원되었습니다.`);
+
+    // CRM 휴지통에 함께 들어가 있던 카드가 있으면 같이 복원
+    const currentCrm = getCachedCustomers();
+    let crmRestored = false;
+    const nowMs = Date.now();
+    const updatedCrm = currentCrm.map((c) => {
+      if (!c.deletedAt) return c;
+      const cDigits = getCanonicalPhoneDigits(c.phone);
+      const isMatched =
+        (lead.linkedCrmCustomerId && c.id === lead.linkedCrmCustomerId) ||
+        (leadDigits.length >= 7 && cDigits === leadDigits);
+      if (!isMatched) return c;
+      crmRestored = true;
+      return { ...c, deletedAt: undefined, updatedAtMs: nowMs };
+    });
+    if (crmRestored) {
+      const dedupedCrm = setCachedCustomers(updatedCrm);
+      setCrmCustomers(dedupedCrm);
+    }
+
+    showToast(`♻️ ${lead.customerName} 고객님 DB가 복원되었습니다.`);
   };
 
   const handlePermanentPurgeLead = (leadId: string) => {
-    commitStore((prev) => ({
-      ...prev,
-      leads: prev.leads.filter((l) => l.id !== leadId),
-    }));
-    showToast('영구 삭제되었습니다 (시트 재유입 차단은 유지됩니다).');
+    commitStore((prev) => {
+      const target = prev.leads.find((l) => l.id === leadId);
+      const extraKeys = target ? buildAllLeadTombstoneKeys(target) : [];
+      return {
+        ...prev,
+        leads: prev.leads.filter((l) => l.id !== leadId),
+        deletedFingerprints: Array.from(
+          new Set([...(prev.deletedFingerprints || []), ...extraKeys])
+        ),
+      };
+    });
+    showToast('영구 삭제되었습니다 (구글시트 재유입 영구 차단은 계속 유지됩니다).');
+  };
+
+  const handleEmptyDbTrash = () => {
+    commitStore((prev) => {
+      const trashed = prev.leads.filter((l) => Boolean(l.deletedAt));
+      const extraKeys = trashed.flatMap((l) => buildAllLeadTombstoneKeys(l));
+      return {
+        ...prev,
+        leads: prev.leads.filter((l) => !l.deletedAt),
+        deletedFingerprints: Array.from(
+          new Set([...(prev.deletedFingerprints || []), ...extraKeys])
+        ),
+      };
+    });
+    showToast('🗑️ 휴지통을 모두 비웠습니다 (삭제 고객 재유입 차단은 계속 유지됩니다).');
   };
 
   // 수동 DB 고객 등록
@@ -1379,7 +1507,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
               className={`px-2.5 py-1.5 rounded-xl border text-xs font-black inline-flex items-center gap-1 cursor-pointer shrink-0 ${subSurface}`}
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>홈</span>
+              <span>{backLabel || '홈으로'}</span>
             </button>
 
             <div className="min-w-0">
@@ -1864,6 +1992,15 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {statusTab === '휴지통' && trashedLeads.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleEmptyDbTrash}
+                  className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black whitespace-nowrap cursor-pointer"
+                >
+                  🗑️ 휴지통 비우기 ({trashedLeads.length}명)
+                </button>
+              )}
               {statusTab !== '휴지통' && (
                 <button
                   type="button"

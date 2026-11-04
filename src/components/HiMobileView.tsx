@@ -13,6 +13,7 @@ import {
 
 interface HiMobileViewProps {
   onBackToHome: () => void;
+  backLabel?: string;
 }
 
 type PlanContractFilter = 'all' | 'no-contract' | 'contract-24';
@@ -129,7 +130,7 @@ const HIMOBILE_PLANS: HiMobilePlanItem[] = [
   },
 ];
 
-export const HiMobileView: React.FC<HiMobileViewProps> = ({ onBackToHome }) => {
+export const HiMobileView: React.FC<HiMobileViewProps> = ({ onBackToHome, backLabel }) => {
   const [filter, setFilter] = useState<PlanContractFilter>('all');
   const [copiedToast, setCopiedToast] = useState(false);
 
@@ -182,7 +183,7 @@ export const HiMobileView: React.FC<HiMobileViewProps> = ({ onBackToHome }) => {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-extrabold border border-white/15 transition cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>← 메인 메뉴로</span>
+                  <span>{backLabel || '홈으로'}</span>
                 </button>
                 <span className="px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 text-xs font-black tracking-tight">
                   롯데하이마트 경기광주점 × KT망 알뜰폰

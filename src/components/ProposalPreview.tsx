@@ -218,26 +218,52 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const isGuideTab =
     activeTab === 'guide-general' || activeTab === 'guide-sub';
 
-  // 프리드 안내서 탭('guide-general' | 'guide-sub')에서 뒤로가기 시 견적 제안서('proposal') 탭으로 먼저 복귀
+  // 공유 모달·저장 드롭다운·프리드 안내서 탭에서 뒤로가기 시 먼저 닫기 (스플릿 상담 모드 충돌 분리)
   useEffect(() => {
-    if (isGuideTab) {
+    if (isGuideTab || isShareLinkOpen || isShareMenuOpen || isSavePrintOpen) {
       try {
-        window.history.pushState({ appGuard: true, tag: 'guide-tab' }, '');
+        window.history.pushState({ appGuard: true, tag: 'preview-sub' }, '');
       } catch {
         // ignore
       }
     }
-    (window as any).__subViewBackHandler = (): boolean => {
+    const handler = (): boolean => {
+      if (isShareLinkOpen) {
+        setIsShareLinkOpen(false);
+        return true;
+      }
+      if (isShareMenuOpen) {
+        setIsShareMenuOpen(false);
+        return true;
+      }
+      if (isSavePrintOpen) {
+        setIsSavePrintOpen(false);
+        return true;
+      }
       if (activeTab === 'guide-general' || activeTab === 'guide-sub') {
         setActiveTab('proposal');
         return true;
       }
       return false;
     };
+    if (embeddedSplitMode) {
+      (window as any).__proposalPreviewSplitBackHandler = handler;
+      return () => {
+        delete (window as any).__proposalPreviewSplitBackHandler;
+      };
+    }
+    (window as any).__subViewBackHandler = handler;
     return () => {
       delete (window as any).__subViewBackHandler;
     };
-  }, [activeTab, isGuideTab]);
+  }, [
+    activeTab,
+    isGuideTab,
+    embeddedSplitMode,
+    isShareLinkOpen,
+    isShareMenuOpen,
+    isSavePrintOpen,
+  ]);
 
   // 2D Auto-Fit 스케일링: 가로폭은 무조건 상수 920 고정! (offsetWidth 측정 절대 금지)
   // 안내서 탭(#sheet-freed-guide)도 고정 1040 대신 실제 렌더링된 전체 높이를 측정하여 하단 문구 잘림 방지

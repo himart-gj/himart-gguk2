@@ -9,6 +9,7 @@ import {
 
 interface InsuranceGuideViewProps {
   onBackToHome: () => void;
+  backLabel?: string;
 }
 
 interface InsuranceRow {
@@ -88,6 +89,7 @@ const INSURANCE_ROWS: InsuranceRow[] = [
 
 export const InsuranceGuideView: React.FC<InsuranceGuideViewProps> = ({
   onBackToHome,
+  backLabel,
 }) => {
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -178,7 +180,7 @@ export const InsuranceGuideView: React.FC<InsuranceGuideViewProps> = ({
               className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs sm:text-sm font-black flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>메인 메뉴로</span>
+              <span>{backLabel || '홈으로'}</span>
             </button>
 
             <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-teal-600 text-white font-black text-xs sm:text-sm shadow-xs">
