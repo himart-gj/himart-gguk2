@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AppStep } from '../types/proposal';
 import {
+  getOwnerDbPin,
   isOwnerMarketingDbUnlocked,
   verifyAndUnlockOwnerDb,
 } from '../utils/marketingDbEngine';
 import { CustomerItem } from '../crm/types/crm';
-import { CareTableDataset, CareTableItem } from '../utils/careTableParser';
+import { ADMIN_PIN_CODE, CareTableDataset, CareTableItem } from '../utils/careTableParser';
 import { InstallmentDataset } from '../utils/installmentParser';
 import { MAJOR_AS_CENTERS, PLUX_AS_GROUPS } from './QuickCenterModal';
 import { loadPartnerLinks } from './PartnerLinksModal';
@@ -146,14 +147,18 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     // 0) 스텔스 소유자 전용 코드 감지 (#462846 등 정확한 암호 입력 시에만 노출, 평소 타 직원에게는 노출 0%)
     if (q.startsWith('#') && q.length >= 5) {
       const candidatePin = q.replace(/^#(?:db)?/i, '').trim();
-      if (candidatePin && verifyAndUnlockOwnerDb(candidatePin)) {
+      if (
+        candidatePin &&
+        (candidatePin === getOwnerDbPin() || candidatePin === ADMIN_PIN_CODE)
+      ) {
         list.push({
           id: 'stealth-owner-db-unlock',
           group: '메뉴',
           title: '🔒 인스타 마케팅 DB관리 (국지현 전용) 잠금해제 · 열기',
-          subtitle: '내 기기 전용 비공개 메뉴가 활성화되었습니다',
+          subtitle: '터치 시 내 기기 전용 비공개 메뉴를 활성화하고 바로 엽니다',
           badge: 'OWNER',
           onSelect: () => {
+            verifyAndUnlockOwnerDb(candidatePin);
             onClose();
             onNavigateStep('marketing-db');
           },

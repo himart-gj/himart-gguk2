@@ -58,7 +58,7 @@ export async function sendSystemNotification(
 }
 
 export function getBriefingSummary(customers: CustomerItem[]) {
-  const active = customers.filter((c) => c.status !== '취소/보류');
+  const active = (customers || []).filter((c) => !c.deletedAt && c.status !== '취소/보류');
 
   const notDeliveredYet = active.filter((c) => c.status !== '배송완료');
   // 실제 배송·물류·해피콜 브리핑은 오직 '계약완료' 고객만 집계 (상담중 고객의 희망 배송일 제외)

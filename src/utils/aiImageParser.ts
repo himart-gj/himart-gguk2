@@ -440,13 +440,7 @@ export async function parseGeneralImageWithFallback(
     ],
   };
 
-  const GEMINI_MODELS = [
-    'gemini-3.8-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-3.7-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-  ];
+  const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
   let responseText = '';
   let lastError: any = null;
 
@@ -654,13 +648,7 @@ export async function parseSubscriptionImageWithFallback(
     ],
   };
 
-  const GEMINI_MODELS = [
-    'gemini-3.8-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-3.7-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-  ];
+  const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
   let responseText = '';
   let lastError: any = null;
 

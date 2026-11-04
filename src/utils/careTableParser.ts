@@ -709,7 +709,13 @@ export async function publishCareDatasetToGitHub(
     }
 
     const jsonStr = JSON.stringify(dataset, null, 2);
-    const base64Content = btoa(unescape(encodeURIComponent(jsonStr)));
+    const utf8Bytes = new TextEncoder().encode(jsonStr);
+    let binaryStr = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < utf8Bytes.length; i += chunkSize) {
+      binaryStr += String.fromCharCode(...utf8Bytes.subarray(i, i + chunkSize));
+    }
+    const base64Content = btoa(binaryStr);
 
     const putRes = await fetch(apiUrl, {
       method: 'PUT',

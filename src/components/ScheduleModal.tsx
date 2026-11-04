@@ -1359,13 +1359,7 @@ ${combinedCsv}`;
     required: ['month', 'employees'],
   };
 
-  const GEMINI_MODELS = [
-    'gemini-3.8-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-3.7-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-  ];
+  const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
 
   let rawJsonText = '';
   let lastErr: any = null;
@@ -2349,13 +2343,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           required: ['month', 'employees'],
         };
 
-        const GEMINI_MODELS = [
-          'gemini-3.8-flash',
-          'gemini-3.1-pro-preview',
-          'gemini-3.7-flash',
-          'gemini-3.5-flash',
-          'gemini-flash-latest',
-        ];
+        const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
 
         let rawText = '';
         let lastError: any = null;
@@ -3326,6 +3314,30 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     });
   };
 
+  // 편집 시트 내 같은 코너 동료 근무 현황 계산
+  const editingCellPeerInfo = useMemo(() => {
+    if (!editingCell) return null;
+    const targetGroup = classifyRoleGroup(editingCell.empRole);
+    const workingPeers = monthData.employees.filter((e) => {
+      if (e.name === editingCell.empName) return false;
+      if (classifyRoleGroup(e.role) !== targetGroup) return false;
+      const c = e.days[String(editingCell.day)] || '';
+      return !(
+        c === 'O' ||
+        c === '연차' ||
+        c === 'V' ||
+        c === '출휴' ||
+        c === '사가' ||
+        c === '교육' ||
+        c === '회의'
+      );
+    });
+    return {
+      cornerGroup: targetGroup,
+      workingPeers,
+    };
+  }, [editingCell, monthData.employees]);
+
   if (!isOpen) return null;
 
   const selectedWeekday = WEEKDAY_KO[selectedDate.getDay()];
@@ -3429,29 +3441,6 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
     });
   };
 
-  // 편집 시트 내 같은 코너 동료 근무 현황 계산
-  const editingCellPeerInfo = useMemo(() => {
-    if (!editingCell) return null;
-    const targetGroup = classifyRoleGroup(editingCell.empRole);
-    const workingPeers = monthData.employees.filter((e) => {
-      if (e.name === editingCell.empName) return false;
-      if (classifyRoleGroup(e.role) !== targetGroup) return false;
-      const c = e.days[String(editingCell.day)] || '';
-      return !(
-        c === 'O' ||
-        c === '연차' ||
-        c === 'V' ||
-        c === '출휴' ||
-        c === '사가' ||
-        c === '교육' ||
-        c === '회의'
-      );
-    });
-    return {
-      cornerGroup: targetGroup,
-      workingPeers,
-    };
-  }, [editingCell, monthData.employees]);
 
   // 테마별 공통 서피스 클래스
   const shellBg = isDark

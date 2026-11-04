@@ -190,7 +190,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   }, []);
 
   const [apiKey, setApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-3.8-flash');
+  const [aiModel, setAiModel] = useState('gemini-2.5-flash');
 
   // Load API key and model from local storage on mount (1~4번 메뉴 공통 키 'gemini_api_key' 공유)
   React.useEffect(() => {
@@ -200,18 +200,12 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       '';
     if (storedKey) setApiKey(storedKey);
     const storedModel = localStorage.getItem('geminiAiModel');
-    const validModels = [
-      'gemini-3.8-flash',
-      'gemini-3.1-pro-preview',
-      'gemini-3.7-flash',
-      'gemini-3.5-flash',
-      'gemini-flash-latest',
-    ];
+    const validModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
     if (storedModel && validModels.includes(storedModel)) {
       setAiModel(storedModel);
     } else {
-      setAiModel('gemini-3.8-flash');
-      localStorage.setItem('geminiAiModel', 'gemini-3.8-flash');
+      setAiModel('gemini-2.5-flash');
+      localStorage.setItem('geminiAiModel', 'gemini-2.5-flash');
     }
   }, []);
 
@@ -500,14 +494,14 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 <Camera className="w-3.5 h-3.5 text-amber-300" />
                 <span>사진/캡처 견적서 AI 등록</span>
               </button>
-              <button
+              <button type="button"
                 onClick={() => setIsDataModalOpen(true)}
                 className="flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <Upload className="w-3.5 h-3.5" />
                 자료 관리 (엑셀)
               </button>
-              <button
+              <button type="button"
                 onClick={() => setIsSettingsModalOpen(true)}
                 className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer shrink-0"
               >
@@ -654,7 +648,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
 
             <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
               {isInstallable && !isInstalled && (
-                <button
+                <button type="button"
                   onClick={install}
                   className="flex items-center gap-1 bg-blue-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold border border-blue-700 hover:bg-blue-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
@@ -664,7 +658,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
               )}
 
               {isIOS && !isInstalled && (
-                <button
+                <button type="button"
                   onClick={() => setShowIOSGuide(true)}
                   className="flex items-center gap-1 bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-200 hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
                 >
@@ -674,7 +668,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
               )}
 
               {/* Print Button */}
-              <button
+              <button type="button"
                 onClick={handlePrint}
                 disabled={activePrintProducts.length === 0}
                 className={`flex items-center gap-1 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
@@ -690,7 +684,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
               </button>
 
               {/* PDF Button */}
-              <button
+              <button type="button"
                 onClick={handleDownloadPDF}
                 disabled={activePrintProducts.length === 0 || isDownloading}
                 className="flex items-center gap-1 bg-red-600 text-white px-2.5 py-1 rounded-lg text-xs font-bold hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
@@ -712,7 +706,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         <div className="bg-indigo-700 text-white text-center py-2.5 px-4 text-sm font-bold shadow-md no-print flex items-center justify-center gap-2 border-b border-indigo-800">
           <span>🛡️</span>
           <span>{uploadSuccessMessage}</span>
-          <button 
+          <button type="button" 
             onClick={() => setUploadSuccessMessage(null)} 
             className="ml-3 text-indigo-200 hover:text-white text-xs bg-indigo-800 px-2 py-0.5 rounded cursor-pointer"
           >
@@ -1157,7 +1151,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 <FileSpreadsheet className="w-5 h-5 text-blue-600" />
                 자료 관리 및 업로드
               </h3>
-              <button onClick={() => setIsDataModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setIsDataModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1292,7 +1286,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 <Settings className="w-5 h-5 text-slate-600" />
                 설정 및 공유하기
               </h3>
-              <button onClick={() => setIsSettingsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button type="button" onClick={() => setIsSettingsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1334,11 +1328,10 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                       onChange={(e) => setAiModel(e.target.value)}
                       className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      <option value="gemini-3.8-flash">gemini-3.8-flash (1순위 권장)</option>
-                      <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
-                      <option value="gemini-3.7-flash">gemini-3.7-flash</option>
-                      <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                      <option value="gemini-2.5-flash">gemini-2.5-flash (1순위 권장)</option>
                       <option value="gemini-flash-latest">gemini-flash-latest</option>
+                      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                      <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
                     </select>
                   </div>
                   
@@ -1357,13 +1350,13 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
               </div>
 
               <div className="flex gap-2 mt-6">
-                <button
+                <button type="button"
                   onClick={() => setIsSettingsModalOpen(false)}
                   className="flex-1 py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200"
                 >
                   닫기
                 </button>
-                <button
+                <button type="button"
                   onClick={handleSaveSettings}
                   className="flex-1 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700"
                 >
@@ -1385,7 +1378,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
               1. Safari 하단 툴바에서 <strong>공유(Share)</strong> 버튼을 누르세요.<br/>
               2. 스크롤을 내려서 <strong>[홈 화면에 추가]</strong>를 선택하세요.
             </p>
-            <button
+            <button type="button"
               onClick={() => setShowIOSGuide(false)}
               className="w-full rounded-lg bg-slate-800 py-3 text-sm font-bold text-white hover:bg-slate-700"
             >

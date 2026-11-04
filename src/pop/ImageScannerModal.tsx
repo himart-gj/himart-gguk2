@@ -174,13 +174,7 @@ export default function ImageScannerModal({
 - 본문에 모델명이 안 보이면 화면 최상단 브라우저 주소창 URL 파라미터(예: productId=FG24GN.AKOR2)에서 모델코드를 반드시 추출할 것!
 - 하단 노란색 글씨 '월 납부요금'(예: 약 58,653원 -> 58653)을 monthlyFee로 추출할 것!`;
 
-      const GEMINI_MODELS = [
-        'gemini-3.8-flash',
-        'gemini-3.1-pro-preview',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash',
-        'gemini-flash-latest',
-      ];
+      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
       let responseText = '';
       let lastError: any = null;
 
@@ -321,7 +315,7 @@ export default function ImageScannerModal({
               </p>
             </div>
           </div>
-          <button
+          <button type="button"
             onClick={onClose}
             className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
           >
@@ -335,7 +329,7 @@ export default function ImageScannerModal({
             <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-sm flex items-start gap-2">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-500" />
               <div className="flex-1">{error}</div>
-              <button
+              <button type="button"
                 onClick={() => setError(null)}
                 className="text-red-400 hover:text-red-600 text-xs font-bold"
               >
@@ -726,7 +720,7 @@ export default function ImageScannerModal({
             <Clipboard className="w-3.5 h-3.5 text-slate-400" />
             화면 어디서든 <strong>Ctrl + V</strong> 로 캡처 이미지를 즉시 인식할 수 있습니다.
           </span>
-          <button
+          <button type="button"
             onClick={onClose}
             className="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200 font-bold transition-colors cursor-pointer"
           >

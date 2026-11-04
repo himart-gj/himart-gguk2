@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AppStep,
   extractGeneralPlanData,
@@ -177,6 +177,66 @@ const createInitialState = (mode: QuoteMode): ProposalState => {
     ...plan1,
   };
 };
+
+interface ScreenErrorBoundaryProps {
+  stepKey: string;
+  onResetToHome: () => void;
+  children: React.ReactNode;
+}
+interface ScreenErrorBoundaryState {
+  error: Error | null;
+}
+class ScreenErrorBoundary extends Component<
+  ScreenErrorBoundaryProps,
+  ScreenErrorBoundaryState
+> {
+  state: ScreenErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ScreenErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidUpdate(prevProps: ScreenErrorBoundaryProps) {
+    if (prevProps.stepKey !== this.props.stepKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3">
+          <div className="text-sm font-black text-rose-600">
+            화면을 불러오는 중 일시적인 오류가 발생했습니다.
+          </div>
+          <div className="text-xs opacity-75 max-w-md break-all">
+            {this.state.error.message}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => this.setState({ error: null })}
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black cursor-pointer"
+            >
+              다시 시도
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ error: null });
+                this.props.onResetToHome();
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-black cursor-pointer"
+            >
+              홈으로 이동
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function getStepShortLabel(s: AppStep): string {
   switch (s) {
@@ -916,6 +976,7 @@ export function App() {
     if (recent.length >= 5) {
       homeTapTimestampsRef.current = [];
       if (isOwnerMarketingDbUnlocked()) {
+        setIsOwnerDbUnlocked(true);
         navigateToStep('marketing-db');
       } else {
         setStealthPinInput('');
@@ -2641,6 +2702,10 @@ export function App() {
       )}
 
       {/* ==================== 지연 로딩(React.lazy) 서브 뷰 영역 ==================== */}
+      <ScreenErrorBoundary
+        stepKey={step}
+        onResetToHome={() => navigateToStep('home', { reset: true })}
+      >
       <Suspense
         fallback={
           <div className="flex-1 flex items-center justify-center py-20 text-xs sm:text-sm font-black opacity-70">
@@ -2671,7 +2736,7 @@ export function App() {
             initialSelectedCustomerId={initialCrmCustomerId}
           />
         )}
-        {step === 'marketing-db' && isOwnerDbUnlocked && (
+        {step === 'marketing-db' && (isOwnerDbUnlocked || isOwnerMarketingDbUnlocked()) && (
           <MarketingDbManagerView
             onBackToHome={handleNavigateBack}
             backLabel={backButtonLabel}
@@ -2714,6 +2779,31 @@ export function App() {
             backLabel={backButtonLabel}
           />
         )}
+        {step === 'marketing-db' && !isOwnerDbUnlocked && !isOwnerMarketingDbUnlocked() && (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 gap-3">
+            <p className="text-sm font-black">개인 보안 코드 인증이 필요합니다.</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStealthPinInput('');
+                  setStealthPinError(false);
+                  setIsStealthPinOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black cursor-pointer"
+              >
+                보안 코드 입력
+              </button>
+              <button
+                type="button"
+                onClick={handleNavigateBack}
+                className="px-4 py-2 rounded-xl bg-slate-200 text-slate-800 text-xs font-black cursor-pointer"
+              >
+                {backButtonLabel}
+              </button>
+            </div>
+          </div>
+        )}
         {step === 'care-table' && (
           <CareTableView
             onBackToHome={handleNavigateBack}
@@ -2721,6 +2811,7 @@ export function App() {
           />
         )}
       </Suspense>
+      </ScreenErrorBoundary>
 
       {/* ==================== 카드발급 & AS센터 즉시 모달 ==================== */}
       <CardIssueModal

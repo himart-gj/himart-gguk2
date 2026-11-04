@@ -435,13 +435,7 @@ async function startServer() {
         ],
       };
 
-      const GEMINI_MODELS = [
-        'gemini-3.8-flash',
-        'gemini-3.1-pro-preview',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash',
-        'gemini-flash-latest',
-      ];
+      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
       let responseText: string | undefined;
       let lastError: unknown;
 
@@ -689,13 +683,7 @@ async function startServer() {
         ],
       };
 
-      const GEMINI_MODELS = [
-        'gemini-3.8-flash',
-        'gemini-3.1-pro-preview',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash',
-        'gemini-flash-latest',
-      ];
+      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
       let responseText: string | undefined;
       let lastError: unknown;
 
@@ -837,13 +825,7 @@ async function startServer() {
 
       try {
         const ai = getGenAIClient(clientApiKey);
-        const GEMINI_MODELS = [
-          'gemini-3.8-flash',
-          'gemini-3.1-pro-preview',
-          'gemini-3.7-flash',
-          'gemini-3.5-flash',
-          'gemini-flash-latest',
-        ];
+        const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
         for (const modelName of GEMINI_MODELS) {
           try {
             const response = await ai.models.generateContent({
@@ -934,13 +916,7 @@ async function startServer() {
 11. isAllCare (올케어 여부): 이미지에 '올케어', '가전수리올케어', 'allcare', '사용중 가전 보증', '2년 수리비 보증' 등이 포함되어 있으면 true, 아니면 false.`;
 
       let responseText = '';
-      const GEMINI_MODELS = [
-        'gemini-3.8-flash',
-        'gemini-3.1-pro-preview',
-        'gemini-3.7-flash',
-        'gemini-3.5-flash',
-        'gemini-flash-latest',
-      ];
+      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
       const modelsToTry = GEMINI_MODELS;
       let lastError: any = null;
 

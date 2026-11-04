@@ -32,9 +32,11 @@ import {
   X,
 } from 'lucide-react';
 import {
+  buildAllLeadTombstoneKeys,
   buildLeadAutoSummary,
   copyBusinessCardImageToClipboard,
   DEFAULT_INSTA_SHEET_URL,
+  getCanonicalPhoneDigits,
   getEffectiveBusinessCardDataUri,
   getOwnerDbPin,
   getReadyMadeAppsScriptCode,
@@ -45,6 +47,7 @@ import {
   loadMarketingDbStore,
   lockOwnerMarketingDb,
   makeLeadFingerprint,
+  MARKETING_DB_UPDATED_EVENT,
   MARKETING_LEAD_STATUSES,
   MarketingDbStore,
   MarketingLeadItem,
@@ -59,6 +62,7 @@ import {
   setOwnerDbPin,
   shareBusinessCardFileWithText,
   syncLeadsFromGoogleSheet,
+  syncMarketingDbTrashFromCrmCustomer,
 } from '../utils/marketingDbEngine';
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from '../utils/ownerBusinessCardAsset';
 import {
@@ -1236,13 +1240,18 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
   const handleInlineDeleteCustomer = async (id: string) => {
     const deletedAt = Date.now();
+    const target = crmCustomers.find((c) => c.id === id);
     const updated = crmCustomers.map((c) =>
       c.id === id ? { ...c, deletedAt, updatedAtMs: deletedAt } : c
     );
     const deduped = setCachedCustomers(updated);
     setCrmCustomers(deduped);
+    if (target) {
+      syncMarketingDbTrashFromCrmCustomer(target, true);
+      setStore(loadMarketingDbStore());
+    }
     setInlineDetailCustomerId(null);
-    showToast('고객카드가 고객관리 휴지통으로 이동되었습니다.');
+    showToast('고객카드가 휴지통으로 이동되었습니다 (인스타 DB도 함께 동기화 완료).');
     await syncCustomerToGas('update', { id, deletedAt });
   };
 
