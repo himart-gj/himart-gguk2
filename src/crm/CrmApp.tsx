@@ -23,6 +23,7 @@ import {
   deleteQuoteAndSyncCustomer,
   fetchCustomersFromGas,
   getCachedCustomers,
+  getCustomerIdentityKey,
   setCachedCustomers,
   syncCustomerToGas,
 } from './services/gasApi';
@@ -334,9 +335,15 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     const target = customers.find((c) => c.id === customerId);
     if (!target) return;
     pushUndoSnapshot(`${target.name} 배송완료 처리`);
+    const nowMs = Date.now();
     const updated = customers.map((c) =>
       c.id === customerId
-        ? { ...c, status: '배송완료' as CustomerStatus, logisticsConfirmed: true }
+        ? {
+            ...c,
+            status: '배송완료' as CustomerStatus,
+            logisticsConfirmed: true,
+            updatedAtMs: nowMs,
+          }
         : c
     );
     const deduped = setCachedCustomers(updated);
@@ -359,9 +366,15 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     if (customerIds.length === 0) return;
     const idSet = new Set(customerIds);
     pushUndoSnapshot(`배송완료 일괄 처리 (${customerIds.length}건)`);
+    const nowMs = Date.now();
     const updated = customers.map((c) =>
       idSet.has(c.id)
-        ? { ...c, status: '배송완료' as CustomerStatus, logisticsConfirmed: true }
+        ? {
+            ...c,
+            status: '배송완료' as CustomerStatus,
+            logisticsConfirmed: true,
+            updatedAtMs: nowMs,
+          }
         : c
     );
     const deduped = setCachedCustomers(updated);
@@ -393,8 +406,9 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     const target = customers.find((c) => c.id === id);
     if (target && target.status === nextStatus) return;
     pushUndoSnapshot(`${target?.name || '고객'} 상태 변경`);
+    const nowMs = Date.now();
     const updated = customers.map((c) =>
-      c.id === id ? { ...c, status: nextStatus } : c
+      c.id === id ? { ...c, status: nextStatus, updatedAtMs: nowMs } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
@@ -402,16 +416,18 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       `📌 [${target?.name || '고객'}] 상태 → [${nextStatus}]`,
       true
     );
-    await syncCustomerToGas('update', { id, status: nextStatus });
+    await syncCustomerToGas('update', { id, status: nextStatus, updatedAtMs: nowMs });
   };
 
   const handleMemoChange = async (id: string, nextMemo: string) => {
+    const nowMs = Date.now();
     const updated = customers.map((c) =>
-      c.id === id ? { ...c, memo: nextMemo } : c
+      c.id === id ? { ...c, memo: nextMemo, updatedAtMs: nowMs } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
-    await syncCustomerToGas('update', { id, memo: nextMemo });
+    showToast('📝 상담 메모가 저장되었습니다.');
+    await syncCustomerToGas('update', { id, memo: nextMemo, updatedAtMs: nowMs });
   };
 
   const handleFieldChange = async (
@@ -420,11 +436,21 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   ) => {
     const target = customers.find((c) => c.id === id);
     pushUndoSnapshot(`${target?.name || '고객'} 정보 수정`);
+    const nowMs = Date.now();
+    const stampedPatch: Partial<CustomerItem> = {
+      ...patch,
+      updatedAtMs: nowMs,
+    };
     const updated = customers.map((c) =>
-      c.id === id ? { ...c, ...patch } : c
+      c.id === id ? { ...c, ...stampedPatch } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    if (selectedCustomerId === id && !deduped.some((c) => c.id === id) && target) {
+      const mergedKey = getCustomerIdentityKey({ ...target, ...stampedPatch } as CustomerItem);
+      const survivor = deduped.find((c) => !c.deletedAt && getCustomerIdentityKey(c) === mergedKey);
+      if (survivor) setSelectedCustomerId(survivor.id);
+    }
     if ('logisticsConfirmed' in patch) {
       showToast(
         `🚚 [${target?.name || '고객'}] ${
@@ -500,8 +526,9 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         extractedPerf?.purchasedModels ?? quote.purchasedModels,
     };
 
+    const nowMs = Date.now();
     const updated = customers.map((c) =>
-      c.id === customerId ? { ...c, ...patch } : c
+      c.id === customerId ? { ...c, ...patch, updatedAtMs: nowMs } : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
@@ -569,11 +596,29 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   };
 
   const handleAddNewCustomer = async (newCustomer: CustomerItem) => {
-    const updated = [newCustomer, ...customers];
+    pushUndoSnapshot(`${newCustomer.name} 신규 등록`);
+    const nowMs = Date.now();
+    const stampedNew: CustomerItem = {
+      ...newCustomer,
+      deletedAt: undefined,
+      updatedAtMs: nowMs,
+    };
+    const targetIdentity = getCustomerIdentityKey(stampedNew);
+    const cleanedExisting = customers.filter(
+      (c) => !(c.deletedAt && getCustomerIdentityKey(c) === targetIdentity)
+    );
+    const updated = [stampedNew, ...cleanedExisting];
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
-    showToast(`✅ [${newCustomer.name}] 고객님이 등록되었습니다.`);
-    await syncCustomerToGas('create', newCustomer);
+    syncMarketingDbTrashFromCrmCustomer(stampedNew, false);
+    if (searchQuery.trim()) {
+      setSearchQuery('');
+    }
+    if (viewMode === 'grid') {
+      setActiveTab(stampedNew.status);
+    }
+    showToast(`✅ [${stampedNew.name}] 고객님이 [${stampedNew.status}] 탭에 등록되었습니다.`, true);
+    await syncCustomerToGas('create', stampedNew);
   };
 
   const handleImportCustomers = (imported: CustomerItem[]) => {
