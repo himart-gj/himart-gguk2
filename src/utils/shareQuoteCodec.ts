@@ -963,6 +963,15 @@ export async function createShortenedQuoteLinks(
   const { baseUrl, usingCustomDomain } = resolveEffectiveViewerBaseUrl();
   const compactUrl = `${baseUrl}?s=${token}`;
 
+  // [QA 06 네트워크 끊김 방어] 오프라인 상태에서는 타임아웃 대기(4.7초) 없이 0.01초 만에 초압축 링크 즉시 반환!
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      shortUrl: compactUrl,
+      compactUrl,
+      isShortened: false,
+    };
+  }
+
   const isLocal =
     !usingCustomDomain &&
     typeof window !== 'undefined' &&

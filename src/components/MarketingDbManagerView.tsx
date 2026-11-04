@@ -8,6 +8,9 @@ import {
   ClipboardPaste,
   Coins,
   Copy,
+  CreditCard,
+  Image as ImageIcon,
+  Share2,
   Database,
   ExternalLink,
   EyeOff,
@@ -31,7 +34,9 @@ import {
 } from 'lucide-react';
 import {
   buildLeadAutoSummary,
+  copyBusinessCardImageToClipboard,
   DEFAULT_INSTA_SHEET_URL,
+  getEffectiveBusinessCardDataUri,
   getOwnerDbPin,
   getReadyMadeAppsScriptCode,
   HandoverStaffOption,
@@ -53,16 +58,32 @@ import {
   saveMarketingDbStore,
   saveMarketingLeadToCrm,
   setOwnerDbPin,
+  shareBusinessCardFileWithText,
   syncLeadsFromGoogleSheet,
 } from '../utils/marketingDbEngine';
-import { getCachedCustomers } from '../crm/services/gasApi';
-import { CustomerItem } from '../crm/types/crm';
+import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from '../utils/ownerBusinessCardAsset';
+import {
+  buildPrimaryFieldsFromQuote,
+  CRM_CUSTOMERS_UPDATED_EVENT,
+  deleteQuoteAndSyncCustomer,
+  getCachedCustomers,
+  setCachedCustomers,
+  syncCustomerToGas,
+} from '../crm/services/gasApi';
+import { CustomerDetailModal } from '../crm/components/CustomerDetailModal';
+import { SMSModal } from '../crm/components/SMSModal';
+import { CustomerItem, CustomerStatus, QuoteRecord } from '../crm/types/crm';
+import { safeCopyText } from '../utils/mobileQaRuntime';
 
 export interface MarketingDbManagerViewProps {
   onBackToHome: () => void;
   onLockAndHideMenu: () => void;
   onOpenCustomerInCrm: (customerId?: string) => void;
   onOpenCustomerInQuoteBuilder: (customer: CustomerItem) => void;
+  onOpenQuoteRecordInQuoteBuilder?: (
+    customer: CustomerItem,
+    quote: QuoteRecord
+  ) => void;
   isDark?: boolean;
 }
 
@@ -78,18 +99,14 @@ function getStatusBadgeStyle(status: MarketingLeadStatus, isDark: boolean): stri
       return isDark
         ? 'bg-blue-500/20 text-blue-300 border-blue-400/40'
         : 'bg-blue-50 text-blue-700 border-blue-300';
-    case '응답':
-      return isDark
-        ? 'bg-sky-500/20 text-sky-300 border-sky-400/40'
-        : 'bg-sky-50 text-sky-800 border-sky-300';
-    case '무응답':
-      return isDark
-        ? 'bg-slate-500/20 text-slate-300 border-slate-400/35'
-        : 'bg-stone-100 text-stone-600 border-stone-300';
     case '상담전환':
       return isDark
         ? 'bg-violet-500/20 text-violet-300 border-violet-400/40'
         : 'bg-violet-50 text-violet-800 border-violet-300';
+    case '무응답':
+      return isDark
+        ? 'bg-slate-500/20 text-slate-300 border-slate-400/35'
+        : 'bg-stone-100 text-stone-600 border-stone-300';
     case '계약완료':
       return isDark
         ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50'
@@ -103,12 +120,10 @@ function getStatusActiveBtnStyle(status: MarketingLeadStatus): string {
       return 'bg-rose-600 text-white border-rose-600 shadow-2xs';
     case '문자전송':
       return 'bg-blue-600 text-white border-blue-600 shadow-2xs';
-    case '응답':
-      return 'bg-sky-600 text-white border-sky-600 shadow-2xs';
-    case '무응답':
-      return 'bg-stone-600 text-white border-stone-600 shadow-2xs';
     case '상담전환':
       return 'bg-violet-600 text-white border-violet-600 shadow-2xs';
+    case '무응답':
+      return 'bg-stone-600 text-white border-stone-600 shadow-2xs';
     case '계약완료':
       return 'bg-emerald-600 text-white border-emerald-600 shadow-2xs';
   }
@@ -117,8 +132,8 @@ function getStatusActiveBtnStyle(status: MarketingLeadStatus): string {
 export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   onBackToHome,
   onLockAndHideMenu,
-  onOpenCustomerInCrm,
   onOpenCustomerInQuoteBuilder,
+  onOpenQuoteRecordInQuoteBuilder,
   isDark: propIsDark,
 }) => {
   const [isDark, setIsDark] = useState<boolean>(() =>
@@ -166,7 +181,20 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     useState<MarketingLeadItem | null>(null);
   const [smsPreviewText, setSmsPreviewText] = useState<string>('');
   const [smsPreviewTplId, setSmsPreviewTplId] = useState<string>('');
+  const [smsPreviewIncludeCard, setSmsPreviewIncludeCard] =
+    useState<boolean>(true);
+  // 카드별 명함 동봉 선택 상태: 신규접수는 기본 true(자동), 나머지 상태는 기본 false(선택사항)
+  const [cardAttachOverrides, setCardAttachOverrides] = useState<
+    Record<string, boolean>
+  >({});
+  const businessCardInputRef = useRef<HTMLInputElement>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  // DB관리 화면 이탈 없이 바로 위에서 열리는 고객 요약/상세 카드 모달 상태
+  const [inlineDetailCustomerId, setInlineDetailCustomerId] = useState<
+    string | null
+  >(null);
+  const [inlineSmsCustomer, setInlineSmsCustomer] =
+    useState<CustomerItem | null>(null);
 
   // 수동 추가 폼 상태
   const [newLeadName, setNewLeadName] = useState('');
@@ -243,9 +271,35 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     return () => clearInterval(timer);
   }, [store.config.gasWebAppUrl]);
 
-  // 모바일 물리 뒤로가기 지원 (내부 모달 먼저 닫기)
+  // 백그라운드 복귀(문자/카톡/전화 후 복귀) 및 CRM 데이터 변동 시 즉시 최신화
   useEffect(() => {
-    if (isSettingsOpen || smsPreviewLead !== null || isAddModalOpen) {
+    const refreshLatest = () => {
+      setCrmCustomers(getCachedCustomers());
+      setStaffOptions(loadHandoverStaffOptions());
+      setStore(loadMarketingDbStore());
+    };
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        refreshLatest();
+      }
+    };
+    window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshLatest);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshLatest);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
+  // 모바일 물리 뒤로가기 지원 (인라인 고객카드 모달·문자 모달 먼저 닫고 DB관리 화면 유지)
+  useEffect(() => {
+    if (
+      inlineSmsCustomer !== null ||
+      inlineDetailCustomerId !== null ||
+      isSettingsOpen ||
+      smsPreviewLead !== null ||
+      isAddModalOpen
+    ) {
       try {
         window.history.pushState({ appGuard: true, tag: 'mdb-modal' }, '');
       } catch {
@@ -253,6 +307,14 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       }
     }
     (window as any).__subViewBackHandler = (): boolean => {
+      if (inlineSmsCustomer !== null) {
+        setInlineSmsCustomer(null);
+        return true;
+      }
+      if (inlineDetailCustomerId !== null) {
+        setInlineDetailCustomerId(null);
+        return true;
+      }
       if (smsPreviewLead !== null) {
         setSmsPreviewLead(null);
         return true;
@@ -270,7 +332,13 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     return () => {
       delete (window as any).__subViewBackHandler;
     };
-  }, [isSettingsOpen, smsPreviewLead, isAddModalOpen]);
+  }, [
+    inlineSmsCustomer,
+    inlineDetailCustomerId,
+    isSettingsOpen,
+    smsPreviewLead,
+    isAddModalOpen,
+  ]);
 
   const commitStore = (updater: (prev: MarketingDbStore) => MarketingDbStore) => {
     setStore((prev) => {
@@ -351,9 +419,8 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     const statusCounts: Record<MarketingLeadStatus, number> = {
       신규접수: 0,
       문자전송: 0,
-      응답: 0,
-      무응답: 0,
       상담전환: 0,
+      무응답: 0,
       계약완료: 0,
     };
 
@@ -375,7 +442,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
     const totalPeriod = monthFilteredLeads.length;
     const responseOrHigher =
-      statusCounts['응답'] + statusCounts['상담전환'] + statusCounts['계약완료'];
+      statusCounts['상담전환'] + statusCounts['계약완료'];
     const conversionRate =
       totalPeriod > 0
         ? ((statusCounts['계약완료'] / totalPeriod) * 100).toFixed(1)
@@ -526,7 +593,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   };
 
   const handleSyncRevenueToCrm = async (lead: MarketingLeadItem) => {
-    const { savedCustomer } = await saveMarketingLeadToCrm(lead);
+    const { savedCustomer } = await saveMarketingLeadToCrm(lead, { syncRevenue: true });
     setCrmCustomers(getCachedCustomers());
     commitStore((prev) => ({
       ...prev,
@@ -550,17 +617,40 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     }));
   };
 
-  // 정해진 문자 즉시 발송 (기본 고정 템플릿 사용 -> 네이티브 문자앱 실행 + 클립보드 백업 복사 + '문자전송' 상태 자동 변경)
-  const triggerNativeSmsSend = async (
-    lead: MarketingLeadItem,
-    bodyText: string
-  ) => {
-    try {
-      await navigator.clipboard.writeText(bodyText);
-    } catch {
-      // ignore
+  // 신규접수 고객은 명함 동봉이 기본 ON(자동), 나머지 상태 고객은 기본 OFF(선택 시 ON)
+  const isCardAttachedForLead = (lead: MarketingLeadItem): boolean => {
+    if (lead.id in cardAttachOverrides) {
+      return cardAttachOverrides[lead.id];
     }
+    return lead.status === '신규접수';
+  };
 
+  const toggleCardAttachForLead = (lead: MarketingLeadItem) => {
+    const cur = isCardAttachedForLead(lead);
+    setCardAttachOverrides((prev) => ({
+      ...prev,
+      [lead.id]: !cur,
+    }));
+  };
+
+  const getDefaultRenderedTextForLead = (lead: MarketingLeadItem): string => {
+    const defaultTpl =
+      store.config.smsTemplates.find(
+        (t) => t.id === store.config.activeTemplateId
+      ) || store.config.smsTemplates[0];
+    const sangjoTpl = store.config.smsTemplates.find((t) =>
+      t.id.includes('sangjo')
+    );
+    const chosenTpl =
+      lead.interestBenefit.includes('상조') &&
+      store.config.activeTemplateId === 'tpl-default-1' &&
+      sangjoTpl
+        ? sangjoTpl
+        : defaultTpl;
+    return renderSmsTemplateForLead(chosenTpl.body, lead);
+  };
+
+  const markLeadSmsSent = (lead: MarketingLeadItem) => {
     const nowStamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
     commitStore((prev) => ({
       ...prev,
@@ -574,6 +664,29 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           : item
       ),
     }));
+  };
+
+  // 방식 A: 문자앱 바로열기 (수신번호+본문 100% 자동입력, 명함 동봉 ON이면 클립보드에 명함 이미지 자동 복사!)
+  const triggerNativeSmsSend = async (
+    lead: MarketingLeadItem,
+    bodyText: string,
+    includeBusinessCard: boolean
+  ) => {
+    if (includeBusinessCard) {
+      const cardUri = getEffectiveBusinessCardDataUri(store.config);
+      const imgCopied = await copyBusinessCardImageToClipboard(cardUri);
+      if (imgCopied) {
+        showToast(
+          '🪪 명함 사진이 키보드 클립보드에 자동 복사되었습니다! 문자창에서 붙여넣기(1터치)로 함께 전송하세요.'
+        );
+      } else {
+        await safeCopyText(bodyText);
+      }
+    } else {
+      await safeCopyText(bodyText);
+    }
+
+    markLeadSmsSent(lead);
 
     const cleanPhone = (lead.phone || '').replace(/[^0-9+]/g, '');
     const encoded = encodeURIComponent(bodyText);
@@ -585,8 +698,39 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       : `sms:${sep}body=${encoded}`;
   };
 
-  const handleQuickSendDefaultSms = (lead: MarketingLeadItem) => {
-    // 상조 결합 문의 고객이고 상조 전용 템플릿이 있으면 자동 매칭 (기본 템플릿 우선이되 상조 키워드 시 스마트 추천)
+  // 방식 B: OS 공유창(MMS/카톡)으로 명함 이미지 파일 + 문자 본문을 한 번에 첨부 전달 (전화번호 자동 복사)
+  const triggerDirectFileShareWithCard = async (
+    lead: MarketingLeadItem,
+    bodyText: string
+  ) => {
+    const cardUri = getEffectiveBusinessCardDataUri(store.config);
+    const res = await shareBusinessCardFileWithText({
+      dataUri: cardUri,
+      bodyText,
+      customerPhone: lead.phone,
+    });
+    if (res === 'shared') {
+      markLeadSmsSent(lead);
+      showToast(
+        `🪪 명함 파일+문구 공유 완료! (전화번호 ${lead.phone} 자동 복사됨)`
+      );
+    } else if (res === 'unsupported') {
+      // PC 등 파일 공유 미지원 브라우저에서는 자동으로 클립보드 명함 복사 + 문자앱 실행으로 폴백
+      await triggerNativeSmsSend(lead, bodyText, true);
+    }
+  };
+
+  const handleQuickSendDefaultSms = async (lead: MarketingLeadItem) => {
+    const rendered = getDefaultRenderedTextForLead(lead);
+    const withCard = isCardAttachedForLead(lead);
+    if (withCard && store.config.businessCardSendMethod === 'share-sheet') {
+      await triggerDirectFileShareWithCard(lead, rendered);
+    } else {
+      await triggerNativeSmsSend(lead, rendered, withCard);
+    }
+  };
+
+  const handleOpenSmsPreview = (lead: MarketingLeadItem) => {
     const defaultTpl =
       store.config.smsTemplates.find(
         (t) => t.id === store.config.activeTemplateId
@@ -601,28 +745,44 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
         ? sangjoTpl
         : defaultTpl;
 
-    const rendered = renderSmsTemplateForLead(chosenTpl.body, lead);
-    triggerNativeSmsSend(lead, rendered);
-  };
-
-  const handleOpenSmsPreview = (lead: MarketingLeadItem) => {
-    const defaultTpl =
-      store.config.smsTemplates.find(
-        (t) => t.id === store.config.activeTemplateId
-      ) || store.config.smsTemplates[0];
     setSmsPreviewLead(lead);
-    setSmsPreviewTplId(defaultTpl.id);
-    setSmsPreviewText(renderSmsTemplateForLead(defaultTpl.body, lead));
+    setSmsPreviewTplId(chosenTpl.id);
+    setSmsPreviewText(renderSmsTemplateForLead(chosenTpl.body, lead));
+    setSmsPreviewIncludeCard(isCardAttachedForLead(lead));
   };
 
-  // 원터치 고객관리(CRM) 카드 저장 / 열기
+  const handleBusinessCardImageUpload = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      if (result.startsWith('data:image/')) {
+        commitStore((prev) => ({
+          ...prev,
+          config: {
+            ...prev.config,
+            businessCardDataUri: result,
+          },
+        }));
+        showToast('새 명함 이미지가 저장되었습니다!');
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // 원터치 고객관리(CRM) 카드 저장 / 열기 (고객관리열기는 DB관리 화면 위에서 바로 모달 오픈 -> X 누르면 DB관리 그대로 유지!)
   const handleSaveOrOpenCrm = async (
     lead: MarketingLeadItem,
     mode: 'save-only' | 'open-crm' | 'open-quote'
   ) => {
     const existing = findLinkedCrmCustomer(lead);
     if (existing && mode === 'open-crm') {
-      onOpenCustomerInCrm(existing.id);
+      setCrmCustomers(getCachedCustomers());
+      setInlineDetailCustomerId(existing.id);
       return;
     }
     if (existing && mode === 'open-quote') {
@@ -643,16 +803,118 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     }));
 
     if (mode === 'open-crm') {
-      onOpenCustomerInCrm(savedCustomer.id);
+      setInlineDetailCustomerId(savedCustomer.id);
     } else if (mode === 'open-quote') {
       onOpenCustomerInQuoteBuilder(savedCustomer);
     } else {
       showToast(
         isExistingCustomer
-          ? `${lead.customerName} 고객님 기존 고객카드에 인스타 DB 내용이 업데이트되었습니다!`
+          ? `${lead.customerName} 고객님 기존 고객카드(최종혜택가 보존)와 연동되었습니다!`
           : `${lead.customerName} 고객님이 VIP 고객관리에 새 카드로 저장되었습니다!`
       );
     }
+  };
+
+  // DB관리 내 인라인 고객 요약/상세 카드 모달 실시간 수정 핸들러
+  const inlineSelectedCustomer = useMemo(
+    () =>
+      inlineDetailCustomerId
+        ? crmCustomers.find(
+            (c) => c.id === inlineDetailCustomerId && !c.deletedAt
+          ) || null
+        : null,
+    [crmCustomers, inlineDetailCustomerId]
+  );
+
+  const handleInlineCrmStatusChange = async (
+    id: string,
+    nextStatus: CustomerStatus
+  ) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === id ? { ...c, status: nextStatus } : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    showToast(`고객카드 상태가 [${nextStatus}]로 변경되었습니다.`);
+    await syncCustomerToGas('update', { id, status: nextStatus });
+  };
+
+  const handleInlineCrmMemoChange = async (id: string, nextMemo: string) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === id ? { ...c, memo: nextMemo } : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    showToast('고객카드 메모가 저장되었습니다.');
+    await syncCustomerToGas('update', { id, memo: nextMemo });
+  };
+
+  const handleInlineCrmFieldChange = async (
+    id: string,
+    patch: Partial<CustomerItem>
+  ) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === id ? { ...c, ...patch } : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    showToast('고객카드 정보가 업데이트되었습니다.');
+    await syncCustomerToGas('update', { id, ...patch });
+  };
+
+  const handleInlineDeleteQuoteRecord = async (
+    customerId: string,
+    quoteId: string
+  ) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === customerId ? deleteQuoteAndSyncCustomer(c, quoteId) : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    showToast('견적이 삭제되었으며 남은 대표 견적 금액으로 자동 복원되었습니다.');
+    const target = deduped.find((c) => c.id === customerId);
+    if (target) {
+      await syncCustomerToGas('update', {
+        id: customerId,
+        quotes: target.quotes,
+        items: target.items,
+        paidAmount: target.paidAmount,
+        netAmount: target.netAmount,
+        expectedBenefit: target.expectedBenefit,
+        saleType: target.saleType,
+        performanceAmount: target.performanceAmount,
+        generalProductTotal: target.generalProductTotal,
+        subscriptionPrincipal: target.subscriptionPrincipal,
+        freedCounts: target.freedCounts,
+        purchasedModels: target.purchasedModels,
+      });
+    }
+  };
+
+  const handleInlineApplyQuoteAsPrimary = async (
+    customerId: string,
+    quote: QuoteRecord
+  ) => {
+    const patch = buildPrimaryFieldsFromQuote(quote);
+    const updated = crmCustomers.map((c) =>
+      c.id === customerId ? { ...c, ...patch } : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    showToast(`[${quote.title}] 견적이 대표 견적으로 적용되었습니다.`);
+    await syncCustomerToGas('update', { id: customerId, ...patch });
+  };
+
+  const handleInlineDeleteCustomer = async (id: string) => {
+    const deletedAt = Date.now();
+    const updated = crmCustomers.map((c) =>
+      c.id === id ? { ...c, deletedAt } : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    setInlineDetailCustomerId(null);
+    showToast('고객카드가 고객관리 휴지통으로 이동되었습니다.');
+    await syncCustomerToGas('update', { id, deletedAt });
   };
 
   // 개별 / 선택 고객 삭제 (시트 재동기화 부활 차단 지문 등록)
@@ -967,15 +1229,14 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
           <div className={`rounded-2xl border p-3.5 space-y-1 ${cardSurface}`}>
             <div className="text-[11px] font-extrabold opacity-70">
-              응답 · 상담전환 현황
+              상담전환 · 무응답 현황
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-violet-600 dark:text-violet-300">
-              {stats.statusCounts['응답'] + stats.statusCounts['상담전환']}명
+              {stats.statusCounts['상담전환']}명
             </div>
             <div className="text-[11px] font-bold opacity-75">
-              응답 {stats.statusCounts['응답']} · 상담전환{' '}
-              {stats.statusCounts['상담전환']} · 무응답{' '}
-              {stats.statusCounts['무응답']} (반응률 {stats.responseRate}%)
+              상담전환 {stats.statusCounts['상담전환']} · 무응답{' '}
+              {stats.statusCounts['무응답']} (전환반응 {stats.responseRate}%)
             </div>
           </div>
 
@@ -1039,14 +1300,13 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                   id: '문자전송',
                   label: `📩문자전송 (${stats.statusCounts['문자전송']})`,
                 },
-                { id: '응답', label: `💬응답 (${stats.statusCounts['응답']})` },
-                {
-                  id: '무응답',
-                  label: `⏳무응답 (${stats.statusCounts['무응답']})`,
-                },
                 {
                   id: '상담전환',
                   label: `🤝상담전환 (${stats.statusCounts['상담전환']})`,
+                },
+                {
+                  id: '무응답',
+                  label: `⏳무응답 (${stats.statusCounts['무응답']})`,
                 },
                 {
                   id: '계약완료',
@@ -1287,7 +1547,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
                   {statusTab !== '휴지통' && (
                     <>
-                      {/* 3) 상태 변경 버튼 (신규접수 / 문자전송 / 응답 / 무응답 / 상담전환 / 계약완료) */}
+                      {/* 3) 상태 변경 버튼 (신규접수 / 문자전송 / 상담전환 / 무응답 / 계약완료) */}
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-[11px] font-extrabold opacity-75">
                           <span>진행 상태 변경</span>
@@ -1297,7 +1557,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
+                        <div className="grid grid-cols-3 min-[380px]:grid-cols-5 gap-1">
                           {MARKETING_LEAD_STATUSES.map((st) => {
                             const active = lead.status === st;
                             return (
@@ -1425,66 +1685,123 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                         </select>
                       </div>
 
-                      {/* 6) 하단 3대 원터치 실행 버튼 (정해진 문자 발송 / 고객관리 자동저장·열기 / 바로 견적내기) */}
-                      <div className="grid grid-cols-12 gap-1.5 pt-1 border-t border-black/5 dark:border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => handleQuickSendDefaultSms(lead)}
-                          className="col-span-5 py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
-                        >
-                          <Send className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">정해진 문자발송</span>
-                        </button>
+                      {/* 6) 명함 동봉 컨트롤 바 (신규접수 = 기본 자동 ON / 그 외 상태 = 선택사항 토글) */}
+                      <div className="pt-1.5 border-t border-black/5 dark:border-white/10 space-y-1.5">
+                        <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => toggleCardAttachForLead(lead)}
+                            className={`px-2.5 py-1 rounded-xl border text-[11px] font-black inline-flex items-center gap-1.5 cursor-pointer transition ${
+                              isCardAttachedForLead(lead)
+                                ? isDark
+                                  ? 'bg-indigo-500/25 text-amber-200 border-indigo-400/50'
+                                  : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                                : `${subSurface} opacity-75 hover:opacity-100`
+                            }`}
+                          >
+                            <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+                            {lead.status === '신규접수' ? (
+                              <span>
+                                {isCardAttachedForLead(lead)
+                                  ? '✓ 신규고객 명함사진 자동동봉 ON'
+                                  : '명함사진 동봉 OFF (터치 시 켜기)'}
+                              </span>
+                            ) : (
+                              <span>
+                                {isCardAttachedForLead(lead)
+                                  ? '✓ 명함사진 함께 보내기 선택됨'
+                                  : '+ 명함사진 함께 보내기 (선택)'}
+                              </span>
+                            )}
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSmsPreview(lead)}
-                          title="문자 문구 미리보기 또는 다른 템플릿 선택"
-                          className={`col-span-2 py-2.5 px-1.5 rounded-xl border text-[11px] font-black flex items-center justify-center cursor-pointer ${subSurface}`}
-                        >
-                          문구변경
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSaveOrOpenCrm(
-                              lead,
-                              linkedCrm ? 'open-crm' : 'save-only'
-                            )
-                          }
-                          className={`col-span-3 py-2.5 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer border ${
-                            linkedCrm
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
-                              : isDark
-                              ? 'bg-[#1B2230] hover:bg-[#253047] text-amber-300 border-amber-400/35'
-                              : 'bg-[#FAF5EB] hover:bg-[#F2E8D5] text-[#6E4423] border-[#D8C3A8]'
-                          }`}
-                        >
-                          {linkedCrm ? (
-                            <>
-                              <UserCheck className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">고객관리열기</span>
-                            </>
-                          ) : (
-                            <>
-                              <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">고객카드저장</span>
-                            </>
+                          {isCardAttachedForLead(lead) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                triggerDirectFileShareWithCard(
+                                  lead,
+                                  getDefaultRenderedTextForLead(lead)
+                                )
+                              }
+                              title="명함 이미지 파일과 문구를 MMS/카톡 공유창으로 직접 첨부하여 보냅니다 (전화번호 자동 복사)"
+                              className="px-2.5 py-1 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-800 dark:text-amber-200 border border-amber-400/40 text-[10.5px] font-black inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Share2 className="w-3 h-3 shrink-0" />
+                              <span>MMS·카톡 명함파일 직접첨부</span>
+                            </button>
                           )}
-                        </button>
+                        </div>
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleSaveOrOpenCrm(lead, 'open-quote')
-                          }
-                          title="고객카드 자동 저장 후 바로 견적기 화면으로 연결"
-                          className="col-span-2 py-2.5 px-1.5 rounded-xl bg-[#18181B] dark:bg-sky-500 hover:opacity-90 text-white dark:text-slate-950 text-[11px] font-black flex items-center justify-center gap-0.5 cursor-pointer"
-                        >
-                          <Calculator className="w-3 h-3 shrink-0" />
-                          <span>견적</span>
-                        </button>
+                        {/* 하단 원터치 실행 버튼 (폴드 커버 등 초소형 320px 화면 2x2 자동배열 보호) */}
+                        <div className="grid grid-cols-2 min-[380px]:grid-cols-12 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleQuickSendDefaultSms(lead)}
+                            className={`col-span-1 min-[380px]:col-span-5 py-2.5 px-2 rounded-xl text-white text-xs font-black flex items-center justify-center gap-1 cursor-pointer shadow-2xs ${
+                              isCardAttachedForLead(lead)
+                                ? 'bg-indigo-600 hover:bg-indigo-500'
+                                : 'bg-blue-600 hover:bg-blue-500'
+                            }`}
+                          >
+                            <Send className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">
+                              {isCardAttachedForLead(lead)
+                                ? '명함+문자 발송'
+                                : '정해진 문자발송'}
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSmsPreview(lead)}
+                            title="문자 문구 및 명함 미리보기 / 다른 템플릿 선택"
+                            className={`col-span-1 min-[380px]:col-span-2 py-2.5 px-1.5 rounded-xl border text-[11px] font-black flex items-center justify-center cursor-pointer ${subSurface}`}
+                          >
+                            문구변경
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSaveOrOpenCrm(
+                                lead,
+                                linkedCrm ? 'open-crm' : 'save-only'
+                              )
+                            }
+                            className={`col-span-1 min-[380px]:col-span-3 py-2.5 px-2 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 cursor-pointer border ${
+                              linkedCrm
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-600'
+                                : isDark
+                                ? 'bg-[#1B2230] hover:bg-[#253047] text-amber-300 border-amber-400/35'
+                                : 'bg-[#FAF5EB] hover:bg-[#F2E8D5] text-[#6E4423] border-[#D8C3A8]'
+                            }`}
+                          >
+                            {linkedCrm ? (
+                              <>
+                                <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">고객관리열기</span>
+                              </>
+                            ) : (
+                              <>
+                                <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate">고객카드저장</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleSaveOrOpenCrm(lead, 'open-quote')
+                            }
+                            title="고객카드 자동 저장 후 바로 견적기 화면으로 연결"
+                            className="col-span-1 min-[380px]:col-span-2 py-2.5 px-1.5 rounded-xl bg-[#18181B] dark:bg-sky-500 hover:opacity-90 text-white dark:text-slate-950 text-[11px] font-black flex items-center justify-center gap-0.5 cursor-pointer"
+                          >
+                            <Calculator className="w-3 h-3 shrink-0" />
+                            <span>견적</span>
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -1502,7 +1819,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           onClick={() => setSmsPreviewLead(null)}
         >
           <div
-            className={`w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl border p-5 space-y-3.5 shadow-2xl ${cardSurface}`}
+            className={`w-full sm:max-w-lg max-h-[90dvh] overflow-y-auto modal-kb-safe rounded-t-3xl sm:rounded-3xl border p-5 space-y-3.5 shadow-2xl ${cardSurface}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -1547,41 +1864,104 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
               </select>
             </div>
 
+            {/* 명함 사진 동봉 선택 (신규고객 자동 ON / 나머지 선택사항) */}
+            <div className={`rounded-2xl border p-3 space-y-2 ${subSurface}`}>
+              <label className="flex items-center justify-between gap-2 cursor-pointer">
+                <span className="text-xs font-black flex items-center gap-1.5">
+                  <ImageIcon className="w-4 h-4 text-indigo-500" />
+                  <span>
+                    명함 사진 함께 보내기{' '}
+                    <span className="text-[10.5px] opacity-75">
+                      ({smsPreviewLead.status === '신규접수' ? '신규고객 자동 ON' : '선택사항'})
+                    </span>
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={smsPreviewIncludeCard}
+                  onChange={(e) => setSmsPreviewIncludeCard(e.target.checked)}
+                  className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                />
+              </label>
+
+              {smsPreviewIncludeCard && (
+                <div className="flex items-center gap-3 pt-1">
+                  <img
+                    src={getEffectiveBusinessCardDataUri(store.config)}
+                    alt="국지현 명함 미리보기"
+                    className="w-28 h-auto rounded-lg border border-black/10 dark:border-white/15 bg-white shrink-0"
+                  />
+                  <p className="text-[11px] opacity-80 leading-relaxed">
+                    • <strong>[문자앱 바로 열기]</strong>: 수신번호·문구가 자동 입력되며 명함 이미지가 클립보드에 자동 복사됩니다.
+                    <br />• <strong>[명함파일 직접첨부]</strong>: 명함 사진 파일이 이미 첨부된 상태로 메시지/카톡 공유창이 열립니다(전화번호 자동 복사).
+                  </p>
+                </div>
+              )}
+            </div>
+
             <textarea
-              rows={8}
+              rows={7}
               value={smsPreviewText}
               onChange={(e) => setSmsPreviewText(e.target.value)}
               className={`w-full p-3 rounded-2xl border text-base sm:text-xs font-medium leading-relaxed ${inputSurface}`}
             />
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await navigator.clipboard.writeText(smsPreviewText);
-                    showToast('문자 문구가 복사되었습니다.');
-                  } catch {
-                    // ignore
-                  }
-                }}
-                className={`py-3 rounded-2xl border text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer ${subSurface}`}
-              >
-                <Copy className="w-4 h-4" />
-                <span>문구만 복사</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const target = smsPreviewLead;
-                  setSmsPreviewLead(null);
-                  triggerNativeSmsSend(target, smsPreviewText);
-                }}
-                className="py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Send className="w-4 h-4" />
-                <span>휴대폰 문자앱 바로 열기</span>
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {smsPreviewIncludeCard ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = smsPreviewLead;
+                      setSmsPreviewLead(null);
+                      triggerNativeSmsSend(target, smsPreviewText, true);
+                    }}
+                    className="py-3 px-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Send className="w-4 h-4 shrink-0" />
+                    <span>문자앱 바로열기 (명함복사됨)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = smsPreviewLead;
+                      setSmsPreviewLead(null);
+                      triggerDirectFileShareWithCard(target, smsPreviewText);
+                    }}
+                    className="py-3 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Share2 className="w-4 h-4 shrink-0" />
+                    <span>명함파일 직접첨부 (MMS·카톡)</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (await safeCopyText(smsPreviewText)) {
+                        showToast('문자 문구가 복사되었습니다.');
+                      }
+                    }}
+                    className={`py-3 rounded-2xl border text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer ${subSurface}`}
+                  >
+                    <Copy className="w-4 h-4" />
+                    <span>문구만 복사</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = smsPreviewLead;
+                      setSmsPreviewLead(null);
+                      triggerNativeSmsSend(target, smsPreviewText, false);
+                    }}
+                    className="py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>문자만 바로 열기</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1594,7 +1974,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           onClick={() => setIsSettingsOpen(false)}
         >
           <div
-            className={`w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border p-5 space-y-4 shadow-2xl max-h-[88dvh] overflow-y-auto ${cardSurface}`}
+            className={`w-full sm:max-w-xl rounded-t-3xl sm:rounded-3xl border p-5 space-y-4 shadow-2xl max-h-[90dvh] overflow-y-auto modal-kb-safe ${cardSurface}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -1633,6 +2013,105 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
             {settingsTab === 'sms' && (
               <div className="space-y-3">
+                {/* 등록된 내 명함 미리보기 & 원터치 발송 방식 설정 */}
+                <div className={`rounded-2xl border p-3.5 space-y-2.5 ${subSurface}`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-xs font-black flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4 text-indigo-500" />
+                      <span>신규고객 자동동봉 명함 이미지 &amp; 발송 방식</span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        ref={businessCardInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleBusinessCardImageUpload}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => businessCardInputRef.current?.click()}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-black cursor-pointer ${cardSurface}`}
+                      >
+                        명함 교체
+                      </button>
+                      {store.config.businessCardDataUri &&
+                        store.config.businessCardDataUri !==
+                          DEFAULT_OWNER_BUSINESS_CARD_DATA_URI && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              commitStore((prev) => ({
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  businessCardDataUri:
+                                    DEFAULT_OWNER_BUSINESS_CARD_DATA_URI,
+                                },
+                              }));
+                              showToast('기본 국지현 명함으로 복원되었습니다.');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-stone-200 dark:bg-slate-800 text-[10.5px] font-bold cursor-pointer"
+                          >
+                            기본명함 복원
+                          </button>
+                        )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center gap-3">
+                    <img
+                      src={getEffectiveBusinessCardDataUri(store.config)}
+                      alt="등록된 국지현 명함"
+                      className="w-40 h-auto rounded-xl border border-black/10 dark:border-white/15 bg-white shadow-2xs shrink-0"
+                    />
+                    <div className="space-y-1.5 text-[11px] w-full">
+                      <div className="font-extrabold opacity-85">
+                        카드 하단 [명함+문자 발송] 버튼 기본 동작 선택:
+                      </div>
+                      <div className="grid grid-cols-1 gap-1.5">
+                        {[
+                          {
+                            id: 'sms-clipboard' as const,
+                            label:
+                              '① 문자앱 바로열기 (수신번호·본문 자동입력 + 명함 클립보드 복사)',
+                          },
+                          {
+                            id: 'share-sheet' as const,
+                            label:
+                              '② 명함파일 직접첨부 공유창 (명함파일+본문 첨부 · 번호 자동복사)',
+                          },
+                        ].map((opt) => {
+                          const active =
+                            (store.config.businessCardSendMethod ||
+                              'sms-clipboard') === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              type="button"
+                              onClick={() =>
+                                commitStore((prev) => ({
+                                  ...prev,
+                                  config: {
+                                    ...prev.config,
+                                    businessCardSendMethod: opt.id,
+                                  },
+                                }))
+                              }
+                              className={`p-2 rounded-xl border text-left font-black cursor-pointer transition ${
+                                active
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : `${cardSurface} opacity-80 hover:opacity-100`
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <p className="text-xs opacity-80 leading-relaxed">
                   • 카드 하단 <strong>[정해진 문자발송]</strong> 버튼을 누르면 아래에서 기본으로 지정한 문구가 자동으로 채워져 문자앱이 열립니다.
                   <br />• 사용 가능한 자동 치환어:{' '}
@@ -1727,14 +2206,9 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                   <button
                     type="button"
                     onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(
-                          getReadyMadeAppsScriptCode()
-                        );
+                      if (await safeCopyText(getReadyMadeAppsScriptCode())) {
                         setCopiedScript(true);
                         setTimeout(() => setCopiedScript(false), 2500);
-                      } catch {
-                        // ignore
                       }
                     }}
                     className="w-full py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1900,7 +2374,7 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           onClick={() => setIsAddModalOpen(false)}
         >
           <div
-            className={`w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl border p-5 space-y-3 shadow-2xl ${cardSurface}`}
+            className={`w-full sm:max-w-md max-h-[90dvh] overflow-y-auto modal-kb-safe rounded-t-3xl sm:rounded-3xl border p-5 space-y-3 shadow-2xl ${cardSurface}`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -1990,6 +2464,42 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* ==================== 모달 4: DB관리 위에서 바로 열리는 고객 요약/상세 카드 (X 닫기 시 DB관리 화면 100% 그대로 유지!) ==================== */}
+      <CustomerDetailModal
+        customer={inlineSelectedCustomer}
+        onClose={() => setInlineDetailCustomerId(null)}
+        onStatusChange={handleInlineCrmStatusChange}
+        onMemoChange={handleInlineCrmMemoChange}
+        onFieldChange={handleInlineCrmFieldChange}
+        onDeleteQuoteRecord={handleInlineDeleteQuoteRecord}
+        onApplyQuoteAsPrimary={handleInlineApplyQuoteAsPrimary}
+        onLoadQuoteRecord={(cust, quote) => {
+          setInlineDetailCustomerId(null);
+          if (onOpenQuoteRecordInQuoteBuilder) {
+            onOpenQuoteRecordInQuoteBuilder(cust, quote);
+          } else {
+            onOpenCustomerInQuoteBuilder(cust);
+          }
+        }}
+        onDelete={handleInlineDeleteCustomer}
+        onOpenSMS={(cust) => setInlineSmsCustomer(cust)}
+        onOpenQuote={(cust) => {
+          setInlineDetailCustomerId(null);
+          onOpenCustomerInQuoteBuilder(cust);
+        }}
+      />
+
+      <SMSModal
+        customer={inlineSmsCustomer}
+        onClose={() => setInlineSmsCustomer(null)}
+        onMarkSent={(customerId) => {
+          const target = crmCustomers.find((c) => c.id === customerId);
+          if (target && target.status === '신규/미발송') {
+            handleInlineCrmStatusChange(customerId, '발송완료');
+          }
+        }}
+      />
     </div>
   );
 };

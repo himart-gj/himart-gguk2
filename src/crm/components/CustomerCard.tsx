@@ -35,6 +35,7 @@ import {
   getOffsetDateStr,
   isUrgentCustomer,
 } from '../utils/date';
+import { safeCopyText } from '../../utils/mobileQaRuntime';
 import {
   calculateFreedIncentiveDetail,
   parsePurchasedModelsFromItemsText,
@@ -125,6 +126,17 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   onOpenQuote,
 }) => {
   const perf = resolveCustomerPerformanceProfile(customer);
+  const fallbackValidQuote = (customer.quotes || []).find(
+    (q) => (Number(q.netAmount) || 0) > 0 || (Number(q.paidAmount) || 0) > 0
+  );
+  const effectivePaidAmount =
+    (Number(customer.paidAmount) || 0) > 0
+      ? customer.paidAmount
+      : fallbackValidQuote?.paidAmount ?? customer.paidAmount ?? 0;
+  const effectiveNetAmount =
+    (Number(customer.netAmount) || 0) > 0
+      ? customer.netAmount
+      : fallbackValidQuote?.netAmount ?? customer.netAmount ?? 0;
 
   const [isEditingMemo, setIsEditingMemo] = useState(false);
   const [memoDraft, setMemoDraft] = useState(customer.memo);
@@ -290,12 +302,9 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
 ✨ 최종체감가: ${formatCurrency(q.netAmount)}원`;
     }
 
-    try {
-      await navigator.clipboard.writeText(text);
+    if (await safeCopyText(text)) {
       setCopiedQuoteId(q.id);
       setTimeout(() => setCopiedQuoteId(null), 2000);
-    } catch {
-      // ignore clipboard errors
     }
   };
 
@@ -822,7 +831,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
               {perf.saleType === 'subscription' ? '월 기준 구독료' : '고객 실결제가'}
             </div>
             <div className="text-sm sm:text-base font-extrabold font-mono text-slate-800 mt-0.5">
-              {formatCurrency(customer.paidAmount)}원
+              {formatCurrency(effectivePaidAmount)}원
             </div>
           </div>
 
@@ -831,7 +840,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
               {perf.saleType === 'subscription' ? '최종 월 체감가' : '최종 체감가'}
             </div>
             <div className="text-sm sm:text-base font-black font-mono text-blue-700 mt-0.5">
-              {formatCurrency(customer.netAmount)}원
+              {formatCurrency(effectiveNetAmount)}원
             </div>
           </div>
         </div>

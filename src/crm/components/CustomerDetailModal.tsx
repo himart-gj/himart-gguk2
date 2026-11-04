@@ -38,7 +38,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200"
+        className="relative w-full max-w-2xl max-h-[90dvh] modal-kb-safe overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 상단 닫기 헤더 */}

@@ -1,4 +1,5 @@
 import { ADMIN_PIN_CODE } from './careTableParser';
+import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from './ownerBusinessCardAsset';
 import { idbMirrorGet, idbMirrorSet } from './offlineDbQueue';
 import {
   getOrCreateMonthSchedule,
@@ -7,9 +8,11 @@ import {
 } from '../components/ScheduleModal';
 import {
   getCachedCustomers,
-  saveCustomerQuote,
   setCachedCustomers,
+  syncCustomerToGas,
 } from '../crm/services/gasApi';
+import { getNowDateTimeStr, getTodayStr } from '../crm/utils/date';
+import { safeCopyText } from './mobileQaRuntime';
 import { CustomerItem, CustomerStatus } from '../crm/types/crm';
 
 // ============================================================================
@@ -30,19 +33,26 @@ export const MARKETING_DB_UPDATED_EVENT = 'himart_gj_marketing_db_updated';
 export type MarketingLeadStatus =
   | '신규접수'
   | '문자전송'
-  | '응답'
-  | '무응답'
   | '상담전환'
+  | '무응답'
   | '계약완료';
 
 export const MARKETING_LEAD_STATUSES: MarketingLeadStatus[] = [
   '신규접수',
   '문자전송',
-  '응답',
-  '무응답',
   '상담전환',
+  '무응답',
   '계약완료',
 ];
+
+export function normalizeLeadStatusValue(raw: unknown): MarketingLeadStatus {
+  const s = String(raw || '').trim();
+  if (s === '계약완료') return '계약완료';
+  if (s === '상담전환' || s === '응답') return '상담전환';
+  if (s === '무응답') return '무응답';
+  if (s === '문자전송') return '문자전송';
+  return '신규접수';
+}
 
 export interface MarketingSmsTemplate {
   id: string;
@@ -103,6 +113,10 @@ export interface MarketingDbConfig {
   smsTemplates: MarketingSmsTemplate[];
   /** 상담전환/계약완료 변경 시 자동으로 고객관리(CRM) 카드에도 저장할지 여부 */
   autoSaveCrmOnConvert: boolean;
+  /** 명함 이미지 Data URI (미지정 시 기본 국지현 명함 자동 사용) */
+  businessCardDataUri?: string;
+  /** 카드에서 [명함+문자 발송] 원터치 시 기본 동작 ('sms-clipboard' | 'share-sheet') */
+  businessCardSendMethod?: 'sms-clipboard' | 'share-sheet';
   /** 마지막 시트 동기화 시각 */
   lastSyncedAt?: string;
 }
@@ -581,6 +595,8 @@ function createInitialMarketingDbStore(): MarketingDbStore {
       activeTemplateId: DEFAULT_SMS_TEMPLATES[0].id,
       smsTemplates: DEFAULT_SMS_TEMPLATES,
       autoSaveCrmOnConvert: true,
+      businessCardDataUri: DEFAULT_OWNER_BUSINESS_CARD_DATA_URI,
+      businessCardSendMethod: 'sms-clipboard',
       lastSyncedAt: '2026-11-04 08:15 (초기 시트 반영됨)',
     },
   };
@@ -599,9 +615,13 @@ export function loadMarketingDbStore(): MarketingDbStore {
     }
     const parsed = JSON.parse(raw) as MarketingDbStore;
     if (!parsed || !Array.isArray(parsed.leads)) return fallback;
+    const migratedLeads = parsed.leads.map((l) => ({
+      ...l,
+      status: normalizeLeadStatusValue((l as any).status),
+    }));
     return {
       version: 1,
-      leads: parsed.leads,
+      leads: migratedLeads,
       deletedFingerprints: Array.isArray(parsed.deletedFingerprints)
         ? parsed.deletedFingerprints
         : [],
@@ -640,8 +660,15 @@ export async function hydrateMarketingDbStoreFromIdb(): Promise<MarketingDbStore
   const local = loadMarketingDbStore();
   const idbVal = await idbMirrorGet<MarketingDbStore>(MARKETING_DB_STORAGE_KEY);
   if (idbVal && Array.isArray(idbVal.leads) && idbVal.leads.length > local.leads.length) {
-    saveMarketingDbStore(idbVal);
-    return idbVal;
+    const normalizedIdb: MarketingDbStore = {
+      ...idbVal,
+      leads: idbVal.leads.map((l) => ({
+        ...l,
+        status: normalizeLeadStatusValue((l as any).status),
+      })),
+    };
+    saveMarketingDbStore(normalizedIdb);
+    return normalizedIdb;
   }
   return local;
 }
@@ -750,10 +777,15 @@ function mapSheetStatusToLeadStatus(
 ): MarketingLeadStatus {
   const s = `${rawStatus || ''} ${rawMemo || ''}`.trim();
   if (s.includes('계약완료') || s.includes('결제완료')) return '계약완료';
-  if (s.includes('상담전환') || s.includes('방문예약') || s.includes('견적발송'))
+  if (
+    s.includes('상담전환') ||
+    s.includes('방문예약') ||
+    s.includes('견적발송') ||
+    s.includes('응답') ||
+    s.includes('답장')
+  )
     return '상담전환';
   if (s.includes('무응답') || s.includes('부재')) return '무응답';
-  if (s.includes('응답') || s.includes('답장')) return '응답';
   if (s.includes('문자전송') || s.includes('문자보냄') || s.includes('문자발송'))
     return '문자전송';
   return '신규접수';
@@ -1032,6 +1064,16 @@ export async function syncLeadsFromGoogleSheet(
   updatedCount: number;
   message: string;
 }> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      ok: false,
+      nextStore: store,
+      addedCount: 0,
+      updatedCount: 0,
+      message:
+        '현재 오프라인(네트워크 끊김) 상태입니다. 변경하신 내역은 기기에 안전하게 자동 보관되며 인터넷 연결 후 동기화됩니다.',
+    };
+  }
   const gasUrl = (store.config.gasWebAppUrl || '').trim();
 
   // 1순위: 비공개 시트 보안 유지 + 전 탭 자동 스캔이 가능한 Apps Script Web App URL
@@ -1076,7 +1118,7 @@ export async function syncLeadsFromGoogleSheet(
             if (!cl) return loc;
             return {
               ...loc,
-              status: loc.status !== '신규접수' ? loc.status : cl.status,
+              status: loc.status !== '신규접수' ? normalizeLeadStatusValue(loc.status) : normalizeLeadStatusValue(cl.status),
               revenueAmount: loc.revenueAmount || cl.revenueAmount || 0,
               handoverStaff: loc.handoverStaff || cl.handoverStaff || '',
               handoverStaffRole: loc.handoverStaffRole || cl.handoverStaffRole,
@@ -1191,49 +1233,171 @@ export async function pushMarketingStateToGasBackup(
 
 function mapLeadStatusToCrmStatus(st: MarketingLeadStatus): CustomerStatus {
   if (st === '계약완료') return '계약완료';
-  if (st === '상담전환' || st === '응답') return '상담진행중';
+  if (st === '상담전환') return '상담진행중';
   if (st === '무응답') return '미구매/고민중';
   return '신규/미발송';
 }
 
-export async function saveMarketingLeadToCrm(
+function mergeLeadMemoWithoutDuplicates(
+  existingMemo: string | undefined,
   lead: MarketingLeadItem
+): string {
+  const baseTag = `[인스타 광고 DB · ${lead.createdAt}] ${lead.autoSummary}`;
+  const extraLines = [
+    lead.memo ? `진행메모: ${lead.memo}` : '',
+    lead.handoverStaff ? `상담 인계 확인: ${lead.handoverStaff}` : '',
+  ].filter(Boolean);
+
+  const prev = String(existingMemo || '').trim();
+  if (!prev) {
+    return [baseTag, ...extraLines].join('\n');
+  }
+
+  const linesToPrepend: string[] = [];
+  if (!prev.includes(`[인스타 광고 DB · ${lead.createdAt}]`)) {
+    linesToPrepend.push(baseTag);
+  }
+  for (const line of extraLines) {
+    if (!prev.includes(line)) {
+      linesToPrepend.push(line);
+    }
+  }
+  return linesToPrepend.length > 0
+    ? `${linesToPrepend.join('\n')}\n${prev}`
+    : prev;
+}
+
+export async function saveMarketingLeadToCrm(
+  lead: MarketingLeadItem,
+  options?: { syncRevenue?: boolean }
 ): Promise<{
   savedCustomer: CustomerItem;
   isExistingCustomer: boolean;
 }> {
-  const memoLines = [
-    `[인스타 광고 DB · ${lead.createdAt}] ${lead.autoSummary}`,
-    lead.memo ? `진행메모: ${lead.memo}` : '',
-    lead.handoverStaff ? `상담 인계 확인: ${lead.handoverStaff}` : '',
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const current = getCachedCustomers();
+  const nowStr = getNowDateTimeStr();
+  const todayStr = getTodayStr();
+  const targetPhoneDigits = String(lead.phone || '').replace(/\D/g, '');
+  const targetNameLower = String(lead.customerName || '').trim().toLowerCase();
 
-  const res = await saveCustomerQuote({
-    targetCustomerId: lead.linkedCrmCustomerId,
-    name: lead.customerName,
-    phone: lead.phone,
-    items: cleanMetaFieldText(lead.interestBenefit) || '인스타 광고 상담 고객',
-    paidAmount: lead.revenueAmount || 0,
-    netAmount: lead.revenueAmount || 0,
-    expectedBenefit: '인스타 광고 전용 최대 혜택 안내',
+  let existingIndex = -1;
+  if (lead.linkedCrmCustomerId) {
+    existingIndex = current.findIndex(
+      (c) => c.id === lead.linkedCrmCustomerId && !c.deletedAt
+    );
+  }
+  if (existingIndex < 0 && targetPhoneDigits) {
+    existingIndex = current.findIndex(
+      (c) => !c.deletedAt && String(c.phone || '').replace(/\D/g, '') === targetPhoneDigits
+    );
+  }
+  if (existingIndex < 0 && targetNameLower && !targetPhoneDigits) {
+    existingIndex = current.findIndex(
+      (c) =>
+        !c.deletedAt &&
+        String(c.name || '').trim().toLowerCase() === targetNameLower &&
+        !String(c.phone || '').replace(/\D/g, '')
+    );
+  }
+
+  const mappedStatus = mapLeadStatusToCrmStatus(lead.status);
+  const revAmt = Math.max(0, Number(lead.revenueAmount) || 0);
+
+  if (existingIndex >= 0) {
+    // [핵심 보호] 이미 고객카드가 있는 고객은 기존 견적서(quotes)·최종혜택가(netAmount)·실결제가·구매품목·프리드를 100% 보존합니다!
+    // 더미 0원 견적(QuoteRecord)을 절대 추가하지 않습니다!
+    const existing = current[existingIndex];
+    const isAlreadyConfirmed =
+      existing.status === '계약완료' ||
+      existing.status === '발송완료' ||
+      existing.status === '배송완료';
+
+    const resolvedStatus: CustomerStatus = isAlreadyConfirmed
+      ? existing.status
+      : lead.status === '계약완료'
+      ? '계약완료'
+      : existing.status === '신규/미발송' || existing.status === '미구매/고민중'
+      ? mappedStatus
+      : existing.status;
+
+    const shouldApplyRev = Boolean(options?.syncRevenue && revAmt > 0);
+    const hasExistingNet = (Number(existing.netAmount) || 0) > 0;
+    const hasExistingPaid = (Number(existing.paidAmount) || 0) > 0;
+
+    const updatedCustomer: CustomerItem = {
+      ...existing,
+      name: existing.name || lead.customerName.trim(),
+      phone: existing.phone || lead.phone.trim(),
+      status: resolvedStatus,
+      contractDate:
+        existing.contractDate ||
+        (lead.status === '계약완료' ? lead.createdAt.slice(0, 10) : undefined),
+      memo: mergeLeadMemoWithoutDuplicates(existing.memo, lead),
+      // 기존 최종혜택가(netAmount)가 있으면 절대 덮어쓰지 않고 보존!
+      paidAmount: hasExistingPaid
+        ? existing.paidAmount
+        : shouldApplyRev
+        ? revAmt
+        : existing.paidAmount,
+      netAmount: hasExistingNet
+        ? existing.netAmount
+        : shouldApplyRev
+        ? revAmt
+        : existing.netAmount,
+      performanceAmount:
+        shouldApplyRev && !((existing.quotes?.length || 0) > 0 && (Number(existing.performanceAmount) || 0) > 0)
+          ? revAmt
+          : existing.performanceAmount,
+      deletedAt: undefined,
+    };
+
+    const nextList = current.map((c, idx) =>
+      idx === existingIndex ? updatedCustomer : c
+    );
+    const deduped = setCachedCustomers(nextList);
+    const saved =
+      deduped.find((c) => c.id === updatedCustomer.id) || updatedCustomer;
+    await syncCustomerToGas('update', saved);
+    return {
+      savedCustomer: saved,
+      isExistingCustomer: true,
+    };
+  }
+
+  // 신규 고객카드 생성 시에도 0원 가짜 견적(quotes) 없이 깔끔한 고객카드로만 등록!
+  const newCustomer: CustomerItem = {
+    id: `CUST-${Date.now()}`,
+    regDate: nowStr,
     contractDate:
-      lead.status === '계약완료'
-        ? lead.createdAt.slice(0, 10)
-        : undefined,
+      lead.status === '계약완료' ? lead.createdAt.slice(0, 10) : todayStr,
+    name: lead.customerName.trim() || '인스타 상담고객',
+    phone: lead.phone.trim(),
+    items: cleanMetaFieldText(lead.interestBenefit) || '인스타 광고 상담 고객',
+    paidAmount: revAmt,
+    netAmount: revAmt,
+    expectedBenefit: '',
+    saleType: 'general',
+    performanceAmount: revAmt,
+    generalProductTotal: revAmt,
+    subscriptionPrincipal: 0,
     deliveryDate: '',
-    status: mapLeadStatusToCrmStatus(lead.status),
-    memo: memoLines,
-    quoteTitle: `인스타DB (${lead.createdAt.slice(5, 10)})`,
-    performanceAmount: lead.revenueAmount || 0,
-  });
+    followUpDate: '',
+    status: mappedStatus,
+    memo: mergeLeadMemoWithoutDuplicates('', lead),
+    orderNo: '',
+    giftItems: '',
+    giftSent: false,
+    logisticsConfirmed: false,
+    quotes: [],
+  };
 
-  // 최신 목록 동기화 이벤트 발생
-  setCachedCustomers(getCachedCustomers());
+  const deduped = setCachedCustomers([newCustomer, ...current]);
+  const saved = deduped.find((c) => c.id === newCustomer.id) || newCustomer;
+  await syncCustomerToGas('create', saved);
+
   return {
-    savedCustomer: res.savedCustomer,
-    isExistingCustomer: res.isExistingCustomer,
+    savedCustomer: saved,
+    isExistingCustomer: false,
   };
 }
 
@@ -1307,4 +1471,124 @@ function doPost(e) {
     .createTextOutput(JSON.stringify({ ok: true }))
     .setMimeType(ContentService.MimeType.JSON);
 }`;
+}
+
+
+// ==================== 9. 명함 이미지 자동 동봉 (PNG 클립보드 복사 & MMS/카톡 파일 공유) ====================
+
+export function getEffectiveBusinessCardDataUri(config?: MarketingDbConfig): string {
+  const custom = (config?.businessCardDataUri || '').trim();
+  return custom.startsWith('data:image/')
+    ? custom
+    : DEFAULT_OWNER_BUSINESS_CARD_DATA_URI;
+}
+
+export function dataUriToBlob(dataUri: string): Blob {
+  const parts = dataUri.split(',');
+  const mimeMatch = (parts[0] || '').match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+  const bstr = atob(parts[1] || '');
+  const u8 = new Uint8Array(bstr.length);
+  for (let i = 0; i < bstr.length; i++) {
+    u8[i] = bstr.charCodeAt(i);
+  }
+  return new Blob([u8], { type: mime });
+}
+
+/**
+ * Web Clipboard API (ClipboardItem)는 브라우저 표준상 'image/png'만 허용하므로
+ * JPEG 명함 원본을 고해상도 무손실 PNG Blob Promise로 변환하여 갤럭시·아이폰·PC 클립보드에 복사합니다.
+ */
+export function dataUriToPngBlob(dataUri: string): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    if (typeof Image === 'undefined' || typeof document === 'undefined') {
+      reject(new Error('Browser environment required'));
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width || 993;
+        canvas.height = img.naturalHeight || img.height || 552;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas context unavailable'));
+          return;
+        }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('PNG conversion failed'));
+        }, 'image/png');
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = (e) => reject(e);
+    img.src = dataUri;
+  });
+}
+
+export async function copyBusinessCardImageToClipboard(
+  dataUri: string
+): Promise<boolean> {
+  try {
+    const ClipboardItemCtor = (window as any).ClipboardItem;
+    if (!navigator.clipboard?.write || !ClipboardItemCtor) {
+      return false;
+    }
+    const item = new ClipboardItemCtor({
+      'image/png': dataUriToPngBlob(dataUri),
+    });
+    await navigator.clipboard.write([item]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function shareBusinessCardFileWithText(params: {
+  dataUri: string;
+  bodyText: string;
+  customerPhone?: string;
+}): Promise<'shared' | 'cancelled' | 'unsupported'> {
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+      return 'unsupported';
+    }
+    // 공유 시트에서 메시지 앱 선택 후 받는 사람 칸에 바로 붙여넣을 수 있도록 고객 전화번호를 먼저 복사
+    const cleanPhone = (params.customerPhone || '').replace(/\D/g, '');
+    if (cleanPhone) {
+      await safeCopyText(cleanPhone);
+    }
+
+    const blob = dataUriToBlob(params.dataUri);
+    const ext = blob.type === 'image/png' ? 'png' : 'jpg';
+    const file = new File(
+      [blob],
+      `롯데하이마트_경기광주점_국지현_명함.${ext}`,
+      { type: blob.type || 'image/jpeg' }
+    );
+
+    if (
+      typeof navigator.canShare === 'function' &&
+      !navigator.canShare({ files: [file] })
+    ) {
+      return 'unsupported';
+    }
+
+    await navigator.share({
+      files: [file],
+      text: params.bodyText,
+    });
+    return 'shared';
+  } catch (err: any) {
+    if (err && err.name === 'AbortError') {
+      return 'cancelled';
+    }
+    return 'unsupported';
+  }
 }

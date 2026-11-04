@@ -20,6 +20,7 @@ import {
 } from './types/crm';
 import {
   CRM_CUSTOMERS_UPDATED_EVENT,
+  deleteQuoteAndSyncCustomer,
   fetchCustomersFromGas,
   getCachedCustomers,
   setCachedCustomers,
@@ -171,7 +172,8 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       selectedCustomerId !== null ||
       isNewModalOpen ||
       isSettingsOpen ||
-      isBriefingOpen
+      isBriefingOpen ||
+      isPastDeliveryModalOpen
     ) {
       try {
         window.history.pushState({ appGuard: true, tag: 'crm-modal' }, '');
@@ -196,6 +198,10 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         setIsSettingsOpen(false);
         return true;
       }
+      if (isPastDeliveryModalOpen) {
+        setIsPastDeliveryModalOpen(false);
+        return true;
+      }
       if (isBriefingOpen) {
         setIsBriefingOpen(false);
         return true;
@@ -215,6 +221,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     isNewModalOpen,
     isSettingsOpen,
     isBriefingOpen,
+    isPastDeliveryModalOpen,
     viewMode,
   ]);
 
@@ -417,19 +424,27 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     quoteId: string
   ) => {
     pushUndoSnapshot('보관 견적 삭제');
-    const updated = customers.map((c) => {
-      if (c.id !== customerId) return c;
-      const nextQuotes = (c.quotes || []).filter((q) => q.id !== quoteId);
-      return { ...c, quotes: nextQuotes };
-    });
+    const updated = customers.map((c) =>
+      c.id === customerId ? deleteQuoteAndSyncCustomer(c, quoteId) : c
+    );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
-    showToast('🗑️ 선택한 견적이 보관함에서 삭제되었습니다.', true);
+    showToast('🗑️ 선택한 견적이 삭제되었으며 남은 대표 견적 금액으로 자동 복원되었습니다.', true);
     const target = deduped.find((c) => c.id === customerId);
     if (target) {
       await syncCustomerToGas('update', {
         id: customerId,
         quotes: target.quotes,
+        items: target.items,
+        paidAmount: target.paidAmount,
+        netAmount: target.netAmount,
+        expectedBenefit: target.expectedBenefit,
+        saleType: target.saleType,
+        performanceAmount: target.performanceAmount,
+        generalProductTotal: target.generalProductTotal,
+        subscriptionPrincipal: target.subscriptionPrincipal,
+        freedCounts: target.freedCounts,
+        purchasedModels: target.purchasedModels,
       });
     }
   };

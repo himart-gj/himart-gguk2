@@ -36,10 +36,11 @@ export async function sendSystemNotification(
       if (reg && 'showNotification' in reg) {
         await reg.showNotification(title, {
           body,
-          icon: '/pwa-192x192.png',
-          badge: '/favicon-32x32.png',
+          icon: './pwa-192x192.png',
+          badge: './favicon-32x32.png',
           tag: 'gookji-crm-briefing',
           renotify: true,
+          data: { url: './?source=pwa&entry=briefing' },
         } as any);
         return true;
       }
@@ -47,7 +48,7 @@ export async function sendSystemNotification(
 
     new Notification(title, {
       body,
-      icon: '/pwa-192x192.png',
+      icon: './pwa-192x192.png',
     });
     return true;
   } catch (e) {

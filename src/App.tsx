@@ -19,7 +19,11 @@ import {
   decodeSharedQuoteFromHash,
   SharedQuotePayload,
 } from './utils/shareQuoteCodec';
-import { useOfflineSyncStatus } from './utils/offlineDbQueue';
+import { flushPendingOutbox, useOfflineSyncStatus } from './utils/offlineDbQueue';
+import {
+  installLifecycleResumeAndUpdateGuard,
+  lazyWithRetry,
+} from './utils/mobileQaRuntime';
 
 import { PopPrinterApp } from './pop/PopPrinterApp';
 import { CrmApp } from './crm/CrmApp';
@@ -237,6 +241,18 @@ export function App() {
   const [aiInitialCommand, setAiInitialCommand] = useState<string>('');
   const [isOmnibarOpen, setIsOmnibarOpen] = useState<boolean>(false);
   const [isHomePastDeliveryOpen, setIsHomePastDeliveryOpen] = useState<boolean>(false);
+  // ==================== 국지현 전용 비공개 [마케팅 DB관리] 스텔스 상태 ====================
+  const [isOwnerDbUnlocked, setIsOwnerDbUnlocked] = useState<boolean>(() =>
+    isOwnerMarketingDbUnlocked()
+  );
+  const [ownerDbTick, setOwnerDbTick] = useState<number>(0);
+  const [initialCrmCustomerId, setInitialCrmCustomerId] = useState<
+    string | null
+  >(null);
+  const [isStealthPinOpen, setIsStealthPinOpen] = useState<boolean>(false);
+  const [stealthPinInput, setStealthPinInput] = useState<string>('');
+  const [stealthPinError, setStealthPinError] = useState<boolean>(false);
+  const homeTapTimestampsRef = useRef<number[]>([]);
   const [sharedQuotePayload, setSharedQuotePayload] =
     useState<SharedQuotePayload | null>(null);
   const [isSplitConsultation, setIsSplitConsultation] = useState<boolean>(() =>
@@ -250,7 +266,44 @@ export function App() {
       }
     };
     window.addEventListener('resize', handleSplitResize);
-    return () => window.removeEventListener('resize', handleSplitResize);
+    window.addEventListener('orientationchange', handleSplitResize);
+    return () => {
+      window.removeEventListener('resize', handleSplitResize);
+      window.removeEventListener('orientationchange', handleSplitResize);
+    };
+  }, []);
+
+  // [QA 02 백그라운드 복귀 · QA 08 업데이트 직후 · QA 09 푸시 알림 진입]
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('entry') === 'briefing') {
+        setStep('crm');
+        params.delete('entry');
+        const rest = params.toString();
+        window.history.replaceState(
+          { appGuard: true, tag: 'push-entry' },
+          '',
+          `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash || ''}`
+        );
+      }
+    } catch {
+      // ignore malformed URL query
+    }
+
+    return installLifecycleResumeAndUpdateGuard({
+      onResumeSync: () => {
+        setCrmCustomers(getCachedCustomers());
+        setIsOwnerDbUnlocked(isOwnerMarketingDbUnlocked());
+        flushPendingOutbox().catch(() => {});
+      },
+      onPushNavigate: (targetUrl) => {
+        setCrmCustomers(getCachedCustomers());
+        if (targetUrl.includes('entry=briefing') || targetUrl.includes('crm')) {
+          setStep('crm');
+        }
+      },
+    });
   }, []);
   const { isOnline, pendingCount } = useOfflineSyncStatus();
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
@@ -326,6 +379,8 @@ export function App() {
     isPartnerLinksOpen,
     isScheduleModalOpen,
     isMenuOpen,
+    isStealthPinOpen,
+    isHomePastDeliveryOpen,
   });
 
   useEffect(() => {
@@ -341,6 +396,8 @@ export function App() {
       isPartnerLinksOpen,
       isScheduleModalOpen,
       isMenuOpen,
+      isStealthPinOpen,
+      isHomePastDeliveryOpen,
     };
   }, [
     step,
@@ -354,6 +411,8 @@ export function App() {
     isPartnerLinksOpen,
     isScheduleModalOpen,
     isMenuOpen,
+    isStealthPinOpen,
+    isHomePastDeliveryOpen,
   ]);
 
   // 히스토리 가드 주입 헬퍼 (모바일 뒤로가기 시 앱 강제 종료 원천 차단)
@@ -386,7 +445,9 @@ export function App() {
       isInstallmentModalOpen ||
       isCardIssueOpen ||
       isAsCenterOpen ||
-      isPartnerLinksOpen
+      isPartnerLinksOpen ||
+      isStealthPinOpen ||
+      isHomePastDeliveryOpen
     ) {
       pushAppHistoryGuard('modal-open');
     }
@@ -401,6 +462,8 @@ export function App() {
     isCardIssueOpen,
     isAsCenterOpen,
     isPartnerLinksOpen,
+    isStealthPinOpen,
+    isHomePastDeliveryOpen,
     pushAppHistoryGuard,
   ]);
 
@@ -456,6 +519,16 @@ export function App() {
       }
 
       // 1순위: 현재 열려 있는 최상위 모달/메뉴 닫기 (현재 화면은 그대로 유지)
+      if (current.isStealthPinOpen) {
+        setIsStealthPinOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
+      if (current.isHomePastDeliveryOpen) {
+        setIsHomePastDeliveryOpen(false);
+        pushAppHistoryGuard('modal-close');
+        return;
+      }
       if (current.isMenuOpen) {
         setIsMenuOpen(false);
         pushAppHistoryGuard('modal-close');
@@ -674,18 +747,7 @@ export function App() {
     return '📅 기본 조견표 적용중';
   }, [careDataset]);
 
-  // ==================== 국지현 전용 비공개 [마케팅 DB관리] 스텔스 상태 ====================
-  const [isOwnerDbUnlocked, setIsOwnerDbUnlocked] = useState<boolean>(() =>
-    isOwnerMarketingDbUnlocked()
-  );
-  const [ownerDbTick, setOwnerDbTick] = useState<number>(0);
-  const [initialCrmCustomerId, setInitialCrmCustomerId] = useState<
-    string | null
-  >(null);
-  const [isStealthPinOpen, setIsStealthPinOpen] = useState<boolean>(false);
-  const [stealthPinInput, setStealthPinInput] = useState<string>('');
-  const [stealthPinError, setStealthPinError] = useState<boolean>(false);
-  const homeTapTimestampsRef = useRef<number[]>([]);
+  // ==================== 국지현 전용 비공개 [마케팅 DB관리] 스텔스 동기화 ====================
 
   useEffect(() => {
     const syncOwnerDb = () => {
@@ -1338,7 +1400,7 @@ export function App() {
     >
       {/* ==================== 상단 글로벌 네비게이션 바 (Warm Ivory / Titanium Dark 전환 스위치 & 전체메뉴) ==================== */}
       <header
-        className={`w-full min-h-[52px] border-b px-3 sm:px-5 py-2 flex items-center justify-between gap-2 sticky top-0 z-40 backdrop-blur-md transition-colors no-print ${
+        className={`safe-top-header w-full min-h-[52px] border-b px-3 sm:px-5 py-2 flex items-center justify-between gap-2 sticky top-0 z-40 backdrop-blur-md transition-colors no-print ${
           isDark
             ? 'bg-[#121620]/95 text-white border-white/10'
             : 'bg-[#FAF8F4]/95 text-[#18181B] border-[#E2DDD3]'
@@ -2473,6 +2535,10 @@ export function App() {
             onOpenCustomerInQuoteBuilder={(cust) => {
               setCrmCustomers(getCachedCustomers());
               handleOpenCustomerInQuoteBuilder(cust);
+            }}
+            onOpenQuoteRecordInQuoteBuilder={(cust, quote) => {
+              setCrmCustomers(getCachedCustomers());
+              handleOpenQuoteRecordInQuoteBuilder(cust, quote);
             }}
             isDark={isDark}
           />

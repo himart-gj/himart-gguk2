@@ -588,7 +588,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh]"
+        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90dvh] modal-kb-safe"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 상단 헤더 */}

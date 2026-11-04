@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BootEntryMode, resolveBootEntryMode } from './utils/shareQuoteCodec';
+import { installMobileViewportAndKeyboardGuard } from './utils/mobileQaRuntime';
 import StaffApp from './App';
 import {
   CustomerShareStandaloneRoot,
@@ -18,6 +19,7 @@ const RootDispatcher: React.FC = () => {
   const [mode, setMode] = useState<BootEntryMode>(INITIAL_BOOT_MODE);
 
   useEffect(() => {
+    const cleanupViewportGuard = installMobileViewportAndKeyboardGuard();
     // 개발 서버(Vite Dev) 환경에서 이전 세션의 서비스워커가 모듈 요청(/src/*)을 가로채지 않도록 해제
     if (!import.meta.env.PROD && 'serviceWorker' in navigator) {
       navigator.serviceWorker
@@ -27,7 +29,15 @@ const RootDispatcher: React.FC = () => {
         })
         .catch(() => {});
     }
+    return cleanupViewportGuard;
   }, []);
+
+  // 인증된 직원 기기('staff-app') 및 프로덕션 빌드에서만 PWA 서비스워커를 등록 (최초 PIN 인증 직후에도 즉시 등록)
+  useEffect(() => {
+    if (mode === 'staff-app' && 'serviceWorker' in navigator && import.meta.env.PROD) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  }, [mode]);
 
   if (mode === 'customer-quote') {
     return <CustomerShareStandaloneRoot />;
@@ -45,10 +55,3 @@ const RootDispatcher: React.FC = () => {
 };
 
 createRoot(document.getElementById('root')!).render(<RootDispatcher />);
-
-// 인증된 직원 기기('staff-app') 및 프로덕션 빌드에서만 PWA 서비스워커를 등록
-if (INITIAL_BOOT_MODE === 'staff-app' && 'serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  });
-}

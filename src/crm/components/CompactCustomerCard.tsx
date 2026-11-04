@@ -65,6 +65,13 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
     Boolean(customer.giftItems && customer.giftItems.trim()) &&
     !customer.giftSent;
   const perf = resolveCustomerPerformanceProfile(customer);
+  const fallbackQuoteWithNet = customer.quotes?.find(
+    (q) => (Number(q.netAmount) || 0) > 0 || (Number(q.paidAmount) || 0) > 0
+  );
+  const effectiveNetAmount =
+    (Number(customer.netAmount) || 0) > 0
+      ? customer.netAmount
+      : fallbackQuoteWithNet?.netAmount ?? customer.netAmount ?? 0;
 
   // 모바일 좌우 스와이프 제스처 지원
   const touchStartXRef = useRef<number | null>(null);
@@ -231,7 +238,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 }`}
               >
                 {perf.saleType === 'subscription' ? '월체감 ' : '체감 '}
-                {formatCurrency(customer.netAmount)}원
+                {formatCurrency(effectiveNetAmount)}원
               </span>
             </div>
           </div>

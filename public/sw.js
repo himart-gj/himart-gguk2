@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'himart-shell-v9';
-const DATA_JSON_CACHE = 'himart-data-v9';
+const APP_SHELL_CACHE = 'himart-shell-v11';
+const DATA_JSON_CACHE = 'himart-data-v11';
 
 const PRECACHE_URLS = [
   './',
@@ -159,19 +159,28 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-// 🔔 Notification Click: 알림 탭(클릭) 시 앱 창 열기 및 포커스
+// 🔔 Notification Click: 알림 탭(클릭) 시 앱 창 열기 및 목표 화면 안전 라우팅
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const targetUrl =
-    (event.notification.data && event.notification.data.url) || './';
+    (event.notification.data && event.notification.data.url) ||
+    './?source=pwa&entry=briefing';
 
   event.waitUntil(
     clients
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
         for (const client of clientList) {
-          if ('focus' in client) {
+          if (client.url && client.url.startsWith(self.location.origin) && 'focus' in client) {
+            try {
+              client.postMessage({
+                type: 'HIMART_PUSH_NAVIGATE',
+                url: targetUrl,
+              });
+            } catch (e) {
+              // ignore postMessage error
+            }
             return client.focus();
           }
         }
