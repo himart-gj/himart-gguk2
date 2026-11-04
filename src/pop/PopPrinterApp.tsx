@@ -67,11 +67,42 @@ function usePWAInstall() {
   return { isInstallable: !!deferredPrompt, isInstalled, isIOS, install };
 }
 
+const POP_PRODUCTS_STORAGE_KEY = 'himart_pop_products_v1';
+let inMemoryPopProductsCache: ProductData[] | null = null;
+
+function loadSavedPopProducts(): ProductData[] {
+  if (inMemoryPopProductsCache) return inMemoryPopProductsCache;
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(POP_PRODUCTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      inMemoryPopProductsCache = parsed;
+      return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
 export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   
-  const [products, setProducts] = useState<ProductData[]>([]);
+  const [products, setProducts] = useState<ProductData[]>(() => loadSavedPopProducts());
+
+  useEffect(() => {
+    inMemoryPopProductsCache = products;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem(POP_PRODUCTS_STORAGE_KEY, JSON.stringify(products));
+      } catch {
+        // quota fallback handled by inMemoryPopProductsCache
+      }
+    }
+  }, [products]);
   const [loading, setLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
