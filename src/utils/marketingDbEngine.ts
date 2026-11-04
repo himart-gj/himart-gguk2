@@ -1,4 +1,8 @@
+import * as XLSXModule from 'xlsx';
 import { ADMIN_PIN_CODE } from './careTableParser';
+
+const XLSX: typeof XLSXModule =
+  ((XLSXModule as any).read ? XLSXModule : (XLSXModule as any).default) || XLSXModule;
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from './ownerBusinessCardAsset';
 import { idbMirrorGet, idbMirrorSet } from './offlineDbQueue';
 import {
@@ -129,6 +133,8 @@ export interface MarketingDbConfig {
   businessCardSendMethod?: 'sms-clipboard' | 'share-sheet';
   /** 마지막 시트 동기화 시각 */
   lastSyncedAt?: string;
+  /** 마지막 실시간 자동연동 성공 상태 ('connected' | 'locked' | 'idle') */
+  lastSyncStatus?: 'connected' | 'locked' | 'idle';
 }
 
 export interface MarketingDbStore {
@@ -452,8 +458,28 @@ interface RawSeedRow {
   memo: string;
 }
 
-// 구글 드라이브 [인스타 광고 전용 DB] 상조결합 고객 접수 현황 실제 최신 접수분 (11건) 초기 시드
+// 구글 드라이브 [인스타 광고 전용 DB] 실제 최신 접수분 (13건 전수 반영) 초기 시드
 const INITIAL_SHEET_SEED_ROWS: RawSeedRow[] = [
+  {
+    metaId: 'l:1463204865750517',
+    createdAt: '2026-11-04 18:23',
+    name: '제이',
+    phone: 'p:528445069585',
+    benefit: '단품 가전 오픈 특가',
+    contact: '비대면 카톡/문자/전화로 견적 먼저 받기',
+    memoStatus: '신규',
+    memo: '',
+  },
+  {
+    metaId: 'l:1419806016529181',
+    createdAt: '2026-11-04 15:26',
+    name: '신정민',
+    phone: '010-7106-7294',
+    benefit: '이사,혼수 세트가전(삼성,lg 오픈점 최대 지원)',
+    contact: '비대면 카톡/문자/전화로 견적 먼저 받기',
+    memoStatus: '신규',
+    memo: '',
+  },
   {
     metaId: 'l:29287341927528843',
     createdAt: '2026-11-04 08:09',
@@ -607,7 +633,8 @@ function createInitialMarketingDbStore(): MarketingDbStore {
       autoSaveCrmOnConvert: true,
       businessCardDataUri: DEFAULT_OWNER_BUSINESS_CARD_DATA_URI,
       businessCardSendMethod: 'sms-clipboard',
-      lastSyncedAt: '2026-11-04 08:15 (초기 시트 반영됨)',
+      lastSyncedAt: '2026-11-04 18:25 (시트 최신 13건 반영됨)',
+      lastSyncStatus: 'idle',
     },
   };
 }
@@ -629,6 +656,27 @@ export function loadMarketingDbStore(): MarketingDbStore {
       ...l,
       status: normalizeLeadStatusValue((l as any).status, l.handoverStaff),
     }));
+    const deletedSet = new Set(
+      Array.isArray(parsed.deletedFingerprints) ? parsed.deletedFingerprints : []
+    );
+    const existingFpSet = new Set(migratedLeads.map((l) => l.fingerprint));
+    const existingPdSet = new Set(
+      migratedLeads
+        .filter((l) => l.phone)
+        .map((l) => `${l.phone.replace(/\D/g, '')}__${(l.createdAt || '').slice(0, 10)}`)
+    );
+    for (const seedLead of fallback.leads) {
+      const pdKey = `${seedLead.phone.replace(/\D/g, '')}__${(seedLead.createdAt || '').slice(0, 10)}`;
+      if (deletedSet.has(seedLead.fingerprint) || (seedLead.phone && deletedSet.has(`ph_${pdKey}`))) {
+        continue;
+      }
+      if (!existingFpSet.has(seedLead.fingerprint) && !(seedLead.phone && existingPdSet.has(pdKey))) {
+        migratedLeads.push(seedLead);
+        existingFpSet.add(seedLead.fingerprint);
+        if (seedLead.phone) existingPdSet.add(pdKey);
+      }
+    }
+    migratedLeads.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     return {
       version: 1,
       leads: migratedLeads,
@@ -939,11 +987,14 @@ export function mergeIncomingLeadsIntoStore(
   const deletedSet = new Set(store.deletedFingerprints || []);
   const existingByFp = new Map<string, MarketingLeadItem>();
   const existingByPhoneDate = new Map<string, MarketingLeadItem>();
+  const existingByNameMinute = new Map<string, MarketingLeadItem>();
 
   for (const lead of store.leads) {
     existingByFp.set(lead.fingerprint, lead);
     const pdKey = `${lead.phone.replace(/\D/g, '')}__${lead.createdAt.slice(0, 10)}`;
     if (lead.phone) existingByPhoneDate.set(pdKey, lead);
+    const nmKey = `${lead.customerName.trim().toLowerCase()}__${lead.createdAt.slice(0, 15)}`;
+    if (lead.customerName.trim()) existingByNameMinute.set(nmKey, lead);
   }
 
   let addedCount = 0;
@@ -964,8 +1015,11 @@ export function mergeIncomingLeadsIntoStore(
       continue;
     }
 
+    const nmKey = `${inc.customerName.trim().toLowerCase()}__${inc.createdAt.slice(0, 15)}`;
     const matched =
-      existingByFp.get(fp) || (inc.phone ? existingByPhoneDate.get(pdKey) : undefined);
+      existingByFp.get(fp) ||
+      (inc.phone ? existingByPhoneDate.get(pdKey) : undefined) ||
+      (inc.customerName.trim() ? existingByNameMinute.get(nmKey) : undefined);
 
     const freshSummary = buildLeadAutoSummary({
       interestBenefit: inc.interestBenefit,
@@ -995,6 +1049,7 @@ export function mergeIncomingLeadsIntoStore(
       mergedList.push(createdItem);
       existingByFp.set(fp, createdItem);
       if (inc.phone) existingByPhoneDate.set(pdKey, createdItem);
+      if (inc.customerName.trim()) existingByNameMinute.set(nmKey, createdItem);
       addedCount++;
     } else if (!matched.deletedAt) {
       // 시트에서 추가 메모나 항목이 보강된 경우 기존 앱 상태(매출·인계·진행단계)는 보존하면서 요약만 최신화
@@ -1147,6 +1202,7 @@ export async function syncLeadsFromGoogleSheet(
         }
 
         const merged = mergeIncomingLeadsIntoStore(workingStore, allIncoming);
+        merged.nextStore.config.lastSyncStatus = 'connected';
         saveMarketingDbStore(merged.nextStore);
         return {
           ok: true,
@@ -1162,56 +1218,145 @@ export async function syncLeadsFromGoogleSheet(
     }
   }
 
-  // 2순위: 웹에 게시된 CSV 주소 또는 시트 공유 링크에서 CSV 직접 읽기
-  const rawUrl = (store.config.sheetCsvOrShareUrl || '').trim();
+  // 2순위: 인스타 DB 구글시트(DEFAULT_INSTA_SHEET_ID 또는 사용자 지정 링크/웹에 게시 주소) 전 탭 실시간 직접 읽기
+  const rawUrl = (store.config.sheetCsvOrShareUrl || DEFAULT_INSTA_SHEET_URL).trim();
   if (rawUrl) {
-    let fetchTarget = rawUrl;
-    if (rawUrl.includes('/pub?') || rawUrl.includes('/pubhtml')) {
-      fetchTarget = rawUrl
+    // 2-A) '웹에 게시(/pub)' 링크인 경우 CSV 즉시 수신
+    if (rawUrl.includes('/pub?') || rawUrl.includes('/pubhtml') || rawUrl.endsWith('/pub')) {
+      let pubTarget = rawUrl
         .replace('/pubhtml', '/pub')
         .replace(/output=[a-z]+/i, 'output=csv');
-      if (!fetchTarget.includes('output=csv')) {
-        fetchTarget += (fetchTarget.includes('?') ? '&' : '?') + 'output=csv';
+      if (!pubTarget.includes('output=csv')) {
+        pubTarget += (pubTarget.includes('?') ? '&' : '?') + 'output=csv';
       }
-    } else {
-      const idMatch = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-      const sheetId = idMatch ? idMatch[1] : DEFAULT_INSTA_SHEET_ID;
-      fetchTarget = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+      try {
+        const res = await fetch(`${pubTarget}${pubTarget.includes('?') ? '&' : '?'}_t=${Date.now()}`, {
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const text = await res.text();
+          if (
+            text &&
+            !text.trim().toLowerCase().startsWith('<!doctype') &&
+            !text.trim().toLowerCase().startsWith('<html') &&
+            !text.includes('accounts.google.com')
+          ) {
+            const merged = importLeadsFromRawText(store, text);
+            merged.nextStore.config.lastSyncStatus = 'connected';
+            saveMarketingDbStore(merged.nextStore);
+            return {
+              ok: true,
+              ...merged,
+              message:
+                merged.addedCount > 0
+                  ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건을 자동 반영했습니다!`
+                  : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
+            };
+          }
+        }
+      } catch {
+        // 다음 후보 엔드포인트 시도
+      }
     }
 
+    // 2-B) 표준 구글시트 ID 추출 후 ① 전체 탭 XLSX 추출 -> ② CSV export -> ③ gviz CSV 순서로 자동 시도
+    const idMatch = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{15,})/);
+    const sheetId = idMatch ? idMatch[1] : DEFAULT_INSTA_SHEET_ID;
+    const gidMatch = rawUrl.match(/[?#&]gid=(\d+)/);
+    const gidSuffix = gidMatch?.[1] ? `&gid=${gidMatch[1]}` : '';
+
+    // ① 전 탭(⭐한글_고객명부 + 메타 광고 원본 탭 전체) XLSX 무손실 스캔
     try {
-      const res = await fetch(fetchTarget);
-      if (res.ok) {
-        const text = await res.text();
-        if (
-          text &&
-          !text.trim().toLowerCase().startsWith('<!doctype html') &&
-          !text.includes('accounts.google.com')
-        ) {
-          const merged = importLeadsFromRawText(store, text);
+      const xlsxRes = await fetch(
+        `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx&_t=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      const ct = (xlsxRes.headers.get('content-type') || '').toLowerCase();
+      if (xlsxRes.ok && !ct.includes('text/html')) {
+        const buf = await xlsxRes.arrayBuffer();
+        if (buf.byteLength > 200) {
+          const wb = XLSX.read(buf, { type: 'array' });
+          let allIncoming: ParsedIncomingLead[] = [];
+          for (const sheetName of wb.SheetNames) {
+            if (sheetName === '_앱DB관리백업') continue;
+            const sh = wb.Sheets[sheetName];
+            if (!sh) continue;
+            const rows: any[][] = XLSX.utils.sheet_to_json(sh, {
+              header: 1,
+              raw: false,
+              defval: '',
+            });
+            const strMatrix = rows.map((r) => r.map((c) => String(c ?? '').trim()));
+            allIncoming = allIncoming.concat(extractLeadsFromMatrix(strMatrix));
+          }
+          const merged = mergeIncomingLeadsIntoStore(store, allIncoming);
+          merged.nextStore.config.lastSyncStatus = 'connected';
           saveMarketingDbStore(merged.nextStore);
           return {
             ok: true,
             ...merged,
             message:
               merged.addedCount > 0
-                ? `시트에서 신규 고객 ${merged.addedCount}건을 불러와 자동 요약했습니다!`
-                : '시트 확인 완료 (새로 추가된 고객이 없습니다).',
+                ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건이 자동 추가되었습니다!`
+                : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
           };
         }
       }
     } catch {
-      // 비공개 시트 CORS 차단 시 안내 반환
+      // CSV 폴백으로 진행
+    }
+
+    // ② CSV 엔드포인트 2종 폴백
+    for (const csvUrl of [
+      `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gidSuffix}&_t=${Date.now()}`,
+      `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv${gidSuffix}&_t=${Date.now()}`,
+    ]) {
+      try {
+        const res = await fetch(csvUrl, { cache: 'no-store' });
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (res.ok && !ct.includes('text/html')) {
+          const text = await res.text();
+          if (
+            text &&
+            !text.trim().toLowerCase().startsWith('<!doctype') &&
+            !text.trim().toLowerCase().startsWith('<html') &&
+            !text.includes('accounts.google.com')
+          ) {
+            const merged = importLeadsFromRawText(store, text);
+            merged.nextStore.config.lastSyncStatus = 'connected';
+            saveMarketingDbStore(merged.nextStore);
+            return {
+              ok: true,
+              ...merged,
+              message:
+                merged.addedCount > 0
+                  ? `인스타 DB 시트에서 신규 고객 ${merged.addedCount}건이 자동 추가되었습니다!`
+                  : '인스타 DB 시트와 실시간 최신 동기화 완료! (추가 고객 0건)',
+            };
+          }
+        }
+      } catch {
+        // 비공개 시트 차단 시 아래 안내 반환
+      }
     }
   }
 
+  const lockedStore: MarketingDbStore = {
+    ...store,
+    config: {
+      ...store.config,
+      lastSyncStatus: 'locked',
+    },
+  };
+  saveMarketingDbStore(lockedStore);
+
   return {
     ok: false,
-    nextStore: store,
+    nextStore: lockedStore,
     addedCount: 0,
     updatedCount: 0,
     message:
-      '현재 인스타 DB 시트가 [비공개(나만 보기)]로 보호되어 있어 직접 외부 접근이 차단되어 있습니다. 우측 [시트 자동연동 설정]에서 전용 Apps Script 웹앱 주소를 1회 연결하시거나 시트 내용을 붙여넣어 주세요!',
+      '구글시트가 아직 [제한됨(나만 보기)] 상태입니다. 시트에서 [공유 → 링크가 있는 모든 사용자(뷰어)]를 1회만 켜주시거나 전용 Apps Script 주소를 연결하면 즉시 실시간 자동연동됩니다!',
   };
 }
 

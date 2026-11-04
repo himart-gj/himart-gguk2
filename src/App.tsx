@@ -41,6 +41,7 @@ import {
   isOwnerMarketingDbUnlocked,
   loadMarketingDbStore,
   MARKETING_DB_UPDATED_EVENT,
+  syncLeadsFromGoogleSheet,
   verifyAndUnlockOwnerDb,
 } from './utils/marketingDbEngine';
 
@@ -757,6 +758,24 @@ export function App() {
     return () =>
       window.removeEventListener(MARKETING_DB_UPDATED_EVENT, syncOwnerDb);
   }, []);
+
+  // 대표님 기기(잠금 해제 상태)에서는 홈 화면에서도 인스타 DB 구글시트를 자동 동기화해 신규 건수 배지를 즉시 갱신
+  useEffect(() => {
+    if (!isOwnerDbUnlocked) return;
+    const runBgSync = () => {
+      void syncLeadsFromGoogleSheet(loadMarketingDbStore());
+    };
+    runBgSync();
+    const timer = setInterval(runBgSync, 60000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') runBgSync();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [isOwnerDbUnlocked]);
 
   const ownerDbQuickSummary = useMemo(() => {
     if (!isOwnerDbUnlocked) {

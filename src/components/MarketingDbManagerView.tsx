@@ -255,16 +255,14 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
       setSheetUrlInput(
         hydrated.config.sheetCsvOrShareUrl || DEFAULT_INSTA_SHEET_URL
       );
-      if (hydrated.config.gasWebAppUrl?.trim()) {
-        syncLeadsFromGoogleSheet(hydrated).then((res) => {
-          if (mounted && res.ok) {
-            setStore(res.nextStore);
-            if (res.addedCount > 0) {
-              showToast(res.message);
-            }
-          }
-        });
-      }
+      // 진입 즉시 백그라운드 자동 동기화 (Apps Script 웹앱 또는 사전 연결된 인스타 DB 구글시트 전 탭 스캔)
+      syncLeadsFromGoogleSheet(hydrated).then((res) => {
+        if (!mounted) return;
+        setStore(res.nextStore);
+        if (res.ok && res.addedCount > 0) {
+          showToast(res.message);
+        }
+      });
     });
     setStaffOptions(loadHandoverStaffOptions());
     setCrmCustomers(getCachedCustomers());
@@ -273,23 +271,20 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     };
   }, []);
 
-  // Apps Script 연동되어 있을 때 60초 주기 백그라운드 자동 감지
+  // 45초 주기 실시간 백그라운드 자동 감지 (Apps Script 또는 구글시트 공유/게시 모두 작동)
   useEffect(() => {
-    if (!store.config.gasWebAppUrl?.trim()) return;
     const timer = setInterval(() => {
       syncLeadsFromGoogleSheet(loadMarketingDbStore()).then((res) => {
-        if (res.ok && (res.addedCount > 0 || res.updatedCount > 0)) {
-          setStore(res.nextStore);
-          if (res.addedCount > 0) {
-            showToast(res.message);
-          }
+        setStore(res.nextStore);
+        if (res.ok && res.addedCount > 0) {
+          showToast(res.message);
         }
       });
-    }, 60000);
+    }, 45000);
     return () => clearInterval(timer);
-  }, [store.config.gasWebAppUrl]);
+  }, [store.config.gasWebAppUrl, store.config.sheetCsvOrShareUrl]);
 
-  // 백그라운드 복귀(문자/카톡/전화 후 복귀) 및 CRM 데이터 변동 시 즉시 최신화
+  // 백그라운드 복귀(문자/카톡/전화 후 복귀) 및 CRM 데이터 변동 시 즉시 시트 재동기화
   useEffect(() => {
     const refreshLatest = () => {
       setCrmCustomers(getCachedCustomers());
@@ -299,6 +294,12 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     const onVis = () => {
       if (document.visibilityState === 'visible') {
         refreshLatest();
+        syncLeadsFromGoogleSheet(loadMarketingDbStore()).then((res) => {
+          setStore(res.nextStore);
+          if (res.ok && res.addedCount > 0) {
+            showToast(res.message);
+          }
+        });
       }
     };
     window.addEventListener(CRM_CUSTOMERS_UPDATED_EVENT, refreshLatest);
@@ -1400,6 +1401,26 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
+            {store.config.lastSyncStatus === 'connected' ? (
+              <span className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-black inline-flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>자동연동 ON</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsTab('sheet');
+                  setIsSettingsOpen(true);
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/35 text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+                title="구글시트 공유 권한을 1회만 허용하면 45초마다 실시간 자동 유입됩니다"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                <span>자동연동 켜기</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleManualSheetSync}
@@ -2907,12 +2928,87 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
 
             {settingsTab === 'sheet' && (
               <div className="space-y-3.5 text-xs">
+                {/* 방법 A: 코드 복사 없이 모바일/PC에서 10초 만에 켜는 초간단 자동연동 */}
+                <div className={`rounded-2xl border-2 border-emerald-500/40 p-3.5 space-y-2.5 ${subSurface}`}>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="font-black text-emerald-700 dark:text-emerald-300">
+                      ① [초간단 10초 완성 · 코드 불필요] 시트 공유 1회 허용으로 즉시 자동연동
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                        store.config.lastSyncStatus === 'connected'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                      }`}
+                    >
+                      {store.config.lastSyncStatus === 'connected'
+                        ? '✓ 실시간 연동됨'
+                        : '시트 공유 허용 대기중'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] opacity-85 leading-relaxed">
+                    앱에 이미 <strong>[인스타 광고 전용 DB]</strong> 시트 고유 주소가 사전 세팅되어 있습니다! 아래 버튼으로 시트를 연 뒤 우측 상단 <strong>[공유 → 일반 액세스: &lsquo;링크가 있는 모든 사용자(뷰어)&rsquo;]</strong>로 1회만 바꿔주시면, 앱을 열 때마다·45초마다 신규 DB가 자동으로 들어옵니다. (DB 메뉴 자체가 비밀번호로 숨겨져 있어 타 직원은 볼 수 없습니다.)
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <a
+                      href={sheetUrlInput.trim() || DEFAULT_INSTA_SHEET_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black flex items-center justify-center gap-1.5"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>1단계: 인스타 DB 시트 열기</span>
+                    </a>
+                    <button
+                      type="button"
+                      disabled={isSyncing}
+                      onClick={async () => {
+                        const updatedCfgStore = {
+                          ...store,
+                          config: {
+                            ...store.config,
+                            sheetCsvOrShareUrl:
+                              sheetUrlInput.trim() || DEFAULT_INSTA_SHEET_URL,
+                            gasWebAppUrl: gasUrlInput.trim(),
+                          },
+                        };
+                        saveMarketingDbStore(updatedCfgStore);
+                        setStore(updatedCfgStore);
+                        setIsSyncing(true);
+                        const res = await syncLeadsFromGoogleSheet(updatedCfgStore);
+                        setStore(res.nextStore);
+                        setIsSyncing(false);
+                        showToast(res.message);
+                      }}
+                      className="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-black flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RefreshCw
+                        className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`}
+                      />
+                      <span>2단계: 지금 자동연동 확인</span>
+                    </button>
+                  </div>
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[11px] font-extrabold opacity-80 block">
+                      연결된 인스타 DB 구글시트 주소 (변경 시에만 수정 · 웹에 게시 CSV 링크도 호환)
+                    </label>
+                    <input
+                      type="url"
+                      value={sheetUrlInput}
+                      onChange={(e) => setSheetUrlInput(e.target.value)}
+                      placeholder={DEFAULT_INSTA_SHEET_URL}
+                      className={`w-full px-3 py-2 rounded-xl border font-mono text-[11px] ${inputSurface}`}
+                    />
+                  </div>
+                </div>
+
+                {/* 방법 B: 시트를 '나만 보기' 비공개로 유지 + 폰↔PC 상태 양방향 백업 */}
                 <div className={`rounded-2xl border p-3.5 space-y-2.5 ${subSurface}`}>
                   <div className="font-black text-indigo-600 dark:text-sky-300">
-                    ① [권장 · 시트 비공개 유지] 실시간 자동연동 &amp; 폰↔PC 백업 연결
+                    ② [시트 &lsquo;제한됨&rsquo; 비공개 유지 + 폰↔PC 백업용] Apps Script 웹앱 연결 (선택)
                   </div>
                   <p className="text-[11px] opacity-80 leading-relaxed">
-                    고객 전화번호 보호를 위해 시트를 [전체 공개]로 풀지 않고도, 시트 안의 <strong>Apps Script</strong>에 아래 전용 코드를 1회만 붙여넣어 배포하시면 시트에 고객이 들어올 때마다 자동 요약 유입 + 폰/PC 간 상태·매출 동기화가 작동합니다.
+                    시트 공유를 &lsquo;제한됨(나만 보기)&rsquo;으로 완전히 잠가두면서 폰↔PC 간 진행상태·매출까지 양방향 백업하고 싶으실 때는 PC에서 시트 상단 <strong>[확장 프로그램 → Apps Script]</strong>에 아래 코드를 붙여넣고 <strong>[배포 → 새 배포 → 웹 앱(모든 사용자)]</strong> URL을 넣어주세요.
                   </p>
                   <button
                     type="button"
@@ -2951,20 +3047,31 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={() => {
-                          commitStore((prev) => ({
-                            ...prev,
+                        onClick={async () => {
+                          const nextCfgStore = {
+                            ...store,
                             config: {
-                              ...prev.config,
+                              ...store.config,
                               gasWebAppUrl: gasUrlInput.trim(),
-                              sheetCsvOrShareUrl: sheetUrlInput.trim(),
+                              sheetCsvOrShareUrl:
+                                sheetUrlInput.trim() || DEFAULT_INSTA_SHEET_URL,
                             },
-                          }));
-                          showToast('실시간 시트 연동 주소가 저장되었습니다!');
+                          };
+                          saveMarketingDbStore(nextCfgStore);
+                          setStore(nextCfgStore);
+                          setIsSyncing(true);
+                          const res = await syncLeadsFromGoogleSheet(nextCfgStore);
+                          setStore(res.nextStore);
+                          setIsSyncing(false);
+                          showToast(
+                            res.ok
+                              ? `✅ 연동 성공! ${res.message}`
+                              : '주소가 저장되었습니다. (배포 권한: 모든 사용자 설정을 확인해 주세요)'
+                          );
                         }}
                         className="px-3.5 py-2 rounded-xl bg-emerald-600 text-white font-black cursor-pointer shrink-0"
                       >
-                        저장
+                        저장·테스트
                       </button>
                     </div>
                   </div>
