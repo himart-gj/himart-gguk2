@@ -51,7 +51,8 @@ import {
   isUrgentCustomer,
 } from '../crm/utils/date';
 import {
-  GEMINI_MODELS,
+  buildGeminiFastConfig,
+  GEMINI_FAST_TEXT_MODELS,
   getEffectiveGeminiApiKey,
   getStoredGeminiApiKey,
   setStoredGeminiApiKey,
@@ -2241,7 +2242,7 @@ export async function parseCommandWithHybridAi(
   // 2차: 클라이언트 Gemini SDK 직접 호출
   if (!resolvedRawJson && apiKey) {
     const ai = new GoogleGenAI({ apiKey });
-    for (const modelName of GEMINI_MODELS) {
+    for (const modelName of GEMINI_FAST_TEXT_MODELS) {
       try {
         const response = await ai.models.generateContent({
           model: modelName,
@@ -2251,10 +2252,9 @@ export async function parseCommandWithHybridAi(
               parts: [{ text: fullPrompt }],
             },
           ],
-          config: {
-            temperature: 0.1,
+          config: buildGeminiFastConfig(modelName, {
             responseMimeType: 'application/json',
-          },
+          }),
         });
         const txt = (response.text || '').trim();
         if (txt) {

@@ -5,7 +5,7 @@ import { DEFAULT_MODEL_INCENTIVE_SHEETS } from '../data/defaultModelIncentiveDat
 const XLSX: typeof XLSXModule =
   ((XLSXModule as any).read ? XLSXModule : (XLSXModule as any).default) || XLSXModule;
 import { idbMirrorGet, idbMirrorSet } from '../../utils/offlineDbQueue';
-import { compressImageFile, GEMINI_MODELS, getEffectiveGeminiApiKey } from '../../utils/aiImageParser';
+import { buildGeminiFastConfig, compressImageFile, GEMINI_MODELS, getEffectiveGeminiApiKey } from '../../utils/aiImageParser';
 import {
   calculateGeneralPurchaseSummary,
   calculateSubscriptionSummary,
@@ -2117,8 +2117,7 @@ export async function parseModelIncentiveImage(
             ],
           },
         ],
-        config: {
-          temperature: 0.1,
+        config: buildGeminiFastConfig(modelName, {
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
@@ -2141,7 +2140,7 @@ export async function parseModelIncentiveImage(
             },
             required: ['rules'],
           },
-        },
+        }),
       });
       if (response && response.text) {
         const parsed = JSON.parse(response.text.trim());

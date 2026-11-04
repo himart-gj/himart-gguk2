@@ -44,13 +44,39 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
   return envKey.trim();
 }
 
+// 유료(Paid Tier) API 최적화 최신 모델 체인 (Gemini 3.8 Flash · Gemini 4 Argon · Gemini 3.6 Flash · Gemini 3.5 Flash-Lite)
 export const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-flash-latest',
-  'gemini-2.0-flash',
-  'gemini-2.5-pro',
-  'gemini-3.1-pro-preview',
+  'gemini-3.8-flash',
+  'gemini-4-argon',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
 ] as const;
+
+export const GEMINI_FAST_TEXT_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-4-argon',
+] as const;
+
+export function buildGeminiFastConfig(
+  modelName: string,
+  baseConfig: Record<string, any> = {}
+): Record<string, any> {
+  const isGen3Or4 =
+    modelName.startsWith('gemini-3') || modelName.startsWith('gemini-4');
+  if (isGen3Or4) {
+    const { temperature: _omitTemp, ...rest } = baseConfig;
+    return {
+      ...rest,
+      thinkingConfig: { thinkingLevel: 'LOW' },
+    };
+  }
+  return {
+    temperature: 0.1,
+    ...baseConfig,
+  };
+}
 
 /**
  * HTML5 Canvas를 사용해 가로 최대 1920px, JPEG 품질 0.85로 자동 압축/리사이징하는 헬퍼 함수
@@ -440,7 +466,6 @@ export async function parseGeneralImageWithFallback(
     ],
   };
 
-  const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
   let responseText = '';
   let lastError: any = null;
 
@@ -459,11 +484,10 @@ export async function parseGeneralImageWithFallback(
             { text: promptText },
           ],
         },
-        config: {
+        config: buildGeminiFastConfig(modelName, {
           responseMimeType: 'application/json',
           responseSchema,
-          temperature: 0.1,
-        },
+        }),
       });
       if (response.text) {
         responseText = response.text;
@@ -648,7 +672,6 @@ export async function parseSubscriptionImageWithFallback(
     ],
   };
 
-  const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
   let responseText = '';
   let lastError: any = null;
 
@@ -667,11 +690,10 @@ export async function parseSubscriptionImageWithFallback(
             { text: promptText },
           ],
         },
-        config: {
+        config: buildGeminiFastConfig(modelName, {
           responseMimeType: 'application/json',
           responseSchema,
-          temperature: 0.1,
-        },
+        }),
       });
       if (response.text) {
         responseText = response.text;

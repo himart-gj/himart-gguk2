@@ -190,7 +190,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   }, []);
 
   const [apiKey, setApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-2.5-flash');
+  const [aiModel, setAiModel] = useState('gemini-3.8-flash');
 
   // Load API key and model from local storage on mount (1~4번 메뉴 공통 키 'gemini_api_key' 공유)
   React.useEffect(() => {
@@ -200,12 +200,17 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       '';
     if (storedKey) setApiKey(storedKey);
     const storedModel = localStorage.getItem('geminiAiModel');
-    const validModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+    const validModels = [
+      'gemini-3.8-flash',
+      'gemini-4-argon',
+      'gemini-3.6-flash',
+      'gemini-3.5-flash-lite',
+    ];
     if (storedModel && validModels.includes(storedModel)) {
       setAiModel(storedModel);
     } else {
-      setAiModel('gemini-2.5-flash');
-      localStorage.setItem('geminiAiModel', 'gemini-2.5-flash');
+      setAiModel('gemini-3.8-flash');
+      localStorage.setItem('geminiAiModel', 'gemini-3.8-flash');
     }
   }, []);
 
@@ -1328,10 +1333,10 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                       onChange={(e) => setAiModel(e.target.value)}
                       className="w-full px-3 py-2 border border-blue-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      <option value="gemini-2.5-flash">gemini-2.5-flash (1순위 권장)</option>
-                      <option value="gemini-flash-latest">gemini-flash-latest</option>
-                      <option value="gemini-2.0-flash">gemini-2.0-flash</option>
-                      <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview</option>
+                      <option value="gemini-3.8-flash">gemini-3.8-flash (초고속·고정밀 1순위 권장)</option>
+                      <option value="gemini-4-argon">gemini-4-argon (유료전용 최고성능 Gemini 4)</option>
+                      <option value="gemini-3.6-flash">gemini-3.6-flash (안정형 초고속 Flash)</option>
+                      <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (초경량 최고속 추출)</option>
                     </select>
                   </div>
                   

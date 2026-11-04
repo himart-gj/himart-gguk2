@@ -14,6 +14,40 @@ const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 
+// 유료(Paid Tier) API 최적화 모델 체인:
+// 1순위 gemini-3.8-flash (최신 주력 Flash + thinkingLevel: LOW 초고속 응답)
+// 2순위 gemini-4-argon (유료 티어 전용 최신 Gemini 4 플래그십)
+// 3순위 gemini-3.6-flash (고안정성 초고속 Flash)
+// 4순위 gemini-3.5-flash-lite (문서·표 초저지연 추출 특화)
+const PAID_FAST_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-4-argon',
+] as const;
+
+const PAID_VISION_OCR_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-4-argon',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+] as const;
+
+function buildFastGenConfig(modelName: string, baseConfig: Record<string, any> = {}): Record<string, any> {
+  const isGen3Or4 = modelName.startsWith('gemini-3') || modelName.startsWith('gemini-4');
+  if (isGen3Or4) {
+    const { temperature: _omitTemp, ...rest } = baseConfig;
+    return {
+      ...rest,
+      thinkingConfig: { thinkingLevel: 'LOW' },
+    };
+  }
+  return {
+    temperature: 0.1,
+    ...baseConfig,
+  };
+}
+
 function getGenAIClient(clientApiKey?: string) {
   const apiKey =
     (typeof clientApiKey === 'string' && clientApiKey.trim()) ||
@@ -317,22 +351,16 @@ async function startServer() {
         return;
       }
       const ai = getGenAIClient(clientApiKey);
-      const models = [
-        'gemini-2.5-flash',
-        'gemini-flash-latest',
-        'gemini-2.0-flash',
-        'gemini-2.5-pro',
-      ];
+      const models = PAID_FAST_MODELS;
       let lastErr: any = null;
       for (const m of models) {
         try {
           const response = await ai.models.generateContent({
             model: m,
             contents: [{ role: 'user', parts: [{ text: promptText }] }],
-            config: {
-              temperature: 0.1,
+            config: buildFastGenConfig(m, {
               responseMimeType: 'application/json',
-            },
+            }),
           });
           const rawJson = (response.text || '').trim();
           if (rawJson) {
@@ -435,7 +463,7 @@ async function startServer() {
         ],
       };
 
-      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+      const GEMINI_MODELS = PAID_VISION_OCR_MODELS;
       let responseText: string | undefined;
       let lastError: unknown;
 
@@ -456,11 +484,10 @@ async function startServer() {
                 },
               ],
             },
-            config: {
+            config: buildFastGenConfig(modelName, {
               responseMimeType: 'application/json',
               responseSchema,
-              temperature: 0.1,
-            },
+            }),
           });
           responseText = response.text;
           if (responseText) break;
@@ -683,7 +710,7 @@ async function startServer() {
         ],
       };
 
-      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+      const GEMINI_MODELS = PAID_VISION_OCR_MODELS;
       let responseText: string | undefined;
       let lastError: unknown;
 
@@ -704,11 +731,10 @@ async function startServer() {
                 },
               ],
             },
-            config: {
+            config: buildFastGenConfig(modelName, {
               responseMimeType: 'application/json',
               responseSchema,
-              temperature: 0.1,
-            },
+            }),
           });
           responseText = response.text;
           if (responseText) break;
@@ -825,13 +851,13 @@ async function startServer() {
 
       try {
         const ai = getGenAIClient(clientApiKey);
-        const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+        const GEMINI_MODELS = PAID_FAST_MODELS;
         for (const modelName of GEMINI_MODELS) {
           try {
             const response = await ai.models.generateContent({
               model: modelName,
               contents: `가전제품 모델코드 "${cleanCode}"의 품목분류(category, 예: 워시타워/세탁건조기, 냉장고, 김치냉장고, TV, 에어컨, 세탁기, 건조기, 식기세척기 등)와 브랜드(brand), 대표 상품명(productName)을 JSON으로 답하세요.`,
-              config: {
+              config: buildFastGenConfig(modelName, {
                 responseMimeType: 'application/json',
                 responseSchema: {
                   type: Type.OBJECT,
@@ -842,8 +868,7 @@ async function startServer() {
                   },
                   required: ['category', 'brand', 'productName'],
                 },
-                temperature: 0.1,
-              },
+              }),
             });
 
             if (response.text) {
@@ -916,8 +941,7 @@ async function startServer() {
 11. isAllCare (올케어 여부): 이미지에 '올케어', '가전수리올케어', 'allcare', '사용중 가전 보증', '2년 수리비 보증' 등이 포함되어 있으면 true, 아니면 false.`;
 
       let responseText = '';
-      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
-      const modelsToTry = GEMINI_MODELS;
+      const modelsToTry = PAID_VISION_OCR_MODELS;
       let lastError: any = null;
 
       for (const model of modelsToTry) {
@@ -940,7 +964,7 @@ async function startServer() {
                 ],
               },
             ],
-            config: {
+            config: buildFastGenConfig(model, {
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -959,7 +983,7 @@ async function startServer() {
                 },
                 required: ['category', 'modelName', 'monthlyFee', 'period'],
               },
-            },
+            }),
           });
 
           if (response && response.text) {
@@ -1021,12 +1045,7 @@ async function startServer() {
 - saleTypeFilter: 전체 공통이면 'all', 구독 전용이면 'subscription', 일반 전용이면 'general'.
 - note: 특이사항.`;
 
-      const models = [
-        'gemini-2.5-flash',
-        'gemini-flash-latest',
-        'gemini-2.0-flash',
-        'gemini-2.5-pro',
-      ];
+      const models = PAID_VISION_OCR_MODELS;
       let lastErr: any = null;
       for (const m of models) {
         try {
@@ -1046,8 +1065,7 @@ async function startServer() {
                 ],
               },
             ],
-            config: {
-              temperature: 0.1,
+            config: buildFastGenConfig(m, {
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -1070,7 +1088,7 @@ async function startServer() {
                 },
                 required: ['rules'],
               },
-            },
+            }),
           });
           if (response && response.text) {
             const parsed = JSON.parse(response.text.trim());

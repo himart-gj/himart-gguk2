@@ -174,12 +174,22 @@ export default function ImageScannerModal({
 - 본문에 모델명이 안 보이면 화면 최상단 브라우저 주소창 URL 파라미터(예: productId=FG24GN.AKOR2)에서 모델코드를 반드시 추출할 것!
 - 하단 노란색 글씨 '월 납부요금'(예: 약 58,653원 -> 58653)을 monthlyFee로 추출할 것!`;
 
-      const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+      const preferred = (model || '').trim();
+      const GEMINI_MODELS = Array.from(
+        new Set([
+          ...(preferred ? [preferred] : []),
+          'gemini-3.8-flash',
+          'gemini-4-argon',
+          'gemini-3.6-flash',
+          'gemini-3.5-flash-lite',
+        ])
+      );
       let responseText = '';
       let lastError: any = null;
 
       for (const modelName of GEMINI_MODELS) {
         try {
+          const isGen3Or4 = modelName.startsWith('gemini-3') || modelName.startsWith('gemini-4');
           const response = await ai.models.generateContent({
             model: modelName,
             contents: {
@@ -190,6 +200,7 @@ export default function ImageScannerModal({
             },
             config: {
               responseMimeType: 'application/json',
+              ...(isGen3Or4 ? { thinkingConfig: { thinkingLevel: 'LOW' as any } } : {}),
               responseSchema: {
                 type: Type.OBJECT,
                 properties: {

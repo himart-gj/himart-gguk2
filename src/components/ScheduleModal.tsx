@@ -1359,7 +1359,7 @@ ${combinedCsv}`;
     required: ['month', 'employees'],
   };
 
-  const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+  const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 
   let rawJsonText = '';
   let lastErr: any = null;
@@ -1372,7 +1372,7 @@ ${combinedCsv}`;
         config: {
           responseMimeType: 'application/json',
           responseSchema,
-          temperature: 0.0,
+          thinkingConfig: { thinkingLevel: 'LOW' as any },
         },
       });
       if (response.text) {
@@ -2343,7 +2343,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           required: ['month', 'employees'],
         };
 
-        const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-3.1-pro-preview'];
+        const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
 
         let rawText = '';
         let lastError: any = null;
@@ -2369,7 +2369,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
               config: {
                 responseMimeType: 'application/json',
                 responseSchema,
-                temperature: 0.0,
+                thinkingConfig: { thinkingLevel: 'LOW' as any },
               },
             });
             if (response.text) {
