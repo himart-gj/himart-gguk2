@@ -461,8 +461,20 @@ export const CrmSalesAndIncentivePanel: React.FC<
     e.preventDefault();
     const code = manualModelCode.trim().toUpperCase();
     const amt = parseIncentiveAmountCell(manualIncentive, 1);
-    if (!code || amt <= 0) return;
+    if (!code) {
+      const msg = '모델명(코드)을 입력해 주세요. (예: RM70F64M2X)';
+      setUploadError(msg);
+      onShowToast?.(`⚠️ ${msg}`);
+      return;
+    }
+    if (amt <= 0) {
+      const msg = '수당 금액을 입력해 주세요. (예: 50000 또는 5만)';
+      setUploadError(msg);
+      onShowToast?.(`⚠️ ${msg}`);
+      return;
+    }
 
+    setUploadError(null);
     upsertMonthlyIncentiveSheet(
       selectedYearMonth,
       [
@@ -477,8 +489,11 @@ export const CrmSalesAndIncentivePanel: React.FC<
       '직접 입력',
       false
     );
+    setSheetsMap(loadAllModelIncentiveSheets());
     setManualModelCode('');
     setManualIncentive('');
+    setShowRulesDrawer(true);
+    setUploadSuccess(`✅ [${code}] 모델 수당 ${formatCurrency(amt)}원이 등록되었습니다!`);
     void pushSheetsToAllStaff(`✅ [${code}] 수당 ${formatCurrency(amt)}원 등록`);
   };
 
@@ -522,7 +537,10 @@ export const CrmSalesAndIncentivePanel: React.FC<
   const handleQuickAssignSave = () => {
     if (!quickAssignTarget) return;
     const amt = parseIncentiveAmountCell(quickAssignAmount, 1);
-    if (amt <= 0) return;
+    if (amt <= 0) {
+      onShowToast?.('⚠️ 수당 금액을 숫자로 입력해 주세요. (예: 50000 또는 5만)');
+      return;
+    }
     const targetCode = quickAssignTarget.modelCode;
     upsertMonthlyIncentiveSheet(
       selectedYearMonth,
@@ -538,6 +556,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
       '고객 카드 즉시 지정',
       false
     );
+    setSheetsMap(loadAllModelIncentiveSheets());
     setQuickAssignTarget(null);
     setQuickAssignAmount('');
     void pushSheetsToAllStaff(

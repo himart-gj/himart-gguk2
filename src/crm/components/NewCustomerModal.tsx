@@ -49,12 +49,14 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
   const [orderNo, setOrderNo] = useState('');
   const [giftItems, setGiftItems] = useState('');
   const [logisticsConfirmed, setLogisticsConfirmed] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [freedCounts, setFreedCounts] = useState<CustomerFreedCounts>(() =>
     createEmptyFreedCounts()
   );
 
   useEffect(() => {
     if (isOpen) {
+      setFormError(null);
       setName(prefillData?.name || '');
       setPhone(prefillData?.phone || '');
       setSaleType(prefillData?.saleType || 'general');
@@ -99,11 +101,16 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    const cleanName = name.trim() || (phone.trim() ? '직접등록 고객' : '');
+    if (!cleanName) {
+      setFormError('⚠️ 고객명 또는 연락처를 입력해 주세요.');
+      return;
+    }
+    setFormError(null);
 
-    const perfNum = Number(performanceAmount.replace(/\D/g, '')) || 0;
-    const paidNum = Number(paidAmount.replace(/\D/g, '')) || perfNum;
-    const netNum = Number(netAmount.replace(/\D/g, '')) || paidNum;
+    const perfNum = Number(String(performanceAmount).replace(/\D/g, '')) || 0;
+    const paidNum = Number(String(paidAmount).replace(/\D/g, '')) || perfNum;
+    const netNum = Number(String(netAmount).replace(/\D/g, '')) || paidNum;
     const resolvedPerf = perfNum > 0 ? perfNum : paidNum;
 
     const parsedModels = parsePurchasedModelsFromItemsText(
@@ -111,11 +118,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       saleType === 'subscription' ? 'subscription' : 'general'
     );
 
+    const nowMs = Date.now();
     const newCustomer: CustomerItem = {
-      id: `CUST-${Date.now()}`,
+      id: `CUST-${nowMs}`,
       regDate: getNowDateTimeStr(),
       contractDate: contractDate.trim() || getTodayStr(),
-      name: name.trim(),
+      name: cleanName,
       phone: phone.trim(),
       saleType,
       items: items.trim(),
@@ -135,6 +143,8 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
       giftItems: giftItems.trim(),
       giftSent: false,
       logisticsConfirmed,
+      deletedAt: undefined,
+      updatedAtMs: nowMs,
     };
 
     onSave(newCustomer);
@@ -178,9 +188,11 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               </label>
               <input
                 type="text"
-                required
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (formError) setFormError(null);
+                }}
                 placeholder="홍길동"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-base sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -483,6 +495,12 @@ export const NewCustomerModal: React.FC<NewCustomerModalProps> = ({
               className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-base sm:text-sm"
             />
           </div>
+
+          {formError && (
+            <div className="px-3.5 py-2 rounded-xl bg-rose-50 border border-rose-200 text-xs font-extrabold text-rose-700">
+              {formError}
+            </div>
+          )}
 
           <div className="pt-2 flex items-center justify-end gap-2">
             <button

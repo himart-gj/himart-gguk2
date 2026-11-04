@@ -22,6 +22,8 @@ import {
 } from '../../utils/offlineDbQueue';
 
 export const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
+
+let inMemoryCustomersCache: CustomerItem[] | null = null;
 export const CRM_CUSTOMERS_UPDATED_EVENT = 'himart_crm_customers_updated';
 
 function normalizePhoneKey(phone: string): string {
@@ -314,14 +316,14 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
           primary.subscriptionPrincipal ?? secondary.subscriptionPrincipal,
         freedCounts: primary.freedCounts ?? secondary.freedCounts,
         purchasedModels: primary.purchasedModels ?? secondary.purchasedModels,
-        orderNo: primary.orderNo || secondary.orderNo || '',
-        giftItems: primary.giftItems || secondary.giftItems || '',
+        orderNo: primary.orderNo ?? secondary.orderNo ?? '',
+        giftItems: primary.giftItems ?? secondary.giftItems ?? '',
         giftSent: Boolean(primary.giftSent ?? secondary.giftSent),
         logisticsConfirmed: Boolean(
           primary.logisticsConfirmed ?? secondary.logisticsConfirmed
         ),
         followUpDate: primary.followUpDate ?? secondary.followUpDate ?? '',
-        memo: primary.memo || secondary.memo || '',
+        memo: primary.memo ?? secondary.memo ?? '',
         quotes: mergedQuotes,
         deletedAt: primary.deletedAt,
         updatedAtMs: Math.max(primary.updatedAtMs || 0, secondary.updatedAtMs || 0) || undefined,
@@ -337,6 +339,9 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function getCachedCustomers(): CustomerItem[] {
+  if (inMemoryCustomersCache) {
+    return inMemoryCustomersCache;
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CACHE);
     if (raw) {
@@ -346,7 +351,9 @@ export function getCachedCustomers(): CustomerItem[] {
         const valid = parsed.filter(
           (c: CustomerItem) => !c.deletedAt || now - c.deletedAt < THIRTY_DAYS_MS
         );
-        return deduplicateCustomers(valid);
+        const deduped = deduplicateCustomers(valid);
+        inMemoryCustomersCache = deduped;
+        return deduped;
       }
     }
   } catch (e) {
@@ -357,10 +364,12 @@ export function getCachedCustomers(): CustomerItem[] {
 
 export function setCachedCustomers(customers: CustomerItem[]): CustomerItem[] {
   const deduped = deduplicateCustomers(customers);
+  // 1순위: 인메모리 캐시 즉시 반영 (localStorage 5MB 초과 시에도 유실 0%)
+  inMemoryCustomersCache = deduped;
   try {
     localStorage.setItem(STORAGE_KEY_CACHE, JSON.stringify(deduped));
   } catch (e) {
-    console.error('localStorage quota warning — relying on IndexedDB mirror', e);
+    console.error('localStorage quota warning — relying on memory + IndexedDB mirror', e);
   }
   // 대용량 다중 견적 데이터를 IndexedDB에도 즉시 비동기 미러링 (5MB 한계 돌파)
   idbMirrorSet(STORAGE_KEY_CACHE, deduped).catch(() => {});
@@ -385,6 +394,7 @@ export async function fetchCustomersFromGas(): Promise<{
   const idbData = await idbMirrorGet<CustomerItem[]>(STORAGE_KEY_CACHE);
   if (Array.isArray(idbData) && idbData.length > 0) {
     const deduped = deduplicateCustomers(idbData);
+    inMemoryCustomersCache = deduped;
     try {
       localStorage.setItem(STORAGE_KEY_CACHE, JSON.stringify(deduped));
     } catch {
@@ -575,6 +585,8 @@ export async function saveCustomerQuote(payload: {
       giftSent: false,
       logisticsConfirmed: false,
       quotes: [newQuote],
+      deletedAt: undefined,
+      updatedAtMs: Date.now(),
     };
 
     updatedList = [savedCustomer, ...current];
@@ -598,12 +610,16 @@ export async function fetchCustomers(): Promise<CustomerItem[]> {
 export async function saveCustomerToSheet(
   customer: CustomerItem
 ): Promise<boolean> {
+  const stamped: CustomerItem = {
+    ...customer,
+    updatedAtMs: Date.now(),
+  };
   const list = getCachedCustomers();
-  const idx = list.findIndex((c) => c.id === customer.id);
+  const idx = list.findIndex((c) => c.id === stamped.id);
   const next =
     idx >= 0
-      ? list.map((c, i) => (i === idx ? customer : c))
-      : [customer, ...list];
+      ? list.map((c, i) => (i === idx ? stamped : c))
+      : [stamped, ...list];
   setCachedCustomers(next);
   return true;
 }

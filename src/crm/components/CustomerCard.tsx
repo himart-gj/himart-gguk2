@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calculator,
   Calendar,
@@ -30,6 +30,7 @@ import {
 } from '../types/crm';
 import {
   formatCurrency,
+  formatPhoneNumber,
   getDeliveryDDay,
   getFollowUpInfo,
   getFridayDateStr,
@@ -144,12 +145,17 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [showDetailFields, setShowDetailFields] = useState(false);
   const [showQuotesDrawer, setShowQuotesDrawer] = useState(false);
 
+  const [nameDraft, setNameDraft] = useState(customer.name || '');
+  const [phoneDraft, setPhoneDraft] = useState(customer.phone || '');
   const [itemsDraft, setItemsDraft] = useState(customer.items || '');
   const [saleTypeDraft, setSaleTypeDraft] = useState<CustomerSaleType>(
     perf.saleType
   );
   const [perfAmountDraft, setPerfAmountDraft] = useState(
-    String(perf.performanceAmount || '')
+    perf.performanceAmount > 0 ? String(perf.performanceAmount) : ''
+  );
+  const [netAmountDraft, setNetAmountDraft] = useState(
+    effectiveNetAmount > 0 ? String(effectiveNetAmount) : ''
   );
   const [contractDateDraft, setContractDateDraft] = useState(
     perf.contractDateStr || ''
@@ -167,6 +173,43 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [freedDraft, setFreedDraft] = useState<CustomerFreedCounts>(
     perf.freedCounts
   );
+
+  useEffect(() => {
+    setMemoDraft(customer.memo || '');
+    setNameDraft(customer.name || '');
+    setPhoneDraft(customer.phone || '');
+    setItemsDraft(customer.items || '');
+    setSaleTypeDraft(perf.saleType);
+    setPerfAmountDraft(
+      perf.performanceAmount > 0 ? String(perf.performanceAmount) : ''
+    );
+    setNetAmountDraft(
+      effectiveNetAmount > 0 ? String(effectiveNetAmount) : ''
+    );
+    setContractDateDraft(perf.contractDateStr || '');
+    setOrderNoDraft(customer.orderNo || '');
+    setGiftItemsDraft(customer.giftItems || '');
+    setDeliveryDateDraft(customer.deliveryDate || '');
+    setFollowUpDateDraft(customer.followUpDate || '');
+    setFreedDraft(perf.freedCounts);
+  }, [
+    customer.id,
+    customer.updatedAtMs,
+    customer.name,
+    customer.phone,
+    customer.memo,
+    customer.items,
+    customer.orderNo,
+    customer.giftItems,
+    customer.deliveryDate,
+    customer.followUpDate,
+    customer.paidAmount,
+    customer.netAmount,
+    perf.saleType,
+    perf.performanceAmount,
+    perf.contractDateStr,
+    effectiveNetAmount,
+  ]);
 
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -191,16 +234,34 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   };
 
   const handleSaveExtraFields = () => {
+    const rawPerfDigits = String(perfAmountDraft ?? '').replace(/\D/g, '');
     const nextPerfNum =
-      Number(String(perfAmountDraft).replace(/\D/g, '')) ||
-      perf.performanceAmount;
+      rawPerfDigits === '' ? 0 : Number(rawPerfDigits) || 0;
+    const rawNetDigits = String(netAmountDraft ?? '').replace(/\D/g, '');
+    const nextNetNum =
+      rawNetDigits === '' ? nextPerfNum : Number(rawNetDigits) || 0;
+    const nextPaidNum =
+      (Number(customer.paidAmount) || 0) > 0 && quotes.length > 0
+        ? customer.paidAmount
+        : nextPerfNum > 0
+        ? nextPerfNum
+        : nextNetNum;
+
+    const cleanName = nameDraft.trim() || customer.name;
+    const cleanPhone = phoneDraft.trim();
     const trimmedItems = itemsDraft.trim();
-    const shouldReParseModels = trimmedItems !== (customer.items || '').trim();
+    const shouldReParseModels =
+      trimmedItems !== (customer.items || '').trim() ||
+      saleTypeDraft !== perf.saleType;
 
     onFieldChange(customer.id, {
+      name: cleanName,
+      phone: cleanPhone,
       items: trimmedItems,
       saleType: saleTypeDraft,
       performanceAmount: nextPerfNum,
+      paidAmount: nextPaidNum,
+      netAmount: nextNetNum,
       generalProductTotal:
         saleTypeDraft === 'subscription' ? 0 : nextPerfNum,
       subscriptionPrincipal:
@@ -620,6 +681,33 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
         {/* 전표/사은품/계약일/배송일/실적원금/프리드 빠른 수정 패널 */}
         {showDetailFields && (
           <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3 space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                  고객명
+                </label>
+                <input
+                  type="text"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  placeholder="고객명 입력"
+                  className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg border border-slate-200 bg-white font-bold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
+                  연락처
+                </label>
+                <input
+                  type="tel"
+                  value={phoneDraft}
+                  onChange={(e) => setPhoneDraft(formatPhoneNumber(e.target.value))}
+                  placeholder="010-1234-5678"
+                  className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg border border-slate-200 bg-white font-mono font-semibold"
+                />
+              </div>
+            </div>
+
             <div>
               <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                 구매 품목 / 모델명 수정 (쉼표 구분)
@@ -632,7 +720,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div>
                 <label className="block text-[10px] font-bold text-emerald-700 mb-0.5">
                   실적 유형
@@ -657,7 +745,20 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                   type="number"
                   value={perfAmountDraft}
                   onChange={(e) => setPerfAmountDraft(e.target.value)}
+                  placeholder="예: 5200000"
                   className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg border border-emerald-200 bg-white font-mono font-black"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-blue-700 mb-0.5">
+                  최종 체감가 / 월체감가
+                </label>
+                <input
+                  type="number"
+                  value={netAmountDraft}
+                  onChange={(e) => setNetAmountDraft(e.target.value)}
+                  placeholder="미입력 시 실적금액과 동일"
+                  className="w-full px-2.5 py-1.5 text-base sm:text-xs rounded-lg border border-blue-200 bg-white font-mono font-black text-blue-900"
                 />
               </div>
             </div>

@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'himart-shell-v21';
-const DATA_JSON_CACHE = 'himart-data-v21';
+const APP_SHELL_CACHE = 'himart-shell-v22';
+const DATA_JSON_CACHE = 'himart-data-v22';
 
 const PRECACHE_URLS = [
   './',

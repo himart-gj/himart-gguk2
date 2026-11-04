@@ -32,6 +32,9 @@ export const DEFAULT_INSTA_SHEET_URL = `https://docs.google.com/spreadsheets/d/$
 export const OWNER_DB_UNLOCKED_KEY = 'himart_gj_owner_db_unlocked_v1';
 export const OWNER_DB_CUSTOM_PIN_KEY = 'himart_gj_owner_db_pin_v1';
 export const MARKETING_DB_STORAGE_KEY = 'himart_gj_marketing_db_state_v1';
+export const OWNER_CUSTOM_CARD_STORAGE_KEY = 'himart_gj_owner_card_uri_v1';
+
+let inMemoryMarketingDbStore: MarketingDbStore | null = null;
 export const MARKETING_DB_UPDATED_EVENT = 'himart_gj_marketing_db_updated';
 
 export type MarketingLeadStatus =
@@ -695,7 +698,6 @@ const BOGUS_META_SYSTEM_NAMES = new Set([
   '새 잠재 고객 광고',
   '새 잠재 고객 광고 세트',
   '11월 리뉴얼 광고',
-  '인스타 고객',
   '잠재 고객 광고',
 ]);
 
@@ -932,13 +934,28 @@ export function sanitizeMarketingDbStore(rawStore: MarketingDbStore): MarketingD
 }
 
 export function loadMarketingDbStore(): MarketingDbStore {
+  if (inMemoryMarketingDbStore) {
+    return inMemoryMarketingDbStore;
+  }
   const fallback = createInitialMarketingDbStore();
   if (typeof localStorage === 'undefined') return fallback;
   try {
+    const savedCustomCard = (localStorage.getItem(OWNER_CUSTOM_CARD_STORAGE_KEY) || '').trim();
     const raw = localStorage.getItem(MARKETING_DB_STORAGE_KEY);
     if (!raw) {
-      const cleanInit = sanitizeMarketingDbStore(fallback);
-      localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(cleanInit));
+      const cleanInit = sanitizeMarketingDbStore({
+        ...fallback,
+        config: {
+          ...fallback.config,
+          businessCardDataUri: savedCustomCard || fallback.config.businessCardDataUri,
+        },
+      });
+      inMemoryMarketingDbStore = cleanInit;
+      try {
+        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(cleanInit));
+      } catch {
+        // ignore quota
+      }
       return cleanInit;
     }
     const parsed = JSON.parse(raw) as MarketingDbStore;
@@ -1006,28 +1023,55 @@ export function loadMarketingDbStore(): MarketingDbStore {
         ...preSanitized,
         leads: nextLeads,
         seedInitializedVersion: 2,
+        config: {
+          ...preSanitized.config,
+          businessCardDataUri:
+            savedCustomCard ||
+            preSanitized.config.businessCardDataUri ||
+            DEFAULT_OWNER_BUSINESS_CARD_DATA_URI,
+        },
       });
+      inMemoryMarketingDbStore = upgraded;
       try {
-        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(upgraded));
+        const slim = {
+          ...upgraded,
+          config: { ...upgraded.config, businessCardDataUri: undefined },
+        };
+        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(slim));
       } catch {
         // ignore quota
       }
       return upgraded;
     }
 
-    const sanitized = sanitizeMarketingDbStore(baseStore);
+    const sanitized = sanitizeMarketingDbStore({
+      ...baseStore,
+      config: {
+        ...baseStore.config,
+        businessCardDataUri:
+          savedCustomCard ||
+          baseStore.config.businessCardDataUri ||
+          DEFAULT_OWNER_BUSINESS_CARD_DATA_URI,
+      },
+    });
+    inMemoryMarketingDbStore = sanitized;
     if (
       sanitized.leads.length !== parsed.leads.length ||
       parsed.leads.some((l) => isBogusMetaSystemName(l?.customerName))
     ) {
       try {
-        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(sanitized));
+        const slim = {
+          ...sanitized,
+          config: { ...sanitized.config, businessCardDataUri: undefined },
+        };
+        localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(slim));
       } catch {
         // ignore quota
       }
     }
     return sanitized;
   } catch {
+    inMemoryMarketingDbStore = fallback;
     return fallback;
   }
 }
@@ -1055,10 +1099,39 @@ export async function hydrateMarketingDbStoreFromIdb(): Promise<MarketingDbStore
   return local;
 }
 
+export function addOrReviveManualLeadInStore(
+  store: MarketingDbStore,
+  newItem: MarketingLeadItem
+): MarketingDbStore {
+  const keysToClear = new Set(buildAllLeadTombstoneKeys(newItem));
+  const newDigits = getCanonicalPhoneDigits(newItem.phone);
+  const cleanedDeletedFp = (store.deletedFingerprints || []).filter((fp) => {
+    if (keysToClear.has(fp)) return false;
+    if (newDigits.length >= 7 && (fp.includes(newDigits) || fp === `ph_any_${newDigits}`)) {
+      return false;
+    }
+    return true;
+  });
+  const cleanedExistingLeads = (store.leads || []).filter((l) => {
+    if (!l) return false;
+    if (l.deletedAt) {
+      const lDigits = getCanonicalPhoneDigits(l.phone);
+      if (newDigits.length >= 7 && lDigits === newDigits) return false;
+      if (l.fingerprint === newItem.fingerprint) return false;
+    }
+    return true;
+  });
+  return sanitizeMarketingDbStore({
+    ...store,
+    leads: [newItem, ...cleanedExistingLeads],
+    deletedFingerprints: cleanedDeletedFp,
+  });
+}
+
 export function saveMarketingDbStore(
   next: MarketingDbStore,
   options?: { preserveTimestamp?: boolean }
-): void {
+): MarketingDbStore {
   const sanitized = sanitizeMarketingDbStore({
     ...next,
     updatedAtMs: options?.preserveTimestamp
@@ -1066,15 +1139,43 @@ export function saveMarketingDbStore(
       : Date.now(),
     seedInitializedVersion: 2,
   });
-  try {
-    localStorage.setItem(MARKETING_DB_STORAGE_KEY, JSON.stringify(sanitized));
-  } catch {
-    // ignore quota warning — mirrored to IndexedDB below
+  // 1순위: 인메모리 캐시 즉시 갱신 (localStorage 5MB 용량 초과 시에도 데이터 증발 0%)
+  inMemoryMarketingDbStore = sanitized;
+
+  if (typeof localStorage !== 'undefined') {
+    const customCard = (sanitized.config?.businessCardDataUri || '').trim();
+    try {
+      if (customCard && customCard !== DEFAULT_OWNER_BUSINESS_CARD_DATA_URI) {
+        localStorage.setItem(OWNER_CUSTOM_CARD_STORAGE_KEY, customCard);
+      } else {
+        localStorage.removeItem(OWNER_CUSTOM_CARD_STORAGE_KEY);
+      }
+    } catch {
+      // ignore card quota — kept in memory + IndexedDB
+    }
+    try {
+      // 명함 원본 Base64를 분리하여 리드 저장 JSON 용량을 수십 KB로 경량화!
+      const slimForLocalStorage: MarketingDbStore = {
+        ...sanitized,
+        config: {
+          ...sanitized.config,
+          businessCardDataUri: undefined,
+        },
+      };
+      localStorage.setItem(
+        MARKETING_DB_STORAGE_KEY,
+        JSON.stringify(slimForLocalStorage)
+      );
+    } catch {
+      // ignore quota warning — mirrored to IndexedDB + inMemoryMarketingDbStore
+    }
   }
+
   idbMirrorSet(MARKETING_DB_STORAGE_KEY, sanitized).catch(() => {});
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(MARKETING_DB_UPDATED_EVENT));
   }
+  return sanitized;
 }
 
 // ==================== 5. 휴무표 직원 연동 ('미화' 직군 자동 제외) ====================
@@ -1350,13 +1451,34 @@ export function extractLeadsFromMatrix(matrix: string[][]): ParsedIncomingLead[]
 
 export function mergeIncomingLeadsIntoStore(
   store: MarketingDbStore,
-  incoming: ParsedIncomingLead[]
+  incoming: ParsedIncomingLead[],
+  options?: { allowReviveManual?: boolean }
 ): {
   nextStore: MarketingDbStore;
   addedCount: number;
   updatedCount: number;
 } {
-  const cleanBase = sanitizeMarketingDbStore(store);
+  let workingInputStore = store;
+  if (options?.allowReviveManual && incoming.length > 0) {
+    const incomingDigits = new Set(
+      incoming.map((inc) => getCanonicalPhoneDigits(inc.phone)).filter((d) => d.length >= 7)
+    );
+    workingInputStore = {
+      ...store,
+      leads: (store.leads || []).filter((l) => {
+        if (!l?.deletedAt) return true;
+        const ld = getCanonicalPhoneDigits(l.phone);
+        return !(ld.length >= 7 && incomingDigits.has(ld));
+      }),
+      deletedFingerprints: (store.deletedFingerprints || []).filter((fp) => {
+        for (const d of incomingDigits) {
+          if (fp.includes(d)) return false;
+        }
+        return true;
+      }),
+    };
+  }
+  const cleanBase = sanitizeMarketingDbStore(workingInputStore);
   const trashedList = cleanBase.leads.filter((l) => Boolean(l.deletedAt));
   const tombstoneSet = buildExpandedTombstoneSet(
     cleanBase.deletedFingerprints || [],
@@ -1513,7 +1635,34 @@ export function importLeadsFromRawText(
 } {
   const matrix = parseCsvMatrix(rawText);
   const incoming = extractLeadsFromMatrix(matrix);
-  return mergeIncomingLeadsIntoStore(store, incoming);
+  return mergeIncomingLeadsIntoStore(store, incoming, { allowReviveManual: true });
+}
+
+export async function importLeadsFromFile(
+  store: MarketingDbStore,
+  file: File
+): Promise<{
+  nextStore: MarketingDbStore;
+  addedCount: number;
+  updatedCount: number;
+}> {
+  if (/\.(xlsx|xls)$/i.test(file.name)) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    let allIncoming: ParsedIncomingLead[] = [];
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      if (!ws) continue;
+      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false, defval: '' });
+      const strMatrix = rows.map((r) =>
+        (Array.isArray(r) ? r : []).map((c) => String(c ?? ''))
+      );
+      allIncoming = allIncoming.concat(extractLeadsFromMatrix(strMatrix));
+    }
+    return mergeIncomingLeadsIntoStore(store, allIncoming, { allowReviveManual: true });
+  }
+  const text = await file.text();
+  return importLeadsFromRawText(store, text);
 }
 
 // 동시 네트워크 요청 충돌(Race Condition) 원천 차단용 단일 실행 락
