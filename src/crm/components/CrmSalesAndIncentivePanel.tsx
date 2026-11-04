@@ -11,6 +11,7 @@ import {
   Download,
   FileSpreadsheet,
   Image as ImageIcon,
+  Link2,
   Cloud,
   Loader2,
   Minus,
@@ -40,7 +41,11 @@ import {
   MonthlyAllCareCountsMap,
   setMonthlyAllCareCount,
   downloadModelIncentiveExcelTemplate,
+  extractGoogleSheetIdAndGid,
+  fetchModelIncentiveFromGoogleSheetUrl,
   fetchRemoteModelIncentiveSheets,
+  loadSavedIncentiveGoogleSheetUrl,
+  saveIncentiveGoogleSheetUrl,
   getCurrentYearMonth,
   GitHubSyncConfig,
   hydrateModelIncentiveSheetsFromIdb,
@@ -130,6 +135,10 @@ export const CrmSalesAndIncentivePanel: React.FC<
   const [replaceOnUpload, setReplaceOnUpload] = useState<boolean>(false);
 
   const [showManualDrawer, setShowManualDrawer] = useState<boolean>(false);
+  const [showGsheetDrawer, setShowGsheetDrawer] = useState<boolean>(false);
+  const [gsheetUrl, setGsheetUrl] = useState<string>(() =>
+    loadSavedIncentiveGoogleSheetUrl()
+  );
   const [showRulesDrawer, setShowRulesDrawer] = useState<boolean>(false);
   const [showCloudDrawer, setShowCloudDrawer] = useState<boolean>(false);
   const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
@@ -335,24 +344,79 @@ export const CrmSalesAndIncentivePanel: React.FC<
       if (targetYm !== selectedYearMonth) {
         onChangeYearMonth(targetYm);
       }
+      // 200개 이상의 통합 단가표 업로드 시 이전 중복 잔여 코드가 남지 않도록 자동 교체 반영
+      const shouldReplace = replaceOnUpload || totalParsed.length >= 200;
       const nextSheet = upsertMonthlyIncentiveSheet(
         targetYm,
         totalParsed,
         `${files[0].name}${files.length > 1 ? ` 외 ${files.length - 1}건` : ''}`,
-        replaceOnUpload
+        shouldReplace
       );
       setSheetsMap(loadAllModelIncentiveSheets());
       setShowRulesDrawer(true);
-      const summaryMsg = `✅ ${formatYearMonthKo(targetYm)} 수당 단가표 업데이트 완료! (업로드 ${totalParsed.length}개 · 현재 총 ${nextSheet.rules.length}개 모델 적용 중)`;
+      const paidCnt = nextSheet.rules.filter((r) => r.incentiveAmount > 0).length;
+      const zeroCnt = nextSheet.rules.length - paidCnt;
+      const summaryMsg = `✅ ${formatYearMonthKo(targetYm)} 수당 단가표 반영 완료! (인식 ${totalParsed.length}개 → 총 ${nextSheet.rules.length}개 등록${
+        zeroCnt > 0 ? ` · 유상 ${paidCnt}개 / 0원안내 ${zeroCnt}개` : ''
+      })`;
       setUploadSuccess(summaryMsg);
       await pushSheetsToAllStaff(
         `📊 ${formatYearMonthKo(targetYm)} 단가표 ${nextSheet.rules.length}개 모델 반영 완료`
       );
     } catch (err: any) {
-      setUploadError(err?.message || '엑셀 파일 분석 중 오류가 발생했습니다.');
+      const errMsg = err?.message || '엑셀·시트 파일 분석 중 오류가 발생했습니다.';
+      setUploadError(errMsg);
+      onShowToast?.(`⚠️ ${errMsg}`);
     } finally {
       setIsUploading(false);
       e.target.value = '';
+    }
+  };
+
+  const handleGoogleSheetSync = async (overrideUrl?: string) => {
+    const targetUrl = (overrideUrl ?? gsheetUrl).trim();
+    if (!targetUrl) {
+      const msg = '구글 시트 공유 주소(URL)를 입력해 주세요.';
+      setUploadError(msg);
+      onShowToast?.(`⚠️ ${msg}`);
+      return;
+    }
+    setIsUploading(true);
+    setUploadError(null);
+    setUploadSuccess(null);
+
+    try {
+      saveIncentiveGoogleSheetUrl(targetUrl);
+      const meta = await fetchModelIncentiveFromGoogleSheetUrl(targetUrl);
+      const targetYm = meta.detectedYearMonth || selectedYearMonth;
+      if (targetYm !== selectedYearMonth) {
+        onChangeYearMonth(targetYm);
+      }
+      const shouldReplace = replaceOnUpload || meta.rules.length >= 200;
+      const nextSheet = upsertMonthlyIncentiveSheet(
+        targetYm,
+        meta.rules,
+        `구글시트 연동 (${meta.rules.length}개 모델)`,
+        shouldReplace
+      );
+      setSheetsMap(loadAllModelIncentiveSheets());
+      setShowGsheetDrawer(false);
+      setShowRulesDrawer(true);
+      const summaryMsg = `✅ ${formatYearMonthKo(targetYm)} 구글 시트 연동 완료! (총 ${nextSheet.rules.length}개 모델 반영${
+        meta.zeroRefCount > 0
+          ? ` · 지급대상 ${meta.paidCount}개 / 0원안내 ${meta.zeroRefCount}개`
+          : ''
+      })`;
+      setUploadSuccess(summaryMsg);
+      await pushSheetsToAllStaff(
+        `🔗 ${formatYearMonthKo(targetYm)} 구글시트 단가표 ${nextSheet.rules.length}개 모델 동기화 완료`
+      );
+    } catch (err: any) {
+      const errMsg = err?.message || '구글 시트를 불러오는 중 오류가 발생했습니다.';
+      setUploadError(errMsg);
+      onShowToast?.(`⚠️ ${errMsg}`);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -361,6 +425,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
     if (files.length === 0) return;
     setIsUploading(true);
     setUploadError(null);
+    setUploadSuccess(null);
 
     try {
       let totalParsed: ModelIncentiveRule[] = [];
@@ -374,11 +439,18 @@ export const CrmSalesAndIncentivePanel: React.FC<
         `사진 스캔 (${files.length}장)`,
         replaceOnUpload
       );
+      setSheetsMap(loadAllModelIncentiveSheets());
+      setShowRulesDrawer(true);
+      setUploadSuccess(
+        `✅ 사진 스캔 완료! ${totalParsed.length}개 모델을 추출하여 총 ${nextSheet.rules.length}개가 등록되었습니다.`
+      );
       await pushSheetsToAllStaff(
         `📷 사진에서 ${totalParsed.length}개 추출 (누적 ${nextSheet.rules.length}개)`
       );
     } catch (err: any) {
-      setUploadError(err?.message || '사진 분석 중 오류가 발생했습니다.');
+      const errMsg = err?.message || '사진 분석 중 오류가 발생했습니다.';
+      setUploadError(errMsg);
+      onShowToast?.(`⚠️ ${errMsg}`);
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -411,20 +483,37 @@ export const CrmSalesAndIncentivePanel: React.FC<
   };
 
   const handleBulkTextApply = () => {
-    const parsed = parseModelIncentiveFreeText(bulkPasteText);
+    const trimmed = bulkPasteText.trim();
+    if (extractGoogleSheetIdAndGid(trimmed)) {
+      setGsheetUrl(trimmed);
+      setBulkPasteText('');
+      setShowManualDrawer(false);
+      void handleGoogleSheetSync(trimmed);
+      return;
+    }
+    const parsed = parseModelIncentiveFreeText(trimmed);
     if (parsed.length === 0) {
-      setUploadError('예: "RM70F64M2X 50000" 또는 "OLED65C4 10만" 형태로 입력해 주세요.');
+      const errMsg =
+        '인식된 모델/수당이 없습니다. 구글시트 표를 복사해 붙여넣거나 "RM70F64M2X 5만" 형태로 입력해 주세요.';
+      setUploadError(errMsg);
+      onShowToast?.(`⚠️ ${errMsg}`);
       return;
     }
     setUploadError(null);
+    const shouldReplace = replaceOnUpload || parsed.length >= 200;
     const next = upsertMonthlyIncentiveSheet(
       selectedYearMonth,
       parsed,
-      `텍스트 일괄등록 (${parsed.length}건)`,
-      replaceOnUpload
+      `시트·텍스트 일괄등록 (${parsed.length}건)`,
+      shouldReplace
     );
+    setSheetsMap(loadAllModelIncentiveSheets());
     setBulkPasteText('');
     setShowManualDrawer(false);
+    setShowRulesDrawer(true);
+    setUploadSuccess(
+      `✅ 붙여넣기에서 ${parsed.length}개 모델을 인식해 총 ${next.rules.length}개 단가를 적용했습니다!`
+    );
     void pushSheetsToAllStaff(
       `✅ ${parsed.length}개 모델 단가 반영 (총 ${next.rules.length}개)`
     );
@@ -1176,27 +1265,46 @@ export const CrmSalesAndIncentivePanel: React.FC<
                     className="hidden"
                   />
 
-                  <label
-                    className={`px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer ${
-                      isUploading ? 'opacity-50 pointer-events-none' : ''
-                    }`}
+                  <button
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => excelInputRef.current?.click()}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-black inline-flex items-center gap-1 cursor-pointer"
+                    title="구글 시트에서 다운로드한 Excel(.xlsx) 또는 CSV(.csv) 파일 업로드"
                   >
                     {isUploading ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
                     ) : (
                       <FileSpreadsheet className="w-3 h-3" />
                     )}
-                    <span>{isUploading ? '업로드 중...' : '엑셀 업로드'}</span>
-                    <input
-                      ref={excelInputRef}
-                      type="file"
-                      accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-                      multiple
-                      disabled={isUploading}
-                      onChange={handleExcelUpload}
-                      className="sr-only"
-                    />
-                  </label>
+                    <span>{isUploading ? '처리 중...' : '엑셀·시트파일'}</span>
+                  </button>
+                  <input
+                    ref={excelInputRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.tsv,.gsheet,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/tab-separated-values"
+                    multiple
+                    disabled={isUploading}
+                    onChange={handleExcelUpload}
+                    className="hidden"
+                  />
+
+                  <button
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => setShowGsheetDrawer((v) => !v)}
+                    className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-black inline-flex items-center gap-1 cursor-pointer ${
+                      showGsheetDrawer
+                        ? 'bg-teal-600 text-white border-teal-600'
+                        : isDark
+                        ? 'bg-teal-500/15 text-teal-300 border-teal-400/35 hover:bg-teal-500/25'
+                        : 'bg-teal-50 text-teal-800 border-teal-300 hover:bg-teal-100'
+                    }`}
+                    title="구글 시트 공유 링크(URL)로 최신 단가표 즉시 불러오기"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    <span>구글시트 연동</span>
+                  </button>
 
                   <button
                     type="button"
@@ -1335,8 +1443,57 @@ export const CrmSalesAndIncentivePanel: React.FC<
               )}
 
               {uploadError && (
-                <div className="px-2.5 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-500 text-[11px] font-bold">
-                  ⚠️ {uploadError}
+                <div className="px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/35 text-rose-600 dark:text-rose-300 text-[11px] font-bold flex items-center justify-between gap-2">
+                  <span>⚠️ {uploadError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setUploadError(null)}
+                    className="opacity-70 hover:opacity-100 cursor-pointer shrink-0"
+                  >
+                    닫기
+                  </button>
+                </div>
+              )}
+
+              {showGsheetDrawer && (
+                <div className={`p-2.5 rounded-xl border space-y-2 text-xs ${subSurfaceCls}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-extrabold">
+                      🔗 구글 시트 단가표 바로 불러오기 (시트 공유: &lsquo;링크가 있는 모든 사용자&rsquo; 권장)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowGsheetDrawer(false)}
+                      className="text-[11px] font-bold opacity-70 cursor-pointer"
+                    >
+                      닫기
+                    </button>
+                  </div>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5">
+                    <input
+                      type="url"
+                      value={gsheetUrl}
+                      onChange={(e) => setGsheetUrl(e.target.value)}
+                      placeholder="https://docs.google.com/spreadsheets/d/... 주소 붙여넣기"
+                      className={`flex-1 px-2.5 py-1.5 rounded-lg border text-base sm:text-xs font-mono ${shellCls}`}
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploading}
+                      onClick={() => void handleGoogleSheetSync()}
+                      className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white text-xs font-black shrink-0 inline-flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      {isUploading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3.5 h-3.5" />
+                      )}
+                      <span>시트 즉시 불러오기</span>
+                    </button>
+                  </div>
+                  <p className={`text-[10px] leading-relaxed ${mutedCls}`}>
+                    💡 비공개 시트인 경우 구글 시트 상단 <strong>[파일 → 다운로드 → Microsoft Excel(.xlsx)]</strong>로 저장한 뒤 위 <strong>[엑셀·시트파일]</strong> 버튼으로 올리셔도 472개 전 모델이 오차 없이 자동 인식됩니다.
+                  </p>
                 </div>
               )}
 
@@ -1447,7 +1604,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
                         type="text"
                         value={ruleSearch}
                         onChange={(e) => setRuleSearch(e.target.value)}
-                        placeholder="모델코드/품목 검색..."
+                        placeholder="브랜드·모델코드·품목·모델명 검색 (예: 쿠첸, 테팔, 제스파, CP-AQS100)"
                         className={`w-full pl-7 pr-2.5 py-1 rounded-lg border text-base sm:text-xs ${shellCls}`}
                       />
                     </div>
@@ -1480,6 +1637,16 @@ export const CrmSalesAndIncentivePanel: React.FC<
                             <span className="font-mono font-black truncate">
                               {r.modelCode}
                             </span>
+                            {r.productName && (
+                              <span className={`text-[10px] truncate hidden sm:inline ${mutedCls}`}>
+                                {r.productName}
+                              </span>
+                            )}
+                            {r.incentiveAmount === 0 && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-500/15 text-amber-600 dark:text-amber-300 text-[9px] font-extrabold shrink-0">
+                                0원·안내
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <input

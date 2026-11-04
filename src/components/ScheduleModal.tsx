@@ -2252,11 +2252,11 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         | Record<string, Record<string, DayScheduleCode>>
         | undefined;
 
-      if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
-        if (file.name.includes('수당') || file.name.includes('단가표')) {
+      if (/\.(xlsx|xls|csv|tsv|gsheet)$/i.test(file.name)) {
+        if (file.name.includes('수당') || file.name.includes('단가표') || file.name.endsWith('.gsheet')) {
           const incMeta = await parseModelIncentiveExcelWithMeta(file);
           const incYm = incMeta.detectedYearMonth || targetYearMonth;
-          const savedSheet = upsertMonthlyIncentiveSheet(incYm, incMeta.rules, file.name, false);
+          const savedSheet = upsertMonthlyIncentiveSheet(incYm, incMeta.rules, file.name, incMeta.rules.length >= 200);
           setNotice({
             type: 'success',
             text: `✅ [${incYm} 모델 수당 단가표] 총 ${savedSheet.rules.length}개 모델이 [통합 고객관리 > 모델수당]에 반영되었습니다!`,

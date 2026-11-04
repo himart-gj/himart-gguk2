@@ -196,7 +196,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome }) =>
           const incMeta = await parseModelIncentiveExcelWithMeta(file);
           if (incMeta.rules.length > 0) {
             const targetYm = incMeta.detectedYearMonth || getCurrentYearMonth();
-            const savedSheet = upsertMonthlyIncentiveSheet(targetYm, incMeta.rules, file.name, false);
+            const savedSheet = upsertMonthlyIncentiveSheet(targetYm, incMeta.rules, file.name, incMeta.rules.length >= 200);
             showToast(
               `✅ [${targetYm} 모델 수당 단가표] 자동 인식 완료! 총 ${savedSheet.rules.length}개 모델이 [통합 고객관리 > 모델수당]에 반영되었습니다.`
             );

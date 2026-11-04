@@ -82,11 +82,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (/\.(xlsx|xls|csv)$/i.test(file.name)) {
+    if (/\.(xlsx|xls|csv|tsv|gsheet)$/i.test(file.name)) {
       try {
         const meta = await parseModelIncentiveExcelWithMeta(file);
         const ym = meta.detectedYearMonth || getCurrentYearMonth();
-        const sheet = upsertMonthlyIncentiveSheet(ym, meta.rules, file.name, false);
+        const sheet = upsertMonthlyIncentiveSheet(ym, meta.rules, file.name, meta.rules.length >= 200);
         setBackupNotice(
           `✅ [${ym}] 모델 수당 단가표 엑셀에서 ${meta.rules.length}개 모델을 반영했습니다! (현재 총 ${sheet.rules.length}개 등록)`
         );
@@ -214,7 +214,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json,.xlsx,.xls,.csv"
+                accept=".json,.xlsx,.xls,.csv,.tsv,.gsheet"
                 onChange={handleImportBackupFile}
                 className="hidden"
               />
