@@ -152,11 +152,11 @@ export const CRMHeader: React.FC<CRMHeaderProps> = ({
         <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-1.5">
           <button
             type="button"
-            onClick={() => onQuickFilter('전체')}
+            onClick={() => onQuickFilter('상담진행중')}
             className="bg-white hover:bg-[#FAF8F4] border border-[#E4DFD5] rounded-xl px-2.5 py-1.5 flex items-center justify-between gap-1.5 text-xs transition cursor-pointer"
           >
-            <span className="font-bold text-[#57534E] truncate">전체 고객</span>
-            <span className="font-black font-mono text-[#18181B] shrink-0">
+            <span className="font-bold text-[#57534E] truncate">💬 상담진행중</span>
+            <span className="font-black font-mono text-indigo-600 shrink-0">
               {totalCount}명
             </span>
           </button>

@@ -61,24 +61,27 @@ export function getBriefingSummary(customers: CustomerItem[]) {
   const active = customers.filter((c) => c.status !== '취소/보류');
 
   const notDeliveredYet = active.filter((c) => c.status !== '배송완료');
+  // 실제 배송·물류·해피콜 브리핑은 오직 '계약완료' 고객만 집계 (상담중 고객의 희망 배송일 제외)
+  const contractedPendingDelivery = active.filter((c) => c.status === '계약완료');
 
-  const todayDelivery = notDeliveredYet.filter(
-    (c) => getDeliveryDDay(c.deliveryDate).diff === 0
+  const todayDelivery = contractedPendingDelivery.filter(
+    (c) => getDeliveryDDay(c.deliveryDate, c.status).diff === 0
   );
-  const tomorrowDelivery = notDeliveredYet.filter(
-    (c) => getDeliveryDDay(c.deliveryDate).diff === 1
+  const tomorrowDelivery = contractedPendingDelivery.filter(
+    (c) => getDeliveryDDay(c.deliveryDate, c.status).diff === 1
   );
-  const unconfirmedLogistics = notDeliveredYet.filter((c) => {
-    const diff = getDeliveryDDay(c.deliveryDate).diff;
+  const unconfirmedLogistics = contractedPendingDelivery.filter((c) => {
+    const diff = getDeliveryDDay(c.deliveryDate, c.status).diff;
     return diff !== null && diff >= 0 && diff <= 3 && !c.logisticsConfirmed;
   });
   const unsentQuotes = notDeliveredYet.filter((c) => c.status === '신규/미발송');
   const undecided = notDeliveredYet.filter(
     (c) => c.status === '미구매/고민중' || c.status === '상담진행중'
   );
-  // 사은품 미지급은 '배송완료' 고객이라도 지급 전까지 반드시 계속 표시
+  // 사은품 미지급은 실제 계약완료(배송일 도래) 또는 배송완료 고객만 표시
   const unpaidGifts = active.filter((c) => {
-    const diff = getDeliveryDDay(c.deliveryDate).diff;
+    if (c.status !== '계약완료' && c.status !== '배송완료') return false;
+    const diff = getDeliveryDDay(c.deliveryDate, c.status).diff;
     const isDeliveredOrPast = c.status === '배송완료' || (diff !== null && diff <= 0);
     return (
       isDeliveredOrPast &&
@@ -86,8 +89,8 @@ export function getBriefingSummary(customers: CustomerItem[]) {
       !c.giftSent
     );
   });
-  const happyCallNeeded = notDeliveredYet.filter(
-    (c) => getDeliveryDDay(c.deliveryDate).diff === -1
+  const happyCallNeeded = contractedPendingDelivery.filter(
+    (c) => getDeliveryDDay(c.deliveryDate, c.status).diff === -1
   );
   // 오늘 또는 지난 재연락 예정 고객 (미구매/고민중, 상담진행중 등)
   const followUpToday = active.filter((c) => getFollowUpInfo(c).isDueOrOverdue);

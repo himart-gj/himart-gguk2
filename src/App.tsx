@@ -52,7 +52,7 @@ import {
   setCachedCustomers,
   syncCustomerToGas,
 } from './crm/services/gasApi';
-import { getPastDueDeliveryCustomers, isUrgentCustomer } from './crm/utils/date';
+import { getPastDueDeliveryCustomers, isPendingLogisticsCustomer, isUrgentCustomer } from './crm/utils/date';
 import { PastDeliveryCheckModal } from './crm/components/PastDeliveryCheckModal';
 import { PAST_DELIVERY_POPUP_DISMISSED_KEY } from './crm/CrmApp';
 import {
@@ -1363,18 +1363,16 @@ export function App() {
     [crmCustomers]
   );
   const unconfirmedLogisticsCountHome = useMemo(
-    () =>
-      activeCrmCustomers.filter(
-        (c) =>
-          (c.status === '계약완료' || c.status === '발송완료') &&
-          !c.logisticsConfirmed
-      ).length,
+    () => activeCrmCustomers.filter((c) => isPendingLogisticsCustomer(c)).length,
     [activeCrmCustomers]
   );
   const unpaidGiftCountHome = useMemo(
     () =>
       activeCrmCustomers.filter(
-        (c) => Boolean(c.giftItems && c.giftItems.trim()) && !c.giftSent
+        (c) =>
+          (c.status === '계약완료' || c.status === '배송완료') &&
+          Boolean(c.giftItems && c.giftItems.trim()) &&
+          !c.giftSent
       ).length,
     [activeCrmCustomers]
   );

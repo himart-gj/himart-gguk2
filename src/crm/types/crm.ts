@@ -10,7 +10,6 @@ export type CustomerStatus =
 export type SortOrder = 'regDesc' | 'deliveryAsc' | 'amountDesc' | 'urgentFirst';
 
 export type FilterTab =
-  | '전체'
   | '🔥긴급/오늘할일'
   | '🚚물류/배송대기'
   | '🎁사은품미지급'

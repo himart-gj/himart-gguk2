@@ -1,4 +1,4 @@
-import { CustomerItem } from '../types/crm';
+import { CustomerItem, CustomerStatus } from '../types/crm';
 
 export function getTodayStr(): string {
   const now = new Date();
@@ -62,7 +62,10 @@ export interface DDayInfo {
   isUrgent: boolean;
 }
 
-export function getDeliveryDDay(deliveryDate: string): DDayInfo {
+export function getDeliveryDDay(
+  deliveryDate: string,
+  status?: CustomerStatus
+): DDayInfo {
   if (!deliveryDate || !deliveryDate.trim()) {
     return {
       diff: null,
@@ -103,6 +106,26 @@ export function getDeliveryDDay(deliveryDate: string): DDayInfo {
 
   const diffTime = target.getTime() - today.getTime();
   const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+  const shortMd = `${parts[1]}/${parts[2]}`;
+
+  // 계약완료 전 상담 단계 고객은 배송일이 적혀 있어도 '희망 수령일'일 뿐이므로 실제 배송 카운트다운/배송완료로 표시하지 않음!
+  if (status && status !== '계약완료' && status !== '배송완료') {
+    return {
+      diff: diffDays,
+      label: `희망일 ${shortMd}`,
+      badgeClass: 'bg-stone-100 text-stone-600 border-stone-200',
+      isUrgent: false,
+    };
+  }
+
+  if (status === '배송완료') {
+    return {
+      diff: diffDays,
+      label: `배송완료 (${shortMd})`,
+      badgeClass: 'bg-teal-50 text-teal-700 border-teal-200',
+      isUrgent: false,
+    };
+  }
 
   if (diffDays === 0) {
     return {
@@ -252,14 +275,28 @@ export function isDeliveryDoneAndSettled(c: CustomerItem): boolean {
  * 저장된 고객 중 배송 예정일(deliveryDate)이 오늘보다 지났으나(diff < 0)
  * 아직 '배송완료' 처리되지 않은 확인 대상 고객 목록 반환
  */
+/**
+ * 오직 '계약완료'된 고객만 실제 물류/배송대기 관리 대상입니다.
+ * (상담진행중·미구매/고민중·신규/미발송·발송완료 고객의 배송일은 단순 희망 수령일이므로 물류대기에서 100% 제외!)
+ */
+export function isPendingLogisticsCustomer(c: CustomerItem): boolean {
+  if (!c || c.deletedAt) return false;
+  if (c.status !== '계약완료') return false;
+  if (c.logisticsConfirmed) return false;
+  const dday = getDeliveryDDay(c.deliveryDate, c.status);
+  // 배송일이 아직 미정이거나 오늘 이후(diff >= 0)인 계약완료 미배정 건
+  return dday.diff === null || dday.diff >= 0;
+}
+
 export function getPastDueDeliveryCustomers(
   customers: CustomerItem[]
 ): CustomerItem[] {
   return (customers || [])
     .filter((c) => {
       if (!c || c.deletedAt) return false;
-      if (c.status === '배송완료' || c.status === '취소/보류') return false;
-      const dday = getDeliveryDDay(c.deliveryDate);
+      // 실제 계약완료 고객 중 배송 예정일이 지난 고객만 배송완료 확인 대상
+      if (c.status !== '계약완료') return false;
+      const dday = getDeliveryDDay(c.deliveryDate, c.status);
       return dday.diff !== null && dday.diff < 0;
     })
     .sort((a, b) => (a.deliveryDate || '').localeCompare(b.deliveryDate || ''));
@@ -277,26 +314,26 @@ export function isUrgentCustomer(c: CustomerItem): boolean {
   const followUp = getFollowUpInfo(c);
   if (followUp.isDueOrOverdue) return true;
 
-  const dday = getDeliveryDDay(c.deliveryDate);
-  // 오늘/내일 배송이거나 어제 배송(해피콜)
-  if (
-    dday.diff !== null &&
-    (dday.diff === 0 || dday.diff === 1 || dday.diff === -1)
-  ) {
-    return true;
-  }
-  // 배송 D-3 이내인데 물류 미확정
-  if (
-    dday.diff !== null &&
-    dday.diff >= 0 &&
-    dday.diff <= 3 &&
-    !c.logisticsConfirmed
-  ) {
-    return true;
-  }
-  // 배송 완료(과거 또는 오늘)인데 사은품 미지급
-  if (dday.diff !== null && dday.diff <= 0 && hasUnpaidGift(c)) {
-    return true;
+  // 실제 배송·물류·해피콜 긴급 알림은 오직 '계약완료' 고객에게만 적용!
+  if (c.status === '계약완료') {
+    const dday = getDeliveryDDay(c.deliveryDate, c.status);
+    if (
+      dday.diff !== null &&
+      (dday.diff === 0 || dday.diff === 1 || dday.diff === -1)
+    ) {
+      return true;
+    }
+    if (
+      dday.diff !== null &&
+      dday.diff >= 0 &&
+      dday.diff <= 3 &&
+      !c.logisticsConfirmed
+    ) {
+      return true;
+    }
+    if (dday.diff !== null && dday.diff <= 0 && hasUnpaidGift(c)) {
+      return true;
+    }
   }
 
   return false;

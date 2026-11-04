@@ -244,7 +244,7 @@ export const CrmKanbanBoard: React.FC<CrmKanbanBoardProps> = ({
                 </div>
               ) : (
                 colItems.map((c) => {
-                  const dday = getDeliveryDDay(c.deliveryDate);
+                  const dday = getDeliveryDDay(c.deliveryDate, c.status);
                   const perf = resolveCustomerPerformanceProfile(c);
                   return (
                     <div

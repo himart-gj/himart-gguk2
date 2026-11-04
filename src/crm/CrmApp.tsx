@@ -34,7 +34,7 @@ import {
   getDeliveryDDay,
   getPastDueDeliveryCustomers,
   hasUnpaidGift,
-  isDeliveryDoneAndSettled,
+  isPendingLogisticsCustomer,
   isUrgentCustomer,
 } from './utils/date';
 import {
@@ -59,7 +59,6 @@ import {
 } from './components/CrmKanbanAndAnalytics';
 
 const FILTER_TABS: FilterTab[] = [
-  '전체',
   '🔥긴급/오늘할일',
   '🚚물류/배송대기',
   '🎁사은품미지급',
@@ -139,7 +138,13 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
   const [viewMode, setViewMode] = useState<CrmViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<FilterTab>('전체');
+  const [activeTab, setActiveTab] = useState<FilterTab>(() => {
+    const cached = getCachedCustomers().filter((c) => !c.deletedAt);
+    if (cached.some((c) => isUrgentCustomer(c))) return '🔥긴급/오늘할일';
+    if (cached.some((c) => c.status === '상담진행중')) return '상담진행중';
+    if (cached.some((c) => c.status === '계약완료')) return '계약완료';
+    return '🔥긴급/오늘할일';
+  });
   const [sortOrder, setSortOrder] = useState<SortOrder>('urgentFirst');
 
   // Undo 실행 취소 히스토리 스택 (최대 15단계)
@@ -554,8 +559,13 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     ).length;
     const todayTomorrowDeliveryCount =
       briefing.todayDelivery.length + briefing.tomorrowDelivery.length;
-    const unconfirmedLogisticsCount = briefing.unconfirmedLogistics.length;
-    const unpaidGiftCount = briefing.unpaidGifts.length;
+    const unconfirmedLogisticsCount = activeCustomers.filter((c) =>
+      isPendingLogisticsCustomer(c)
+    ).length;
+    const unpaidGiftCount = activeCustomers.filter(
+      (c) =>
+        (c.status === '계약완료' || c.status === '배송완료') && hasUnpaidGift(c)
+    ).length;
 
     const monthlyReport = computeMonthlySettlementReport(
       activeCustomers,
@@ -578,7 +588,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       );
 
     return {
-      totalCount: activeCustomers.filter((c) => !isDeliveryDoneAndSettled(c)).length,
+      totalCount: activeCustomers.filter((c) => c.status === '상담진행중').length,
       urgentCount,
       todayTomorrowDeliveryCount,
       unconfirmedLogisticsCount,
@@ -591,17 +601,16 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
   const tabCounts = useMemo(() => {
     const map: Record<string, number> = {
-      // 첫 화면('전체')에서는 배송완료 고객을 숨기되, 사은품 미지급이 남은 고객은 포함
-      전체: activeCustomers.filter((c) => !isDeliveryDoneAndSettled(c)).length,
       '🔥긴급/오늘할일': activeCustomers.filter((c) => isUrgentCustomer(c))
         .length,
-      '🚚물류/배송대기': activeCustomers.filter((c) => {
-        if (c.status === '취소/보류' || c.status === '배송완료') return false;
-        const diff = getDeliveryDDay(c.deliveryDate).diff;
-        return diff !== null && diff >= 0 && !c.logisticsConfirmed;
-      }).length,
+      // 오직 '계약완료'된 고객만 물류/배송대기에 포함 (계약 전 희망배송일 입력 고객 제외!)
+      '🚚물류/배송대기': activeCustomers.filter((c) =>
+        isPendingLogisticsCustomer(c)
+      ).length,
       '🎁사은품미지급': activeCustomers.filter(
-        (c) => c.status !== '취소/보류' && hasUnpaidGift(c)
+        (c) =>
+          (c.status === '계약완료' || c.status === '배송완료') &&
+          hasUnpaidGift(c)
       ).length,
     };
     FILTER_TABS.forEach((tab) => {
@@ -616,27 +625,36 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     const q = searchQuery.trim().toLowerCase();
 
     const filtered = activeCustomers.filter((c) => {
+      // 검색어 입력 시에는 전체 탭이 없더라도 놓치는 고객이 없도록 전 단계 통합 검색!
+      if (q) {
+        return (
+          c.name.toLowerCase().includes(q) ||
+          c.phone.toLowerCase().includes(q) ||
+          c.phone.replace(/\D/g, '').includes(q) ||
+          c.items.toLowerCase().includes(q) ||
+          c.memo.toLowerCase().includes(q) ||
+          (c.orderNo && c.orderNo.toLowerCase().includes(q)) ||
+          (c.giftItems && c.giftItems.toLowerCase().includes(q))
+        );
+      }
+
       if (viewMode === 'grid') {
-        if (activeTab === '전체') {
-          // 검색어를 입력하지 않은 기본 첫 화면에서는 배송완료 고객을 숨김
-          // 단, 사은품 미지급(hasUnpaidGift)이 남아 있는 고객은 반드시 첫 화면에 계속 표시!
-          if (!q && isDeliveryDoneAndSettled(c)) return false;
-        } else if (activeTab === '🔥긴급/오늘할일') {
+        if (activeTab === '🔥긴급/오늘할일') {
           if (!isUrgentCustomer(c)) return false;
         } else if (activeTab === '🚚물류/배송대기') {
-          if (c.status === '취소/보류' || c.status === '배송완료') return false;
-          const diff = getDeliveryDDay(c.deliveryDate).diff;
-          if (diff === null || diff < 0 || c.logisticsConfirmed) return false;
+          if (!isPendingLogisticsCustomer(c)) return false;
         } else if (activeTab === '🎁사은품미지급') {
-          if (c.status === '취소/보류' || !hasUnpaidGift(c)) {
+          if (
+            (c.status !== '계약완료' && c.status !== '배송완료') ||
+            !hasUnpaidGift(c)
+          ) {
             return false;
           }
         } else {
           if (c.status !== activeTab) return false;
         }
       } else if (viewMode === 'kanban') {
-        // 칸반 보드에서도 사은품까지 모두 종결된 배송완료 건은 검색 시에만 노출
-        if (!q && isDeliveryDoneAndSettled(c)) return false;
+        if (c.status === '배송완료' && !hasUnpaidGift(c)) return false;
       }
 
       if (!q) return true;
@@ -969,17 +987,14 @@ export const CrmApp: React.FC<CrmAppProps> = ({
                 <p className="text-xs opacity-70 max-w-md mx-auto">
                   우측 상단의 [신규 고객 등록] 버튼을 누르거나, 견적서 계산 화면에서 [고객저장]을 누르면 이곳에 자동으로 쌓입니다.
                 </p>
-                {activeTab !== '전체' && (
+                {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveTab('전체');
-                      setSearchQuery('');
-                    }}
+                    onClick={() => setSearchQuery('')}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-500 cursor-pointer"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    전체 고객 보기로 돌아가기
+                    검색어 초기화
                   </button>
                 )}
               </div>

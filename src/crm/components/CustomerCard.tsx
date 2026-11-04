@@ -171,7 +171,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const dday = getDeliveryDDay(customer.deliveryDate);
+  const dday = getDeliveryDDay(customer.deliveryDate, customer.status);
+  const isContractOrDelivered = customer.status === '계약완료' || customer.status === '배송완료';
   const followUp = getFollowUpInfo(customer);
   const style = STATUS_STYLES[customer.status] || STATUS_STYLES['신규/미발송'];
   const urgent = isUrgentCustomer(customer);
@@ -408,12 +409,13 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
           {customer.deliveryDate && (
             <div className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg shrink-0">
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              <span>배송 {customer.deliveryDate}</span>
+              <span>{isContractOrDelivered ? `배송 ${customer.deliveryDate}` : `희망수령 ${customer.deliveryDate}`}</span>
             </div>
           )}
         </div>
 
-        {/* 매장 실전 원터치 체크바: 물류확정 & 사은품지급 */}
+        {/* 매장 실전 원터치 체크바: 계약완료/배송완료 고객에게만 물류확정 & 사은품지급 노출 */}
+        {isContractOrDelivered && (
         <div className="grid grid-cols-2 gap-2 pt-0.5">
           <button
             type="button"
@@ -465,6 +467,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
             )}
           </button>
         </div>
+        )}
 
         {/* 3행: 관심품목/구매 모델 (대표 견적) */}
         <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">

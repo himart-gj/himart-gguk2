@@ -58,7 +58,8 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   onToggleLogistics,
   onToggleGift,
 }) => {
-  const dday = getDeliveryDDay(customer.deliveryDate);
+  const dday = getDeliveryDDay(customer.deliveryDate, customer.status);
+  const isContractOrDelivered = customer.status === '계약완료' || customer.status === '배송완료';
   const followUp = getFollowUpInfo(customer);
   const urgent = isUrgentCustomer(customer);
   const quoteCount = customer.quotes?.length || 0;
@@ -91,7 +92,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   };
 
   const handleTouchEnd = () => {
-    if (swipeOffset <= -56 && onToggleLogistics) {
+    if (swipeOffset <= -56 && onToggleLogistics && isContractOrDelivered) {
       onToggleLogistics(customer);
     } else if (swipeOffset >= 56) {
       const syntheticEvt = { stopPropagation: () => {} } as React.MouseEvent;
@@ -255,27 +256,41 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
             className="flex items-center gap-1.5 text-[10px] font-bold"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={() => onToggleLogistics?.(customer)}
-              title="클릭하여 물류확정 상태 즉시 변경"
-              className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border cursor-pointer schedule-tactile ${
-                customer.logisticsConfirmed
-                  ? isDark
-                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : isDark
-                  ? 'bg-[#1B2230] text-slate-400 border-white/10'
-                  : 'bg-[#F4F2ED] text-[#78716C] border-[#E4DFD5]'
-              }`}
-            >
-              {customer.logisticsConfirmed ? (
-                <Check className="w-2.5 h-2.5" />
-              ) : (
-                <Truck className="w-2.5 h-2.5" />
-              )}
-              <span>{customer.logisticsConfirmed ? '물류확정' : '물류대기'}</span>
-            </button>
+            {isContractOrDelivered ? (
+              <button
+                type="button"
+                onClick={() => onToggleLogistics?.(customer)}
+                title="클릭하여 물류확정 상태 즉시 변경"
+                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border cursor-pointer schedule-tactile ${
+                  customer.logisticsConfirmed
+                    ? isDark
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
+                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : isDark
+                    ? 'bg-[#1B2230] text-slate-400 border-white/10'
+                    : 'bg-[#F4F2ED] text-[#78716C] border-[#E4DFD5]'
+                }`}
+              >
+                {customer.logisticsConfirmed ? (
+                  <Check className="w-2.5 h-2.5" />
+                ) : (
+                  <Truck className="w-2.5 h-2.5" />
+                )}
+                <span>{customer.logisticsConfirmed ? '물류확정' : '물류대기'}</span>
+              </button>
+            ) : (
+              customer.deliveryDate && (
+                <span
+                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border ${
+                    isDark
+                      ? 'bg-[#1B2230] text-slate-400 border-white/10'
+                      : 'bg-[#F4F2ED] text-[#78716C] border-[#E4DFD5]'
+                  }`}
+                >
+                  <span>희망수령 {customer.deliveryDate.slice(5)}</span>
+                </span>
+              )
+            )}
 
             {customer.giftItems && (
               <button
