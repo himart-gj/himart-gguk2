@@ -85,7 +85,7 @@ export function buildPrimaryFieldsFromQuote(
         if (resolvedNet <= 0) resolvedNet = Math.max(0, subSum.finalMonthlyFee || 0);
       } else {
         const genSum = calculateGeneralPurchaseSummary(primaryData);
-        if (resolvedPaid <= 0) resolvedPaid = Math.max(0, genSum.step1Paid || genSum.sum || 0);
+        if (resolvedPaid <= 0) resolvedPaid = Math.max(0, genSum.payPrice || genSum.sum || 0);
         if (resolvedNet <= 0) resolvedNet = Math.max(0, genSum.rawNet || 0);
       }
     } catch {
