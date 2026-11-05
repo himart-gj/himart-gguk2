@@ -257,7 +257,14 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     }
     if (primarySubSummary.subExtraCashback > 0) {
       benefitParts.push(
-        `추가캐시백 -${formatCurrency(primarySubSummary.subExtraCashback)}원`
+        `1회 추가캐시백 -${formatCurrency(primarySubSummary.subExtraCashback)}원`
+      );
+    }
+    if (primarySubSummary.totalSubCashback > 0) {
+      benefitParts.push(
+        `최종 ${primarySubSummary.periodLabel} 체감가 ${formatCurrency(
+          primarySubSummary.finalTotalFee
+        )}원`
       );
     }
 
@@ -291,7 +298,14 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       }
       if (plan2SubSummary.subExtraCashback > 0) {
         p2SubBenefits.push(
-          `추가캐시백 -${formatCurrency(plan2SubSummary.subExtraCashback)}원`
+          `1회 추가캐시백 -${formatCurrency(plan2SubSummary.subExtraCashback)}원`
+        );
+      }
+      if (plan2SubSummary.totalSubCashback > 0) {
+        p2SubBenefits.push(
+          `최종 ${plan2SubSummary.periodLabel} 체감가 ${formatCurrency(
+            plan2SubSummary.finalTotalFee
+          )}원`
         );
       }
 
@@ -359,9 +373,15 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     primarySubSummary.totalBaseMonthly
   )}원(월 체감 ${formatCurrency(
     primarySubSummary.finalMonthlyFee
-  )}원 / 총 체감 ${formatCurrency(
+  )}원 / 최종 체감 ${formatCurrency(
     primarySubSummary.finalTotalFee
-  )}원 · 원금 ${formatCurrency(primarySubSummary.totalPrincipal)}원)`;
+  )}원${
+    primarySubSummary.totalSubCashback > 0
+      ? ` · 1회 캐시백 -${formatCurrency(primarySubSummary.totalSubCashback)}원 반영`
+      : ''
+  } · 통합 최종 체감가 ${formatCurrency(
+    primaryGenSummary.rawNet + primarySubSummary.finalTotalFee
+  )}원)`;
 
   let plan2Summary: QuotePlan2Summary | undefined;
   if (
@@ -695,10 +715,28 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 </strong>
               </span>
               <span className="text-blue-600 font-black">
-                {state.quoteMode === 'subscription'
-                  ? '최종 월 체감가: '
-                  : '최종 혜택가(체감가): '}
-                {formatCurrency(extracted.netAmount)}원
+                {state.quoteMode === 'subscription' ? (
+                  <>
+                    월 체감 구독료: {formatCurrency(extracted.netAmount)}원
+                    {extracted.primarySubSummary.totalSubCashback > 0 && (
+                      <span className="ml-1 text-emerald-700">
+                        (최종 {extracted.primarySubSummary.periodLabel} 체감가{' '}
+                        {formatCurrency(extracted.primarySubSummary.finalTotalFee)}원)
+                      </span>
+                    )}
+                  </>
+                ) : state.quoteMode === 'hybrid' ? (
+                  <>
+                    일반 체감 {formatCurrency(extracted.primaryGenSummary.rawNet)}원 · 통합 최종 체감{' '}
+                    {formatCurrency(
+                      extracted.primaryGenSummary.rawNet +
+                        extracted.primarySubSummary.finalTotalFee
+                    )}
+                    원
+                  </>
+                ) : (
+                  <>최종 혜택가(체감가): {formatCurrency(extracted.netAmount)}원</>
+                )}
               </span>
             </div>
 
