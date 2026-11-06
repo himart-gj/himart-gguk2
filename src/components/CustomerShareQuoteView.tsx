@@ -555,7 +555,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                   <p className="text-[11px] font-bold text-[#6E4423] leading-relaxed">
                     ✓ 만기(150회) 시 납입 원금{' '}
                     <strong>
-                      {generalHiPreed.totalMaturityRefund.toLocaleString()}원 100% 전액 환급
+                      {generalHiPreed.totalMaturityRefund.toLocaleString()}원 100% 전액 환급 (서비스 미이용 시)
                     </strong>{' '}
                     (월 납입금{' '}
                     <strong>
@@ -819,7 +819,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                   <p className="text-[11px] font-bold text-sky-950 leading-relaxed">
                     ✓ 만기(120회) 시 납입 원금{' '}
                     <strong>
-                      {hiPlusSummary.totalMaturityRefund.toLocaleString()}원 100% 전액 환급
+                      {hiPlusSummary.totalMaturityRefund.toLocaleString()}원 100% 전액 환급 (서비스 미이용 시)
                     </strong>{' '}
                     (월 납입금{' '}
                     <strong>
@@ -891,7 +891,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                 • 본 제안서의 금액대별 캐시백 및 제휴카드 청구할인/캐시백은 카드사 전월 실적 조건 충족 및 당월 행사 기준이며, 발급월·결제일에 따라 일부 변동될 수 있습니다.
               </p>
               <p>
-                • 하이프리드 및 Hi구독 플러스 결합상품은 웅진프리드라이프 상조/라이프케어 별도 계약 상품으로, 만기 완납 및 계약 유지 시 약정 원금 100% 환급이 적용되며 중도 해약 시 해약환급금 산정 기준에 따라 지원금 반환 또는 차감이 발생할 수 있습니다.
+                • 하이프리드 및 Hi구독 플러스 결합상품은 웅진프리드라이프 상조/라이프케어 별도 계약 상품으로, 서비스(상조·전환) 미이용 및 만기 완납·유지 시 납입 원금 100% 전액 환급이 적용되며 중도 해약 시 해약환급금 산정 기준에 따라 지원금 반환 또는 차감이 발생할 수 있습니다.
               </p>
               <p>
                 • 정확한 재고, 배송 희망일 배정, 사은품 혜택 확정은 아래 담당 컨설턴트에게 문의해 주시면 신속히 안내해 드립니다.
