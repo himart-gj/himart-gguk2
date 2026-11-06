@@ -19,6 +19,7 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
   finalTotal60Fee,
   fmtCat,
   fmtModel,
+  generalHiPreedSummary,
   generalSummary,
   hasBothPlans,
   hiPlusMonthlySupport,
@@ -351,6 +352,23 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                           (원금 {totalPrincipal.toLocaleString()}원)
                         </span>
                       </div>
+                    </div>
+                  )}
+
+                  {subSummary.hiSummary?.totalAccounts > 0 && (
+                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                      <span className="flex items-center gap-1.5 text-indigo-950 font-extrabold">
+                        <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>
+                          구독프리드(Hi구독 플러스) 안내: 만기(120회) 시 납입 원금{' '}
+                          <strong className="text-indigo-700">
+                            {subSummary.hiSummary.totalMaturityRefund.toLocaleString()}원 100% 전액 환급 (서비스 미이용 시)
+                          </strong>
+                        </span>
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500 shrink-0">
+                        월 납입금 {subSummary.hiSummary.totalMonthlyDeposit.toLocaleString()}원 · 1~90회 적립형
+                      </span>
                     </div>
                   )}
                 </div>
@@ -778,6 +796,27 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                       </div>
                     </div>
                   </div>
+
+                  {(generalHiPreedSummary?.totalAccounts > 0 ||
+                    subSummary.hiSummary?.totalAccounts > 0) && (
+                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                      <span className="flex items-center gap-1.5 text-indigo-950 font-extrabold">
+                        <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>
+                          프리드 결합 만기 환급 안내 (서비스 미이용 시 납입 원금 100% 전액 환급):
+                        </span>
+                      </span>
+                      <span className="text-[11.5px] font-extrabold text-indigo-800">
+                        {generalHiPreedSummary?.totalAccounts > 0 &&
+                          `일반 하이프리드 만기(150회) ${generalHiPreedSummary.totalMaturityRefund.toLocaleString()}원 환급`}
+                        {generalHiPreedSummary?.totalAccounts > 0 &&
+                          subSummary.hiSummary?.totalAccounts > 0 &&
+                          ' · '}
+                        {subSummary.hiSummary?.totalAccounts > 0 &&
+                          `구독프리드 만기(120회) ${subSummary.hiSummary.totalMaturityRefund.toLocaleString()}원 환급`}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
     </>
