@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'himart-shell-v24';
-const DATA_JSON_CACHE = 'himart-data-v24';
+const APP_SHELL_CACHE = 'himart-shell-v25';
+const DATA_JSON_CACHE = 'himart-data-v25';
 
 const PRECACHE_URLS = [
   './',
@@ -127,7 +127,6 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => caches.match(req).then((cached) => cached || Response.error()))
     );
-    return;
   }
 });
 
