@@ -282,7 +282,7 @@ export const ProposalPreviewFreedGuide: React.FC<Record<string, any>> = ({
 
                     <div className="bg-white rounded-xl p-3 border border-emerald-300 space-y-1">
                       <div className="text-xs font-black text-emerald-700">
-                        ③ 120회 만기 시 납입 원금 100% 전액 환급
+                        ③ 120회 만기 시 원금 100% 전액 환급 (서비스 미이용 시)
                       </div>
                       <p className="text-xs font-semibold text-slate-700 leading-relaxed">
                         120회 만기 도래 시(상조·전환 서비스 미이용 시), 그동안 적립하신
@@ -338,7 +338,7 @@ export const ProposalPreviewFreedGuide: React.FC<Record<string, any>> = ({
 
                     <div className="bg-white rounded-xl p-3 border border-emerald-300 space-y-1">
                       <div className="text-xs font-black text-emerald-700">
-                        ③ 정기 납입 후 만기 시 납입 원금 100% 전액 환급
+                        ③ 만기 시 납입 원금 100% 전액 환급 (서비스 미이용 시)
                       </div>
                       <p className="text-xs font-semibold text-slate-700 leading-relaxed">
                         1회차~150회차 동안 월{' '}
