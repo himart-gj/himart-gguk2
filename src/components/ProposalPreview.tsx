@@ -1,19 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, getGeneralPlan1And2Summaries, ProposalState, switchGeneralPlanInState } from '../types/proposal';
+import { calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, getActiveCompareModes, getGeneralPlan1And2Summaries, ProposalState, QuoteMode, switchGeneralPlanInState } from '../types/proposal';
 import { ArrowLeft, BookOpen, ChevronDown, CreditCard, Download, Eye, EyeOff, FileText, Lock, Printer, Save, Share2, ShieldCheck, ShoppingBag, Sparkles, User } from 'lucide-react';
 import { toPng } from 'html-to-image';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import { ShareQuoteLinkModal } from './CustomerShareQuoteView';
 import { maskEmbeddedModelInCategory, maskModelCodeAfter3 } from '../utils/modelMasker';
 import { ProposalPreviewSubAndHybrid } from './ProposalPreviewSubAndHybrid';
+import { MultiModeComparisonSection, PreviewModeComparisonBar } from './MultiModeComparisonSection';
 import { ProposalPreviewFreedGuide } from './ProposalPreviewFreedGuide';
 
 interface ProposalPreviewProps {
   state: ProposalState;
   onChange: React.Dispatch<React.SetStateAction<ProposalState>>;
   onBackToInput: () => void;
-  activeCustomer?: { id: string; name: string; phone?: string } | null;
+  activeCustomer?: { id: string; name: string; phone?: string; activeQuoteId?: string } | null;
   onOpenSaveToCrm?: () => void;
+  onSwitchMode?: (mode: QuoteMode) => void;
   embeddedSplitMode?: boolean;
   isDark?: boolean;
 }
@@ -32,6 +34,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   onBackToInput,
   activeCustomer,
   onOpenSaveToCrm,
+  onSwitchMode,
   embeddedSplitMode = false,
   isDark = false,
 }) => {
@@ -593,6 +596,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
             </button>
           </div>
 
+          <PreviewModeComparisonBar
+            state={state}
+            onChange={onChange}
+            onEnsureProposalTab={() => setActiveTab('proposal')}
+          />
+
           {isMobilePhone && !embeddedSplitMode && (
             <button
               type="button"
@@ -898,6 +907,16 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                 useMobileFluid ? 'mobile-fluid-sheet' : ''
               }`}
             >
+              {/* -------------------- CASE 0: 일반구매 · 구독구매 · 혼합구매 통합 비교 제안서 -------------------- */}
+              {getActiveCompareModes(state).length >= 2 ? (
+                <MultiModeComparisonSection
+                  state={state}
+                  activeCustomer={activeCustomer}
+                  fmtCat={fmtCat}
+                  fmtModel={fmtModel}
+                />
+              ) : (
+                <>
               {/* -------------------- CASE A: 일반구매 단독 제안서 -------------------- */}
               {state.quoteMode === 'general' && (
                 <div className="space-y-4">
@@ -1249,6 +1268,8 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           totalBaseMonthly={totalBaseMonthly}
           totalPrincipal={totalPrincipal}
         />
+                </>
+              )}
             </div>
           )}
 

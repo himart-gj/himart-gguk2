@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   FolderKanban,
   PhoneCall,
+  RefreshCw,
   Save,
   Sparkles,
   UserCheck,
@@ -41,11 +42,17 @@ interface SaveToCrmModalProps {
   isOpen: boolean;
   onClose: () => void;
   state: ProposalState;
-  activeCustomer: { id: string; name: string; phone?: string } | null;
+  activeCustomer: {
+    id: string;
+    name: string;
+    phone?: string;
+    activeQuoteId?: string;
+  } | null;
   onSavedSuccess: (customer: {
     id: string;
     name: string;
     phone?: string;
+    activeQuoteId?: string;
   }) => void;
 }
 
@@ -466,6 +473,8 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
   const [giftItems, setGiftItems] = useState('');
   const [memo, setMemo] = useState('');
   const [quoteTitle, setQuoteTitle] = useState('');
+  const [saveMode, setSaveMode] = useState<'overwrite' | 'append'>('overwrite');
+  const [overwriteQuoteId, setOverwriteQuoteId] = useState<string>('');
   const [savedToast, setSavedToast] = useState<string | null>(null);
 
   const extracted = useMemo(
@@ -502,12 +511,22 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
         setOrderNo(found.orderNo || '');
         setGiftItems(found.giftItems || '');
         setMemo('');
+        const hasQuotes = (found.quotes?.length || 0) > 0;
+        setSaveMode(hasQuotes ? 'overwrite' : 'append');
+        const preferredQuoteId =
+          activeCustomer.activeQuoteId &&
+          found.quotes?.some((q) => q.id === activeCustomer.activeQuoteId)
+            ? activeCustomer.activeQuoteId
+            : found.quotes?.[0]?.id || '';
+        setOverwriteQuoteId(preferredQuoteId);
         return;
       }
     }
 
     setTabMode('new');
     setSelectedExistingId('');
+    setSaveMode('overwrite');
+    setOverwriteQuoteId('');
     setName('');
     setPhone('');
     setStatus('상담진행중');
@@ -533,7 +552,31 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     setFollowUpDate(c.followUpDate || '');
     setOrderNo(c.orderNo || '');
     setGiftItems(c.giftItems || '');
+    const hasQuotes = (c.quotes?.length || 0) > 0;
+    setSaveMode(hasQuotes ? 'overwrite' : 'append');
+    setOverwriteQuoteId(c.quotes?.[0]?.id || '');
   };
+
+  const matchedExistingCustomer = (() => {
+    if (tabMode === 'existing' && selectedExistingId) {
+      return existingCustomers.find((c) => c.id === selectedExistingId) || null;
+    }
+    const targetName = name.trim().toLowerCase();
+    const targetPhone = phone.replace(/\D/g, '');
+    if (!targetName) return null;
+    return (
+      existingCustomers.find((c) => {
+        const cName = (c.name || '').trim().toLowerCase();
+        const cPhone = (c.phone || '').replace(/\D/g, '');
+        if (targetName && targetPhone) {
+          return cName === targetName && cPhone === targetPhone;
+        }
+        return cName === targetName && cPhone === '';
+      }) || null
+    );
+  })();
+
+  const existingQuotesForTarget = matchedExistingCustomer?.quotes || [];
 
   const filteredExisting = existingCustomers.filter((c) => {
     if (!searchTerm.trim()) return true;
@@ -555,11 +598,19 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       generalPlan2: extracted.plan2Data,
     };
 
+    const effectiveTargetId =
+      tabMode === 'existing' && selectedExistingId
+        ? selectedExistingId
+        : matchedExistingCustomer?.id;
+    const effectiveSaveMode =
+      existingQuotesForTarget.length > 0 ? saveMode : 'append';
+    const effectiveOverwriteId =
+      effectiveSaveMode === 'overwrite'
+        ? overwriteQuoteId || existingQuotesForTarget[0]?.id
+        : undefined;
+
     const result = await saveCustomerQuote({
-      targetCustomerId:
-        tabMode === 'existing' && selectedExistingId
-          ? selectedExistingId
-          : undefined,
+      targetCustomerId: effectiveTargetId,
       name: name.trim(),
       phone: phone.trim(),
       items: extracted.itemsSummary,
@@ -583,17 +634,22 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       freedCounts: extracted.freedCounts,
       purchasedModels: extracted.purchasedModels,
       plan2Summary: extracted.plan2Summary,
+      saveMode: effectiveSaveMode,
+      overwriteQuoteId: effectiveOverwriteId,
     });
 
     onSavedSuccess({
       id: result.savedCustomer.id,
       name: result.savedCustomer.name,
       phone: result.savedCustomer.phone,
+      activeQuoteId: result.savedQuoteId,
     });
 
     setSavedToast(
-      result.isExistingCustomer
-        ? `✅ [${result.savedCustomer.name}] 고객님의 견적 보관함(${result.quoteCount}/5)에 저장되었습니다!`
+      result.wasOverwritten
+        ? `🔄 [${result.savedCustomer.name}] 고객님의 기존 견적을 수정 덮어쓰기 완료했습니다! (보관함 ${result.quoteCount}/5 유지)`
+        : result.isExistingCustomer
+        ? `✅ [${result.savedCustomer.name}] 고객님의 견적 보관함(${result.quoteCount}/5)에 새 견적으로 추가 저장되었습니다!`
         : `✅ 신규 고객 [${result.savedCustomer.name}]님으로 등록 및 견적이 저장되었습니다!`
     );
 
@@ -801,6 +857,91 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
             </div>
           )}
 
+          {/* 기존 견적이 있는 고객일 때: 덮어쓰기 vs 새로 추가 저장 선택 박스 */}
+          {matchedExistingCustomer && existingQuotesForTarget.length > 0 && (
+            <div className="bg-indigo-50/80 border-2 border-indigo-200 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                  <RefreshCw className="w-3.5 h-3.5 text-indigo-600" />
+                  [{matchedExistingCustomer.name}] 고객님 견적 저장 방식 (현재 {existingQuotesForTarget.length}/5개 보관 중)
+                </span>
+                <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-600 text-white">
+                  {saveMode === 'overwrite'
+                    ? '중복 생성 방지 · 기존 견적 수정'
+                    : '별도 비교용 새 견적 추가'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveMode('overwrite');
+                    if (!overwriteQuoteId && existingQuotesForTarget[0]?.id) {
+                      setOverwriteQuoteId(existingQuotesForTarget[0].id);
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col gap-0.5 ${
+                    saveMode === 'overwrite'
+                      ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                      : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-100/50'
+                  }`}
+                >
+                  <div className="text-xs font-black flex items-center gap-1">
+                    <span>🔄 기존 견적 덮어쓰기 (권장)</span>
+                  </div>
+                  <div
+                    className={`text-[10.5px] font-semibold ${
+                      saveMode === 'overwrite' ? 'text-indigo-100' : 'text-slate-500'
+                    }`}
+                  >
+                    잘못 저장했거나 수정 시 견적 개수({existingQuotesForTarget.length}개) 유지
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSaveMode('append')}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col gap-0.5 ${
+                    saveMode === 'append'
+                      ? 'bg-slate-900 text-amber-300 border-slate-900 shadow-xs'
+                      : 'bg-white text-slate-700 border-indigo-200 hover:bg-indigo-100/50'
+                  }`}
+                >
+                  <div className="text-xs font-black flex items-center gap-1">
+                    <span>➕ 새 견적으로 추가 저장</span>
+                  </div>
+                  <div
+                    className={`text-[10.5px] font-semibold ${
+                      saveMode === 'append' ? 'text-slate-300' : 'text-slate-500'
+                    }`}
+                  >
+                    기존 견적 유지 + 새 견적 추가 ({Math.min(5, existingQuotesForTarget.length + 1)}/5개)
+                  </div>
+                </button>
+              </div>
+
+              {saveMode === 'overwrite' && existingQuotesForTarget.length > 0 && (
+                <div className="pt-1">
+                  <label className="block text-[11px] font-extrabold text-indigo-900 mb-1">
+                    덮어쓸 대상 견적 선택:
+                  </label>
+                  <select
+                    value={overwriteQuoteId || existingQuotesForTarget[0]?.id || ''}
+                    onChange={(e) => setOverwriteQuoteId(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl border border-indigo-300 bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {existingQuotesForTarget.map((q, idx) => (
+                      <option key={q.id} value={q.id}>
+                        [견적 #{idx + 1}] {q.title} ({formatCurrency(q.netAmount)}원 · {q.createdAt.slice(5, 16)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 견적 제목 */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -997,7 +1138,11 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               className="px-5 py-2.5 rounded-xl text-xs font-black bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition flex items-center gap-1.5 cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              CRM에 고객 및 견적 저장하기
+              {matchedExistingCustomer && existingQuotesForTarget.length > 0
+                ? saveMode === 'overwrite'
+                  ? '🔄 기존 견적 덮어쓰기 저장'
+                  : '➕ 새 견적으로 추가 저장'
+                : 'CRM에 고객 및 견적 저장하기'}
             </button>
           </div>
         </form>

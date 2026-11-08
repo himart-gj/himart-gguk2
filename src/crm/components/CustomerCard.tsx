@@ -17,6 +17,7 @@ import {
   MessageSquare,
   Phone,
   PhoneCall,
+  Save,
   Sparkles,
   Trash2,
   Truck,
@@ -213,6 +214,29 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
 
   const [copiedQuoteId, setCopiedQuoteId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [quickSaveBadge, setQuickSaveBadge] = useState<string | null>(null);
+
+  const triggerQuickSaveBadge = (key: string) => {
+    setQuickSaveBadge(key);
+    setTimeout(() => {
+      setQuickSaveBadge((prev) => (prev === key ? null : prev));
+    }, 2200);
+  };
+
+  const handleSaveContractDateOnly = () => {
+    const clean = contractDateDraft.trim();
+    onFieldChange(customer.id, { contractDate: clean });
+    triggerQuickSaveBadge("contractDate");
+  };
+
+  const handleSaveDeliveryDateOnly = (overrideVal?: string) => {
+    const clean = (overrideVal !== undefined ? overrideVal : deliveryDateDraft).trim();
+    if (overrideVal !== undefined) {
+      setDeliveryDateDraft(clean);
+    }
+    onFieldChange(customer.id, { deliveryDate: clean });
+    triggerQuickSaveBadge("deliveryDate");
+  };
 
   const dday = getDeliveryDDay(customer.deliveryDate, customer.status);
   const isContractOrDelivered = customer.status === '계약완료' || customer.status === '배송완료';
@@ -253,6 +277,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
     const shouldReParseModels =
       trimmedItems !== (customer.items || '').trim() ||
       saleTypeDraft !== perf.saleType;
+    const perfChanged =
+      nextPerfNum !== perf.performanceAmount || saleTypeDraft !== perf.saleType;
 
     onFieldChange(customer.id, {
       name: cleanName,
@@ -262,10 +288,16 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
       performanceAmount: nextPerfNum,
       paidAmount: nextPaidNum,
       netAmount: nextNetNum,
-      generalProductTotal:
-        saleTypeDraft === 'subscription' ? 0 : nextPerfNum,
-      subscriptionPrincipal:
-        saleTypeDraft === 'subscription' ? nextPerfNum : 0,
+      generalProductTotal: perfChanged
+        ? saleTypeDraft === 'subscription'
+          ? 0
+          : nextPerfNum
+        : customer.generalProductTotal,
+      subscriptionPrincipal: perfChanged
+        ? saleTypeDraft === 'subscription'
+          ? nextPerfNum
+          : 0
+        : customer.subscriptionPrincipal,
       contractDate: contractDateDraft.trim(),
       orderNo: orderNoDraft.trim(),
       giftItems: giftItemsDraft.trim(),
@@ -281,6 +313,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
           }
         : {}),
     });
+    triggerQuickSaveBadge("allFields");
     setShowDetailFields(false);
   };
 
@@ -470,9 +503,92 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
           {customer.deliveryDate && (
             <div className="flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg shrink-0">
               <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              <span>{isContractOrDelivered ? `배송 ${customer.deliveryDate}` : `희망수령 ${customer.deliveryDate}`}</span>
+              <span>{isContractOrDelivered ? `실판(배송) ${customer.deliveryDate}` : `희망수령 ${customer.deliveryDate}`}</span>
             </div>
           )}
+        </div>
+
+        {/* 상단 직관적 일정 변경 바: 총판(계약일) & 실판(배송예정일) + 명시적 저장 아이콘 버튼 */}
+        <div className="bg-slate-50/90 border border-slate-200/90 rounded-xl p-2.5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1 bg-white rounded-lg p-2 border border-emerald-200/80">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10.5px] font-extrabold text-emerald-800 flex items-center gap-1">
+                📅 총판 기준일 (계약일)
+              </span>
+              {quickSaveBadge === "contractDate" && (
+                <span className="text-[10px] font-black text-emerald-600">
+                  ✓ 저장완료
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={contractDateDraft}
+                onChange={(e) => setContractDateDraft(e.target.value)}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50/60 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={handleSaveContractDateOnly}
+                title="계약일(총판) 저장"
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black inline-flex items-center gap-1 shrink-0 transition cursor-pointer ${
+                  contractDateDraft.trim() !== (perf.contractDateStr || "")
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs ring-2 ring-emerald-300"
+                    : "bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300"
+                }`}
+              >
+                <Save className="w-3.5 h-3.5 shrink-0" />
+                <span>저장</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1 bg-white rounded-lg p-2 border border-blue-200/80">
+            <div className="flex items-center justify-between gap-1">
+              <span className="text-[10.5px] font-extrabold text-blue-800 flex items-center gap-1">
+                🚚 실판 기준일 (배송예정일)
+              </span>
+              <div className="flex items-center gap-1">
+                {quickSaveBadge === "deliveryDate" && (
+                  <span className="text-[10px] font-black text-blue-600">
+                    ✓ 저장완료
+                  </span>
+                )}
+                {deliveryDateDraft && (
+                  <button
+                    type="button"
+                    onClick={() => handleSaveDeliveryDateOnly("")}
+                    className="text-[9.5px] font-bold px-1.5 py-0.5 rounded bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 cursor-pointer"
+                    title="배송일 미정으로 초기화 후 즉시 저장"
+                  >
+                    미정초기화
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={deliveryDateDraft}
+                onChange={(e) => setDeliveryDateDraft(e.target.value)}
+                className="flex-1 min-w-0 px-2 py-1 text-xs font-bold rounded-lg border border-slate-200 bg-slate-50/60 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => handleSaveDeliveryDateOnly()}
+                title="배송예정일(실판) 저장"
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-black inline-flex items-center gap-1 shrink-0 transition cursor-pointer ${
+                  deliveryDateDraft.trim() !== (customer.deliveryDate || "")
+                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-xs ring-2 ring-blue-300"
+                    : "bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300"
+                }`}
+              >
+                <Save className="w-3.5 h-3.5 shrink-0" />
+                <span>저장</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* 매장 실전 원터치 체크바: 계약완료/배송완료 고객에게만 물류확정 & 사은품지급 노출 */}
@@ -540,15 +656,15 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
             <button
               type="button"
               onClick={() => {
-                setItemsDraft(customer.items || '');
-                setSaleTypeDraft(perf.saleType);
-                setPerfAmountDraft(String(perf.performanceAmount || ''));
-                setContractDateDraft(perf.contractDateStr || '');
-                setOrderNoDraft(customer.orderNo || '');
-                setGiftItemsDraft(customer.giftItems || '');
-                setDeliveryDateDraft(customer.deliveryDate || '');
-                setFollowUpDateDraft(customer.followUpDate || '');
-                setFreedDraft(perf.freedCounts);
+                if (!showDetailFields) {
+                  setItemsDraft(customer.items || '');
+                  setSaleTypeDraft(perf.saleType);
+                  setPerfAmountDraft(String(perf.performanceAmount || ''));
+                  setOrderNoDraft(customer.orderNo || '');
+                  setGiftItemsDraft(customer.giftItems || '');
+                  setFollowUpDateDraft(customer.followUpDate || '');
+                  setFreedDraft(perf.freedCounts);
+                }
                 setShowDetailFields(!showDetailFields);
               }}
               className="text-[11px] font-extrabold text-blue-600 hover:underline flex items-center gap-0.5 cursor-pointer whitespace-nowrap shrink-0"
@@ -682,6 +798,19 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
         {/* 전표/사은품/계약일/배송일/실적원금/프리드 빠른 수정 패널 */}
         {showDetailFields && (
           <div className="bg-blue-50/60 border border-blue-200 rounded-xl p-3 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-blue-200/80">
+              <span className="text-[11px] font-black text-blue-950">
+                ✏️ 고객 상세 정보 · 실적 · 일정 수정 (수정 후 우측 💾 저장 클릭)
+              </span>
+              <button
+                type="button"
+                onClick={handleSaveExtraFields}
+                className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black inline-flex items-center gap-1 shadow-xs cursor-pointer shrink-0"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>전체 저장</span>
+              </button>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <label className="block text-[10px] font-bold text-slate-700 mb-0.5">
@@ -820,35 +949,68 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                 <label className="block text-[10px] font-bold text-emerald-700 mb-0.5">
                   계약일 (총판월 기준)
                 </label>
-                <input
-                  type="date"
-                  value={contractDateDraft}
-                  onChange={(e) => setContractDateDraft(e.target.value)}
-                  className="w-full px-2 py-1.5 text-base sm:text-xs rounded-lg border border-emerald-200 bg-white"
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={contractDateDraft}
+                    onChange={(e) => setContractDateDraft(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1.5 text-base sm:text-xs rounded-lg border border-emerald-200 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveContractDateOnly}
+                    title="계약일 즉시 저장"
+                    className="p-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-blue-700 mb-0.5">
                   배송 예정일 (실판월 기준)
                 </label>
-                <input
-                  type="date"
-                  value={deliveryDateDraft}
-                  onChange={(e) => setDeliveryDateDraft(e.target.value)}
-                  className="w-full px-2 py-1.5 text-base sm:text-xs rounded-lg border border-blue-200 bg-white"
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="date"
+                    value={deliveryDateDraft}
+                    onChange={(e) => setDeliveryDateDraft(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1.5 text-base sm:text-xs rounded-lg border border-blue-200 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveDeliveryDateOnly()}
+                    title="배송예정일(실판) 즉시 저장"
+                    className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shrink-0 cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-600 mb-0.5">
                   전표번호
                 </label>
-                <input
-                  type="text"
-                  value={orderNoDraft}
-                  onChange={(e) => setOrderNoDraft(e.target.value)}
-                  placeholder="250516-0042"
-                  className="w-full px-2 py-1.5 text-base sm:text-xs rounded-lg border border-slate-200 bg-white"
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={orderNoDraft}
+                    onChange={(e) => setOrderNoDraft(e.target.value)}
+                    placeholder="250516-0042"
+                    className="flex-1 min-w-0 px-2 py-1.5 text-base sm:text-xs rounded-lg border border-slate-200 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onFieldChange(customer.id, { orderNo: orderNoDraft.trim() });
+                      triggerQuickSaveBadge("orderNo");
+                    }}
+                    title="전표번호 즉시 저장"
+                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white shrink-0 cursor-pointer"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -909,9 +1071,10 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
               <button
                 type="button"
                 onClick={handleSaveExtraFields}
-                className="px-3 py-1 text-xs font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 cursor-pointer"
+                className="px-3.5 py-1.5 text-xs font-black bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-flex items-center gap-1 shadow-xs cursor-pointer"
               >
-                저장 반영
+                <Save className="w-3.5 h-3.5" />
+                <span>변경사항 저장 반영</span>
               </button>
             </div>
           </div>
@@ -996,9 +1159,9 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
               <button
                 type="button"
                 onClick={handleSaveMemo}
-                className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black flex items-center gap-1 shadow-2xs cursor-pointer"
               >
-                <Check className="w-3.5 h-3.5" /> 저장 완료
+                <Save className="w-3 h-3" /> 메모 저장
               </button>
             )}
           </div>

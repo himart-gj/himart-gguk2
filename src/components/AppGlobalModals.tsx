@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import { AppStep } from '../types/proposal';
 import { AsCenterModal, CardIssueModal } from './QuickCenterModal';
 import { SaveToCrmModal } from '../crm/components/SaveToCrmModal';
 import { CardInstallmentModal } from './CardInstallmentModal';
@@ -349,3 +350,92 @@ export const AppGlobalModals: React.FC<Record<string, any>> = ({
     </>
   );
 };
+
+interface ScreenErrorBoundaryProps {
+  stepKey: string;
+  onResetToHome: () => void;
+  children: React.ReactNode;
+}
+interface ScreenErrorBoundaryState {
+  error: Error | null;
+}
+export class ScreenErrorBoundary extends React.Component<
+  ScreenErrorBoundaryProps,
+  ScreenErrorBoundaryState
+> {
+  state: ScreenErrorBoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ScreenErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidUpdate(prevProps: ScreenErrorBoundaryProps) {
+    if (prevProps.stepKey !== this.props.stepKey && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3">
+          <div className="text-sm font-black text-rose-600">
+            화면을 불러오는 중 일시적인 오류가 발생했습니다.
+          </div>
+          <div className="text-xs opacity-75 max-w-md break-all">
+            {this.state.error.message}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => this.setState({ error: null })}
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black cursor-pointer"
+            >
+              다시 시도
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                this.setState({ error: null });
+                this.props.onResetToHome();
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-black cursor-pointer"
+            >
+              홈으로 이동
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function getStepShortLabel(s: AppStep): string {
+  switch (s) {
+    case 'home':
+      return '홈';
+    case 'crm':
+      return '통합고객관리';
+    case 'marketing-db':
+      return '인스타DB';
+    case 'input':
+      return '견적서';
+    case 'proposal':
+      return '제안서';
+    case 'care-table':
+      return '조견표';
+    case 'lotte-plan':
+      return '플랜계산기';
+    case 'pop-printer':
+      return '구독POP';
+    case 'himobile':
+      return '하이모바일';
+    case 'allcare-guide':
+      return '올케어';
+    case 'insurance':
+      return '보험안내';
+    default:
+      return '홈';
+  }
+}

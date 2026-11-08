@@ -814,7 +814,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
 
       {/* Sonner 스타일 하단 플로팅 토스트 (Undo 되돌리기 버튼 내장) */}
       {toastState && (
-        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 w-[92vw] max-w-md bg-[#18181B] text-white px-4 py-3 rounded-2xl shadow-2xl border border-white/15 flex items-center justify-between gap-2.5 text-xs font-extrabold schedule-sheet-enter">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[70] w-[92vw] max-w-md bg-[#18181B] text-white px-4 py-3 rounded-2xl shadow-2xl border border-white/15 flex items-center justify-between gap-2.5 text-xs font-extrabold schedule-sheet-enter">
           <div className="flex items-center gap-2 min-w-0">
             <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span className="truncate">{toastState.msg}</span>
@@ -842,6 +842,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
           activeTab={settlementTab}
           onChangeTab={setSettlementTab}
           onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+          onFieldChange={handleFieldChange}
           onShowToast={(msg) => showToast(msg, false)}
           defaultExpanded={Boolean(initialSettlementTab)}
         />
