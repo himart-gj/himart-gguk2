@@ -356,18 +356,18 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                   )}
 
                   {subSummary.hiSummary?.totalAccounts > 0 && (
-                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl px-4 py-2.5 flex items-center justify-between gap-2 text-xs font-bold text-slate-700">
+                    <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
                       <span className="flex items-center gap-1.5 text-indigo-950 font-extrabold">
                         <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
                         <span>
-                          구독프리드(Hi구독 플러스) 안내: 만기(120회) 시 납입 원금{' '}
+                          구독프리드(Hi구독 플러스) 안내: 납입기간 90회(30회는 거치만 · 120회 만기) 시 납입 원금{' '}
                           <strong className="text-indigo-700">
                             {subSummary.hiSummary.totalMaturityRefund.toLocaleString()}원 100% 전액 환급 (서비스 미이용 시)
                           </strong>
                         </span>
                       </span>
-                      <span className="text-[11px] font-bold text-slate-500 shrink-0">
-                        월 납입금 {subSummary.hiSummary.totalMonthlyDeposit.toLocaleString()}원 · 1~90회 적립형
+                      <span className="text-[11px] font-bold text-slate-500 shrink-0 whitespace-nowrap">
+                        월 납입금 {subSummary.hiSummary.totalMonthlyDeposit.toLocaleString()}원 · 납입기간 90회 (30회는 거치만)
                       </span>
                     </div>
                   )}
@@ -754,13 +754,13 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                       )}
 
                       {/* 최하단 요약 리본 바: 최종 기간 체감가 */}
-                      <div className="bg-slate-900 text-white rounded-xl px-4 py-2.5 flex items-center justify-between text-xs">
-                        <span className="font-extrabold text-amber-300">
+                      <div className="bg-slate-900 text-white rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs">
+                        <span className="font-extrabold text-amber-300 whitespace-nowrap shrink-0">
                           🎯 최종 {periodLabel} 체감가
                         </span>
-                        <span className="font-black text-white">
-                          {finalTotal60Fee.toLocaleString()}원{' '}
-                          <span className="font-bold text-slate-400">
+                        <span className="font-black text-white text-right flex flex-wrap items-baseline justify-end gap-x-1.5">
+                          <span className="whitespace-nowrap">{finalTotal60Fee.toLocaleString()}원</span>
+                          <span className="font-bold text-slate-400 text-[11px] whitespace-nowrap">
                             (원금 {totalPrincipal.toLocaleString()}원)
                           </span>
                         </span>
@@ -813,7 +813,7 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                           subSummary.hiSummary?.totalAccounts > 0 &&
                           ' · '}
                         {subSummary.hiSummary?.totalAccounts > 0 &&
-                          `구독프리드 만기(120회) ${subSummary.hiSummary.totalMaturityRefund.toLocaleString()}원 환급`}
+                          `구독프리드 (납입기간 90회 · 30회는 거치만 / 120회 만기) ${subSummary.hiSummary.totalMaturityRefund.toLocaleString()}원 환급`}
                       </span>
                     </div>
                   )}

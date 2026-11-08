@@ -721,7 +721,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
 
                   {hiPlusSummary.totalAccounts > 0 && (
                     <p className="text-[11px] font-bold text-sky-950 leading-relaxed">
-                      ✓ 만기(120회) 시 납입 원금{' '}
+                      ✓ 납입기간 90회(30회는 거치만 · 120회 만기) 시 납입 원금{' '}
                       <strong>
                         {hiPlusSummary.totalMaturityRefund.toLocaleString()}원 100% 전액 환급 (서비스 미이용 시)
                       </strong>{' '}
@@ -729,7 +729,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                       <strong>
                         {hiPlusSummary.totalMonthlyDeposit.toLocaleString()}원
                       </strong>{' '}
-                      · 1~90회 적립형)
+                      · 실납입 90회 / 이후 30회는 거치만)
                     </p>
                   )}
                 </div>
