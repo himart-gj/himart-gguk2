@@ -1,5 +1,5 @@
 import React, { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AppStep, extractGeneralPlanData, GeneralPlanData, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionPeriod } from './types/proposal';
+import { AppStep, createInitialState, extractGeneralPlanData, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionPeriod } from './types/proposal';
 import { ControlPanel } from './components/ControlPanel';
 import { ProposalPreview } from './components/ProposalPreview';
 import { fetchRemoteSchedules } from './components/ScheduleModal';
@@ -26,172 +26,11 @@ import { fetchRemoteInstallmentDataset, loadLocalInstallmentDataset, saveLocalIn
 import { mapGeneralCardName, mapSubscriptionAffiliateCard, parseGeneralImageWithFallback, parseSubscriptionImageWithFallback, sanitizeFiveYearWarrantyText } from './utils/aiImageParser';
 import { Columns2 } from 'lucide-react';
 import { AppHeaderAndHome } from './components/AppHeaderAndHome';
-import { AppGlobalModals } from './components/AppGlobalModals';
+import { AppGlobalModals, getStepShortLabel, ScreenErrorBoundary } from './components/AppGlobalModals';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
-
-const createEmptyGeneralPlanData = (
-  mode: QuoteMode,
-  planNum: 1 | 2
-): GeneralPlanData => ({
-  generalItems: [
-    {
-      id: `gen-${mode}-p${planNum}-1`,
-      category: '',
-      modelName: '',
-      quantity: 1,
-      unitPrice: 0,
-    },
-  ],
-  generalCardType: '미정',
-  instantDiscount: 0,
-  earnedPoints: 0,
-  pointUsed: 0,
-  autoTierCashback: true,
-  manualTierCashback: 0,
-  extraCashback: 0,
-  extraBenefits: [],
-  generalHiPreedCounts: {
-    hf75: 0,
-    hf150: 0,
-    hf225: 0,
-    hf300: 0,
-  },
-
-  // 구독구매 초기값
-  items: [
-    {
-      id: `sub-${mode}-p${planNum}-1`,
-      category: '',
-      modelName: '',
-      monthlyFee: 0,
-      period: 60,
-      careService: SUB_CARE_OPTIONS[0],
-    },
-  ],
-  subscriptionPeriod: 60,
-  careService: SUB_CARE_OPTIONS[0],
-  warrantyType: 'AS연장보험 + 가전수리올케어',
-  warrantyYears: 5,
-  allCare: true,
-  selectedCardId: 'none',
-  selectedCardTierId: '',
-  hiPlusCounts: {
-    hi72: 0,
-    hi90: 0,
-    hi108: 0,
-  },
-  subAutoTierCashback: true,
-  subManualTierCashback: 0,
-  subExtraCashback: 0,
-});
-
-const createInitialState = (mode: QuoteMode): ProposalState => {
-  const plan1 = createEmptyGeneralPlanData(mode, 1);
-  const plan2 = createEmptyGeneralPlanData(mode, 2);
-
-  return {
-    quoteMode: mode,
-
-    // 1안 / 2안 상태 (일반구매 + 구독구매 통합)
-    activeGeneralPlan: 1,
-    generalPlan1: plan1,
-    generalPlan2: plan2,
-
-    ...plan1,
-  };
-};
-
-interface ScreenErrorBoundaryProps {
-  stepKey: string;
-  onResetToHome: () => void;
-  children: React.ReactNode;
-}
-interface ScreenErrorBoundaryState {
-  error: Error | null;
-}
-class ScreenErrorBoundary extends Component<
-  ScreenErrorBoundaryProps,
-  ScreenErrorBoundaryState
-> {
-  state: ScreenErrorBoundaryState = { error: null };
-
-  static getDerivedStateFromError(error: Error): ScreenErrorBoundaryState {
-    return { error };
-  }
-
-  componentDidUpdate(prevProps: ScreenErrorBoundaryProps) {
-    if (prevProps.stepKey !== this.props.stepKey && this.state.error) {
-      this.setState({ error: null });
-    }
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-3">
-          <div className="text-sm font-black text-rose-600">
-            화면을 불러오는 중 일시적인 오류가 발생했습니다.
-          </div>
-          <div className="text-xs opacity-75 max-w-md break-all">
-            {this.state.error.message}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => this.setState({ error: null })}
-              className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black cursor-pointer"
-            >
-              다시 시도
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                this.setState({ error: null });
-                this.props.onResetToHome();
-              }}
-              className="px-4 py-2 rounded-xl bg-slate-800 text-white text-xs font-black cursor-pointer"
-            >
-              홈으로 이동
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-function getStepShortLabel(s: AppStep): string {
-  switch (s) {
-    case 'home':
-      return '홈';
-    case 'crm':
-      return '통합고객관리';
-    case 'marketing-db':
-      return '인스타DB';
-    case 'input':
-      return '견적서';
-    case 'proposal':
-      return '제안서';
-    case 'care-table':
-      return '조견표';
-    case 'lotte-plan':
-      return '플랜계산기';
-    case 'pop-printer':
-      return '구독POP';
-    case 'himobile':
-      return '하이모바일';
-    case 'allcare-guide':
-      return '올케어';
-    case 'insurance':
-      return '보험안내';
-    default:
-      return '홈';
-  }
 }
 
 export function App() {
@@ -217,6 +56,7 @@ export function App() {
     id: string;
     name: string;
     phone?: string;
+    activeQuoteId?: string;
   } | null>(null);
   const [isSaveToCrmOpen, setIsSaveToCrmOpen] = useState(false);
   const [crmCustomers, setCrmCustomers] = useState<CustomerItem[]>(() =>
@@ -950,19 +790,53 @@ export function App() {
       .filter((c) => isUrgentCustomer(c)).length;
   }, [crmCustomers]);
 
-  const currentState =
+  const rawCurrentState =
     activeMode === 'general'
       ? generalState
       : activeMode === 'subscription'
       ? subscriptionState
       : hybridState;
 
+  const currentState = useMemo<ProposalState>(() => {
+    const genSnap = extractGeneralPlanData(generalState);
+    const subSnap = extractGeneralPlanData(subscriptionState);
+    const hybSnap = extractGeneralPlanData(hybridState);
+    return {
+      ...rawCurrentState,
+      modeConfigs: {
+        ...(rawCurrentState.modeConfigs || {}),
+        general: genSnap,
+        subscription: subSnap,
+        hybrid: hybSnap,
+      },
+    };
+  }, [rawCurrentState, generalState, subscriptionState, hybridState]);
+
   const setCurrentState: React.Dispatch<React.SetStateAction<ProposalState>> =
     useCallback(
       (updater) => {
+        let syncedCompareModes: QuoteMode[] | undefined = undefined;
+        let compareModesChanged = false;
+
         const applyWithSnapshotSync = (prev: ProposalState): ProposalState => {
+          const prevWithConfigs: ProposalState = {
+            ...prev,
+            modeConfigs: {
+              ...(prev.modeConfigs || {}),
+              general: extractGeneralPlanData(generalState),
+              subscription: extractGeneralPlanData(subscriptionState),
+              hybrid: extractGeneralPlanData(hybridState),
+            },
+          };
           const nextState =
-            typeof updater === 'function' ? updater(prev) : updater;
+            typeof updater === 'function' ? updater(prevWithConfigs) : updater;
+          if (
+            JSON.stringify(nextState.compareModes || []) !==
+            JSON.stringify(prev.compareModes || [])
+          ) {
+            compareModesChanged = true;
+            syncedCompareModes = nextState.compareModes;
+          }
           const snapshot = extractGeneralPlanData(nextState);
           if (nextState.activeGeneralPlan === 2) {
             return {
@@ -983,9 +857,23 @@ export function App() {
         } else {
           setHybridState(applyWithSnapshotSync);
         }
+
+        setTimeout(() => {
+          if (compareModesChanged) {
+            setGeneralState((p) => ({ ...p, compareModes: syncedCompareModes }));
+            setSubscriptionState((p) => ({ ...p, compareModes: syncedCompareModes }));
+            setHybridState((p) => ({ ...p, compareModes: syncedCompareModes }));
+          }
+        }, 0);
       },
-      [activeMode]
+      [activeMode, generalState, subscriptionState, hybridState]
     );
+
+  const handleSwitchQuoteModeInPlace = useCallback((nextMode: QuoteMode) => {
+    setActiveMode(nextMode);
+    setParseError(null);
+    setParseGeneralError(null);
+  }, []);
 
   const handleEnterMode = (mode: QuoteMode) => {
     setActiveMode(mode);
@@ -1001,12 +889,14 @@ export function App() {
       savedProposalState?: any,
       fallbackItemSummary?: string,
       fallbackPaidAmount?: number,
-      fallbackQuoteMode?: QuoteMode
+      fallbackQuoteMode?: QuoteMode,
+      activeQuoteId?: string
     ) => {
       setActiveCustomer({
         id: customer.id,
         name: customer.name,
         phone: customer.phone,
+        activeQuoteId: activeQuoteId || customer.quotes?.[0]?.id,
       });
 
       if (savedProposalState && typeof savedProposalState === 'object') {
@@ -1093,6 +983,42 @@ export function App() {
           generalPlan2: mergedPlan2,
         };
 
+        if (parsed.modeConfigs && typeof parsed.modeConfigs === 'object') {
+          if (parsed.modeConfigs.general) {
+            const gBase = createInitialState('general');
+            const gSnap = extractGeneralPlanData({ ...gBase, ...parsed.modeConfigs.general });
+            setGeneralState({
+              ...gBase,
+              ...gSnap,
+              quoteMode: 'general',
+              compareModes: parsed.compareModes,
+              generalPlan1: gSnap,
+            });
+          }
+          if (parsed.modeConfigs.subscription) {
+            const sBase = createInitialState('subscription');
+            const sSnap = extractGeneralPlanData({ ...sBase, ...parsed.modeConfigs.subscription });
+            setSubscriptionState({
+              ...sBase,
+              ...sSnap,
+              quoteMode: 'subscription',
+              compareModes: parsed.compareModes,
+              generalPlan1: sSnap,
+            });
+          }
+          if (parsed.modeConfigs.hybrid) {
+            const hBase = createInitialState('hybrid');
+            const hSnap = extractGeneralPlanData({ ...hBase, ...parsed.modeConfigs.hybrid });
+            setHybridState({
+              ...hBase,
+              ...hSnap,
+              quoteMode: 'hybrid',
+              compareModes: parsed.compareModes,
+              generalPlan1: hSnap,
+            });
+          }
+        }
+
         if (targetMode === 'general') {
           setGeneralState(restored);
         } else if (targetMode === 'subscription') {
@@ -1170,7 +1096,8 @@ export function App() {
         quote.proposalState,
         quote.itemSummary,
         quote.paidAmount,
-        quote.quoteMode
+        quote.quoteMode,
+        quote.id
       );
     },
     [applyRestoredProposalState]
@@ -1626,6 +1553,7 @@ export function App() {
                   activeCustomer={activeCustomer}
                   onClearActiveCustomer={() => setActiveCustomer(null)}
                   onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+                  onSwitchMode={handleSwitchQuoteModeInPlace}
                   embeddedSplitMode
                 />
               </div>
@@ -1636,6 +1564,7 @@ export function App() {
                   onBackToInput={() => setIsSplitConsultation(false)}
                   activeCustomer={activeCustomer}
                   onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+                  onSwitchMode={handleSwitchQuoteModeInPlace}
                   embeddedSplitMode
                   isDark={isDark}
                 />
@@ -1658,6 +1587,7 @@ export function App() {
               activeCustomer={activeCustomer}
               onClearActiveCustomer={() => setActiveCustomer(null)}
               onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+                  onSwitchMode={handleSwitchQuoteModeInPlace}
             />
           )}
         </div>
@@ -1671,6 +1601,7 @@ export function App() {
           onBackToInput={handleNavigateBack}
           activeCustomer={activeCustomer}
           onOpenSaveToCrm={() => setIsSaveToCrmOpen(true)}
+                  onSwitchMode={handleSwitchQuoteModeInPlace}
           isDark={isDark}
         />
       )}
