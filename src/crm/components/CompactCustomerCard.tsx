@@ -246,14 +246,14 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
           </div>
         </div>
 
-        {/* 하단: 원터치 물류/사은품 토글 배지 + 빠른 액션 */}
+        {/* 하단: 원터치 물류/사은품 토글 배지 + 빠른 액션 (S26 울트라 등 큰 글자 환경에서도 2줄 깨짐 0%) */}
         <div
-          className={`flex items-center justify-between pt-1.5 border-t ${
+          className={`flex items-center justify-between gap-1 pt-1.5 border-t ${
             isDark ? 'border-white/10' : 'border-[#E4DFD5]'
           }`}
         >
           <div
-            className="flex items-center gap-1.5 text-[10px] font-bold"
+            className="flex items-center gap-1 text-[10px] font-bold shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             {isContractOrDelivered ? (
@@ -261,7 +261,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 type="button"
                 onClick={() => onToggleLogistics?.(customer)}
                 title="클릭하여 물류확정 상태 즉시 변경"
-                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border cursor-pointer schedule-tactile ${
+                className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap shrink-0 schedule-tactile ${
                   customer.logisticsConfirmed
                     ? isDark
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/30'
@@ -272,22 +272,22 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 }`}
               >
                 {customer.logisticsConfirmed ? (
-                  <Check className="w-2.5 h-2.5" />
+                  <Check className="w-2.5 h-2.5 shrink-0" />
                 ) : (
-                  <Truck className="w-2.5 h-2.5" />
+                  <Truck className="w-2.5 h-2.5 shrink-0" />
                 )}
-                <span>{customer.logisticsConfirmed ? '물류확정' : '물류대기'}</span>
+                <span className="whitespace-nowrap">{customer.logisticsConfirmed ? '물류확정' : '물류대기'}</span>
               </button>
             ) : (
               customer.deliveryDate && (
                 <span
-                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border ${
+                  className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-full border whitespace-nowrap shrink-0 ${
                     isDark
                       ? 'bg-[#1B2230] text-slate-400 border-white/10'
                       : 'bg-[#F4F2ED] text-[#78716C] border-[#E4DFD5]'
                   }`}
                 >
-                  <span>희망수령 {customer.deliveryDate.slice(5)}</span>
+                  <span className="whitespace-nowrap">희망수령 {customer.deliveryDate.slice(5)}</span>
                 </span>
               )
             )}
@@ -297,7 +297,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 type="button"
                 onClick={() => onToggleGift?.(customer)}
                 title="클릭하여 사은품 지급완료 상태 즉시 변경"
-                className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full border cursor-pointer schedule-tactile ${
+                className={`inline-flex items-center gap-0.5 px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap shrink-0 schedule-tactile ${
                   hasUnpaidGift
                     ? isDark
                       ? 'bg-purple-500/20 text-purple-300 border-purple-400/30'
@@ -307,22 +307,22 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                     : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                 }`}
               >
-                <Gift className="w-2.5 h-2.5" />
-                <span>{customer.giftSent ? '사은품완료' : '사은품미지급'}</span>
+                <Gift className="w-2.5 h-2.5 shrink-0" />
+                <span className="whitespace-nowrap">{customer.giftSent ? '사은품완료' : '사은품미지급'}</span>
               </button>
             )}
           </div>
 
           {/* 우측 퀵 버튼 */}
           <div
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1 shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             {customer.phone && (
               <>
                 <a
                   href={`tel:${customer.phone.replace(/[^0-9]/g, '')}`}
-                  className={`p-1.5 rounded-xl border ${
+                  className={`p-1.5 rounded-xl border shrink-0 ${
                     isDark
                       ? 'bg-[#1B2230] hover:bg-white/10 text-emerald-300 border-white/10'
                       : 'bg-[#F4F2ED] hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
@@ -333,7 +333,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 </a>
                 <a
                   href={`sms:${customer.phone.replace(/[^0-9+]/g, '')}`}
-                  className={`px-2 py-1.5 rounded-xl border text-[11px] font-extrabold flex items-center gap-1 schedule-tactile ${
+                  className={`px-2 py-1.5 rounded-xl border text-[10.5px] sm:text-[11px] font-extrabold flex items-center gap-0.5 whitespace-nowrap shrink-0 schedule-tactile ${
                     isDark
                       ? 'bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border-indigo-400/35'
                       : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border-indigo-200'
@@ -341,14 +341,14 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                   title="자동 문구 없이 이 번호와의 문자 대화내역(문자앱) 바로 열기"
                 >
                   <MailOpen className="w-3 h-3 shrink-0" />
-                  <span>문자내역</span>
+                  <span className="whitespace-nowrap">문자내역</span>
                 </a>
               </>
             )}
             <button
               type="button"
               onClick={(e) => onOpenSMS(customer, e)}
-              className={`px-2 py-1.5 rounded-xl border text-[11px] font-extrabold flex items-center gap-1 cursor-pointer schedule-tactile ${
+              className={`px-2 py-1.5 rounded-xl border text-[10.5px] sm:text-[11px] font-extrabold flex items-center gap-0.5 cursor-pointer whitespace-nowrap shrink-0 schedule-tactile ${
                 isDark
                   ? 'bg-[#1B2230] hover:bg-white/10 text-slate-200 border-white/10'
                   : 'bg-[#F4F2ED] hover:bg-[#EAE5DC] text-[#18181B] border-[#D6D3CD]'
@@ -356,12 +356,12 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
               title="자동 완성 안내문자 발송"
             >
               <MessageSquare className="w-3 h-3 shrink-0" />
-              <span>안내문자</span>
+              <span className="whitespace-nowrap">안내문자</span>
             </button>
             <button
               type="button"
               onClick={(e) => onOpenQuote(customer, e)}
-              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1 cursor-pointer schedule-tactile ${
+              className={`px-2 py-1.5 rounded-xl text-[10.5px] sm:text-[11px] font-black flex items-center gap-0.5 cursor-pointer whitespace-nowrap shrink-0 schedule-tactile ${
                 isDark
                   ? 'bg-sky-400 hover:bg-sky-300 text-slate-950'
                   : 'bg-[#18181B] hover:bg-[#292524] text-white'
@@ -369,13 +369,10 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
               title="견적기에서 불러오기"
             >
               <Calculator
-                className={`w-3 h-3 ${isDark ? 'text-slate-950' : 'text-amber-400'}`}
+                className={`w-3 h-3 shrink-0 ${isDark ? 'text-slate-950' : 'text-amber-400'}`}
               />
-              <span>견적서</span>
+              <span className="whitespace-nowrap">견적서</span>
             </button>
-            <span className="opacity-45 pl-0.5">
-              <ChevronRight className="w-4 h-4" />
-            </span>
           </div>
         </div>
       </div>
