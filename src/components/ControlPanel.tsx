@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AFFILIATE_CARDS, AffiliateCardId, calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, copyPlan1ToPlan2InState, AFFILIATE_GENERAL_CARD_OPTIONS, GENERAL_CATEGORY_PRESETS, isAffiliateGeneralCardType, MAX_LIFECARE_TOTAL_ACCOUNTS, GENERAL_HIPREED_PLANS, GeneralExtraBenefitItem, GeneralExtraBenefitType, GeneralHiPreedKey, GeneralPurchaseItem, getGeneralPlan1And2Summaries, getSubscriptionPeriodSummary, HiPlusKey, ProposalState, SUB_CARE_OPTIONS, SubscriptionItem, SubscriptionPeriod, switchGeneralPlanInState } from '../types/proposal';
+import { AFFILIATE_CARDS, AffiliateCardId, calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, copyPlan1ToPlan2InState, AFFILIATE_GENERAL_CARD_OPTIONS, GENERAL_CATEGORY_PRESETS, isAffiliateGeneralCardType, MAX_LIFECARE_TOTAL_ACCOUNTS, GENERAL_HIPREED_PLANS, GeneralExtraBenefitItem, GeneralExtraBenefitType, GeneralHiPreedKey, GeneralPurchaseItem, getGeneralPlan1And2Summaries, getSubscriptionPeriodSummary, HiPlusKey, getActiveCompareModes, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionItem, SubscriptionPeriod, switchGeneralPlanInState } from '../types/proposal';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import { getStoredGeminiApiKey, setStoredGeminiApiKey } from '../utils/aiImageParser';
 import { ArrowLeft, Camera, Check, Copy, CreditCard, KeyRound, Loader2, Minus, Plus, RotateCcw, Save, ShieldCheck, ShoppingBag, User, X } from 'lucide-react';
 import { ControlPanelSubscriptionSection } from './ControlPanelSubscriptionSection';
+import { QuoteModeComparisonControlBar } from './MultiModeComparisonSection';
 
 interface ControlPanelProps {
   state: ProposalState;
@@ -18,9 +19,10 @@ interface ControlPanelProps {
   onShowProposal: () => void;
   onBackToHome: () => void;
   backLabel?: string;
-  activeCustomer?: { id: string; name: string; phone?: string } | null;
+  activeCustomer?: { id: string; name: string; phone?: string; activeQuoteId?: string } | null;
   onClearActiveCustomer?: () => void;
   onOpenSaveToCrm?: () => void;
+  onSwitchMode?: (mode: QuoteMode) => void;
   embeddedSplitMode?: boolean;
 }
 
@@ -40,6 +42,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   activeCustomer,
   onClearActiveCustomer,
   onOpenSaveToCrm,
+  onSwitchMode,
   embeddedSplitMode = false,
 }) => {
   const liveGenSummary = calculateGeneralPurchaseSummary(state);
@@ -608,6 +611,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           )}
         </div>
       </div>
+
+      <QuoteModeComparisonControlBar
+        state={state}
+        onChange={onChange}
+        onSwitchMode={onSwitchMode}
+        onShowProposal={onShowProposal}
+      />
 
       {/* ==================== 전체 폭 공통 배너: [견적 1안] / [견적 2안] / [📋 1안 내용 ➔ 2안 복사] ==================== */}
       <div
