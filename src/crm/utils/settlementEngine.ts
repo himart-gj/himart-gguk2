@@ -213,14 +213,42 @@ export function getCurrentYearMonth(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export function extractYearMonthFromDateStr(raw?: string): string {
+export function normalizeIsoDateStr(raw?: string, fallbackYear?: string): string {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  const fullMatch = trimmed.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (fullMatch) {
+    const yyyy = fullMatch[1];
+    const mm = String(parseInt(fullMatch[2], 10)).padStart(2, '0');
+    const dd = String(parseInt(fullMatch[3], 10)).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  const shortMatch = trimmed.match(/^(\d{1,2})[-./](\d{1,2})$/);
+  if (shortMatch) {
+    const yyyy = fallbackYear || String(new Date().getFullYear());
+    const mm = String(parseInt(shortMatch[1], 10)).padStart(2, '0');
+    const dd = String(parseInt(shortMatch[2], 10)).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return '';
+}
+
+export function extractYearMonthFromDateStr(raw?: string, fallbackYear?: string): string {
   if (!raw) return '';
   const trimmed = raw.trim();
   const match = trimmed.match(/^(\d{4})[-./](\d{1,2})/);
-  if (!match) return '';
-  const yyyy = match[1];
-  const mm = String(parseInt(match[2], 10)).padStart(2, '0');
-  return `${yyyy}-${mm}`;
+  if (match) {
+    const yyyy = match[1];
+    const mm = String(parseInt(match[2], 10)).padStart(2, '0');
+    return `${yyyy}-${mm}`;
+  }
+  const shortMatch = trimmed.match(/^(\d{1,2})[-./](\d{1,2})$/);
+  if (shortMatch) {
+    const yyyy = fallbackYear || String(new Date().getFullYear());
+    const mm = String(parseInt(shortMatch[1], 10)).padStart(2, '0');
+    return `${yyyy}-${mm}`;
+  }
+  return '';
 }
 
 export function getCustomerContractYearMonth(c: CustomerItem): string {
@@ -232,17 +260,17 @@ export function getCustomerContractYearMonth(c: CustomerItem): string {
 }
 
 export function getCustomerContractDateStr(c: CustomerItem): string {
-  if (c.contractDate && /^\d{4}-\d{2}-\d{2}/.test(c.contractDate.trim())) {
-    return c.contractDate.trim().slice(0, 10);
-  }
-  if (c.regDate && /^\d{4}-\d{2}-\d{2}/.test(c.regDate.trim())) {
-    return c.regDate.trim().slice(0, 10);
-  }
+  const normContract = normalizeIsoDateStr(c.contractDate);
+  if (normContract) return normContract;
+  const normReg = normalizeIsoDateStr(c.regDate);
+  if (normReg) return normReg;
   return '';
 }
 
 export function getCustomerDeliveryYearMonth(c: CustomerItem): string {
-  return extractYearMonthFromDateStr(c.deliveryDate);
+  const contractYm = getCustomerContractYearMonth(c);
+  const fallbackYear = contractYm ? contractYm.slice(0, 4) : String(new Date().getFullYear());
+  return extractYearMonthFromDateStr(c.deliveryDate, fallbackYear);
 }
 
 function computeExactSubscriptionItemPrincipal(
