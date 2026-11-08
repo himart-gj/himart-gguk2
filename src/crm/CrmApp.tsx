@@ -896,7 +896,7 @@ export const CrmApp: React.FC<CrmAppProps> = ({
                     key={v.id}
                     type="button"
                     onClick={() => setViewMode(v.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer schedule-tab-btn ${
+                    className={`px-2 sm:px-3 py-1.5 rounded-xl text-[11px] sm:text-xs font-black whitespace-nowrap shrink-0 flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer schedule-tab-btn ${
                       active
                         ? isDark
                           ? 'bg-[#1E2738] text-sky-300 border border-sky-400/30 shadow-xs'
@@ -906,8 +906,8 @@ export const CrmApp: React.FC<CrmAppProps> = ({
                         : 'text-[#68625D] hover:text-[#18181B]'
                     }`}
                   >
-                    {v.icon}
-                    <span>{v.label}</span>
+                    <span className="shrink-0">{v.icon}</span>
+                    <span className="whitespace-nowrap">{v.label}</span>
                   </button>
                 );
               })}
@@ -1043,11 +1043,11 @@ export const CrmApp: React.FC<CrmAppProps> = ({
           />
         ) : (
           <>
-            <div className="flex items-center justify-between px-1 text-xs opacity-75 font-semibold">
-              <span>
-                💡 물류·사은품 배지를 누르거나 모바일에서 좌우로 밀면 즉시 처리됩니다 · 카드 클릭 시 다중 견적 보관함(최대 5개) 오픈
+            <div className="flex items-start sm:items-center justify-between gap-2 px-1 text-[11px] sm:text-xs opacity-80 font-semibold">
+              <span className="min-w-0 flex-1 leading-snug break-keep">
+                💡 물류·사은품 배지를 누르거나 좌우로 밀면 즉시 처리 · 카드 클릭 시 다중 견적 보관함 오픈
               </span>
-              <span className="font-bold font-mono">
+              <span className="shrink-0 whitespace-nowrap font-extrabold font-mono px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10">
                 표시 {filteredCustomers.length}명
               </span>
             </div>
