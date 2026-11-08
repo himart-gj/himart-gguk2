@@ -19,6 +19,7 @@ import {
   Phone,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Send,
   Settings,
@@ -749,13 +750,24 @@ export const MarketingDbTabsAndGrid: React.FC<{ ctx: any }> = ({ ctx }) => {
                           : ''}
                       </div>
                     )}
-                    <input
-                      type="text"
-                      value={lead.memo || ''}
-                      onChange={(e) => handleUpdateMemo(lead.id, e.target.value)}
-                      placeholder="진행/상담/인계 요약 메모 입력 (예: 12월 입주, 냉장고·세탁기 견적 희망)"
-                      className={`w-full px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-semibold ${inputSurface}`}
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={lead.memo || ''}
+                        onChange={(e) => handleUpdateMemo(lead.id, e.target.value)}
+                        placeholder="진행/상담/인계 요약 메모 입력 (예: 12월 입주, 냉장고·세탁기 견적 희망)"
+                        className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-xl border text-base sm:text-xs font-semibold ${inputSurface}`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateMemo(lead.id, (lead.memo || '').trim())}
+                        title="메모 저장"
+                        className="px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-black inline-flex items-center gap-1 shrink-0 cursor-pointer"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>저장</span>
+                      </button>
+                    </div>
                   </div>
 
                   {statusTab !== '휴지통' && (
@@ -862,9 +874,10 @@ export const MarketingDbTabsAndGrid: React.FC<{ ctx: any }> = ({ ctx }) => {
                               <button
                                 type="button"
                                 onClick={() => handleSyncRevenueToCrm(lead)}
-                                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black whitespace-nowrap cursor-pointer shrink-0"
+                                className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black whitespace-nowrap inline-flex items-center gap-1 cursor-pointer shrink-0"
                               >
-                                내 고객카드 반영
+                                <Save className="w-3.5 h-3.5" />
+                                <span>매출 저장·고객카드 반영</span>
                               </button>
                             )}
                           </div>
