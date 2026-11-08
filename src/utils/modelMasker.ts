@@ -108,6 +108,20 @@ export function maskProposalStateModels(state: ProposalState): ProposalState {
     cloned.generalPlan2.generalItems = maskGenList(cloned.generalPlan2.generalItems);
     cloned.generalPlan2.items = maskSubList(cloned.generalPlan2.items);
   }
+  if (cloned.modeConfigs) {
+    if (cloned.modeConfigs.general) {
+      cloned.modeConfigs.general.generalItems = maskGenList(cloned.modeConfigs.general.generalItems);
+      cloned.modeConfigs.general.items = maskSubList(cloned.modeConfigs.general.items);
+    }
+    if (cloned.modeConfigs.subscription) {
+      cloned.modeConfigs.subscription.generalItems = maskGenList(cloned.modeConfigs.subscription.generalItems);
+      cloned.modeConfigs.subscription.items = maskSubList(cloned.modeConfigs.subscription.items);
+    }
+    if (cloned.modeConfigs.hybrid) {
+      cloned.modeConfigs.hybrid.generalItems = maskGenList(cloned.modeConfigs.hybrid.generalItems);
+      cloned.modeConfigs.hybrid.items = maskSubList(cloned.modeConfigs.hybrid.items);
+    }
+  }
 
   return cloned;
 }

@@ -304,7 +304,14 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
           primary.expectedBenefit !== '인스타 광고 전용 최대 혜택 안내'
             ? primary.expectedBenefit
             : secondary.expectedBenefit || primary.expectedBenefit,
-        contractDate: primary.contractDate || secondary.contractDate || undefined,
+        contractDate:
+          primary.contractDate !== undefined && primary.contractDate !== ""
+            ? primary.contractDate
+            : secondary.contractDate || undefined,
+        deliveryDate:
+          primary.deliveryDate !== undefined
+            ? primary.deliveryDate
+            : secondary.deliveryDate || "",
         saleType: primary.saleType || secondary.saleType || undefined,
         performanceAmount:
           (Number(primary.performanceAmount) || 0) > 0
@@ -437,11 +444,15 @@ export async function saveCustomerQuote(payload: {
     benefit?: string;
     performanceAmount?: number;
   };
+  saveMode?: 'overwrite' | 'append';
+  overwriteQuoteId?: string;
 }): Promise<{
   customers: CustomerItem[];
   savedCustomer: CustomerItem;
   isExistingCustomer: boolean;
   quoteCount: number;
+  savedQuoteId: string;
+  wasOverwritten: boolean;
 }> {
   const current = getCachedCustomers();
   const nowStr = getNowDateTimeStr();
@@ -510,12 +521,33 @@ export async function saveCustomerQuote(payload: {
   let updatedList: CustomerItem[];
   let savedCustomer: CustomerItem;
   let isExistingCustomer = false;
+  let savedQuoteId = newQuote.id;
+  let wasOverwritten = false;
 
   if (existingIndex >= 0) {
     isExistingCustomer = true;
     const existing = current[existingIndex];
-    const prevQuotes = Array.isArray(existing.quotes) ? existing.quotes : [];
-    const nextQuotes = [newQuote, ...prevQuotes].slice(0, 5);
+    const prevQuotes = (Array.isArray(existing.quotes) ? existing.quotes : []).filter(
+      (q) => Boolean(q) && !isDummyInstaZeroQuote(q)
+    );
+    let nextQuotes: QuoteRecord[];
+    if (payload.saveMode === 'overwrite' && prevQuotes.length > 0) {
+      wasOverwritten = true;
+      const targetIdx = payload.overwriteQuoteId
+        ? prevQuotes.findIndex((q) => q.id === payload.overwriteQuoteId)
+        : 0;
+      const replaceIdx = targetIdx >= 0 ? targetIdx : 0;
+      const preservedId = prevQuotes[replaceIdx]?.id || newQuote.id;
+      savedQuoteId = preservedId;
+      const overwrittenQuote: QuoteRecord = {
+        ...newQuote,
+        id: preservedId,
+      };
+      const remaining = prevQuotes.filter((_, idx) => idx !== replaceIdx);
+      nextQuotes = [overwrittenQuote, ...remaining].slice(0, 5);
+    } else {
+      nextQuotes = [newQuote, ...prevQuotes].slice(0, 5);
+    }
 
     savedCustomer = {
       ...existing,
@@ -537,7 +569,10 @@ export async function saveCustomerQuote(payload: {
       subscriptionPrincipal: resolvedSubPrincipal,
       freedCounts: resolvedFreedCounts,
       purchasedModels: resolvedPurchasedModels,
-      deliveryDate: payload.deliveryDate || existing.deliveryDate,
+      deliveryDate:
+        payload.deliveryDate !== undefined
+          ? payload.deliveryDate.trim()
+          : existing.deliveryDate,
       followUpDate:
         payload.followUpDate !== undefined
           ? payload.followUpDate
@@ -600,6 +635,8 @@ export async function saveCustomerQuote(payload: {
     savedCustomer,
     isExistingCustomer,
     quoteCount: savedCustomer.quotes?.length || 1,
+    savedQuoteId,
+    wasOverwritten,
   };
 }
 
