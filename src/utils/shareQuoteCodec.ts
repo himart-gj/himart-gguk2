@@ -1,6 +1,8 @@
 import {
   AffiliateCardId,
-   extractGeneralPlanData,
+  extractGeneralPlanData,
+  getActiveCompareModes,
+  resolveComparisonModePlanData,
   GENERAL_CARD_OPTIONS,
   GeneralCardType,
   GeneralExtraBenefitItem,
@@ -559,6 +561,27 @@ export function packCompactQuoteV2(payload: SharedQuotePayload): any[] {
 
   const dateCompact = (payload.createdAt || '').replace(/-/g, '');
   const modeIdx = Math.max(0, QUOTE_MODES.indexOf(st.quoteMode || 'general'));
+  const activeCompare = getActiveCompareModes(st);
+  const compareMask =
+    activeCompare.length >= 2
+      ? (activeCompare.includes('general') ? 1 : 0) |
+        (activeCompare.includes('subscription') ? 2 : 0) |
+        (activeCompare.includes('hybrid') ? 4 : 0)
+      : 0;
+  const modeConfigsTuple =
+    compareMask > 0
+      ? [
+          activeCompare.includes('general')
+            ? packPlanTuple(resolveComparisonModePlanData(st, 'general'))
+            : 0,
+          activeCompare.includes('subscription')
+            ? packPlanTuple(resolveComparisonModePlanData(st, 'subscription'))
+            : 0,
+          activeCompare.includes('hybrid')
+            ? packPlanTuple(resolveComparisonModePlanData(st, 'hybrid'))
+            : 0,
+        ]
+      : 0;
 
   return trimTrailingZeros([
     2,
@@ -569,6 +592,8 @@ export function packCompactQuoteV2(payload: SharedQuotePayload): any[] {
     activePlan === 2 && p2Tuple !== 0 ? 2 : 1,
     p1Tuple,
     p2Tuple,
+    compareMask,
+    modeConfigsTuple,
   ]);
 }
 
@@ -599,8 +624,31 @@ export function unpackCompactQuoteV2(arr: any[]): SharedQuotePayload | null {
     : unpackPlanTuple([], 'p2');
   const activeFields = activeGeneralPlan === 2 ? plan2 : plan1;
 
+  const compareMask = Number(arr[8]) || 0;
+  const compareModes: QuoteMode[] = [];
+  if (compareMask & 1) compareModes.push('general');
+  if (compareMask & 2) compareModes.push('subscription');
+  if (compareMask & 4) compareModes.push('hybrid');
+
+  const rawMc = Array.isArray(arr[9]) ? arr[9] : null;
+  const modeConfigs = rawMc
+    ? {
+        ...(Array.isArray(rawMc[0])
+          ? { general: unpackPlanTuple(rawMc[0], 'mc-gen') }
+          : {}),
+        ...(Array.isArray(rawMc[1])
+          ? { subscription: unpackPlanTuple(rawMc[1], 'mc-sub') }
+          : {}),
+        ...(Array.isArray(rawMc[2])
+          ? { hybrid: unpackPlanTuple(rawMc[2], 'mc-hyb') }
+          : {}),
+      }
+    : undefined;
+
   const state: ProposalState = {
     quoteMode,
+    ...(compareModes.length >= 2 ? { compareModes } : {}),
+    ...(modeConfigs ? { modeConfigs } : {}),
     activeGeneralPlan,
     generalPlan1: extractGeneralPlanData(plan1),
     generalPlan2: extractGeneralPlanData(plan2),
