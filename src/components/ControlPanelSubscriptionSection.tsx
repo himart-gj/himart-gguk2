@@ -1,6 +1,6 @@
 import React from 'react';
 import { AFFILIATE_CARDS, isSubTierCashbackEligibleCard, MAX_LIFECARE_TOTAL_ACCOUNTS, HI_PLUS_PLANS, SUB_CARE_OPTIONS, SubscriptionPeriod } from '../types/proposal';
-import { Camera, Check, CreditCard, Loader2, Minus, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react';
+import { Camera, Check, CreditCard, Eye, EyeOff, Loader2, Minus, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react';
 
 export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
   bothSubPlansHavePrice,
@@ -37,6 +37,18 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
   totalBaseMonthly,
   totalPrincipal,
 }) => {
+  const handleToggleHideSubPreed = () => {
+    onChange((prev: any) => {
+      const nextHidden = !prev.hideSubPreed;
+      return {
+        ...prev,
+        hideSubPreed: nextHidden,
+        generalPlan1: { ...prev.generalPlan1, hideSubPreed: nextHidden },
+        generalPlan2: { ...prev.generalPlan2, hideSubPreed: nextHidden },
+      };
+    });
+  };
+
   return (
     <>
         {/* ==================== 구독구매 입력 카드 ==================== */}
@@ -111,7 +123,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
 
               {/* 품목 행 + 품목별 개별 [36개월 | 60개월] 토글 & 케어서비스 선택/입력 줄 */}
               <div className="max-h-none sm:max-h-[260px] sm:overflow-y-auto space-y-2.5 sm:space-y-2 sm:pr-1">
-                {state.items.map((item, index) => {
+                {state.items.map((item: any, index: number) => {
                   const itemPeriod: SubscriptionPeriod =
                     item.period === 36
                       ? 36
@@ -344,14 +356,14 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
 
               {currentCard && (
                 <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-                  {currentCard.tiers.map((tier) => {
+                  {currentCard.tiers.map((tier: any) => {
                     const active = state.selectedCardTierId === tier.id;
                     return (
                       <button
                         key={tier.id}
                         type="button"
                         onClick={() =>
-                          onChange((prev) => ({
+                          onChange((prev: any) => ({
                             ...prev,
                             selectedCardTierId: tier.id,
                           }))
@@ -423,7 +435,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                         <button
                           type="button"
                           onClick={() =>
-                            onChange((prev) => ({
+                            onChange((prev: any) => ({
                               ...prev,
                               subAutoTierCashback: true,
                               subManualTierCashback: 0,
@@ -450,14 +462,14 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                       onChange={(e) => {
                         const raw = e.target.value;
                         if (raw === '') {
-                          onChange((prev) => ({
+                          onChange((prev: any) => ({
                             ...prev,
                             subAutoTierCashback: false,
                             subManualTierCashback: 0,
                           }));
                           return;
                         }
-                        onChange((prev) => ({
+                        onChange((prev: any) => ({
                           ...prev,
                           subAutoTierCashback: false,
                           subManualTierCashback: Math.max(0, Number(raw) || 0),
@@ -472,7 +484,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                     />
                   </div>
 
-                  {/* 우측: 구독 추가 캐시백 (배송익월·다품목·특별 프로모션 캐시백) */}
+                  {/* 우측: 구독 추가 캐시백 */}
                   <div
                     className={`p-2.5 rounded-xl border ${
                       liveSubSummary.subExtraCashback > 0
@@ -490,7 +502,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                             key={amt}
                             type="button"
                             onClick={() =>
-                              onChange((prev) => ({
+                              onChange((prev: any) => ({
                                 ...prev,
                                 subExtraCashback:
                                   Math.max(0, Number(prev.subExtraCashback) || 0) + amt,
@@ -505,7 +517,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                           <button
                             type="button"
                             onClick={() =>
-                              onChange((prev) => ({
+                              onChange((prev: any) => ({
                                 ...prev,
                                 subExtraCashback: 0,
                               }))
@@ -522,7 +534,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                       step={10000}
                       value={state.subExtraCashback || ''}
                       onChange={(e) =>
-                        onChange((prev) => ({
+                        onChange((prev: any) => ({
                           ...prev,
                           subExtraCashback: Math.max(0, Number(e.target.value) || 0),
                         }))
@@ -535,21 +547,23 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
               </div>
             </div>
 
-            {/* 3. 구독프리드 (Hi구독 플러스) */}
+            {/* 3. 구독프리드 (Hi구독 플러스) + 숨기기/보이기 토글 */}
             <div className="space-y-2 pt-2 border-t border-slate-100">
-              <div className="flex flex-wrap items-center justify-between gap-1">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <label className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-blue-600" />
                   3. 구독프리드 (Hi구독 플러스)
                 </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                    {state.quoteMode === 'hybrid'
-                      ? `합산 ${generalHiPreedSummary.totalAccounts + hiSummary.totalAccounts}개 / 최대 8개`
-                      : `총 ${hiSummary.totalAccounts}개 / 최대 8개`}{' '}
-                    (월 -{hiSummary.monthlyHiPlusSupport.toLocaleString()}원)
-                  </span>
-                  {hiSummary.totalAccounts > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {!state.hideSubPreed && (
+                    <span className="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                      {state.quoteMode === 'hybrid'
+                        ? `합산 ${generalHiPreedSummary.totalAccounts + hiSummary.totalAccounts}개 / 최대 8개`
+                        : `총 ${hiSummary.totalAccounts}개 / 최대 8개`}{' '}
+                      (월 -{hiSummary.monthlyHiPlusSupport.toLocaleString()}원)
+                    </span>
+                  )}
+                  {!state.hideSubPreed && hiSummary.totalAccounts > 0 && (
                     <button
                       type="button"
                       onClick={handleResetHiPlus}
@@ -558,70 +572,112 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                       <RotateCcw className="w-3 h-3" /> 미적용(초기화)
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={handleToggleHideSubPreed}
+                    title="숨김 설정 시 내 화면과 고객이 받는 공유 견적서 화면에서 구독프리드 영역이 완전히 숨겨집니다"
+                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-black border transition cursor-pointer ${
+                      state.hideSubPreed
+                        ? 'bg-slate-800 text-amber-300 border-slate-700 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                    }`}
+                  >
+                    {state.hideSubPreed ? (
+                      <>
+                        <EyeOff className="w-3 h-3 text-amber-300" />
+                        <span>구독프리드 숨김중 (보이기)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3 h-3 text-indigo-600" />
+                        <span>구독프리드 숨기기</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                {HI_PLUS_PLANS.map((plan) => {
-                  const count = state.hiPlusCounts[plan.id] || 0;
-                  const active = count > 0;
-                  const canAdd = hiSummary.totalAccounts + (state.quoteMode === 'hybrid' ? generalHiPreedSummary.totalAccounts : 0) < MAX_LIFECARE_TOTAL_ACCOUNTS;
-                  const monthlyUnitSupport =
-                    representativePeriod === 36
-                      ? plan.monthlySupport36
-                      : plan.monthlySupport60;
+              {state.hideSubPreed ? (
+                <div className="rounded-2xl bg-slate-100 border border-slate-200 px-3.5 py-2.5 flex items-center justify-between gap-2 text-xs">
+                  <span className="font-bold text-slate-600">
+                    🙈 구독프리드(Hi구독 플러스) 영역이 숨겨진 상태입니다 (제안서 및 고객 공유 화면에서도 표시되지 않습니다)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleToggleHideSubPreed}
+                    className="px-2.5 py-1 rounded-xl bg-indigo-600 text-white text-[11px] font-black shrink-0 cursor-pointer"
+                  >
+                    다시 보이기
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                  {HI_PLUS_PLANS.map((plan) => {
+                    const count = state.hiPlusCounts[plan.id] || 0;
+                    const active = count > 0;
+                    const canAdd =
+                      hiSummary.totalAccounts +
+                        (state.quoteMode === 'hybrid'
+                          ? generalHiPreedSummary.totalAccounts
+                          : 0) <
+                      MAX_LIFECARE_TOTAL_ACCOUNTS;
+                    const monthlyUnitSupport =
+                      representativePeriod === 36
+                        ? plan.monthlySupport36
+                        : plan.monthlySupport60;
 
-                  return (
-                    <div
-                      key={plan.id}
-                      className={`p-2 sm:p-3 rounded-2xl border-2 flex flex-col justify-between transition ${
-                        active
-                          ? 'bg-blue-50/70 border-blue-600 shadow-xs'
-                          : 'bg-white border-slate-200'
-                      }`}
-                    >
-                      <div className="text-center mb-1.5 sm:mb-2">
-                        <div
-                          className={`text-[11px] sm:text-sm font-black whitespace-nowrap ${
-                            active ? 'text-blue-700' : 'text-slate-800'
-                          }`}
-                        >
-                          {plan.buttonLabel}
+                    return (
+                      <div
+                        key={plan.id}
+                        className={`p-2 sm:p-3 rounded-2xl border-2 flex flex-col justify-between transition ${
+                          active
+                            ? 'bg-blue-50/70 border-blue-600 shadow-xs'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div className="text-center mb-1.5 sm:mb-2">
+                          <div
+                            className={`text-[11px] sm:text-sm font-black whitespace-nowrap ${
+                              active ? 'text-blue-700' : 'text-slate-800'
+                            }`}
+                          >
+                            {plan.buttonLabel}
+                          </div>
+                          <div className="text-[9.5px] sm:text-[11px] font-extrabold text-rose-600 mt-0.5 truncate">
+                            월 -{monthlyUnitSupport.toLocaleString()}원
+                          </div>
                         </div>
-                        <div className="text-[9.5px] sm:text-[11px] font-extrabold text-rose-600 mt-0.5 truncate">
-                          월 -{monthlyUnitSupport.toLocaleString()}원
+
+                        <div className="flex items-center justify-between bg-slate-50 rounded-xl p-1 border border-slate-200">
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustHiPlus(plan.id, -1)}
+                            disabled={count === 0}
+                            className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </button>
+                          <span
+                            className={`text-xs font-black ${
+                              active ? 'text-blue-700' : 'text-slate-700'
+                            }`}
+                          >
+                            {count}개
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustHiPlus(plan.id, 1)}
+                            disabled={!canAdd}
+                            className="w-6 h-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex items-center justify-between bg-slate-50 rounded-xl p-1 border border-slate-200">
-                        <button
-                          type="button"
-                          onClick={() => handleAdjustHiPlus(plan.id, -1)}
-                          disabled={count === 0}
-                          className="w-6 h-6 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center disabled:opacity-30 cursor-pointer"
-                        >
-                          <Minus className="w-3 h-3" />
-                        </button>
-                        <span
-                          className={`text-xs font-black ${
-                            active ? 'text-blue-700' : 'text-slate-700'
-                          }`}
-                        >
-                          {count}개
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleAdjustHiPlus(plan.id, 1)}
-                          disabled={!canAdd}
-                          className="w-6 h-6 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center disabled:opacity-30 cursor-pointer"
-                        >
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* 구독구매 실시간 월 체감 구독료 + 일시 캐시백 반영 최종 체감가 요약 바 */}
@@ -634,8 +690,10 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   </div>
                   <div className="text-[11px] text-slate-600 font-semibold">
                     기본 월 {totalBaseMonthly.toLocaleString()}원 - 제휴카드{' '}
-                    {cardDiscount.toLocaleString()}원 - 프리드{' '}
-                    {hiPlusMonthly.toLocaleString()}원
+                    {cardDiscount.toLocaleString()}원
+                    {!state.hideSubPreed && (
+                      <> - 프리드 {hiPlusMonthly.toLocaleString()}원</>
+                    )}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
