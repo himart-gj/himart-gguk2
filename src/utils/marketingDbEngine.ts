@@ -1,8 +1,5 @@
-import * as XLSXModule from 'xlsx';
+import * as XLSX from 'xlsx';
 import { ADMIN_PIN_CODE } from './careTableParser';
-
-const XLSX: typeof XLSXModule =
-  ((XLSXModule as any).read ? XLSXModule : (XLSXModule as any).default) || XLSXModule;
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from './ownerBusinessCardAsset';
 import { idbMirrorGet, idbMirrorSet } from './offlineDbQueue';
 import { CustomerItem } from '../crm/types/crm';

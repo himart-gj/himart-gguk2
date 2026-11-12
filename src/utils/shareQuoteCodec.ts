@@ -428,6 +428,12 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
         ];
 
   const subPeriod: SubscriptionPeriod = arr[11] === 36 ? 36 : 60;
+  const careService =
+    typeof arr[12] === 'number' && SUB_CARE_OPTIONS[arr[12]]
+      ? SUB_CARE_OPTIONS[arr[12]]
+      : typeof arr[12] === 'string' && arr[12]
+      ? arr[12]
+      : SUB_CARE_OPTIONS[0];
 
   const items =
     rawSub.length > 0
@@ -441,6 +447,7 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
             modelName: String(s?.[1] || ''),
             monthlyFee,
             period,
+            careService,
             ...(contractAmount ? { contractAmount } : {}),
           };
         })
@@ -451,6 +458,7 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
             modelName: '',
             monthlyFee: 0,
             period: subPeriod,
+            careService,
           },
         ];
 
@@ -470,12 +478,6 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
   );
 
   const rawHp = Array.isArray(arr[10]) ? arr[10] : [0, 0, 0, 0];
-  const careService =
-    typeof arr[12] === 'number' && SUB_CARE_OPTIONS[arr[12]]
-      ? SUB_CARE_OPTIONS[arr[12]]
-      : typeof arr[12] === 'string' && arr[12]
-      ? arr[12]
-      : SUB_CARE_OPTIONS[0];
 
   const selectedCardId: AffiliateCardId =
     typeof arr[15] === 'number' && SUB_CARD_IDS[arr[15]]

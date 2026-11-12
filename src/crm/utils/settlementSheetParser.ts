@@ -1,9 +1,6 @@
-import * as XLSXModule from 'xlsx';
+import * as XLSX from 'xlsx';
 import { GitHubSyncConfig, loadGitHubSyncConfig, saveGitHubSyncConfig } from '../../utils/careTableParser';
 import { DEFAULT_MODEL_INCENTIVE_SHEETS } from '../data/defaultModelIncentiveData';
-
-const XLSX: typeof XLSXModule =
-  ((XLSXModule as any).read ? XLSXModule : (XLSXModule as any).default) || XLSXModule;
 import { idbMirrorGet, idbMirrorSet } from '../../utils/offlineDbQueue';
 import { buildGeminiFastConfig, compressImageFile, GEMINI_MODELS, getEffectiveGeminiApiKey } from '../../utils/aiImageParser';
 import {
@@ -926,7 +923,7 @@ function parseIncentiveSheetMatrix(
 }
 
 function finalizeWorkbookRules(
-  wb: XLSXModule.WorkBook,
+  wb: XLSX.WorkBook,
   initialHintText?: string
 ): ParsedIncentiveWorkbookResult {
   const collected: ModelIncentiveRule[] = [];
