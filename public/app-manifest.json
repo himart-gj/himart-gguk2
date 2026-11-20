@@ -1,0 +1,37 @@
+{
+  "name": "롯데하이마트 경기광주점 통합견적 & CRM",
+  "short_name": "국지통합앱",
+  "description": "국지CRM - 고객 관리 및 통합 가전 견적 시스템 (경기광주점)",
+  "display": "standalone",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "theme_color": "#FFFFFF",
+  "background_color": "#F2F4F6",
+  "icons": [
+    {
+      "src": "./pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
