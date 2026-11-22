@@ -2,9 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import { AppStep } from '../types/proposal';
 import { ScheduleCharacterBanner } from './ScheduleCharacterBanner';
 import { ViewportSafePopover } from './ui/ViewportSafePopover';
+import { openStorePolicyModal } from './StorePolicyGuideView';
 import {
   ArrowLeft,
   ArrowUpRight,
+  BookOpen,
   Calculator,
   Calendar,
   ChevronRight,
@@ -29,6 +31,7 @@ import {
   Smartphone,
   Sparkles,
   Sun,
+  Truck,
   Users,
   WifiOff,
   Wrench,
@@ -217,6 +220,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
           <button
             type="button"
             onClick={() => {
+              setIsMenuOpen(false);
               pushAppHistoryGuard('open-omnibar');
               setIsOmnibarOpen(true);
             }}
@@ -464,6 +468,18 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                   icon: ShieldCheck,
                   active: step === 'insurance',
                   onClick: () => navigateToStep('insurance'),
+                },
+                {
+                  label: '프리드 상품 요약',
+                  icon: BookOpen,
+                  active: false,
+                  onClick: () => openStorePolicyModal('freed'),
+                },
+                {
+                  label: '안마의자 설치안내',
+                  icon: Truck,
+                  active: false,
+                  onClick: () => openStorePolicyModal('massage'),
                 },
               ].map((item) => {
                 const IconComp = item.icon;
@@ -995,12 +1011,26 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                     고객 상담 퀵 가이드 (즉시 열람)
                   </span>
                   <span className="text-[11.5px] font-semibold text-[#8B95A1]">
-                    보증 · 개통 · 무이자 · 카드발급 · AS
+                    프리드 · 안마설치 · 보증 · 무이자 · AS
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {[
+                    {
+                      title: '프리드 상품 요약',
+                      sub: '일반 · 구독 · 웅진플랜',
+                      icon: BookOpen,
+                      tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
+                      onClick: () => openStorePolicyModal('freed'),
+                    },
+                    {
+                      title: '안마의자 설치안내',
+                      sub: '폐가전회수 · 사다리차',
+                      icon: Truck,
+                      tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
+                      onClick: () => openStorePolicyModal('massage'),
+                    },
                     {
                       title: '가전 올케어',
                       sub: '34종 연장보증 안내',
