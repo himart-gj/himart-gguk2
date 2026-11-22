@@ -16,6 +16,7 @@ import {
   loadAllSchedules,
 } from './ScheduleModal';
 import {
+  BookOpen,
   Calculator,
   Calendar,
   Check,
@@ -31,6 +32,13 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import {
+  buildFreedSummaryCopyText,
+  buildMassageChairCopyText,
+  FREED_OPERATION_GROUPS,
+  MASSAGE_CHAIR_LOGISTICS_ROWS,
+  openStorePolicyModal,
+} from './StorePolicyGuideView';
 
 // 한글 초성 검색 엔진 ('ㅎㄱㄷ' -> '홍길동', 'ㅇㅇㅋ' -> '에어컨')
 const CHOSEONG = [
@@ -79,7 +87,7 @@ export interface CommandOmnibarModalProps {
 
 interface OmnibarResultItem {
   id: string;
-  group: '메뉴' | '고객 CRM' | '안심케어·이사' | '무이자 할부' | 'AS 센터' | '근무·휴무';
+  group: '메뉴' | '고정 기준표' | '고객 CRM' | '안심케어·이사' | '무이자 할부' | 'AS 센터' | '근무·휴무';
   title: string;
   subtitle: string;
   badge?: string;
@@ -292,6 +300,30 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         onSelect: () => {
           onClose();
           onOpenCardIssueModal();
+        },
+      },
+      {
+        id: 'menu-freed-summary',
+        group: '메뉴',
+        title: '프리드 운영 상품 요약표 (일반 · 구독플러스 · 웅진플랜)',
+        subtitle: '합산 최대 12개 가입 · 청구할인 / 카드납+캐시백 / 캐시백 가능여부 비교',
+        badge: '상시고정',
+        copyText: buildFreedSummaryCopyText(),
+        onSelect: () => {
+          onClose();
+          openStorePolicyModal('freed');
+        },
+      },
+      {
+        id: 'menu-massage-guide',
+        group: '메뉴',
+        title: '안마의자 설치 · 폐가전회수 · 사다리차 지원 안내',
+        subtitle: '코지마 · 세라젬 · 바디프랜드 · 제스파 · 누하스 당사/타사물류 기준',
+        badge: '상시고정',
+        copyText: buildMassageChairCopyText(),
+        onSelect: () => {
+          onClose();
+          openStorePolicyModal('massage');
         },
       },
       {
@@ -565,10 +597,60 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         });
       });
 
+    // 5-2. 상시 고정 기준표 (프리드 운영 상품 요약 & 안마의자 물류 기준)
+    FREED_OPERATION_GROUPS.filter(
+      (grp) =>
+        matchSearch(grp.groupLabel, q) ||
+        matchSearch(grp.compactProductTitle, q) ||
+        matchSearch(grp.customerTypeLabel, q) ||
+        matchSearch('프리드 하이프리드 구독플러스 웅진플랜 롯데플랜 카드납 청구할인', q)
+    ).forEach((grp) => {
+      list.push({
+        id: `policy-freed-${grp.id}`,
+        group: '고정 기준표',
+        title: `[프리드 요약] ${grp.compactProductTitle} (${grp.groupLabel})`,
+        subtitle: `청구할인: ${grp.billingDiscount ? '가능' : '불가'} · 카드납+캐시백: ${
+          grp.cardPayAndCashback ? '가능' : '불가'
+        } · 캐시백: ${grp.cashback ? '가능' : '불가'}`,
+        badge: '최대 12개',
+        copyText: buildFreedSummaryCopyText(grp),
+        onSelect: () => {
+          onClose();
+          openStorePolicyModal('freed');
+        },
+      });
+    });
+
+    MASSAGE_CHAIR_LOGISTICS_ROWS.filter(
+      (mc) =>
+        matchSearch(mc.brand, q) ||
+        matchSearch(mc.keywords, q) ||
+        matchSearch('안마의자 사다리차 폐가전회수 당사물류 타사물류 설치', q)
+    ).forEach((mc) => {
+      const w = `${mc.thirdPartyWasteOk ? 'O' : 'X'}${
+        mc.thirdPartyWasteNote ? ` ${mc.thirdPartyWasteNote}` : ''
+      }`;
+      const l = `${mc.thirdPartyLadderOk ? 'O' : 'X'}${
+        mc.thirdPartyLadderNote ? ` ${mc.thirdPartyLadderNote}` : ''
+      }`;
+      list.push({
+        id: `policy-mc-${mc.id}`,
+        group: '고정 기준표',
+        title: `[안마의자 설치] ${mc.brand}`,
+        subtitle: `당사물류: 전브랜드 회수·사다리차 전액지원 | 타사물류: 회수 ${w} · 사다리차 ${l}`,
+        badge: mc.thirdPartyWasteOk && mc.thirdPartyLadderOk ? '타사 O·O' : '설치기준',
+        copyText: buildMassageChairCopyText(mc),
+        onSelect: () => {
+          onClose();
+          openStorePolicyModal('massage');
+        },
+      });
+    });
+
     // 6. 메뉴 일치 항목
     quickMenus
       .filter((m) => matchSearch(m.title, q) || matchSearch(m.subtitle, q))
-      .slice(0, 3)
+      .slice(0, 4)
       .forEach((m) => list.push(m));
 
     return list;
@@ -655,6 +737,8 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         return <CreditCard className="w-4 h-4 text-[#1B64DA] dark:text-blue-400" />;
       case 'AS 센터':
         return <Wrench className="w-4 h-4 text-[#059669] dark:text-emerald-400" />;
+      case '고정 기준표':
+        return <BookOpen className="w-4 h-4 text-[#E60012] dark:text-rose-400" />;
       case '근무·휴무':
         return <Calendar className="w-4 h-4 text-[#E60012] dark:text-[#FF3B47]" />;
       default:

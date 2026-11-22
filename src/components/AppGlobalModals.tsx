@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { AppStep } from '../types/proposal';
 import { AsCenterModal, CardIssueModal } from './QuickCenterModal';
 import { SaveToCrmModal } from '../crm/components/SaveToCrmModal';
@@ -8,6 +8,7 @@ import { AiCommandModal } from './AiCommandModal';
 import { CommandOmnibarModal } from './CommandOmnibarModal';
 import { PartnerLinksModal } from './PartnerLinksModal';
 import { StoreAdminUploadHubModal } from './StoreAdminUploadHubModal';
+import { OPEN_STORE_POLICY_MODAL_EVENT, PolicyGuideTab, StorePolicyQuickModal } from './StorePolicyGuideView';
 import { getCachedCustomers } from '../crm/services/gasApi';
 import { PastDeliveryCheckModal } from '../crm/components/PastDeliveryCheckModal';
 import { PAST_DELIVERY_POPUP_DISMISSED_KEY } from '../crm/CrmApp';
@@ -78,6 +79,17 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
   toggleUiTheme,
   uploadHubFocus,
 }) => {
+  const [policyModalTab, setPolicyModalTab] = useState<PolicyGuideTab | null>(null);
+
+  useEffect(() => {
+    const onOpenPolicy = (ev: Event) => {
+      const customEv = ev as CustomEvent<{ tab?: PolicyGuideTab }>;
+      setPolicyModalTab(customEv.detail?.tab || 'freed');
+    };
+    window.addEventListener(OPEN_STORE_POLICY_MODAL_EVENT, onOpenPolicy);
+    return () => window.removeEventListener(OPEN_STORE_POLICY_MODAL_EVENT, onOpenPolicy);
+  }, []);
+
   return (
     <>
       {/* ==================== 카드발급 & AS센터 즉시 모달 ==================== */}
@@ -93,6 +105,11 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
         isOpen={isPartnerLinksOpen}
         onClose={() => setIsPartnerLinksOpen(false)}
         isDark={isDark}
+      />
+      <StorePolicyQuickModal
+        isOpen={Boolean(policyModalTab)}
+        initialTab={policyModalTab || 'freed'}
+        onClose={() => setPolicyModalTab(null)}
       />
 
       {/* ==================== 매장 자료 통합 업로드 센터 모달 ==================== */}
