@@ -276,17 +276,15 @@ export const StorePolicyQuickModal: React.FC<StorePolicyQuickModalProps> = ({
   initialTab,
   onClose,
 }) => {
-  const [activeTab, setActiveTab] = useState<PolicyGuideTab>(initialTab);
   const [selectedBrandId, setSelectedBrandId] = useState<string>('ALL');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
-    setActiveTab(initialTab);
     setSelectedBrandId('ALL');
   }, [isOpen, initialTab]);
 
-  // 모바일 물리 뒤로가기 연동 (App.tsx의 __modalInternalBackHandler 체인 활용)
+  // 모바일 물리 뒤로가기 및 ESC 연동 (App.tsx의 __modalInternalBackHandler 안전 체인 활용)
   useEffect(() => {
     if (!isOpen) return;
     try {
@@ -294,19 +292,27 @@ export const StorePolicyQuickModal: React.FC<StorePolicyQuickModalProps> = ({
     } catch {
       // ignore
     }
-    const prevHandler = (window as any).__modalInternalBackHandler;
-    (window as any).__modalInternalBackHandler = (): boolean => {
+    const myHandler = (): boolean => {
       onClose();
       return true;
     };
+    const prevHandler = (window as any).__modalInternalBackHandler;
+    (window as any).__modalInternalBackHandler = myHandler;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
     return () => {
-      (window as any).__modalInternalBackHandler = prevHandler;
+      window.removeEventListener('keydown', onKeyDown);
+      if ((window as any).__modalInternalBackHandler === myHandler) {
+        (window as any).__modalInternalBackHandler = prevHandler;
+      }
     };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const isFreed = activeTab === 'freed';
+  const isFreed = initialTab === 'freed';
   const filteredMassageRows =
     selectedBrandId === 'ALL'
       ? MASSAGE_CHAIR_LOGISTICS_ROWS
@@ -386,36 +392,6 @@ export const StorePolicyQuickModal: React.FC<StorePolicyQuickModalProps> = ({
         }
         bodyClassName="p-3.5 sm:p-5 space-y-3.5 overflow-y-auto flex-1 bg-[#F2F4F6] dark:bg-[#0B1120]"
       >
-        {/* 상단 2탭 전환 바 */}
-        <div className="inline-flex w-full sm:w-auto p-1 rounded-xl bg-white dark:bg-[#131C2E] border border-[#E5E8EB] dark:border-slate-800 gap-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('freed')}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-              isFreed
-                ? 'bg-[#FFF1F2] dark:bg-rose-500/20 text-[#E60012] dark:text-rose-300 border border-[#FECDD3] dark:border-rose-500/35'
-                : 'text-[#4E5968] dark:text-slate-400 hover:text-[#191F28] dark:hover:text-slate-100'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 shrink-0" />
-            <span>프리드 상품 요약</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('massage')}
-            className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap ${
-              !isFreed
-                ? 'bg-[#EFF6FF] dark:bg-blue-500/20 text-[#1B64DA] dark:text-blue-300 border border-[#BFDBFE] dark:border-blue-500/35'
-                : 'text-[#4E5968] dark:text-slate-400 hover:text-[#191F28] dark:hover:text-slate-100'
-            }`}
-          >
-            <Truck className="w-3.5 h-3.5 shrink-0" />
-            <span>
-              안마의자 설치<span className="hidden sm:inline"> · 사다리차</span> 안내
-            </span>
-          </button>
-        </div>
-
         {isFreed ? (
           <SurfaceCard className="p-4 sm:p-6 space-y-5 border-t-[3px] border-t-[#E60012]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#E5E8EB] dark:border-slate-800">
