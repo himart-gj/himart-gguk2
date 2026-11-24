@@ -53,7 +53,6 @@ export const DEFAULT_PARTNER_LINKS: PartnerQuickLinkItem[] = [
     badgeText: '하이마트 제휴',
     description: '롯데하이마트 고객 전용 크린토피아 입주·이사청소 혜택 견적 조회',
     isStaffOnly: false,
-    isStaffOnly: false,
     isBuiltIn: true,
   },
   {
