@@ -36,36 +36,6 @@ export const PARTNER_FAVORITES_STORAGE_KEY = 'himart_gj_partner_favs_v1';
 
 export const DEFAULT_PARTNER_LINKS: PartnerQuickLinkItem[] = [
   {
-    id: 'himart-gj-sub-landing',
-    title: '구독 랜딩페이지 (시뮬레이터)',
-    url: 'https://himart-gj.github.io/himart-subscription-simulator/#/',
-    category: 'living',
-    badgeText: '구독 공식랜딩',
-    description: '롯데하이마트 경기광주점 가전구독 × 구독플러스 맞춤 혜택 시뮬레이터',
-    isStaffOnly: false,
-    isBuiltIn: true,
-  },
-  {
-    id: 'himart-gj-store-landing',
-    title: '일반 매장랜딩페이지 (상담예약)',
-    url: 'https://himart-gj.github.io/himart-11/',
-    category: 'living',
-    badgeText: '매장 공식랜딩',
-    description: '경기광주점 A·B동 쇼룸 투어 및 가전·모바일·인테리어·입주 1:1 맞춤 상담 예약',
-    isStaffOnly: false,
-    isBuiltIn: true,
-  },
-  {
-    id: 'himart-gj-sub-admin',
-    title: '구독페이지 관리자페이지 (CMS)',
-    url: 'https://himart-gj.github.io/himart-subscription-simulator/#/admin',
-    category: 'staff',
-    badgeText: '직원 전용',
-    description: '구독 랜딩페이지 147종 품목 · 추천세트 · 정책 마스터 시트 동기화 관리자',
-    isStaffOnly: true,
-    isBuiltIn: true,
-  },
-  {
     id: 'kobang-screen',
     title: '방충망 셀프 견적',
     url: 'https://kobang.netlify.app/',
@@ -82,6 +52,7 @@ export const DEFAULT_PARTNER_LINKS: PartnerQuickLinkItem[] = [
     category: 'living',
     badgeText: '하이마트 제휴',
     description: '롯데하이마트 고객 전용 크린토피아 입주·이사청소 혜택 견적 조회',
+    isStaffOnly: false,
     isStaffOnly: false,
     isBuiltIn: true,
   },
@@ -153,6 +124,12 @@ function matchesSearch(target: string, query: string): boolean {
   return getChoseong(t).includes(q);
 }
 
+const REMOVED_BUILTIN_LANDING_IDS = new Set([
+  'himart-gj-sub-landing',
+  'himart-gj-store-landing',
+  'himart-gj-sub-admin',
+]);
+
 export function loadPartnerLinks(): PartnerQuickLinkItem[] {
   try {
     const raw = localStorage.getItem(PARTNER_LINKS_STORAGE_KEY);
@@ -161,12 +138,21 @@ export function loadPartnerLinks(): PartnerQuickLinkItem[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return DEFAULT_PARTNER_LINKS;
     }
+    const cleaned = parsed.filter(
+      (x: any) => !REMOVED_BUILTIN_LANDING_IDS.has(x?.id)
+    );
+    if (cleaned.length !== parsed.length) {
+      localStorage.setItem(PARTNER_LINKS_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    if (cleaned.length === 0) {
+      return DEFAULT_PARTNER_LINKS;
+    }
     // 기본 탑재 링크가 새로 추가된 경우 누락 없이 병합
-    const savedIds = new Set(parsed.map((x: any) => x?.id));
+    const savedIds = new Set(cleaned.map((x: any) => x?.id));
     const missingDefaults = DEFAULT_PARTNER_LINKS.filter(
       (d) => !savedIds.has(d.id)
     );
-    return [...parsed, ...missingDefaults];
+    return [...cleaned, ...missingDefaults];
   } catch {
     return DEFAULT_PARTNER_LINKS;
   }
@@ -398,7 +384,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
   const handleResetDefaults = () => {
     setLinks(DEFAULT_PARTNER_LINKS);
     savePartnerLinks(DEFAULT_PARTNER_LINKS);
-    showToast(`🔄 기본 ${DEFAULT_PARTNER_LINKS.length}개 바로가기 주소로 복원되었습니다.`);
+    showToast('🔄 기본 6대 바로가기 주소로 복원되었습니다.');
   };
 
   const filteredLinks = useMemo(() => {
@@ -515,7 +501,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
             <button
               type="button"
               onClick={handleResetDefaults}
-              title="기본 주소로 복원"
+              title="기본 6개 주소로 복원"
               className="ml-auto px-2.5 py-1.5 rounded-xl text-[11.5px] font-bold flex items-center gap-1 border bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#E5E8EB] dark:border-slate-700 hover:bg-[#F2F4F6] dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
