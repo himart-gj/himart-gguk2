@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AppStep } from '../types/proposal';
 import { ScheduleCharacterBanner } from './ScheduleCharacterBanner';
+import { FlagshipModalShell } from './ui/FlagshipModalShell';
 import { ViewportSafePopover } from './ui/ViewportSafePopover';
 import { openStorePolicyModal } from './StorePolicyGuideView';
 import {
@@ -9,12 +10,15 @@ import {
   BookOpen,
   Calculator,
   Calendar,
+  Check,
   ChevronRight,
+  Copy,
   CreditCard,
   Database,
   Download,
   ExternalLink,
   FileSpreadsheet,
+  Globe,
   Headphones,
   Home,
   Layers,
@@ -37,6 +41,46 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+
+export type QuickConsultationGroupKey =
+  | 'care-insurance'
+  | 'as-massage'
+  | 'finance-freed'
+  | 'landing-links';
+
+export interface OfficialLandingLinkSpec {
+  id: string;
+  title: string;
+  sub: string;
+  badge: string;
+  isStaff?: boolean;
+  url: string;
+}
+
+export const OFFICIAL_LANDING_LINKS: OfficialLandingLinkSpec[] = [
+  {
+    id: 'sub-landing',
+    title: '구독 랜딩페이지',
+    sub: '가전구독 × 구독플러스 맞춤 혜택 시뮬레이터',
+    badge: '고객 안내',
+    url: 'https://himart-gj.github.io/himart-subscription-simulator/#/',
+  },
+  {
+    id: 'store-landing',
+    title: '일반 매장랜딩페이지',
+    sub: '경기광주점 A·B동 쇼룸 & 1:1 통합 상담 예약',
+    badge: '고객 안내',
+    url: 'https://himart-gj.github.io/himart-11/',
+  },
+  {
+    id: 'sub-admin',
+    title: '구독페이지 관리자페이지',
+    sub: '구독 품목 · 추천세트 · 정책 관리 CMS',
+    badge: '관리자 전용',
+    isStaff: true,
+    url: 'https://himart-gj.github.io/himart-subscription-simulator/#/admin',
+  },
+];
 
 export function getStepShortLabel(s: AppStep): string {
   switch (s) {
@@ -106,6 +150,50 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
 }) => {
   const headerRef = useRef<HTMLElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const [activeQuickGroup, setActiveQuickGroup] = useState<QuickConsultationGroupKey | null>(null);
+  const [copiedLandingId, setCopiedLandingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activeQuickGroup) return;
+    try {
+      window.history.pushState({ appGuard: true, tag: 'quick-group-modal' }, '');
+    } catch {
+      // ignore
+    }
+    const myHandler = (): boolean => {
+      setActiveQuickGroup(null);
+      return true;
+    };
+    const prevHandler = (window as any).__modalInternalBackHandler;
+    (window as any).__modalInternalBackHandler = myHandler;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActiveQuickGroup(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if ((window as any).__modalInternalBackHandler === myHandler) {
+        (window as any).__modalInternalBackHandler = prevHandler;
+      }
+    };
+  }, [activeQuickGroup]);
+
+  const handleCopyLandingUrl = async (item: OfficialLandingLinkSpec) => {
+    try {
+      await navigator.clipboard.writeText(item.url);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = item.url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiedLandingId(item.id);
+    window.setTimeout(() => {
+      setCopiedLandingId((prev) => (prev === item.id ? null : prev));
+    }, 1800);
+  };
 
   useEffect(() => {
     const el = headerRef.current;
@@ -530,6 +618,27 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 type="button"
                 onClick={() => {
                   setIsMenuOpen(false);
+                  setActiveQuickGroup('landing-links');
+                }}
+                className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
+                  isDark
+                    ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-[#60A5FA]/35'
+                    : 'bg-[#FFF1F2] hover:bg-[#FFE4E6] text-[#191F28] border-[#FECDD3]'
+                }`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-[#E60012] dark:text-rose-300 shrink-0" />
+                  <span>내 랜딩페이지 바로가기</span>
+                </span>
+                <span className="text-[11.5px] font-bold text-[#E60012] dark:text-rose-300">
+                  구독 · 매장 · 관리자
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
                   pushAppHistoryGuard('open-partner-links');
                   setIsPartnerLinksOpen(true);
                 }}
@@ -902,7 +1011,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
 
             {/* 04. STOREFRONT OPERATIONS & CONSULTATION HUB */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
-              {/* Left 5 cols: POP, Care Table & Prominent Partner Links Hub */}
+              {/* Left 5 cols: POP, Care Table, HiMobile & Partner Links Hub */}
               <section
                 className={`lg:col-span-5 rounded-[20px] border p-4 sm:p-5 flex flex-col justify-between gap-3 ${
                   isDark
@@ -912,7 +1021,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-extrabold tracking-tight text-[#191F28] dark:text-white">
-                    매장 실무 도구 · 제휴 포털
+                    매장 실무 도구 · 모바일 · 제휴
                   </span>
                   <span className="text-[11.5px] font-bold px-2 py-0.5 rounded-md bg-[#EFF6FF] text-[#1B64DA] dark:bg-blue-500/15 dark:text-blue-300">
                     {careUpdateMonthBadge}
@@ -923,19 +1032,19 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                   <button
                     type="button"
                     onClick={() => navigateToStep('pop-printer')}
-                    className={`w-full p-3.5 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
+                    className={`w-full p-3 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
                       isDark
                         ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-white/10'
                         : 'bg-[#F8FAFC] hover:bg-[#F2F4F6] text-[#191F28] border-[#E5E8EB]'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-9 h-9 rounded-xl bg-[#FFF1F2] dark:bg-rose-500/20 flex items-center justify-center shrink-0">
+                      <span className="w-8 h-8 rounded-xl bg-[#FFF1F2] dark:bg-rose-500/20 flex items-center justify-center shrink-0">
                         <Printer className="w-4 h-4 text-[#E60012] dark:text-rose-300" />
                       </span>
                       <div className="min-w-0">
-                        <div className="text-sm font-extrabold break-keep">구독 POP 자동 출력기</div>
-                        <div className="text-xs text-[#4E5968] dark:text-slate-400 mt-0.5 break-keep">
+                        <div className="text-[13px] sm:text-sm font-extrabold break-keep">구독 POP 자동 출력기</div>
+                        <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 mt-0.5 break-keep">
                           견적 사진 스캔 · A4 2-UP 쇼카드 인쇄
                         </div>
                       </div>
@@ -946,22 +1055,47 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                   <button
                     type="button"
                     onClick={() => navigateToStep('care-table')}
-                    className={`w-full p-3.5 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
+                    className={`w-full p-3 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
                       isDark
                         ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-white/10'
                         : 'bg-[#F8FAFC] hover:bg-[#F2F4F6] text-[#191F28] border-[#E5E8EB]'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-9 h-9 rounded-xl bg-[#EFF6FF] dark:bg-blue-500/20 flex items-center justify-center shrink-0">
+                      <span className="w-8 h-8 rounded-xl bg-[#EFF6FF] dark:bg-blue-500/20 flex items-center justify-center shrink-0">
                         <FileSpreadsheet className="w-4 h-4 text-[#1B64DA] dark:text-blue-300" />
                       </span>
                       <div className="min-w-0">
-                        <div className="text-sm font-extrabold break-keep">
+                        <div className="text-[13px] sm:text-sm font-extrabold break-keep">
                           안심케어 · 가전이사 조견표
                         </div>
-                        <div className="text-xs text-[#4E5968] dark:text-slate-400 mt-0.5 break-keep">
+                        <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 mt-0.5 break-keep">
                           품목별 클리닝 · 이전설치 요금 즉시 복사
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#8B95A1] shrink-0 ml-2" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => navigateToStep('himobile')}
+                    className={`w-full p-3 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
+                      isDark
+                        ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-white/10'
+                        : 'bg-[#F8FAFC] hover:bg-[#F2F4F6] text-[#191F28] border-[#E5E8EB]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="w-8 h-8 rounded-xl bg-[#FFF1F2] dark:bg-rose-500/20 flex items-center justify-center shrink-0">
+                        <Smartphone className="w-4 h-4 text-[#E60012] dark:text-rose-300" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-[13px] sm:text-sm font-extrabold break-keep">
+                          하이 모바일 알뜰 요금제
+                        </div>
+                        <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 mt-0.5 break-keep">
+                          KT망 무약정 · 24개월 약정 유심 특가 안내
                         </div>
                       </div>
                     </div>
@@ -974,21 +1108,21 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                       pushAppHistoryGuard('open-partner-links');
                       setIsPartnerLinksOpen(true);
                     }}
-                    className={`w-full p-3.5 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
+                    className={`w-full p-3 rounded-xl text-left flex items-center justify-between border transition cursor-pointer schedule-tactile ${
                       isDark
                         ? 'bg-[#1B64DA]/20 hover:bg-[#1B64DA]/30 text-white border-[#60A5FA]/30'
                         : 'bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#191F28] border-[#BFDBFE]'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <span className="w-9 h-9 rounded-xl bg-[#1B64DA] text-white flex items-center justify-center shrink-0">
+                      <span className="w-8 h-8 rounded-xl bg-[#1B64DA] text-white flex items-center justify-center shrink-0">
                         <ExternalLink className="w-4 h-4" />
                       </span>
                       <div className="min-w-0">
-                        <div className="text-sm font-extrabold text-[#1B64DA] dark:text-blue-200 break-keep">
+                        <div className="text-[13px] sm:text-sm font-extrabold text-[#1B64DA] dark:text-blue-200 break-keep">
                           제휴 · 업무 바로가기 허브
                         </div>
-                        <div className="text-xs text-[#4E5968] dark:text-slate-300 mt-0.5 break-keep">
+                        <div className="text-[11.5px] text-[#4E5968] dark:text-slate-300 mt-0.5 break-keep">
                           입주 · 중고매입 · 수당조회 · 청약 QR 포털
                         </div>
                       </div>
@@ -998,7 +1132,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 </div>
               </section>
 
-              {/* Right 7 cols: 6 Core Customer Consultation Guides */}
+              {/* Right 7 cols: 4 Consolidated Customer Consultation & Landing Groups (2x2 Grid) */}
               <section
                 className={`lg:col-span-7 rounded-[20px] border p-4 sm:p-5 flex flex-col justify-between gap-3 ${
                   isDark
@@ -1006,114 +1140,86 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                     : 'bg-white border-[#E5E8EB] shadow-[0_2px_12px_rgba(25,31,40,0.04)]'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="text-xs font-extrabold tracking-tight text-[#191F28] dark:text-white">
-                    고객 상담 퀵 가이드 (즉시 열람)
+                    고객 상담 퀵 가이드 · 내 랜딩페이지
                   </span>
                   <span className="text-[11.5px] font-semibold text-[#8B95A1]">
-                    프리드 · 안마설치 · 보증 · 무이자 · AS
+                    터치 시 세부 항목 선택 팝업
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2.5 sm:gap-3 flex-1">
                   {[
                     {
-                      title: '프리드 상품 요약',
-                      sub: '일반 · 구독 · 웅진플랜',
-                      icon: BookOpen,
-                      tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
-                      onClick: () => openStorePolicyModal('freed'),
-                    },
-                    {
-                      title: '안마의자 설치안내',
-                      sub: '폐가전회수 · 사다리차',
-                      icon: Truck,
-                      tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
-                      onClick: () => openStorePolicyModal('massage'),
-                    },
-                    {
-                      title: '가전 올케어',
-                      sub: '34종 연장보증 안내',
-                      icon: Wrench,
-                      tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
-                      onClick: () => navigateToStep('allcare-guide'),
-                    },
-                    {
-                      title: '보험 청구안내',
-                      sub: '구비서류 · 접수처',
+                      key: 'care-insurance' as QuickConsultationGroupKey,
+                      title: '올케어 · 보험접수',
+                      sub: '가전 연장보증 · 보험 청구안내',
+                      pill: '2개 안내',
                       icon: ShieldCheck,
                       tone: 'text-[#059669] bg-emerald-50 dark:bg-emerald-500/20 dark:text-emerald-300',
-                      onClick: () => navigateToStep('insurance'),
                     },
                     {
-                      title: '하이 모바일',
-                      sub: '알뜰 유심 · 자급제',
-                      icon: Smartphone,
-                      tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
-                      onClick: () => navigateToStep('himobile'),
-                    },
-                    {
-                      title: '무이자 할부',
-                      sub: '이달의 카드사 혜택',
-                      icon: Percent,
-                      tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
-                      onClick: () => {
-                        pushAppHistoryGuard('open-installment');
-                        setIsInstallmentModalOpen(true);
-                      },
-                    },
-                    {
-                      title: '제휴카드 발급',
-                      sub: '롯데 · 신한 QR코드',
-                      icon: QrCode,
-                      tone: 'text-[#191F28] bg-[#F2F4F6] dark:bg-white/10 dark:text-slate-200',
-                      onClick: () => {
-                        pushAppHistoryGuard('open-card-issue');
-                        setIsCardIssueOpen(true);
-                      },
-                    },
-                    {
-                      title: '가전 AS센터',
-                      sub: '제조사 서비스 연락처',
+                      key: 'as-massage' as QuickConsultationGroupKey,
+                      title: '가전 AS · 안마의자 설치',
+                      sub: '서비스센터 연락처 · 사다리차 기준',
+                      pill: '2개 안내',
                       icon: Headphones,
-                      tone: 'text-[#4E5968] bg-[#F2F4F6] dark:bg-white/10 dark:text-slate-200',
-                      onClick: () => {
-                        pushAppHistoryGuard('open-as-center');
-                        setIsAsCenterOpen(true);
-                      },
+                      tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
+                    },
+                    {
+                      key: 'finance-freed' as QuickConsultationGroupKey,
+                      title: '무이자 · 제휴카드 · 프리드',
+                      sub: '이달의 무이자 · QR발급 · 상품요약',
+                      pill: '3개 혜택',
+                      icon: Percent,
+                      tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
+                    },
+                    {
+                      key: 'landing-links' as QuickConsultationGroupKey,
+                      title: '내 랜딩페이지',
+                      sub: '구독 랜딩 · 매장 랜딩 · 구독 관리자',
+                      pill: '3개 링크',
+                      icon: Globe,
+                      tone: 'text-[#191F28] bg-[#F2F4F6] dark:bg-white/15 dark:text-slate-100',
                     },
                   ].map((tile) => {
                     const IconComp = tile.icon;
                     return (
                       <button
-                        key={tile.title}
+                        key={tile.key}
                         type="button"
-                        onClick={tile.onClick}
-                        className={`p-3.5 rounded-xl border text-left flex flex-row min-[380px]:flex-col items-center min-[380px]:items-stretch justify-between gap-2.5 transition cursor-pointer schedule-tactile ${
+                        onClick={() => setActiveQuickGroup(tile.key)}
+                        className={`p-4 rounded-2xl border text-left flex flex-row min-[380px]:flex-col items-center min-[380px]:items-stretch justify-between gap-3 transition cursor-pointer schedule-tactile ${
                           isDark
-                            ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-white/10'
-                            : 'bg-[#F8FAFC] hover:bg-[#F2F4F6] text-[#191F28] border-[#E5E8EB]'
+                            ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-white/10 hover:border-[#60A5FA]/50'
+                            : 'bg-[#F8FAFC] hover:bg-[#F2F4F6] text-[#191F28] border-[#E5E8EB] hover:border-[#CBD5E1]'
                         }`}
                       >
                         <div className="flex items-center justify-between gap-2.5 min-[380px]:w-full">
-                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tile.tone}`}>
+                          <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tile.tone}`}>
                             <IconComp className="w-4 h-4" />
                           </span>
                           <div className="min-[380px]:hidden min-w-0">
-                            <div className="text-[13px] font-extrabold break-keep leading-snug">
+                            <div className="text-[13.5px] font-extrabold break-keep leading-snug">
                               {tile.title}
                             </div>
-                            <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 font-medium">
+                            <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 font-medium mt-0.5">
                               {tile.sub}
                             </div>
                           </div>
-                          <ChevronRight className="hidden min-[380px]:block w-3.5 h-3.5 text-[#8B95A1]" />
+                          <div className="hidden min-[380px]:flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-900/70 border border-[#E5E8EB] dark:border-white/10 text-[11px] font-bold text-[#4E5968] dark:text-slate-300">
+                              {tile.pill}
+                            </span>
+                            <ChevronRight className="w-4 h-4 text-[#8B95A1]" />
+                          </div>
                         </div>
                         <div className="hidden min-[380px]:block">
-                          <div className="text-[13px] sm:text-sm font-extrabold break-keep leading-snug">
+                          <div className="text-sm sm:text-[15px] font-extrabold break-keep leading-snug">
                             {tile.title}
                           </div>
-                          <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
+                          <div className="text-xs text-[#4E5968] dark:text-slate-400 font-medium mt-1 break-keep">
                             {tile.sub}
                           </div>
                         </div>
@@ -1126,6 +1232,286 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
             </div>
           </div>
         </main>
+      )}
+
+      {/* ==================== 4대 통합 메뉴 간편 선택 팝업 (올케어·보험 / AS·안마의자 / 무이자·카드·프리드 / 내 랜딩페이지) ==================== */}
+      {activeQuickGroup && (
+        <div className="no-print">
+          <FlagshipModalShell
+            isOpen={Boolean(activeQuickGroup)}
+            onClose={() => setActiveQuickGroup(null)}
+            title={
+              activeQuickGroup === 'care-insurance'
+                ? '올케어 · 보험접수'
+                : activeQuickGroup === 'as-massage'
+                ? '가전 AS · 안마의자 설치'
+                : activeQuickGroup === 'finance-freed'
+                ? '무이자 · 제휴카드 · 프리드'
+                : '내 랜딩페이지 바로가기'
+            }
+            subtitle={
+              activeQuickGroup === 'landing-links'
+                ? '터치 시 새 창으로 열리며 우측에서 주소 복사도 가능합니다'
+                : '확인하실 안내 항목을 선택해 주세요'
+            }
+            badge={activeQuickGroup === 'landing-links' ? '외부 링크' : '바로 선택'}
+            icon={
+              activeQuickGroup === 'care-insurance' ? (
+                <ShieldCheck className="w-4 h-4 text-[#059669] dark:text-emerald-300" />
+              ) : activeQuickGroup === 'as-massage' ? (
+                <Headphones className="w-4 h-4 text-[#1B64DA] dark:text-blue-400" />
+              ) : activeQuickGroup === 'finance-freed' ? (
+                <Percent className="w-4 h-4 text-[#E60012] dark:text-rose-400" />
+              ) : (
+                <Globe className="w-4 h-4 text-[#191F28] dark:text-slate-100" />
+              )
+            }
+            maxWidthClass="max-w-md"
+            bodyClassName="p-3.5 sm:p-4 space-y-2.5 overflow-y-auto flex-1 bg-[#F2F4F6] dark:bg-[#0B1120]"
+          >
+            {activeQuickGroup === 'care-insurance' &&
+              [
+                {
+                  title: '가전 올케어 안내',
+                  sub: '34종 사용 가전 연장보증 품목 · 카톡 안내문 복사',
+                  icon: Wrench,
+                  tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    navigateToStep('allcare-guide');
+                  },
+                },
+                {
+                  title: '보험 청구 · 접수 안내',
+                  sub: '연장보증 · 파손보험 구비서류 및 접수처 확인',
+                  icon: ShieldCheck,
+                  tone: 'text-[#059669] bg-emerald-50 dark:bg-emerald-500/20 dark:text-emerald-300',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    navigateToStep('insurance');
+                  },
+                },
+              ].map((opt) => {
+                const OptIcon = opt.icon;
+                return (
+                  <button
+                    key={opt.title}
+                    type="button"
+                    onClick={opt.onClick}
+                    className="w-full p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#131C2E] border border-[#E5E8EB] dark:border-slate-800 hover:border-[#1B64DA] dark:hover:border-[#60A5FA] text-left flex items-center justify-between gap-3 transition cursor-pointer schedule-tactile"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${opt.tone}`}>
+                        <OptIcon className="w-5 h-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm sm:text-[15px] font-extrabold text-[#191F28] dark:text-slate-50 break-keep">
+                          {opt.title}
+                        </div>
+                        <div className="text-xs text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
+                          {opt.sub}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#8B95A1] shrink-0" />
+                  </button>
+                );
+              })}
+
+            {activeQuickGroup === 'as-massage' &&
+              [
+                {
+                  title: '가전 AS센터 연락처',
+                  sub: '삼성 · LG · PLUX 등 제조사 서비스센터 전화 · 복사',
+                  icon: Headphones,
+                  tone: 'text-[#4E5968] bg-[#F2F4F6] dark:bg-white/10 dark:text-slate-200',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    pushAppHistoryGuard('open-as-center');
+                    setIsAsCenterOpen(true);
+                  },
+                },
+                {
+                  title: '안마의자 설치 안내',
+                  sub: '코지마 · 세라젬 · 바디프랜드 등 폐가전회수 · 사다리차 기준',
+                  icon: Truck,
+                  tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    openStorePolicyModal('massage');
+                  },
+                },
+              ].map((opt) => {
+                const OptIcon = opt.icon;
+                return (
+                  <button
+                    key={opt.title}
+                    type="button"
+                    onClick={opt.onClick}
+                    className="w-full p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#131C2E] border border-[#E5E8EB] dark:border-slate-800 hover:border-[#1B64DA] dark:hover:border-[#60A5FA] text-left flex items-center justify-between gap-3 transition cursor-pointer schedule-tactile"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${opt.tone}`}>
+                        <OptIcon className="w-5 h-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm sm:text-[15px] font-extrabold text-[#191F28] dark:text-slate-50 break-keep">
+                          {opt.title}
+                        </div>
+                        <div className="text-xs text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
+                          {opt.sub}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#8B95A1] shrink-0" />
+                  </button>
+                );
+              })}
+
+            {activeQuickGroup === 'finance-freed' &&
+              [
+                {
+                  title: '무이자 할부 보기',
+                  sub: '이달의 카드사별 무이자 · 부분무이자 개월수 조견표',
+                  icon: Percent,
+                  tone: 'text-[#1B64DA] bg-[#EFF6FF] dark:bg-blue-500/20 dark:text-blue-300',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    pushAppHistoryGuard('open-installment');
+                    setIsInstallmentModalOpen(true);
+                  },
+                },
+                {
+                  title: '제휴카드 발급 보기',
+                  sub: '롯데 · 신한 등 제휴카드 간편 발급 QR코드 · 링크',
+                  icon: QrCode,
+                  tone: 'text-[#191F28] bg-[#F2F4F6] dark:bg-white/10 dark:text-slate-200',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    pushAppHistoryGuard('open-card-issue');
+                    setIsCardIssueOpen(true);
+                  },
+                },
+                {
+                  title: '프리드 상품 요약 보기',
+                  sub: '일반 · Hi구독플러스 · Hi웅진플랜 운영 상품 요약표',
+                  icon: BookOpen,
+                  tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
+                  onClick: () => {
+                    setActiveQuickGroup(null);
+                    openStorePolicyModal('freed');
+                  },
+                },
+              ].map((opt) => {
+                const OptIcon = opt.icon;
+                return (
+                  <button
+                    key={opt.title}
+                    type="button"
+                    onClick={opt.onClick}
+                    className="w-full p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#131C2E] border border-[#E5E8EB] dark:border-slate-800 hover:border-[#1B64DA] dark:hover:border-[#60A5FA] text-left flex items-center justify-between gap-3 transition cursor-pointer schedule-tactile"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${opt.tone}`}>
+                        <OptIcon className="w-5 h-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm sm:text-[15px] font-extrabold text-[#191F28] dark:text-slate-50 break-keep">
+                          {opt.title}
+                        </div>
+                        <div className="text-xs text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
+                          {opt.sub}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-[#8B95A1] shrink-0" />
+                  </button>
+                );
+              })}
+
+            {activeQuickGroup === 'landing-links' &&
+              OFFICIAL_LANDING_LINKS.map((item) => {
+                const isCopied = copiedLandingId === item.id;
+                return (
+                  <div
+                    key={item.id}
+                    className="w-full p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-[#131C2E] border border-[#E5E8EB] dark:border-slate-800 hover:border-[#1B64DA] dark:hover:border-[#60A5FA] flex items-center justify-between gap-2.5 transition"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.open(item.url, '_blank', 'noopener,noreferrer');
+                        setActiveQuickGroup(null);
+                      }}
+                      className="flex-1 min-w-0 text-left flex items-center gap-3 cursor-pointer"
+                    >
+                      <span
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          item.isStaff
+                            ? 'bg-[#FFF1F2] text-[#E60012] dark:bg-rose-500/20 dark:text-rose-300'
+                            : 'bg-[#EFF6FF] text-[#1B64DA] dark:bg-blue-500/20 dark:text-blue-300'
+                        }`}
+                      >
+                        {item.isStaff ? <Settings className="w-5 h-5" /> : <Globe className="w-5 h-5" />}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm sm:text-[15px] font-extrabold text-[#191F28] dark:text-slate-50 break-keep">
+                            {item.title}
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10.5px] font-bold ${
+                              item.isStaff
+                                ? 'bg-[#FFF1F2] text-[#E60012] dark:bg-rose-500/15 dark:text-rose-300'
+                                : 'bg-[#EFF6FF] text-[#1B64DA] dark:bg-blue-500/15 dark:text-blue-300'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        </div>
+                        <div className="text-xs text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
+                          {item.sub}
+                        </div>
+                      </div>
+                    </button>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyLandingUrl(item)}
+                        title="주소 복사"
+                        className="h-9 px-2.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 border border-[#D1D6DB] dark:border-slate-700 text-xs font-bold text-[#191F28] dark:text-slate-100 inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        {isCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-[#059669]" />
+                            <span>복사됨</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-[#4E5968] dark:text-slate-300" />
+                            <span>복사</span>
+                          </>
+                        )}
+                      </button>
+
+                      <a
+                        href={item.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setActiveQuickGroup(null)}
+                        title={`${item.title} 새 창 열기`}
+                        className="h-9 px-3 rounded-xl bg-[#191F28] dark:bg-[#60A5FA] hover:opacity-90 text-white dark:text-[#0B1120] text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>열기</span>
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                      </a>
+                    </div>
+                  </div>
+                );
+              })}
+          </FlagshipModalShell>
+        </div>
       )}
     </>
   );

@@ -359,6 +359,42 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onNavigateStep('himobile');
         },
       },
+      {
+        id: 'menu-sub-landing-link',
+        group: '메뉴',
+        title: '내 랜딩페이지 · 구독 랜딩페이지 열기',
+        subtitle: '가전구독 × 구독플러스 맞춤 혜택 시뮬레이터 (새 창 링크)',
+        badge: '랜딩링크',
+        copyText: 'https://himart-gj.github.io/himart-subscription-simulator/#/',
+        onSelect: () => {
+          onClose();
+          window.open('https://himart-gj.github.io/himart-subscription-simulator/#/', '_blank', 'noopener,noreferrer');
+        },
+      },
+      {
+        id: 'menu-store-landing-link',
+        group: '메뉴',
+        title: '내 랜딩페이지 · 일반 매장랜딩페이지 열기',
+        subtitle: '경기광주점 A·B동 쇼룸 & 1:1 통합 상담 예약 페이지 (새 창 링크)',
+        badge: '랜딩링크',
+        copyText: 'https://himart-gj.github.io/himart-11/',
+        onSelect: () => {
+          onClose();
+          window.open('https://himart-gj.github.io/himart-11/', '_blank', 'noopener,noreferrer');
+        },
+      },
+      {
+        id: 'menu-sub-admin-link',
+        group: '메뉴',
+        title: '내 랜딩페이지 · 구독페이지 관리자페이지 열기',
+        subtitle: '구독 시뮬레이터 품목 · 추천세트 · 정책 마스터 관리자 CMS (새 창 링크)',
+        badge: '관리자링크',
+        copyText: 'https://himart-gj.github.io/himart-subscription-simulator/#/admin',
+        onSelect: () => {
+          onClose();
+          window.open('https://himart-gj.github.io/himart-subscription-simulator/#/admin', '_blank', 'noopener,noreferrer');
+        },
+      },
       ...(onOpenPartnerLinksModal
         ? [
             {
