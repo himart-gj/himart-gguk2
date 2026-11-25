@@ -19,6 +19,7 @@ import {
   ResolvedPlanSummaryEntry,
   calculateGeneralHiPreedSummary,
   getGeneralPlan1And2Summaries,
+  getSubscriptionSurplusMeta,
   syncActivePlanIntoGeneralPlans,
 } from '../../types/proposal';
 import {
@@ -120,10 +121,19 @@ function buildPlanComparisonSummaryEntry(
         `1회 추가캐시백 -${formatCurrency(sSum.subExtraCashback)}원`
       );
     }
+    const subSurplus = getSubscriptionSurplusMeta(
+      sSum.finalMonthlyFee,
+      sSum.hiPlusPayoutMethod
+    );
+    const totalTermText =
+      subSurplus.isSurplusZone || sSum.finalTotalFee <= 0
+        ? sSum.totalTermSurplus > 0
+          ? `0원(누적 +${formatCurrency(sSum.totalTermSurplus)}원 초과혜택)`
+          : '0원'
+        : `${formatCurrency(sSum.finalTotalFee)}원`;
+
     if (sSum.totalSubCashback + sSum.subLotteBillingDiscount > 0) {
-      subBenefits.push(
-        `최종 ${sSum.periodLabel} 체감가 ${formatCurrency(sSum.finalTotalFee)}원`
-      );
+      subBenefits.push(`최종 ${sSum.periodLabel} 체감가 ${totalTermText}`);
     }
     return {
       itemSummary: subNames,
@@ -132,9 +142,9 @@ function buildPlanComparisonSummaryEntry(
       performanceAmount: sSum.totalPrincipal,
       benefit:
         subBenefits.join(' + ') ||
-        `${sSum.periodLabel} 총 체감가 ${formatCurrency(
-          sSum.finalTotalFee
-        )}원 (원금 ${formatCurrency(sSum.totalPrincipal)}원)`,
+        `${sSum.periodLabel} 총 체감가 ${totalTermText} (원금 ${formatCurrency(
+          sSum.totalPrincipal
+        )}원)`,
     };
   }
 
@@ -144,6 +154,21 @@ function buildPlanComparisonSummaryEntry(
       sSum.validSubNames.length > 0
         ? sSum.validSubNames.join(', ')
         : `구독가전(${sSum.periodLabel})`;
+    const hybSurplus = getSubscriptionSurplusMeta(
+      sSum.finalMonthlyFee,
+      sSum.hiPlusPayoutMethod
+    );
+    const hybMonthlyLabel = hybSurplus.isSurplusZone
+      ? hybSurplus.monthlySurplus > 0
+        ? `월 체감 0원(${hybSurplus.surplusStickyText})`
+        : '월 체감 0원'
+      : `월 체감 ${formatCurrency(sSum.finalMonthlyFee)}원`;
+    const hybTotalLabel =
+      hybSurplus.isSurplusZone || sSum.finalTotalFee <= 0
+        ? sSum.totalTermSurplus > 0
+          ? `총 체감 0원(누적 +${formatCurrency(sSum.totalTermSurplus)}원 혜택)`
+          : '총 체감 0원'
+        : `총 체감 ${formatCurrency(sSum.finalTotalFee)}원`;
     return {
       itemSummary: `일반 ${displayPlanNum}안(${genLabel}) + 구독 ${displayPlanNum}안(${subLabel})`,
       paidAmount: gSum.sum > 0 ? gSum.payPrice : sSum.totalBaseMonthly,
@@ -155,11 +180,9 @@ function buildPlanComparisonSummaryEntry(
         sSum.periodLabel
       }) 월 기본 ${formatCurrency(
         sSum.totalBaseMonthly
-      )}원(월 체감 ${formatCurrency(
-        sSum.finalMonthlyFee
-      )}원 / 총 체감 ${formatCurrency(
-        sSum.finalTotalFee
-      )}원 · 원금 ${formatCurrency(sSum.totalPrincipal)}원)`,
+      )}원(${hybMonthlyLabel} / ${hybTotalLabel} · 원금 ${formatCurrency(
+        sSum.totalPrincipal
+      )}원)`,
     };
   }
 
@@ -371,11 +394,20 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         `1회 추가캐시백 -${formatCurrency(primarySubSummary.subExtraCashback)}원`
       );
     }
+    const primarySubSurplus = getSubscriptionSurplusMeta(
+      primarySubSummary.finalMonthlyFee,
+      primarySubSummary.hiPlusPayoutMethod
+    );
+    const primaryTotalTermText =
+      primarySubSurplus.isSurplusZone || primarySubSummary.finalTotalFee <= 0
+        ? primarySubSummary.totalTermSurplus > 0
+          ? `0원(누적 +${formatCurrency(primarySubSummary.totalTermSurplus)}원 초과혜택)`
+          : '0원'
+        : `${formatCurrency(primarySubSummary.finalTotalFee)}원`;
+
     if (primarySubSummary.totalSubCashback + primarySubSummary.subLotteBillingDiscount > 0) {
       benefitParts.push(
-        `최종 ${primarySubSummary.periodLabel} 체감가 ${formatCurrency(
-          primarySubSummary.finalTotalFee
-        )}원`
+        `최종 ${primarySubSummary.periodLabel} 체감가 ${primaryTotalTermText}`
       );
     }
 
@@ -437,17 +469,29 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       ? ` · 1회 캐시백 -${formatCurrency(primarySubSummary.totalSubCashback)}원 반영`
       : '';
 
+  const hybSubSurplus = getSubscriptionSurplusMeta(
+    primarySubSummary.finalMonthlyFee,
+    primarySubSummary.hiPlusPayoutMethod
+  );
+  const hybMonthlyText = hybSubSurplus.isSurplusZone
+    ? hybSubSurplus.monthlySurplus > 0
+      ? `월 체감 0원(${hybSubSurplus.surplusStickyText})`
+      : '월 체감 0원'
+    : `월 체감 ${formatCurrency(primarySubSummary.finalMonthlyFee)}원`;
+  const hybTotalText =
+    hybSubSurplus.isSurplusZone || primarySubSummary.finalTotalFee <= 0
+      ? primarySubSummary.totalTermSurplus > 0
+        ? `최종 체감 0원(누적 +${formatCurrency(primarySubSummary.totalTermSurplus)}원 혜택)`
+        : '최종 체감 0원'
+      : `최종 체감 ${formatCurrency(primarySubSummary.finalTotalFee)}원`;
+
   const expectedBenefit = `일반 1안 실결제 ${formatCurrency(
     primaryGenSummary.payPrice
   )}원(체감 ${formatCurrency(primaryGenSummary.rawNet)}원) + 구독(${
     primarySubSummary.periodLabel
   }) 월 기본 ${formatCurrency(
     primarySubSummary.totalBaseMonthly
-  )}원(월 체감 ${formatCurrency(
-    primarySubSummary.finalMonthlyFee
-  )}원 / 최종 체감 ${formatCurrency(
-    primarySubSummary.finalTotalFee
-  )}원${hybOneTimeSubLabel} · 통합 최종 체감가 ${formatCurrency(
+  )}원(${hybMonthlyText} / ${hybTotalText}${hybOneTimeSubLabel} · 통합 최종 체감가 ${formatCurrency(
     primaryGenSummary.rawNet + primarySubSummary.finalTotalFee
   )}원)`;
 
@@ -518,8 +562,8 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     const hasConfirmedSlip = quotes.some((q) => Boolean(q?.isConfirmedSlip));
     const isPurchasedStatus =
       c.status === '계약완료' || c.status === '배송완료';
-    const loadedDraft = loadedQuoteId
-      ? quotes.find((q) => q.id === loadedQuoteId && !q.isConfirmedSlip)
+    const loadedExactQuote = loadedQuoteId
+      ? quotes.find((q) => q.id === loadedQuoteId)
       : undefined;
     const firstDraft = quotes.find((q) => !q.isConfirmedSlip);
 
@@ -527,17 +571,20 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     setName(c.name);
     setPhone(c.phone || '');
     setStatus(c.status || '상담진행중');
-    setDeliveryDate(c.deliveryDate || '');
+    setDeliveryDate(loadedExactQuote?.deliveryDate || c.deliveryDate || '');
     setFollowUpDate(c.followUpDate || '');
     setGiftItems(c.giftItems || '');
     setMemo('');
 
-    if (loadedDraft) {
+    if (loadedExactQuote) {
       setSaveMode('overwrite');
-      setOverwriteQuoteId(loadedDraft.id);
-      setOrderNo(loadedDraft.orderNo || '');
+      setOverwriteQuoteId(loadedExactQuote.id);
+      setOrderNo(loadedExactQuote.orderNo || '');
       setContractDate(
-        c.contractDate || c.regDate?.slice(0, 10) || today
+        loadedExactQuote.contractDate ||
+          c.contractDate ||
+          c.regDate?.slice(0, 10) ||
+          today
       );
       return;
     }
@@ -621,6 +668,17 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
   const draftQuotesForTarget = existingQuotesForTarget.filter(
     (q) => !q?.isConfirmedSlip
   );
+  const loadedConfirmedSlip =
+    activeCustomer?.id &&
+    matchedExistingCustomer?.id === activeCustomer.id &&
+    activeCustomer.activeQuoteId
+      ? existingQuotesForTarget.find(
+          (q) => q.id === activeCustomer.activeQuoteId && Boolean(q?.isConfirmedSlip)
+        )
+      : undefined;
+  const overwritableQuotesForTarget = loadedConfirmedSlip
+    ? [loadedConfirmedSlip, ...draftQuotesForTarget]
+    : draftQuotesForTarget;
   const targetIsPurchasedOrHasSlip =
     confirmedSlipsForTarget.length > 0 ||
     matchedExistingCustomer?.status === '계약완료' ||
@@ -692,20 +750,26 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
         (no) => normalizeOrderNoKey(no) === incomingOrderKey
       );
 
-    // 확정 전표만 있고 미확정 상담견적이 없거나, 새 전표번호가 입력된 경우 무조건 append 강제
-    const canOverwriteDraft =
+    // 열어둔 확정전표/미확정견적이 없으면 append, 새 전표번호가 입력된 경우에도 append 강제
+    const canOverwriteTarget =
       existingQuotesForTarget.length > 0 &&
-      draftQuotesForTarget.length > 0 &&
+      overwritableQuotesForTarget.length > 0 &&
       !isNewDistinctOrderNo;
     const effectiveSaveMode: 'overwrite' | 'append' =
-      saveMode === 'overwrite' && canOverwriteDraft ? 'overwrite' : 'append';
+      saveMode === 'overwrite' && canOverwriteTarget ? 'overwrite' : 'append';
 
     const effectiveOverwriteId =
       effectiveSaveMode === 'overwrite'
-        ? draftQuotesForTarget.some((q) => q.id === overwriteQuoteId)
+        ? overwritableQuotesForTarget.some((q) => q.id === overwriteQuoteId)
           ? overwriteQuoteId
-          : draftQuotesForTarget[0]?.id
+          : overwritableQuotesForTarget[0]?.id
         : undefined;
+
+    const allowOverwriteConfirmedSlip = Boolean(
+      loadedConfirmedSlip &&
+        effectiveSaveMode === 'overwrite' &&
+        effectiveOverwriteId === loadedConfirmedSlip.id
+    );
 
     const isConfirmedSlipSave =
       status === '계약완료' ||
@@ -740,6 +804,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       planSummaries: extracted.planSummaries,
       saveMode: effectiveSaveMode,
       overwriteQuoteId: effectiveOverwriteId,
+      allowOverwriteConfirmedSlip,
       isConfirmedSlip: isConfirmedSlipSave,
       slipDeliveryStatus:
         status === '배송완료' ? '배송완료' : '배송대기',
@@ -970,83 +1035,118 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 </span>
                 <span
                   className={`text-[11.5px] font-extrabold px-2 py-0.5 rounded-full text-white ${
-                    saveMode === 'append' || draftQuotesForTarget.length === 0
+                    saveMode === 'append' || overwritableQuotesForTarget.length === 0
                       ? 'bg-[#059669]'
                       : 'bg-[#1B64DA]'
                   }`}
                 >
-                  {saveMode === 'append' || draftQuotesForTarget.length === 0
+                  {saveMode === 'append' || overwritableQuotesForTarget.length === 0
                     ? targetIsPurchasedOrHasSlip
-                      ? '🛡️ 기존 전표 보존 · 추가 구매 별도 추가'
+                      ? '🛡️ 기존 전표 보존 · 별도 추가'
                       : '별도 비교용 새 견적 추가'
+                    : loadedConfirmedSlip && overwriteQuoteId === loadedConfirmedSlip.id
+                    ? '🔄 열어둔 전표에 제안서·혜택 업데이트'
                     : '상담 견적 수정 덮어쓰기'}
                 </span>
               </div>
 
-              {targetIsPurchasedOrHasSlip && (
-                <div className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11.5px] font-bold text-emerald-900 dark:text-emerald-200 flex items-start gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-[#059669] dark:text-emerald-400 shrink-0 mt-0.5" />
+              {loadedConfirmedSlip ? (
+                <div className="px-3 py-2 rounded-xl bg-[#EFF6FF] dark:bg-blue-950/40 border border-[#BFDBFE] dark:border-blue-800/60 text-[11.5px] font-bold text-[#1E3A8A] dark:text-blue-200 flex items-start gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-[#1B64DA] dark:text-blue-400 shrink-0 mt-0.5" />
                   <span className="break-keep">
-                    기존 확정 전표(
-                    {confirmedSlipsForTarget.length > 0
-                      ? `${confirmedSlipsForTarget.length}건${
-                          existingOrderNosForTarget.length > 0
-                            ? `: ${existingOrderNosForTarget.join(', ')}`
-                            : ''
-                        }`
-                      : matchedExistingCustomer.status}
-                    ) 보호를 위해 <strong>[➕ 추가 구매 · 새 전표/견적으로 별도 추가]</strong>가 자동 선택되었습니다.
+                    CRM에서 열어둔 확정 전표(
+                    <strong>{loadedConfirmedSlip.orderNo || loadedConfirmedSlip.title}</strong>
+                    ) 편집 중입니다. <strong>[🔄 현재 전표에 설계안 업데이트]</strong>로 저장하면 매출 중복 합산 없이 제안서·혜택만 안전하게 반영됩니다.
                   </span>
                 </div>
+              ) : (
+                targetIsPurchasedOrHasSlip && (
+                  <div className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11.5px] font-bold text-emerald-900 dark:text-emerald-200 flex items-start gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-[#059669] dark:text-emerald-400 shrink-0 mt-0.5" />
+                    <span className="break-keep">
+                      기존 확정 전표(
+                      {confirmedSlipsForTarget.length > 0
+                        ? `${confirmedSlipsForTarget.length}건${
+                            existingOrderNosForTarget.length > 0
+                              ? `: ${existingOrderNosForTarget.join(', ')}`
+                              : ''
+                          }`
+                        : matchedExistingCustomer.status}
+                      ) 보호를 위해 <strong>[➕ 추가 구매 · 새 전표/견적으로 별도 추가]</strong>가 자동 선택되었습니다.
+                    </span>
+                  </div>
+                )
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setSaveMode('append')}
+                  onClick={() => {
+                    setSaveMode('append');
+                    if (loadedConfirmedSlip) {
+                      if (
+                        normalizeOrderNoKey(orderNo) ===
+                        normalizeOrderNoKey(loadedConfirmedSlip.orderNo)
+                      ) {
+                        setOrderNo('');
+                      }
+                      setStatus('상담진행중');
+                    }
+                  }}
                   className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col gap-0.5 ${
-                    saveMode === 'append' || draftQuotesForTarget.length === 0
+                    saveMode === 'append' || overwritableQuotesForTarget.length === 0
                       ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] border-[#191F28] dark:border-[#60A5FA] shadow-xs'
                       : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#BFDBFE] dark:border-slate-700 hover:bg-white/90 dark:hover:bg-slate-800'
                   }`}
                 >
                   <div className="text-xs font-black flex items-center gap-1">
                     <span>
-                      ➕ 추가 구매 · 새 전표/견적 별도 추가
-                      {targetIsPurchasedOrHasSlip ? ' (권장)' : ''}
+                      {loadedConfirmedSlip
+                        ? '➕ 상담 비교안 · 추가 구매 별도 추가'
+                        : `➕ 추가 구매 · 새 전표/견적 별도 추가${
+                            targetIsPurchasedOrHasSlip ? ' (권장)' : ''
+                          }`}
                     </span>
                   </div>
                   <div
                     className={`text-[11.5px] font-semibold ${
-                      saveMode === 'append' || draftQuotesForTarget.length === 0
+                      saveMode === 'append' || overwritableQuotesForTarget.length === 0
                         ? 'text-slate-300 dark:text-slate-900/80'
                         : 'text-[#8B95A1] dark:text-slate-400'
                     }`}
                   >
-                    기존 전표·견적 보존 + 새 항목 나란히 추가 (
-                    {Math.min(
-                      MAX_QUOTES_PER_CUSTOMER,
-                      existingQuotesForTarget.length + 1
-                    )}
-                    /{MAX_QUOTES_PER_CUSTOMER})
+                    {loadedConfirmedSlip
+                      ? `기존 전표 보존 + 비교 상담견적 별도 추가 (${Math.min(
+                          MAX_QUOTES_PER_CUSTOMER,
+                          existingQuotesForTarget.length + 1
+                        )}/${MAX_QUOTES_PER_CUSTOMER})`
+                      : `기존 전표·견적 보존 + 새 항목 나란히 추가 (${Math.min(
+                          MAX_QUOTES_PER_CUSTOMER,
+                          existingQuotesForTarget.length + 1
+                        )}/${MAX_QUOTES_PER_CUSTOMER})`}
                   </div>
                 </button>
 
                 <button
                   type="button"
-                  disabled={draftQuotesForTarget.length === 0}
+                  disabled={overwritableQuotesForTarget.length === 0}
                   onClick={() => {
-                    if (draftQuotesForTarget.length === 0) return;
+                    if (overwritableQuotesForTarget.length === 0) return;
                     setSaveMode('overwrite');
-                    if (
-                      !overwriteQuoteId ||
-                      !draftQuotesForTarget.some((q) => q.id === overwriteQuoteId)
-                    ) {
-                      setOverwriteQuoteId(draftQuotesForTarget[0]?.id || '');
+                    const targetQuote =
+                      overwritableQuotesForTarget.find(
+                        (q) => q.id === overwriteQuoteId
+                      ) || overwritableQuotesForTarget[0];
+                    if (targetQuote) {
+                      setOverwriteQuoteId(targetQuote.id);
+                      if (targetQuote.isConfirmedSlip) {
+                        setOrderNo(targetQuote.orderNo || '');
+                        setStatus(matchedExistingCustomer.status || '계약완료');
+                      }
                     }
                   }}
                   className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-0.5 ${
-                    draftQuotesForTarget.length === 0
+                    overwritableQuotesForTarget.length === 0
                       ? 'bg-slate-100 dark:bg-slate-900/50 text-[#8B95A1] dark:text-slate-500 border-[#E5E8EB] dark:border-slate-800 cursor-not-allowed opacity-70'
                       : saveMode === 'overwrite'
                       ? 'bg-[#1B64DA] text-white border-[#1B64DA] shadow-xs cursor-pointer'
@@ -1055,37 +1155,56 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 >
                   <div className="text-xs font-black flex items-center gap-1">
                     <span>
-                      🔄 미확정 상담 견적 덮어쓰기
-                      {!targetIsPurchasedOrHasSlip ? ' (권장)' : ''}
+                      {loadedConfirmedSlip
+                        ? '🔄 현재 전표에 설계안 업데이트 (권장)'
+                        : `🔄 미확정 상담 견적 덮어쓰기${
+                            !targetIsPurchasedOrHasSlip ? ' (권장)' : ''
+                          }`}
                     </span>
                   </div>
                   <div
                     className={`text-[11.5px] font-semibold ${
-                      saveMode === 'overwrite' && draftQuotesForTarget.length > 0
+                      saveMode === 'overwrite' && overwritableQuotesForTarget.length > 0
                         ? 'text-blue-100'
                         : 'text-[#8B95A1] dark:text-slate-400'
                     }`}
                   >
-                    {draftQuotesForTarget.length === 0
+                    {overwritableQuotesForTarget.length === 0
                       ? '확정 전표는 덮어쓰기 불가 (상세카드 [✏️전표수정] 이용)'
+                      : loadedConfirmedSlip
+                      ? '매출 중복 합산 없이 제안서·혜택 내용만 업데이트'
                       : `상담 견적(${draftQuotesForTarget.length}건) 중 선택하여 수정`}
                   </div>
                 </button>
               </div>
 
-              {saveMode === 'overwrite' && draftQuotesForTarget.length > 0 && (
+              {saveMode === 'overwrite' && overwritableQuotesForTarget.length > 0 && (
                 <div className="pt-1">
                   <label className="block text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-300 mb-1">
-                    덮어쓸 상담 견적 선택 (확정 전표는 목록에서 자동 보호됨):
+                    {loadedConfirmedSlip
+                      ? '업데이트할 대상 전표 · 견적 선택:'
+                      : '덮어쓸 상담 견적 선택 (확정 전표는 목록에서 자동 보호됨):'}
                   </label>
                   <select
-                    value={overwriteQuoteId || draftQuotesForTarget[0]?.id || ''}
-                    onChange={(e) => setOverwriteQuoteId(e.target.value)}
+                    value={overwriteQuoteId || overwritableQuotesForTarget[0]?.id || ''}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setOverwriteQuoteId(nextId);
+                      const chosen = overwritableQuotesForTarget.find(
+                        (q) => q.id === nextId
+                      );
+                      if (chosen?.isConfirmedSlip) {
+                        setOrderNo(chosen.orderNo || '');
+                        setStatus(matchedExistingCustomer.status || '계약완료');
+                      }
+                    }}
                     className="w-full px-3 py-1.5 rounded-xl border border-[#BFDBFE] dark:border-slate-700 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
                   >
-                    {draftQuotesForTarget.map((q, idx) => (
+                    {overwritableQuotesForTarget.map((q, idx) => (
                       <option key={q.id} value={q.id}>
-                        [상담견적 #{idx + 1}] {q.title} ({formatCurrency(q.netAmount)}원 · {q.createdAt.slice(5, 16)})
+                        {q.isConfirmedSlip
+                          ? `[현재 열린 확정전표${q.orderNo ? ` · ${q.orderNo}` : ''}] ${q.title} (실판 ${formatCurrency(q.performanceAmount || q.paidAmount)}원)`
+                          : `[상담견적 #${idx + 1}] ${q.title} (${formatCurrency(q.netAmount)}원 · ${q.createdAt.slice(5, 16)})`}
                       </option>
                     ))}
                   </select>

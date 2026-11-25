@@ -13,9 +13,11 @@ import {
   MAX_FREED_ACCOUNTS,
   normalizeHiPlusPayoutMethod,
   normalizeSubscriptionPeriod,
+  recommendCardSpendHiPlusCounts,
   SUB_CARE_OPTIONS,
   SubscriptionPeriod,
 } from '../types/proposal';
+import { inferCategoryFromModelCode } from '../utils/aiImageParser';
 import {
   ArrowRight,
   Camera,
@@ -28,9 +30,22 @@ import {
   Plus,
   RotateCcw,
   ShieldCheck,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { FormattedMoneyInput } from './FormattedMoneyInput';
+
+const SUB_CATEGORY_PRESETS = [
+  '정수기',
+  '공기청정기',
+  '식기세척기',
+  '워시타워',
+  '냉장고',
+  '김치냉장고',
+  '에어컨',
+  '로봇청소기',
+  '의류관리기',
+];
 
 export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
   bothSubPlansHavePrice,
@@ -100,6 +115,83 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
     }));
   };
 
+  const handleQuickAddSubCategory = (categoryName: string) => {
+    onChange((prev: any) => {
+      const items = Array.isArray(prev.items) ? prev.items : [];
+      const emptyIdx = items.findIndex(
+        (it: any) =>
+          (it.category || '').trim() === '' &&
+          (!it.monthlyFee || Number(it.monthlyFee) === 0)
+      );
+      if (emptyIdx !== -1) {
+        return {
+          ...prev,
+          items: items.map((it: any, idx: number) =>
+            idx === emptyIdx ? { ...it, category: categoryName } : it
+          ),
+        };
+      }
+      const defaultPeriod = normalizeSubscriptionPeriod(
+        prev.subscriptionPeriod,
+        60
+      );
+      const defaultCare = prev.careService || SUB_CARE_OPTIONS[0];
+      const defaultWarranty =
+        prev.warrantyType || 'AS연장보험 + 가전수리올케어';
+      const newItem = {
+        id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        category: categoryName,
+        modelName: '',
+        modelCode: '',
+        monthlyFee: 0,
+        period: defaultPeriod,
+        careService: defaultCare,
+        careType: defaultCare,
+        warrantyType: defaultWarranty,
+      };
+      return {
+        ...prev,
+        items: [...items, newItem],
+      };
+    });
+  };
+
+  const maxSubAccountsAvailable =
+    state.quoteMode === 'hybrid' && !state.hideHiPreed
+      ? Math.max(0, MAX_FREED_ACCOUNTS - (generalHiPreedSummary?.totalAccounts || 0))
+      : MAX_FREED_ACCOUNTS;
+
+  const autoSpendHiPlusPreset =
+    currentCard && liveSubSummary?.currentCardTier
+      ? recommendCardSpendHiPlusCounts(
+          liveSubSummary.currentCardTier.minSpendAmount,
+          maxSubAccountsAvailable
+        )
+      : null;
+
+  const isAutoSpendPresetApplied = Boolean(
+    autoSpendHiPlusPreset &&
+      countPreedTowardCardSpend &&
+      activePayoutMethod !== 'bank_bank' &&
+      (state.hiPlusCounts?.hi72 || 0) === autoSpendHiPlusPreset.hi72 &&
+      (state.hiPlusCounts?.hi90 || 0) === autoSpendHiPlusPreset.hi90 &&
+      (state.hiPlusCounts?.hi108 || 0) === autoSpendHiPlusPreset.hi108
+  );
+
+  const handleApplyAutoSpendHiPlusPreset = () => {
+    if (!autoSpendHiPlusPreset) return;
+    onChange((prev: any) => ({
+      ...prev,
+      hideSubPreed: false,
+      countPreedTowardCardSpend: true,
+      hiPlusPayoutMethod:
+        normalizeHiPlusPayoutMethod(prev.hiPlusPayoutMethod) === 'bank_bank'
+          ? 'card_bank'
+          : normalizeHiPlusPayoutMethod(prev.hiPlusPayoutMethod),
+      hiPlusCounts: { ...autoSpendHiPlusPreset },
+    }));
+  };
+
   if (!showSubscription) return null;
 
   return (
@@ -166,6 +258,20 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
           </div>
         </div>
 
+        {/* 빠른 구독 품목 프리셋 칩 */}
+        <div className="flex flex-wrap gap-1">
+          {SUB_CATEGORY_PRESETS.map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => handleQuickAddSubCategory(cat)}
+              className="px-2.5 py-1 rounded-md bg-[#F8FAFC] dark:bg-slate-800 hover:bg-[#EFF6FF] dark:hover:bg-blue-500/15 text-[#4E5968] dark:text-slate-300 hover:text-[#1B64DA] dark:hover:text-blue-300 font-bold text-[11.5px] border border-[#E5E8EB] dark:border-slate-700 hover:border-[#BFDBFE] transition cursor-pointer"
+            >
+              +{cat}
+            </button>
+          ))}
+        </div>
+
         {subScanNotice && (
           <p className="text-xs font-semibold text-[#1B64DA] dark:text-blue-300 bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 rounded-xl py-2 px-3">
             {subScanNotice}
@@ -177,7 +283,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
           </p>
         )}
 
-        <div className="space-y-2.5 sm:max-h-[340px] sm:overflow-y-auto sm:pr-1">
+        <div className="space-y-2.5">
           {state.items.map((item: any, index: number) => {
             const itemPeriod: SubscriptionPeriod = normalizeSubscriptionPeriod(
               item.period,
@@ -216,12 +322,21 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   <input
                     type="text"
                     value={item.modelName}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const nextModel = e.target.value;
+                      const inferred =
+                        !(item.category || '').trim() &&
+                        nextModel.trim().length >= 3
+                          ? inferCategoryFromModelCode(nextModel)
+                          : '';
                       handleUpdateSubItem(item.id, {
-                        modelName: e.target.value,
-                        modelCode: e.target.value,
-                      })
-                    }
+                        modelName: nextModel,
+                        modelCode: nextModel,
+                        ...(inferred && inferred !== '가전품목'
+                          ? { category: inferred }
+                          : {}),
+                      });
+                    }}
                     placeholder="모델명/품번 (선택, 예: RF85DB9581APW)"
                     className={`flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border text-base sm:text-xs font-mono font-medium text-[#191F28] dark:text-slate-100 focus:outline-none ${
                       hasInvalidNumericModel
@@ -246,10 +361,10 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   </p>
                 )}
 
-                {/* Row 2: Period Toggle (36/48/60) + Care Service + Monthly Fee */}
+                {/* Row 2: Period Toggle (36/60) + Care Service + Monthly Fee */}
                 <div className="grid grid-cols-12 gap-2 items-center pl-0 min-[380px]:pl-7">
-                  <div className="col-span-5 sm:col-span-4 inline-flex bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-[#E5E8EB] dark:border-slate-700">
-                    {([36, 48, 60] as SubscriptionPeriod[]).map((p) => (
+                  <div className="col-span-5 sm:col-span-3 inline-flex bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-[#E5E8EB] dark:border-slate-700">
+                    {([36, 60] as SubscriptionPeriod[]).map((p) => (
                       <button
                         key={p}
                         type="button"
@@ -258,7 +373,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                             period: p,
                           })
                         }
-                        className={`flex-1 py-1 px-1 rounded-md font-bold text-[11px] transition cursor-pointer whitespace-nowrap ${
+                        className={`flex-1 py-1 px-1.5 rounded-md font-bold text-[11.5px] transition cursor-pointer whitespace-nowrap ${
                           itemPeriod === p
                             ? 'bg-[#191F28] dark:bg-blue-600 text-white'
                             : 'text-[#8B95A1] dark:text-slate-400 hover:text-[#191F28] dark:hover:text-slate-100'
@@ -306,7 +421,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                     <option value="custom">직접 입력</option>
                   </select>
 
-                  <div className="col-span-12 sm:col-span-4 relative">
+                  <div className="col-span-12 sm:col-span-5 relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] font-semibold text-[#8B95A1] dark:text-slate-400">
                       월 요금
                     </span>
@@ -831,22 +946,50 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
             </div>
 
             <div className="rounded-xl bg-[#F8FAFC] dark:bg-slate-900/60 border border-[#E5E8EB] dark:border-slate-800 px-3 py-2.5 space-y-1.5">
-              <label className="flex items-start gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={countPreedTowardCardSpend}
-                  onChange={handleToggleCountPreedTowardCardSpend}
-                  className="mt-0.5 w-4 h-4 rounded border-[#CBD5E1] text-[#1B64DA] focus:ring-[#1B64DA] cursor-pointer shrink-0"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11.5px] font-extrabold text-[#191F28] dark:text-slate-100 leading-snug break-keep">
-                    상조회비 제휴카드 전월실적 인정 반영 (시뮬레이션)
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <label className="flex items-start gap-2 cursor-pointer select-none flex-1 min-w-[200px]">
+                  <input
+                    type="checkbox"
+                    checked={countPreedTowardCardSpend}
+                    onChange={handleToggleCountPreedTowardCardSpend}
+                    className="mt-0.5 w-4 h-4 rounded border-[#CBD5E1] text-[#1B64DA] focus:ring-[#1B64DA] cursor-pointer shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11.5px] font-extrabold text-[#191F28] dark:text-slate-100 leading-snug break-keep">
+                      상조회비 제휴카드 전월실적 인정 반영 (시뮬레이션)
+                    </div>
+                    <div className="text-[10.5px] font-medium text-[#6B7684] dark:text-slate-400 leading-snug break-keep mt-0.5">
+                      제휴카드 선택 시 지원상품 월 납입금을 전월실적에 포함한 추가 필요 카드 사용액을 제안서에 함께 표시합니다.
+                    </div>
                   </div>
-                  <div className="text-[10.5px] font-medium text-[#6B7684] dark:text-slate-400 leading-snug break-keep mt-0.5">
-                    제휴카드 선택 시 지원상품 월 납입금을 전월실적에 포함한 추가 필요 카드 사용액을 제안서에 함께 표시합니다.
-                  </div>
-                </div>
-              </label>
+                </label>
+
+                {autoSpendHiPlusPreset && liveSubSummary?.currentCardTier && (
+                  <button
+                    type="button"
+                    onClick={handleApplyAutoSpendHiPlusPreset}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold border transition cursor-pointer shrink-0 whitespace-nowrap ${
+                      isAutoSpendPresetApplied
+                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        : 'bg-[#EFF6FF] dark:bg-blue-500/15 hover:bg-[#DBEAFE] text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/40'
+                    }`}
+                  >
+                    {isAutoSpendPresetApplied ? (
+                      <>
+                        <Check className="w-3 h-3 shrink-0" />
+                        <span>실적 자동충족 적용됨</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3 shrink-0" />
+                        <span>
+                          실적 {Math.round(liveSubSummary.currentCardTier.minSpendAmount / 10000)}만 자동충족 추천
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
 
               {countPreedTowardCardSpend && currentCard && liveSubSummary.currentCardTier && (
                 <div
@@ -901,10 +1044,12 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
           activePayoutMethod
         );
         const liveTermSurplus =
-          liveSurplus.monthlySurplus > 0
-            ? liveSurplus.monthlySurplus * representativePeriod
+          typeof liveSubSummary.totalTermSurplus === 'number'
+            ? liveSubSummary.totalTermSurplus
             : liveSubSummary.finalTotalFee < 0
             ? Math.abs(liveSubSummary.finalTotalFee)
+            : liveSurplus.monthlySurplus > 0
+            ? liveSurplus.monthlySurplus * representativePeriod
             : 0;
         const oneTimeBenefitSum =
           liveSubSummary.totalSubCashback + liveSubSummary.subLotteBillingDiscount;

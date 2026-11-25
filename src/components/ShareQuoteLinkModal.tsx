@@ -5,6 +5,7 @@ import {
   calculateSubscriptionSummary,
   getActiveCompareModes,
   getAllGeneralPlanSummaries,
+  getSubscriptionSurplusMeta,
   hasMeaningfulGeneralItems,
   hasMeaningfulSubItems,
   ProposalState,
@@ -27,6 +28,7 @@ import {
   syncViewerBaseUrlFromServer,
 } from '../utils/shareQuoteCodec';
 import { maskModelCodeAfter3, maskProposalStateModels } from '../utils/modelMasker';
+import { safeCopyText } from '../utils/mobileQaRuntime';
 import {
   AlertTriangle,
   Check,
@@ -397,19 +399,23 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       state: effectiveShareState,
     };
 
-    createShortenedQuoteLinks(payload)
-      .then((bundle) => {
-        if (!cancelled) {
-          setLinkBundle(bundle);
-          setIsGenerating(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setIsGenerating(false);
-      });
+    const delayMs = linkBundle ? 300 : 0;
+    const timer = window.setTimeout(() => {
+      createShortenedQuoteLinks(payload)
+        .then((bundle) => {
+          if (!cancelled) {
+            setLinkBundle(bundle);
+            setIsGenerating(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setIsGenerating(false);
+        });
+    }, delayMs);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [isOpen, profile, custInput, effectiveShareState]);
 
@@ -418,6 +424,36 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   const activeUrl = linkBundle?.shortUrl || '';
   const genSummary = calculateGeneralPurchaseSummary(effectiveShareState);
   const subSummary = calculateSubscriptionSummary(effectiveShareState);
+
+  const formatSubMonthlyShort = (
+    sSum: ReturnType<typeof calculateSubscriptionSummary>
+  ) => {
+    const sSurplus = getSubscriptionSurplusMeta(
+      sSum.finalMonthlyFee,
+      sSum.hiPlusPayoutMethod
+    );
+    if (sSurplus.isSurplusZone) {
+      return sSurplus.monthlySurplus > 0
+        ? `월 0원(${sSurplus.surplusStickyText})`
+        : '월 0원';
+    }
+    return `월 ${sSum.finalMonthlyFee.toLocaleString()}원`;
+  };
+
+  const formatSubTotalShort = (
+    sSum: ReturnType<typeof calculateSubscriptionSummary>
+  ) => {
+    const sSurplus = getSubscriptionSurplusMeta(
+      sSum.finalMonthlyFee,
+      sSum.hiPlusPayoutMethod
+    );
+    if (sSurplus.isSurplusZone || sSum.finalTotalFee <= 0) {
+      return sSum.totalTermSurplus > 0
+        ? `0원(누적 +${sSum.totalTermSurplus.toLocaleString()}원 혜택)`
+        : '0원';
+    }
+    return `${sSum.finalTotalFee.toLocaleString()}원`;
+  };
 
   const honorific = custInput.trim() ? `${custInput.trim()} 고객님` : '고객님';
   const isMultiModeShare = activeCompareList.length >= 2;
@@ -445,7 +481,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         mode: m,
         planLabel: `${idx + 1}안`,
         modeTitle: '구독구매',
-        line: `[${idx + 1}안 구독구매] 월 ${sSum.finalMonthlyFee.toLocaleString()}원 (${sSum.periodLabel} 총 체감 ${sSum.finalTotalFee.toLocaleString()}원)`,
+        line: `[${idx + 1}안 구독구매] ${formatSubMonthlyShort(sSum)} (${sSum.periodLabel} 총 체감 ${formatSubTotalShort(sSum)})`,
         itemNames: sSum.validSubNames,
       };
     }
@@ -453,7 +489,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       mode: m,
       planLabel: `${idx + 1}안`,
       modeTitle: '혼합구매',
-      line: `[${idx + 1}안 혼합구매] 일시불 체감 ${gSum.rawNet.toLocaleString()}원 + 구독 월 ${sSum.finalMonthlyFee.toLocaleString()}원`,
+      line: `[${idx + 1}안 혼합구매] 일시불 체감 ${gSum.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(sSum)}`,
       itemNames: [
         ...gSum.displayItems
           .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
@@ -484,15 +520,27 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       ? `1회 캐시백 -${subSummary.totalSubCashback.toLocaleString()}원 반영`
       : '';
 
+  const mainSubSurplus = getSubscriptionSurplusMeta(
+    subSummary.finalMonthlyFee,
+    subSummary.hiPlusPayoutMethod
+  );
+  const mainSubMonthlyHighlight = mainSubSurplus.isSurplusZone
+    ? mainSubSurplus.monthlySurplus > 0
+      ? `월 체감 0원 (${mainSubSurplus.surplusStickyText})`
+      : '월 체감 0원'
+    : `월 체감 ${subSummary.finalMonthlyFee.toLocaleString()}원`;
+
   const priceHighlight =
     effectiveShareState.quoteMode === 'subscription'
-      ? `월 체감 ${subSummary.finalMonthlyFee.toLocaleString()}원 (최종 ${
+      ? `${mainSubMonthlyHighlight} (최종 ${
           subSummary.periodLabel
-        } 체감가 ${subSummary.finalTotalFee.toLocaleString()}원${
+        } 체감가 ${formatSubTotalShort(subSummary)}${
           subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''
         })`
       : effectiveShareState.quoteMode === 'hybrid'
-      ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 월 ${subSummary.finalMonthlyFee.toLocaleString()}원 (통합 최종 체감가 ${(
+      ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(
+          subSummary
+        )} (통합 최종 체감가 ${(
           genSummary.rawNet + subSummary.finalTotalFee
         ).toLocaleString()}원${subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''})`
       : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원`;
@@ -530,10 +578,10 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       ...(hasMultipleGeneralPlans
         ? validSharePlans.map((p) => {
             if (effectiveShareState.quoteMode === 'subscription') {
-              return `• ${p.planNum}안: 월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+              return `• ${p.planNum}안: ${formatSubMonthlyShort(p.subSummary)}`;
             }
             if (effectiveShareState.quoteMode === 'hybrid') {
-              return `• ${p.planNum}안: 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+              return `• ${p.planNum}안: 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + ${formatSubMonthlyShort(p.subSummary)}`;
             }
             return `• ${p.planNum}안: 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
           })
@@ -579,10 +627,10 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       ...(hasMultipleGeneralPlans
         ? validSharePlans.map((p) => {
             if (effectiveShareState.quoteMode === 'subscription') {
-              return `• [${p.planNum}안] 월 체감 ${p.subSummary.finalMonthlyFee.toLocaleString()}원 (${p.subSummary.periodLabel} 총 ${p.subSummary.finalTotalFee.toLocaleString()}원)`;
+              return `• [${p.planNum}안] ${formatSubMonthlyShort(p.subSummary)} (${p.subSummary.periodLabel} 총 ${formatSubTotalShort(p.subSummary)})`;
             }
             if (effectiveShareState.quoteMode === 'hybrid') {
-              return `• [${p.planNum}안] 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 구독 월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+              return `• [${p.planNum}안] 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(p.subSummary)}`;
             }
             return `• [${p.planNum}안] 실결제 ${p.genSummary.payPrice.toLocaleString()}원 / 최종 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
           })
@@ -607,24 +655,22 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     channelTab === 'sms' ? buildSmsShareMessage() : buildKakaoShareMessage();
 
   const handleCopy = async (mode: 'sms' | 'kakao' | 'url') => {
-    if (!activeUrl || hasEmptyModeWarning) return;
+    if (isGenerating || !activeUrl || hasEmptyModeWarning) return;
     const text =
       mode === 'sms'
         ? buildSmsShareMessage()
         : mode === 'kakao'
         ? buildKakaoShareMessage()
         : activeUrl;
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = await safeCopyText(text);
+    if (ok) {
       setCopiedType(mode);
       setTimeout(() => setCopiedType(null), 3000);
-    } catch {
-      // ignore
     }
   };
 
   const handleOpenNativeSmsApp = () => {
-    if (!activeUrl || hasEmptyModeWarning) return;
+    if (isGenerating || !activeUrl || hasEmptyModeWarning) return;
     const cleanPhone = custPhoneInput.replace(/[^0-9+]/g, '');
     const body = encodeURIComponent(buildSmsShareMessage());
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
@@ -637,7 +683,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   };
 
   const handlePreviewCustomerScreen = () => {
-    if (!activeUrl || hasEmptyModeWarning) return;
+    if (isGenerating || !activeUrl || hasEmptyModeWarning) return;
     const target = linkBundle?.compactUrl || activeUrl;
     window.open(target, '_blank', 'noopener,noreferrer');
   };
@@ -944,7 +990,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             </div>
             <button
               type="button"
-              disabled={!activeUrl || hasEmptyModeWarning}
+              disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
               onClick={() => handleCopy('url')}
               className={`min-h-[36px] shrink-0 px-3 py-1.5 rounded-lg text-white text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 whitespace-nowrap ${
                 maskSharedModels
@@ -960,7 +1006,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
               ) : (
                 <>
                   <Link2 className="w-3.5 h-3.5" />
-                  <span>링크 복사</span>
+                  <span>{isGenerating ? '생성중...' : '링크 복사'}</span>
                 </>
               )}
             </button>
@@ -1023,17 +1069,17 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={!activeUrl || hasEmptyModeWarning}
+                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
                 onClick={handleOpenNativeSmsApp}
                 className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
               >
                 <Send className="w-4 h-4 shrink-0" />
-                <span>휴대폰 문자앱 바로 열기</span>
+                <span>{isGenerating ? '링크 갱신 중...' : '휴대폰 문자앱 바로 열기'}</span>
               </button>
 
               <button
                 type="button"
-                disabled={!activeUrl || hasEmptyModeWarning}
+                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
                 onClick={() => handleCopy('sms')}
                 className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
               >
@@ -1045,7 +1091,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                 ) : (
                   <>
                     <Copy className="w-4 h-4 shrink-0" />
-                    <span>문자 안내문 + 링크 복사</span>
+                    <span>{isGenerating ? '링크 갱신 중...' : '문자 안내문 + 링크 복사'}</span>
                   </>
                 )}
               </button>
@@ -1054,7 +1100,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={!activeUrl || hasEmptyModeWarning}
+                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
                 onClick={() => handleCopy('kakao')}
                 className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
               >
@@ -1066,14 +1112,14 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                 ) : (
                   <>
                     <Copy className="w-4 h-4 shrink-0" />
-                    <span>카톡 안내문 + 링크 복사</span>
+                    <span>{isGenerating ? '링크 갱신 중...' : '카톡 안내문 + 링크 복사'}</span>
                   </>
                 )}
               </button>
 
               <button
                 type="button"
-                disabled={!activeUrl || hasEmptyModeWarning}
+                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
                 onClick={handlePreviewCustomerScreen}
                 className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45"
               >

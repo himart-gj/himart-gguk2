@@ -1361,8 +1361,31 @@ export async function saveCustomerQuote(payload: {
         const preservedId = candidateTarget.id || newQuote.id;
         savedQuoteId = preservedId;
         const overwrittenQuote: QuoteRecord = {
+          ...candidateTarget,
           ...newQuote,
           id: preservedId,
+          orderNo: cleanOrderNo || candidateTarget.orderNo,
+          ...(effectiveIsConfirmedSlip || candidateTarget.isConfirmedSlip
+            ? {
+                isConfirmedSlip: true,
+                contractDate:
+                  payload.contractDate?.trim() ||
+                  candidateTarget.contractDate ||
+                  cleanContractDate,
+                deliveryDate:
+                  cleanDeliveryDate || candidateTarget.deliveryDate || '',
+                deliveryStatus:
+                  payload.status === '배송완료'
+                    ? '배송완료'
+                    : candidateTarget.deliveryStatus || effectiveSlipDelivStatus,
+                outboundType:
+                  payload.outboundType || candidateTarget.outboundType || '',
+                deliveryTimeSlot:
+                  payload.deliveryTimeSlot ||
+                  candidateTarget.deliveryTimeSlot ||
+                  '',
+              }
+            : {}),
         };
         const remaining = prevQuotes.filter((_, idx) => idx !== candidateIdx);
         nextQuotes = [overwrittenQuote, ...remaining].slice(

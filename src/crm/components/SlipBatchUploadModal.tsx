@@ -1025,7 +1025,6 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
                           >
                             <option value="general">일반구매</option>
                             <option value="sub-36">구독 36개월 (SET-CARD36)</option>
-                            <option value="sub-48">구독 48개월 (SET-CARD48)</option>
                             <option value="sub-60">구독 60개월 (SET-CARD60)</option>
                           </select>
                         </div>

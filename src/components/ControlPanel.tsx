@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { addEmptyGeneralPlanInState, AFFILIATE_CARDS, AffiliateCardId, AFFILIATE_GENERAL_CARD_OPTIONS, applyAllGeneralPlansPatch, calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, confirmActiveGeneralPlanInState, copyPlan1ToPlan2InState, deleteGeneralPlanInState, duplicateActiveGeneralPlanInState, GENERAL_CATEGORY_PRESETS, GENERAL_HIPREED_PLANS, GeneralExtraBenefitItem, GeneralExtraBenefitType, GeneralHiPreedKey, GeneralPurchaseItem, getGeneralPlan1And2Summaries, getSubscriptionPeriodSummary, getSubscriptionSurplusMeta, HiPlusKey, isAffiliateGeneralCardType, MAX_FREED_ACCOUNTS, MAX_QUOTE_PLANS, normalizeSubscriptionPeriod, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionItem, SubscriptionPeriod, switchGeneralPlanInState } from '../types/proposal';
 import { SpringNumberFlow } from './SpringNumberFlow';
-import { getStoredGeminiApiKey, setStoredGeminiApiKey } from '../utils/aiImageParser';
+import { getStoredGeminiApiKey, inferCategoryFromModelCode, setStoredGeminiApiKey } from '../utils/aiImageParser';
 import { ArrowLeft, Camera, Check, Copy, CreditCard, Eye, EyeOff, KeyRound, Loader2, Minus, Plus, RotateCcw, Save, ShieldCheck, ShoppingBag, User, X } from 'lucide-react';
 import { ControlPanelSubscriptionSection } from './ControlPanelSubscriptionSection';
 import { QuoteModeComparisonControlBar } from './MultiModeComparisonSection';
@@ -907,8 +907,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 ))}
               </div>
 
-              {/* Spacious 2-Row Item Cards (Zero Clipping for 14-char Model Codes + Scroll Guard for 6+ Multi-Items) */}
-              <div className="space-y-2 sm:max-h-[340px] sm:overflow-y-auto sm:pr-1">
+              {/* Spacious 2-Row Item Cards (Zero Clipping for 14-char Model Codes + Natural Single Scroll) */}
+              <div className="space-y-2">
                 {state.generalItems.map((item, idx) => (
                   <div
                     key={item.id}
@@ -934,12 +934,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                       <input
                         type="text"
                         value={item.modelName}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const nextModel = e.target.value;
+                          const inferred =
+                            !(item.category || '').trim() &&
+                            nextModel.trim().length >= 3
+                              ? inferCategoryFromModelCode(nextModel)
+                              : '';
                           handleUpdateGeneralItem(item.id, {
-                            modelName: e.target.value,
-                            code: e.target.value,
-                          })
-                        }
+                            modelName: nextModel,
+                            code: nextModel,
+                            ...(inferred && inferred !== '가전품목'
+                              ? { category: inferred, name: inferred }
+                              : {}),
+                          });
+                        }}
                         placeholder="모델명 / 상품코드 (예: RF85DB9581APW)"
                         className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-[#E5E8EB] dark:border-slate-700 text-base sm:text-xs font-mono font-medium text-[#191F28] dark:text-slate-100 focus:border-[#1B64DA] focus:outline-none"
                       />

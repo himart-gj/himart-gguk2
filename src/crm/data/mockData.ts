@@ -1,5 +1,11 @@
 import { CustomerItem, SMSTemplate } from '../types/crm';
 import { formatCurrency } from '../utils/date';
+import { loadConsultantProfile } from '../../utils/shareQuoteCodec';
+
+function getOfficialStoreName(): string {
+  const configured = (loadConsultantProfile().storeName || '').trim();
+  return configured || '롯데하이마트 경기광주점';
+}
 
 // 초기 실행 시 가짜 샘플 고객이 보이지 않도록 빈 배열로 시작합니다.
 export const INITIAL_CUSTOMERS: CustomerItem[] = [];
@@ -11,7 +17,7 @@ export const SMS_TEMPLATES: SMSTemplate[] = [
     icon: '📋',
     badgeColor: 'bg-blue-600 text-white',
     generate: (c) =>
-      `안녕하세요, ${c.name} 고객님! 😊\n롯데하이마트 국지점 상담원입니다.\n\n오늘 매장에서 상담받으신 맞춤 가전 견적 내역 정리해 드립니다.\n\n■ 상담 모델: ${
+      `안녕하세요, ${c.name} 고객님! 😊\n${getOfficialStoreName()} 상담원입니다.\n\n오늘 매장에서 상담받으신 맞춤 가전 견적 내역 정리해 드립니다.\n\n■ 상담 모델: ${
         c.items || '맞춤 가전 패키지'
       }\n■ 결제 예정금액: ${formatCurrency(
         c.paidAmount
@@ -31,7 +37,7 @@ export const SMS_TEMPLATES: SMSTemplate[] = [
     icon: '🔥',
     badgeColor: 'bg-amber-600 text-white',
     generate: (c) =>
-      `안녕하세요, ${c.name} 고객님! 롯데하이마트 국지점입니다. 😊\n\n지난번 관심 있게 보셨던 [${
+      `안녕하세요, ${c.name} 고객님! ${getOfficialStoreName()}입니다. 😊\n\n지난번 관심 있게 보셨던 [${
         c.items || '상담 가전'
       }] 관련하여 안내 연락드립니다.\n\n현재 적용해 드렸던 특별 혜택(${
         c.expectedBenefit || '카드 캐시백 및 매장 할인'
@@ -45,7 +51,7 @@ export const SMS_TEMPLATES: SMSTemplate[] = [
     icon: '🚚',
     badgeColor: 'bg-emerald-600 text-white',
     generate: (c) =>
-      `안녕하세요, ${c.name} 고객님! 롯데하이마트 국지점입니다. 🚚\n\n주문하신 [${
+      `안녕하세요, ${c.name} 고객님! ${getOfficialStoreName()}입니다. 🚚\n\n주문하신 [${
         c.items || '가전 제품'
       }] 배송 일정 안내드립니다.\n\n■ 배송 예정일: ${
         c.deliveryDate || '지정일'
@@ -59,7 +65,7 @@ export const SMS_TEMPLATES: SMSTemplate[] = [
     icon: '🎁',
     badgeColor: 'bg-purple-600 text-white',
     generate: (c) =>
-      `안녕하세요, ${c.name} 고객님! 롯데하이마트 국지점입니다. 😊\n\n배송받으신 [${
+      `안녕하세요, ${c.name} 고객님! ${getOfficialStoreName()}입니다. 😊\n\n배송받으신 [${
         c.items || '가전 제품'
       }]은 마음에 드시나요?\n설치 과정이나 제품 사용 중 불편하신 점이 있다면 언제든 바로 연락 주시기 바랍니다.\n\n${
         c.giftItems

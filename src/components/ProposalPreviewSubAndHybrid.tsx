@@ -798,6 +798,10 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
     !state.hideSubPreed && (subSummary.hiSummary?.totalAccounts || 0) > 0;
   const hasSubCardActive =
     cardMonthlyDiscount > 0 && Boolean(currentCard) && Boolean(currentCardTier);
+  const subSurplus = getSubscriptionSurplusMeta(
+    subSummary.finalMonthlyFee,
+    subSummary.hiPlusPayoutMethod
+  );
 
   return (
     <>
@@ -958,26 +962,87 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
             </div>
           </div>
 
-          {/* 통합 최종 혜택 합계 요약 */}
-          <div className="rounded-2xl bg-[#FFF1F2] border-2 border-[#E60012] p-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="space-y-0.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs sm:text-sm font-black text-[#E60012] inline-flex items-center gap-1">
-                  <Sparkles className="w-4 h-4 shrink-0" />
-                  일반구매 + 구독 통합 최종 체감 합계
+          {/* 통합 최종 혜택 합계 요약 — ① 오늘 일시불 체감 + ② 매월 구독 체감 2분할 직관 요약 */}
+          <div className="rounded-2xl bg-[#FFF1F2] border-2 border-[#E60012] p-4 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs sm:text-sm font-black text-[#E60012] inline-flex items-center gap-1">
+                <Sparkles className="w-4 h-4 shrink-0" />
+                일반구매 {generalSummary.displayItems.length}품목 + 구독케어 {subSummary.displayItems.length}품목 핵심 요약
+              </span>
+              {hybridTotalDiscountAndSupport > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-white text-[#E60012] border border-[#FECDD3] text-[11.5px] font-extrabold tabular-nums whitespace-nowrap">
+                  통합 총 -{hybridTotalDiscountAndSupport.toLocaleString()}원 혜택
                 </span>
-                {hybridTotalDiscountAndSupport > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-white text-[#E60012] border border-[#FECDD3] text-[11.5px] font-extrabold tabular-nums whitespace-nowrap">
-                    통합 총 -{hybridTotalDiscountAndSupport.toLocaleString()}원 혜택
-                  </span>
-                )}
-              </div>
-              <p className="text-xs font-semibold text-[#4E5968] break-keep">
-                일반구매 {generalSummary.displayItems.length}품목 + 구독케어 {subSummary.displayItems.length}품목 통합 기준
-              </p>
+              )}
             </div>
-            <div className="text-2xl sm:text-3xl font-black text-[#E60012] font-mono tabular-nums whitespace-nowrap">
-              {hybridCombinedNetTotal.toLocaleString()}원
+
+            <div className={`grid ${useMobileFluid ? 'grid-cols-1 min-[440px]:grid-cols-2' : 'grid-cols-2'} gap-2.5`}>
+              {/* ① 일반구매 일시불 체감가 */}
+              <div className="rounded-xl bg-white border border-[#FECDD3] px-3.5 py-2.5 space-y-1">
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <span className="text-[11.5px] font-extrabold text-[#4E5968]">
+                    ① 일반구매 일시불 체감가
+                  </span>
+                  <span className="text-[11px] font-bold text-[#8B95A1] font-mono tabular-nums whitespace-nowrap">
+                    실결제 {generalSummary.payPrice.toLocaleString()}원
+                  </span>
+                </div>
+                <div className="text-xl sm:text-2xl font-black text-[#E60012] font-mono tabular-nums whitespace-nowrap leading-tight">
+                  {generalSummary.rawNet.toLocaleString()}원
+                </div>
+              </div>
+
+              {/* ② 매월 구독 체감 요금 */}
+              <div className="rounded-xl bg-white border border-[#BFDBFE] px-3.5 py-2.5 space-y-1">
+                <div className="flex items-center justify-between gap-1 flex-wrap">
+                  <span className="text-[11.5px] font-extrabold text-[#1B64DA]">
+                    ② 매월 구독 체감 ({periodLabel})
+                  </span>
+                  <span className="text-[11px] font-bold text-[#8B95A1] font-mono tabular-nums whitespace-nowrap">
+                    {subSurplus.isSurplusZone || subSummary.finalTotalFee <= 0
+                      ? subSummary.totalTermSurplus > 0
+                        ? `누적 +${subSummary.totalTermSurplus.toLocaleString()}원 혜택`
+                        : '총 체감 0원'
+                      : `약정 총 ${subSummary.finalTotalFee.toLocaleString()}원`}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {subSurplus.isSurplusZone ? (
+                    <>
+                      <span className="text-xl sm:text-2xl font-black text-emerald-700 font-mono tabular-nums whitespace-nowrap leading-tight">
+                        월 0원
+                      </span>
+                      {subSurplus.monthlySurplus > 0 && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[11px] font-extrabold font-mono tabular-nums whitespace-nowrap">
+                          {subSurplus.surplusStickyText}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-xl sm:text-2xl font-black text-[#1B64DA] font-mono tabular-nums whitespace-nowrap leading-tight">
+                      월 {subSummary.finalMonthlyFee.toLocaleString()}원
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-[#FECDD3] flex flex-wrap items-center justify-between gap-2">
+              <div className="space-y-0.5 min-w-0">
+                <div className="text-xs font-extrabold text-[#191F28]">
+                  {periodLabel} 만기 기준 통합 최종 체감 합계
+                </div>
+                <div className="text-[11.5px] font-semibold text-[#4E5968] font-mono tabular-nums break-keep">
+                  {subSummary.finalTotalFee < 0
+                    ? `일시불 체감 ${generalSummary.rawNet.toLocaleString()}원 − 구독 누적 초과혜택 ${Math.abs(
+                        subSummary.finalTotalFee
+                      ).toLocaleString()}원 상계 반영`
+                    : `일시불 체감 ${generalSummary.rawNet.toLocaleString()}원 + 구독 ${periodLabel} 총 체감 ${subSummary.finalTotalFee.toLocaleString()}원`}
+                </div>
+              </div>
+              <div className="text-2xl sm:text-3xl font-black text-[#E60012] font-mono tabular-nums whitespace-nowrap">
+                {hybridCombinedNetTotal.toLocaleString()}원
+              </div>
             </div>
           </div>
 

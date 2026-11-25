@@ -13,6 +13,7 @@ import {
   FileSpreadsheet,
   FolderKanban,
   Gift,
+  Link2,
   MailOpen,
   MessageSquare,
   Phone,
@@ -42,6 +43,8 @@ import {
   isUrgentCustomer,
 } from '../utils/date';
 import { safeCopyText } from '../../utils/mobileQaRuntime';
+import { loadConsultantProfile } from '../../utils/shareQuoteCodec';
+import { ShareQuoteLinkModal } from '../../components/ShareQuoteLinkModal';
 import {
   calculateFreedIncentiveDetail,
   parsePurchasedModelsFromItemsText,
@@ -166,6 +169,9 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [showDetailFields, setShowDetailFields] = useState(false);
   const [showQuotesDrawer, setShowQuotesDrawer] = useState<boolean>(() =>
     Boolean(customer.quotes && customer.quotes.length > 0)
+  );
+  const [shareModalQuote, setShareModalQuote] = useState<QuoteRecord | null>(
+    null
   );
 
   // 인라인 전표 수정 상태
@@ -425,21 +431,31 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
     ).join(' vs ');
 
     let text = '';
+    const storeDisplayName =
+      (loadConsultantProfile().storeName || '').trim() ||
+      '롯데하이마트 경기광주점';
+    const fmtSubNetMonthly = (amt: number) =>
+      amt <= 0
+        ? amt < 0
+          ? `월 0원 (매월 +${formatCurrency(Math.abs(amt))}원 혜택)`
+          : '월 0원'
+        : `월 ${formatCurrency(amt)}원`;
+
     if (extraPlans.length > 0) {
       if (q.quoteMode === 'subscription') {
         const blocks = [
-          `📘 [구독 1안] ${q.itemSummary || '맞춤 구독 가전 1안'}\n- 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원\n- 최종 월 체감가: 월 ${formatCurrency(q.netAmount)}원${
+          `📘 [구독 1안] ${q.itemSummary || '맞춤 구독 가전 1안'}\n- 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원\n- 최종 월 체감가: ${fmtSubNetMonthly(q.netAmount)}${
             q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
           }`,
           ...extraPlans.map((ps, idx) => {
             const pNum = idx + 2;
             const icon = PLAN_BOOK_ICONS[(pNum - 1) % PLAN_BOOK_ICONS.length];
-            return `${icon} [구독 ${pNum}안] ${ps.itemSummary}\n- 월 기준 구독료: 월 ${formatCurrency(ps.paidAmount)}원\n- 최종 월 체감가: 월 ${formatCurrency(ps.netAmount)}원${
+            return `${icon} [구독 ${pNum}안] ${ps.itemSummary}\n- 월 기준 구독료: 월 ${formatCurrency(ps.paidAmount)}원\n- 최종 월 체감가: ${fmtSubNetMonthly(ps.netAmount)}${
               ps.benefit ? `\n- 혜택요약: ${ps.benefit}` : ''
             }`;
           }),
         ];
-        text = `[롯데하이마트 국지점 구독 ${rangeLabel} 비교 견적 안내]
+        text = `[${storeDisplayName} 구독 ${rangeLabel} 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
@@ -459,7 +475,7 @@ ${totalPlans}가지 구독 플랜 중 예산과 구성에 맞춰 편하게 선�
             }`;
           }),
         ];
-        text = `[롯데하이마트 국지점 혼합 ${rangeLabel} 비교 견적 안내]
+        text = `[${storeDisplayName} 혼합 ${rangeLabel} 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
@@ -479,7 +495,7 @@ ${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 �
             }`;
           }),
         ];
-        text = `[롯데하이마트 국지점 ${rangeLabel} 비교 견적 안내]
+        text = `[${storeDisplayName} ${rangeLabel} 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
@@ -488,22 +504,22 @@ ${blocks.join('\n\n')}
 ${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
       }
     } else if (q.quoteMode === 'subscription') {
-      text = `[롯데하이마트 국지점 맞춤 구독 견적 안내]
+      text = `[${storeDisplayName} 맞춤 구독 견적 안내]
 👤 고객명: ${customer.name} 고객님
 📌 견적명: ${q.title}
 📦 구독모델: ${q.itemSummary}
 💳 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원
 🎁 혜택요약: ${q.benefit || '제휴카드 및 구독프리드 혜택'}
-✨ 최종 월 체감가: 월 ${formatCurrency(q.netAmount)}원`;
+✨ 최종 월 체감가: ${fmtSubNetMonthly(q.netAmount)}`;
     } else if (q.quoteMode === 'hybrid') {
-      text = `[롯데하이마트 국지점 맞춤 일반+구독 혼합 견적 안내]
+      text = `[${storeDisplayName} 맞춤 일반+구독 혼합 견적 안내]
 👤 고객명: ${customer.name} 고객님
 📌 견적명: ${q.title}
 📦 상담모델: ${q.itemSummary}
 💳 일반 일시불 결제예정가: ${formatCurrency(q.paidAmount)}원 (체감가: ${formatCurrency(q.netAmount)}원)
 🎁 통합 혜택 및 구독 상세: ${q.benefit || '일반+구독 결합 혜택'}`;
     } else {
-      text = `[롯데하이마트 국지점 맞춤 견적 안내]
+      text = `[${storeDisplayName} 맞춤 견적 안내]
 👤 고객명: ${customer.name} 고객님
 📌 견적명: ${q.title}
 📦 상담모델: ${q.itemSummary}
@@ -966,6 +982,17 @@ ${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 �
                           >
                             견적서 열기
                           </button>
+                          {q.proposalState && (
+                            <button
+                              type="button"
+                              onClick={() => setShareModalQuote(q)}
+                              title="고객 전용 웹 견적링크 즉시 발송"
+                              className="px-2 py-1 rounded-md text-[11.5px] font-extrabold bg-[#EFF6FF] dark:bg-blue-500/20 border border-[#BFDBFE] dark:border-blue-500/40 text-[#1B64DA] dark:text-blue-300 hover:bg-[#DBEAFE] dark:hover:bg-blue-500/30 inline-flex items-center gap-0.5 transition cursor-pointer whitespace-nowrap"
+                            >
+                              <Link2 className="w-3 h-3 shrink-0" />
+                              <span>웹링크</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleCopyQuoteToClipboard(q)}
@@ -1723,6 +1750,20 @@ ${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 �
           </div>
         )}
       </div>
+
+      {shareModalQuote?.proposalState && (
+        <ShareQuoteLinkModal
+          isOpen={true}
+          onClose={() => setShareModalQuote(null)}
+          state={shareModalQuote.proposalState}
+          customerName={customer.name}
+          customerPhone={customer.phone}
+          isDark={
+            typeof document !== 'undefined' &&
+            document.documentElement.classList.contains('dark')
+          }
+        />
+      )}
     </div>
   );
 };

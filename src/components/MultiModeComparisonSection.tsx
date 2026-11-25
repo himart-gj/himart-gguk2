@@ -286,10 +286,8 @@ export const MultiModeTabSwitcherBanner: React.FC<
           : `월 ${subSum.finalMonthlyFee.toLocaleString()}원`,
         sub:
           subSurplus.isSurplusZone || subSum.finalTotalFee <= 0
-            ? subSurplus.monthlySurplus > 0
-              ? `총 +${(
-                  subSurplus.monthlySurplus * subSum.representativePeriod
-                ).toLocaleString()}원 초과 혜택`
+            ? subSum.totalTermSurplus > 0
+              ? `총 +${subSum.totalTermSurplus.toLocaleString()}원 초과 혜택`
               : '총 체감 0원'
             : `총 체감 ${subSum.finalTotalFee.toLocaleString()}원`,
       };

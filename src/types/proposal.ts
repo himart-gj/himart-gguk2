@@ -7,8 +7,8 @@ export function normalizeSubscriptionPeriod(
   fallback: SubscriptionPeriod = 60
 ): SubscriptionPeriod {
   const num = Number(raw);
-  if (num === 36 || num === 48 || num === 60) return num;
-  return fallback === 36 || fallback === 48 || fallback === 60 ? fallback : 60;
+  if (num === 36 || num === 60) return num;
+  return fallback === 36 || fallback === 60 ? fallback : 60;
 }
 
 // ==================== 일반구매(일시불) 타입 ====================

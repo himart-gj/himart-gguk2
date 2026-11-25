@@ -288,11 +288,22 @@ export function inferCategoryFromModelCode(
   ) {
     return '에어컨';
   }
-  if (upper.startsWith('DW') || upper.startsWith('DB')) {
+  if (
+    upper.startsWith('DW') ||
+    upper.startsWith('DB') ||
+    upper.startsWith('DUB') ||
+    upper.startsWith('DWA')
+  ) {
     return '식기세척기';
   }
   if (upper.startsWith('DF') || upper.startsWith('SC')) {
     return '의류관리기';
+  }
+  if (upper.startsWith('AS') || upper.startsWith('AP-')) {
+    return '공기청정기';
+  }
+  if (upper.startsWith('VR') || upper.startsWith('B20')) {
+    return '로봇청소기';
   }
   if (
     upper.startsWith('VS') ||
@@ -309,7 +320,8 @@ export function inferCategoryFromModelCode(
     upper.startsWith('CHP-') ||
     upper.startsWith('CHPI-') ||
     upper.startsWith('WD5') ||
-    upper.startsWith('WU')
+    upper.startsWith('WU') ||
+    upper.startsWith('WPU')
   ) {
     return '정수기';
   }
