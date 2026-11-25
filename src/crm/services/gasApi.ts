@@ -13,9 +13,11 @@ import { getNowDateTimeStr, getTodayStr } from '../utils/date';
 import {
   aggregateSlipUnitsToProfile,
   buildConfirmedSlipUnitProfiles,
+  createEmptyFreedCounts,
   extractPerformanceFromProposalState,
   getConfirmedSlipQuotes,
   parsePurchasedModelsFromItemsText,
+  sanitizeFreedCounts,
 } from '../utils/settlementEngine';
 import {
   calculateGeneralPurchaseSummary,
@@ -32,6 +34,52 @@ import {
 } from '../../utils/offlineDbQueue';
 
 export { MAX_QUOTES_PER_CUSTOMER };
+
+const FREED_COUNT_KEYS: (keyof CustomerFreedCounts)[] = [
+  'hi72',
+  'hi90',
+  'hi108',
+  'hf75',
+  'hf150',
+  'hf225',
+  'hf300',
+];
+
+function sumIntrinsicConfirmedSlipFreedCounts(
+  quotes: QuoteRecord[]
+): CustomerFreedCounts {
+  const out = createEmptyFreedCounts();
+  for (const q of quotes) {
+    if (!q || !q.isConfirmedSlip) continue;
+    const raw =
+      q.freedCounts ||
+      extractPerformanceFromProposalState(q.proposalState)?.freedCounts;
+    const clean = sanitizeFreedCounts(raw);
+    for (const k of FREED_COUNT_KEYS) {
+      out[k] += clean[k];
+    }
+  }
+  return out;
+}
+
+function mergeConfirmedSlipFreedCountsPreservingManualExtra(
+  prevQuotes: QuoteRecord[],
+  nextQuotes: QuoteRecord[],
+  prevCustomerFreed?: CustomerFreedCounts
+): CustomerFreedCounts | undefined {
+  if (!nextQuotes.some((q) => Boolean(q?.isConfirmedSlip))) {
+    return prevCustomerFreed;
+  }
+  const prevSlipSum = sumIntrinsicConfirmedSlipFreedCounts(prevQuotes);
+  const nextSlipSum = sumIntrinsicConfirmedSlipFreedCounts(nextQuotes);
+  const prevCust = sanitizeFreedCounts(prevCustomerFreed);
+  const merged = createEmptyFreedCounts();
+  for (const k of FREED_COUNT_KEYS) {
+    const manualExtra = Math.max(0, prevCust[k] - prevSlipSum[k]);
+    merged[k] = nextSlipSum[k] + manualExtra;
+  }
+  return merged;
+}
 
 export const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
 
@@ -404,8 +452,14 @@ export function deleteQuoteAndSyncCustomer(
     (q) => q.id !== quoteId && !isDummyInstaZeroQuote(q)
   );
   if (nextQuotes.some((q) => q.isConfirmedSlip)) {
+    const reconciledFreed = mergeConfirmedSlipFreedCountsPreservingManualExtra(
+      customer.quotes || [],
+      nextQuotes,
+      customer.freedCounts
+    );
     return syncCustomerFromConfirmedSlips({
       ...customer,
+      freedCounts: reconciledFreed,
       quotes: nextQuotes,
       updatedAtMs: Date.now(),
     });
@@ -593,9 +647,15 @@ export function updateQuoteSlipAndSyncCustomer(
       : customer.orderNo;
 
   if (nextQuotes.some((q) => q.isConfirmedSlip)) {
+    const reconciledFreed = mergeConfirmedSlipFreedCountsPreservingManualExtra(
+      rawQuotes,
+      nextQuotes,
+      customer.freedCounts
+    );
     return syncCustomerFromConfirmedSlips({
       ...customer,
       orderNo: nextTopOrderNo,
+      freedCounts: reconciledFreed,
       quotes: nextQuotes,
       updatedAtMs: Date.now(),
     });
@@ -1126,6 +1186,14 @@ export async function saveCustomerQuote(payload: {
       return `${exGift}, ${incGift}`;
     })();
 
+    const reconciledFreedCounts = nextQuotes.some((q) => q.isConfirmedSlip)
+      ? mergeConfirmedSlipFreedCountsPreservingManualExtra(
+          prevQuotes,
+          nextQuotes,
+          existing.freedCounts
+        )
+      : existing.freedCounts ?? resolvedFreedCounts;
+
     const rawUpdatedCustomer: CustomerItem = {
       ...existing,
       regDate: nowStr,
@@ -1144,7 +1212,7 @@ export async function saveCustomerQuote(payload: {
       performanceAmount: resolvedPerformanceAmount,
       generalProductTotal: resolvedGeneralTotal,
       subscriptionPrincipal: resolvedSubPrincipal,
-      freedCounts: existing.freedCounts ?? resolvedFreedCounts,
+      freedCounts: reconciledFreedCounts,
       purchasedModels: resolvedPurchasedModels,
       deliveryDate:
         payload.deliveryDate !== undefined
