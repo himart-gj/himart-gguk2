@@ -471,6 +471,30 @@ function extractSafeItemQuantity(seg: string): number {
   return 1;
 }
 
+function extractBalancedOuterParen(seg: string): {
+  before: string;
+  inside: string;
+  after: string;
+} | null {
+  const start = seg.indexOf('(');
+  if (start <= 0) return null;
+  let depth = 0;
+  for (let i = start; i < seg.length; i++) {
+    if (seg[i] === '(') depth++;
+    else if (seg[i] === ')') {
+      depth--;
+      if (depth === 0) {
+        return {
+          before: seg.slice(0, start),
+          inside: seg.slice(start + 1, i),
+          after: seg.slice(i + 1),
+        };
+      }
+    }
+  }
+  return null;
+}
+
 export function parsePurchasedModelsFromItemsText(
   itemsText: string,
   defaultSaleType: 'general' | 'subscription' = 'general'
@@ -486,34 +510,67 @@ export function parsePurchasedModelsFromItemsText(
   const results: PurchasedModelEntry[] = [];
   segments.forEach((seg, idx) => {
     const qty = extractSafeItemQuantity(seg);
+    const inferredSaleType =
+      seg.includes('구독') || /\b(?:36|60)M\b/i.test(seg)
+        ? 'subscription'
+        : defaultSaleType;
 
-    const parenMatch = seg.match(/^([^(]+)\(([^)]+)\)/);
+    const parenMatch = extractBalancedOuterParen(seg);
     if (parenMatch) {
-      const cat = parenMatch[1]
+      const cat = parenMatch.before
         .replace(/^(?:일반|구독)\s*\d*안?\s*/, '')
         .trim();
-      const inside = parenMatch[2]
+      const inside = parenMatch.inside
         .replace(/[·\s]*(?:36|60)\s*(?:M|개월)/gi, '')
         .replace(/(?:×\s*\d{1,2}|(?:^|\s)[xX*]\s*\d{1,2}|\d{1,2}\s*(?:대|개|세트))$/g, '')
         .trim();
+      const afterClean = parenMatch.after
+        .replace(/[·\s]*(?:36|60)\s*(?:M|개월)/gi, '')
+        .replace(/(?:×\s*\d{1,2}|(?:^|\s)[xX*]\s*\d{1,2}|\d{1,2}\s*(?:대|개|세트))$/g, '')
+        .trim();
+
+      // 예: "쿠쿠 정수기 (36L)CP-TS100GWH(SELF)" 또는 "냉장고(870L) RM70F64M2X"처럼 괄호 뒤에 실제 모델코드가 이어지는 경우 보존
+      if (/^\d{2}L$/i.test(inside) && afterClean) {
+        results.push({
+          id: `parsed-${idx}`,
+          category: cat || '가전',
+          modelName: `(${inside})${afterClean}`,
+          quantity: qty,
+          saleType: inferredSaleType,
+          principalAmount: 0,
+        });
+        return;
+      }
+      if (isGenericNonModelLabel(inside) && afterClean && !isGenericNonModelLabel(afterClean)) {
+        results.push({
+          id: `parsed-${idx}`,
+          category: cat || '가전',
+          modelName: afterClean,
+          quantity: qty,
+          saleType: inferredSaleType,
+          principalAmount: 0,
+        });
+        return;
+      }
       if (inside || cat) {
         results.push({
           id: `parsed-${idx}`,
           category: cat || '가전',
           modelName: inside || cat,
           quantity: qty,
-          saleType:
-            seg.includes('구독') || /\b(?:36|60)M\b/i.test(seg)
-              ? 'subscription'
-              : defaultSaleType,
+          saleType: inferredSaleType,
           principalAmount: 0,
         });
         return;
       }
     }
 
-    const codeTokenMatch = seg.match(/\b([A-Za-z][A-Za-z0-9._/-]{3,})\b/);
-    if (codeTokenMatch) {
+    const codeTokenMatch = seg.match(/\b([A-Za-z0-9][A-Za-z0-9._/-]{3,})\b/);
+    if (
+      codeTokenMatch &&
+      /[A-Za-z]/.test(codeTokenMatch[1]) &&
+      !isGenericNonModelLabel(codeTokenMatch[1])
+    ) {
       const modelCode = codeTokenMatch[1];
       const catPart = seg
         .replace(modelCode, '')
@@ -524,7 +581,7 @@ export function parsePurchasedModelsFromItemsText(
         category: catPart || '가전',
         modelName: modelCode,
         quantity: qty,
-        saleType: defaultSaleType,
+        saleType: inferredSaleType,
         principalAmount: 0,
       });
       return;
@@ -539,7 +596,7 @@ export function parsePurchasedModelsFromItemsText(
         category: '품목',
         modelName: cleanedModel,
         quantity: qty,
-        saleType: defaultSaleType,
+        saleType: inferredSaleType,
         principalAmount: 0,
       });
     }
@@ -700,11 +757,25 @@ export function resolveCustomerPerformanceProfile(
   const freedDetail = calculateFreedIncentiveDetail(freedCounts);
 
   let purchasedModels: PurchasedModelEntry[];
-  // 1순위: 견적서 계산기(proposalState)에서 저장된 정밀 모델 내역
-  // 2순위: 수기 등록/수정 고객의 경우 과거 모델명 숫자(SM-X620 -> 620개, MH334KH/A -> 2개) 오인식 캐시를 자동 치유하기 위해 customer.items를 최신 안전 파서로 즉시 재해석!
-  if (fromProposal && fromProposal.purchasedModels.length > 0) {
+  const trimmedCustomerItems = (customer.items || '').trim();
+  const trimmedQuoteSummary = (primaryQuote?.itemSummary || '').trim();
+  const hasManualItemsOverride =
+    Boolean(trimmedCustomerItems) &&
+    Boolean(primaryQuote) &&
+    Boolean(trimmedQuoteSummary) &&
+    trimmedCustomerItems !== trimmedQuoteSummary;
+
+  // 1순위: 고객카드에서 품목/모델명을 직접 수정한 경우 수정된 customer.items 우선 반영
+  // 2순위: 견적서 계산기(proposalState)에서 저장된 정밀 모델 내역
+  // 3순위: 수기 등록 고객의 customer.items 재해석
+  if (hasManualItemsOverride) {
+    purchasedModels = parsePurchasedModelsFromItemsText(
+      trimmedCustomerItems,
+      saleType === 'subscription' ? 'subscription' : 'general'
+    );
+  } else if (fromProposal && fromProposal.purchasedModels.length > 0) {
     purchasedModels = fromProposal.purchasedModels;
-  } else if ((customer.items || '').trim()) {
+  } else if (trimmedCustomerItems) {
     purchasedModels = parsePurchasedModelsFromItemsText(
       customer.items,
       saleType === 'subscription' ? 'subscription' : 'general'
@@ -768,31 +839,180 @@ export function resolveCustomerPerformanceProfile(
   };
 }
 
-export function normalizeModelMatchKey(raw?: string): string {
+const GENERIC_NON_MODEL_TOKEN_RE =
+  /^(?:삼성|삼성전자|엘지|LG|LG전자|쿠쿠|쿠쿠전자|쿠쿠홈시스|쿠첸|코지마|세라젬|바디프랜드|바디프렌드|제스파|누하스|휴테크|로보락|드리미|샤크|닌자|필립스|다이슨|캐리어|플럭스|PLUX|나비엔|나비엔매직|테팔|브라운|애플|밀레|리페르|하이얼|위니아|SK매직|비스포크|오브제|오브제컬렉션|디오스|트롬|휘센|시그니처|무풍|김치톡톡|김치플러스|일반|구독|렌탈|일시불|세트|세트가전|혼수|혼수가전|입주|입주가전|가전|일반가전|구독가전|품목|주방가전|생활가전|세탁가전|계절가전|설치|설치형|셀프|셀프형|방문|방문형|직배수|직배수형|일반형|프리스탠딩|빌트인|키친핏|스탠드|스탠드형|벽걸이|벽걸이형|창문형|천장형|뚜껑형|양문형|콤비|원도어|포도어|화이트|블랙|실버|그레이|베이지|그레이지|네이비|핑크|그린|브라운|아이보리|골드|민트|블루|냉장고|김치냉장고|냉동고|저온냉동고|와인셀러|세탁기|드럼세탁기|통돌이|통돌이세탁기|전자동세탁기|건조기|의류건조기|세탁건조기|올인원세탁건조기|일체형세탁건조기|워시타워|워시콤보|콤보|의류관리기|스타일러|에어드레서|슈드레서|TV|티비|올레드|올레드TV|QLED|QLEDTV|QNED|구글TV|스마트TV|스탠바이미|모니터|에어컨|투인원|투인원에어컨|시스템에어컨|멀티에어컨|냉방기|냉난방기|식기세척기|식세기|정수기|얼음정수기|냉온정수기|직수정수기|필터형정수기|공기청정기|청정기|청소기|로봇청소기|무선청소기|건습식청소기|건타입|건타입청소기|핸디형|핸디형청소기|유선청소기|전기밥솥|압력밥솥|IH전기압력밥솥|밥솥|전기레인지|인덕션|인덕션레인지|하이라이트|가스레인지|전자레인지|무회전전자레인지|전기오븐|광파오븐|복합오븐|오븐|에어프라이어|에어프라이기|전기그릴|멀티그릴|양면멀티그릴|전기주전자|커피머신|에스프레소머신|블렌더|무선블렌더|믹서기|원액기|두유제조기|음식물처리기|프라이팬|기물프라이팬|레인지후드|에어후드|싱크볼|수전|욕실환풍기|복합욕실팬|비데|방수비데|안마의자|마사지기|종아리발마사지기|가습기|제습기|실링팬|선풍기|서큘레이터|카본매트|숙면매트|전기매트|온수매트|제빙기|버블클렌저|면도기|구강용품|전동칫솔|구강세정기|헤어드라이기|헤어드라이어|드라이기|헤어아이론|스트레이트너|고데기|노트북|데스크탑|컴퓨터|태블릿|태블릿PC|아이패드|갤럭시탭|갤럭시북|그램|서피스|프린터|복합기|자급제|휴대폰|스마트폰)$/i;
+
+const GENERIC_SPEC_TOKEN_RE =
+  /^(?:\d+(?:\.\d+)?(?:KG|L|리터|인치|형|평|평형|구|도어|인용|벌|단|등급|세트|개|대|개월|M|W|HZ|GB|TB|MM|CM)?|2IN1|4K|8K|FHD|UHD|HD|QLED|OLED|QNED|LED|LCD|AI|IOT|BLDC|IH|UV|IPX\d+|5G|LTE|WIFI|USB|HDMI)$/i;
+
+const COMPOUND_GENERIC_KO_STRIP_RE =
+  /(삼성전자|삼성|LG전자|LG|엘지|쿠쿠홈시스|쿠쿠전자|쿠쿠|쿠첸|코지마|세라젬|바디프랜드|바디프렌드|로보락|드리미|샤크|닌자|필립스|다이슨|캐리어|플럭스|PLUX|나비엔매직|나비엔|리페르|\d+(?:\.\d+)?(?:KG|L|리터|인치|형|평|평형|구|도어|인용|벌|단|등급)|일반형?|직배수형?|설치형?|셀프형?|방문형?|공통|빌트인|스탠드형?|벽걸이형?|창문형|양문형|콤비|무선|유선|건타입|핸디형|일체형|올인원|사계절|냉장고|김치냉장고|냉동고|세탁기|드럼세탁기|통돌이세탁기|건조기|의류건조기|세탁건조기|워시타워|워시콤보|스타일러|에어드레서|의류관리기|에어컨|냉방기|냉난방기|식기세척기|정수기|얼음정수기|필터형정수기|공기청정기|로봇청소기|청소기|건습식청소기|전기밥솥|압력밥솥|밥솥|인덕션|전기레인지|레인지|가스레인지|전자레인지|전기오븐|복합오븐|광파오븐|오븐|에어프라이어|음식물처리기|커피머신|블렌더|원액기|두유제조기|전기그릴|양면멀티그릴|프라이팬|기물프라이팬|전기주전자|레인지후드|에어후드|싱크볼|수전|욕실환풍기|복합욕실팬|비데|안마의자|마사지기|종아리|발|가습기|제습기|실링팬|카본매트|숙면매트|제빙기|버블클렌저|면도기|전동칫솔|구강용품|헤어드라이기|헤어드라이어|드라이기|헤어아이론|스트레이트너|노트북|데스크탑|태블릿PC|태블릿|프린터|자급제|가전|품목)/gi;
+
+const PROPER_KO_MODEL_ALIASES: Record<string, string[]> = {
+  메디컬파라오: ['메디컬파라오', 'MEDICALPHARAOH'],
+  메디컬팬텀: ['메디컬팬텀', 'MEDICALPHANTOM'],
+  뉴팔콘SV: ['뉴팔콘SV', 'NEWFALCONSV'],
+  카르나로보: ['카르나로보', 'CARNAROBO'],
+  모멘티아: ['모멘티아', '모멘티아안마의자'],
+  셀라제: ['셀라제', '셀라제안마의자'],
+  포레체: ['포레체', '포레체안마의자'],
+  더퍼스트클래스: ['더퍼스트클래스', '더퍼스트클래스안마의자'],
+};
+
+function stripManufacturerChannelSuffix(raw?: string): string {
   if (!raw) return '';
   return String(raw)
     .trim()
-    .toUpperCase()
-    .replace(/\.(AKOR\d*|AKR\d*|KOR\d*)$/i, '')
-    .replace(/[^A-Z0-9가-힣]+/g, '');
+    .replace(/^\[[^\]]+\]\s*/, '')
+    .replace(/^\(\d{2}L\)\s*/i, '')
+    .replace(/\.(?:[A-Z]?KOR\d*|AKR[A-Z0-9]*)$/i, '')
+    .trim();
+}
+
+export function normalizeModelMatchKey(raw?: string): string {
+  const s = stripManufacturerChannelSuffix(raw).toUpperCase();
+  return s.replace(/[^A-Z0-9가-힣]+/g, '');
+}
+
+/**
+ * 실제 모델코드가 아닌 일반 품목명·브랜드+품목·용량/인치 표기(예: "냉장고", "김치냉장고", "샤크 무선청소기", "10kg 세탁기", "870L")인지 판별합니다.
+ * 일반 품목명은 어떠한 경우에도 특정 모델 수당에 매칭되지 않도록 원천 차단합니다.
+ */
+export function isGenericNonModelLabel(raw?: string): boolean {
+  if (!raw || !String(raw).trim()) return true;
+  const s = stripManufacturerChannelSuffix(raw);
+  const nk = normalizeModelMatchKey(s);
+  if (!nk) return true;
+
+  for (const aliases of Object.values(PROPER_KO_MODEL_ALIASES)) {
+    if (aliases.some((a) => normalizeModelMatchKey(a) === nk)) {
+      return false;
+    }
+  }
+  if (nk === '빌트인가스레인지전모델') return false;
+
+  const tokens = s
+    .split(/[\s,/+()\[\]·_-]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const meaningful: string[] = [];
+
+  for (const tok of tokens) {
+    const tu = tok.toUpperCase();
+    if (GENERIC_SPEC_TOKEN_RE.test(tu) || GENERIC_NON_MODEL_TOKEN_RE.test(tu)) {
+      continue;
+    }
+    const strippedKo = tu
+      .replace(COMPOUND_GENERIC_KO_STRIP_RE, '')
+      .replace(/[^A-Z0-9가-힣]+/g, '');
+    if (!strippedKo) continue;
+    meaningful.push(strippedKo);
+  }
+
+  if (meaningful.length === 0) return true;
+  const joined = meaningful.join('');
+  if (/^\d+$/.test(joined)) return true;
+  return false;
+}
+
+function buildCanonicalModelVariants(raw?: string): Set<string> {
+  const out = new Set<string>();
+  const s0 = stripManufacturerChannelSuffix(raw);
+  if (!s0) return out;
+
+  const k0 = normalizeModelMatchKey(s0);
+  if (k0) out.add(k0);
+
+  const hasVariant = /설치|셀프|직배수|일반형|install|self|drainage/i.test(s0);
+  if (hasVariant) {
+    const vNorm = s0
+      .replace(/\(\s*(?:install|설치형?)\s*\)/gi, '설치')
+      .replace(/\(\s*(?:self|셀프형?)\s*\)/gi, '셀프')
+      .replace(/\(\s*직배수형?\s*\)/gi, '직배수')
+      .replace(/\(\s*일반형\s*\)/gi, '일반형');
+    const vk = normalizeModelMatchKey(vNorm);
+    if (vk) out.add(vk);
+  }
+
+  // 비모델 패키징/국가/유통 접미사만 정밀 제거: (SET), _SET, (PKG), _PKG, (T), (G), _(WW|WK)-KRH?, _WIN11, _HM
+  let sClean = s0
+    .replace(/\((?:SET|PKG|T|G)\)/gi, '')
+    .replace(/_(?:SET|PKG|WIN11|HM)$/i, '')
+    .replace(/_(?:WW|WK)-KRH?$/i, '');
+  if (/\(T\)/i.test(s0)) {
+    sClean = sClean.replace(/_BS$/i, '');
+  }
+  const kc = normalizeModelMatchKey(sClean);
+  if (kc && kc.length >= 2 && !hasVariant) {
+    out.add(kc);
+  }
+
+  // 하이마트 구독 카탈로그 전용 래퍼 코드: OFF_S10MAXVULTRA_WH / OFF_S10MAXVULTRA_AUTO_WH
+  const offMatch = s0.match(
+    /^OFF_([A-Z0-9]+?)_(?:AUTO_)?(?:WH|BK|SV|GY|BG|BL|GN|PK)$/i
+  );
+  if (offMatch?.[1]) {
+    const ok = normalizeModelMatchKey(offMatch[1]);
+    if (ok) out.add(ok);
+  }
+
+  // 삼성 국내 TV 유통 접미사(FXKR / EXKR / XKR) 정규화: KQ85QNH80AFXKR <-> KQ85QNH80A
+  for (const existing of Array.from(out)) {
+    const tvMatch = existing.match(
+      /^((?:KQ|KU|KMR|UN|LH)\d{2,3}[A-Z0-9]{4,}?)(?:FXKR|EXKR|XKR)$/
+    );
+    if (tvMatch?.[1]) {
+      out.add(tvMatch[1]);
+    }
+  }
+
+  // 쿠쿠 정수기 하이마트 구독 코드 래퍼: (36L)CP-TS100GWH(SELF) -> CPTS100
+  const cuckooSubMatch = String(raw || '')
+    .trim()
+    .match(
+      /^(?:\(\d{2}L\))?\s*(CP-[A-Z]{2,5}\d{3})(?:GWH|EWH|GWT|GPN|DS|WH|BK)?\s*\((?:SELF|셀프)\)$/i
+    );
+  if (cuckooSubMatch?.[1]) {
+    out.add(normalizeModelMatchKey(cuckooSubMatch[1]));
+  }
+
+  // 안마의자 고유 한글·영문 모델명 양방향 별칭 매핑
+  const noParenBase = normalizeModelMatchKey(s0.replace(/\([^)]*\)/g, ''));
+  for (const aliases of Object.values(PROPER_KO_MODEL_ALIASES)) {
+    const normAliases = aliases.map((a) => normalizeModelMatchKey(a));
+    if (
+      normAliases.includes(noParenBase) ||
+      Array.from(out).some((k) => normAliases.includes(k))
+    ) {
+      normAliases.forEach((na) => out.add(na));
+    }
+  }
+
+  return out;
 }
 
 export function expandRuleCandidateKeys(rule: ModelIncentiveRule): string[] {
-  const keys = new Set<string>();
   const raw = String(rule.modelCode || '').trim();
-  if (!raw) return [];
-  const fullKey = normalizeModelMatchKey(raw);
-  if (fullKey) keys.add(fullKey);
+  if (!raw || isGenericNonModelLabel(raw)) return [];
 
-  // 괄호 앞 베이스 코드 (예: ZPC2221(T) -> ZPC2221, CA-DRH0710W(SET) -> CADRH0710W)
-  const hasVariantSuffix = /설치|셀프|직배수|일반형|install|self|refill|drainage/i.test(raw);
+  const keys = buildCanonicalModelVariants(raw);
+  const hasVariant = /설치|셀프|직배수|일반형|install|self|drainage/i.test(raw);
   const noParen = raw.replace(/\([^)]*\)/g, '').trim();
-  const noParenKey = normalizeModelMatchKey(noParen);
-  if (noParenKey && noParenKey.length >= 2 && !hasVariantSuffix) {
-    keys.add(noParenKey);
+  if (noParen && !hasVariant) {
+    buildCanonicalModelVariants(noParen).forEach((k) => keys.add(k));
   }
 
-  // 괄호 내부 서브 모델코드 전개 (예: MEDICALPHANTOM (BFR-M8080) -> BFRM8080, X60 Master (X60MASTER_SELF / X60MASTER2))
+  // 인라인 괄호 옵션 코드 전개: 예) RAC552-09TCA(B)C -> RAC552-09TCAC, RAC552-09TCBC
+  const inlineParen = raw.match(
+    /^([A-Za-z0-9-]+?)([A-Za-z])\(([A-Za-z])\)([A-Za-z0-9]*)$/
+  );
+  if (inlineParen) {
+    const [, p1, c1, c2, p2] = inlineParen;
+    buildCanonicalModelVariants(`${p1}${c1}${p2}`).forEach((k) => keys.add(k));
+    buildCanonicalModelVariants(`${p1}${c2}${p2}`).forEach((k) => keys.add(k));
+  }
+
+  // 괄호 내부 명시적 서브 영문+숫자 모델코드 전개 (예: (BFR-M8080))
   const parenRegex = /\(([^)]+)\)/g;
   let pMatch: RegExpExecArray | null;
   while ((pMatch = parenRegex.exec(raw)) !== null) {
@@ -801,7 +1021,13 @@ export function expandRuleCandidateKeys(rule: ModelIncentiveRule): string[] {
     const innerParts = inner.split(/[/,]/).map((p) => p.trim()).filter(Boolean);
     for (const part of innerParts) {
       if (part.startsWith('+')) continue;
-      if (/^(SET|T|INSTALL|SELF|REFILL|DRAINAGE|BEST|WHITE|BLACK|SILVER)$/i.test(part)) continue;
+      if (
+        /^(SET|PKG|T|G|B|INSTALL|SELF|REFILL|DRAINAGE|BEST|WHITE|BLACK|SILVER|살균형|일반형|직배수형|설치|셀프)$/i.test(
+          part
+        )
+      ) {
+        continue;
+      }
       const pKey = normalizeModelMatchKey(part);
       if (pKey.length >= 5 && /[A-Z]/.test(pKey) && /\d/.test(pKey)) {
         keys.add(pKey);
@@ -809,109 +1035,118 @@ export function expandRuleCandidateKeys(rule: ModelIncentiveRule): string[] {
     }
   }
 
-  // 슬래시 조합 코드 전개 (예: EARP-0071GAWSD / EARP-0071GAWSDI, GRF-1052ND/PD, EMF520-K/Q/S)
+  // 슬래시(/) 병기 모델코드 전개: 예) POCOX8P/POCOX8PM, GRF-1052ND/PD, EMF520-K/Q/S, TMA551/531-012F
   if (noParen.includes('/')) {
-    const parts = noParen.split('/').map((p) => p.trim()).filter(Boolean);
-    if (parts.length >= 2) {
-      const first = parts[0];
-      const firstKey = normalizeModelMatchKey(first);
-      if (firstKey.length >= 4) keys.add(firstKey);
-      for (let i = 1; i < parts.length; i++) {
-        const sub = parts[i];
-        const subKey = normalizeModelMatchKey(sub);
-        if (subKey.length >= 5) {
-          keys.add(subKey);
-        } else if (subKey.length >= 1 && first.length > sub.length) {
-          const rebuilt = first.slice(0, first.length - sub.length) + sub;
-          const rebuiltKey = normalizeModelMatchKey(rebuilt);
-          if (rebuiltKey.length >= 4) keys.add(rebuiltKey);
+    const midSlash = noParen.match(/^([A-Za-z]+)(\d+)\/(\d+)(-[A-Za-z0-9]+)$/);
+    if (midSlash) {
+      const [, pfx, n1, n2, sfx] = midSlash;
+      buildCanonicalModelVariants(`${pfx}${n1}${sfx}`).forEach((k) => keys.add(k));
+      buildCanonicalModelVariants(`${pfx}${n2}${sfx}`).forEach((k) => keys.add(k));
+    } else {
+      const parts = noParen.split('/').map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        const first = parts[0];
+        const firstKey = normalizeModelMatchKey(first);
+        if (firstKey.length >= 4) {
+          buildCanonicalModelVariants(first).forEach((k) => keys.add(k));
+        }
+        for (let i = 1; i < parts.length; i++) {
+          const sub = parts[i];
+          const subKey = normalizeModelMatchKey(sub);
+          if (subKey.length >= 5 && firstKey.slice(0, 3) === subKey.slice(0, 3)) {
+            buildCanonicalModelVariants(sub).forEach((k) => keys.add(k));
+          } else if (
+            subKey.length >= 1 &&
+            subKey.length <= 4 &&
+            first.length > sub.length
+          ) {
+            const rebuilt = first.slice(0, first.length - sub.length) + sub;
+            buildCanonicalModelVariants(rebuilt).forEach((k) => keys.add(k));
+          }
         }
       }
     }
   }
 
-  // 상품명에 실내기 모델명 또는 한글 전용 모델명(메디컬팬텀, 모멘티아, 셀라제 등)이 병기된 경우
+  // 상품명에는 오직 명시적 실내기 모델코드(실내기: XXX)와 안마의자 고유 모델명만 허용 (일반 품목명 매칭 원천 차단)
   if (rule.productName) {
-    const indoorMatch = rule.productName.match(/실내기\s*[:：]?\s*([A-Za-z0-9\-_]+)/);
+    const indoorMatch = rule.productName.match(
+      /실내기\s*[:：]?\s*([A-Za-z0-9\-_]+)/
+    );
     if (indoorMatch?.[1]) {
       const indoorKey = normalizeModelMatchKey(indoorMatch[1]);
       if (indoorKey.length >= 5) keys.add(indoorKey);
     }
-    const strippedBrand = rule.productName.replace(/^\[[^\]]+\]\s*/, '').trim();
-    const firstAlias = strippedBrand.split('/')[0]?.replace(/\([^)]*\)/g, '').trim() || '';
-    if (
-      firstAlias &&
-      /[가-힣]/.test(firstAlias) &&
-      firstAlias.length >= 3 &&
-      firstAlias.length <= 10 &&
-      !/^(셀프|설치|구독서비스|하이마트|기본모델|신제품|전동칫솔|무한잉크|동시구매|일반형|직배수)/.test(firstAlias)
-    ) {
-      const aliasKey = normalizeModelMatchKey(firstAlias);
-      if (aliasKey.length >= 3) keys.add(aliasKey);
+    if (rule.category === '안마의자') {
+      const mcName = rule.productName
+        .replace(
+          /^(?:\[[^\]]+\]\s*)?(?:바디프랜드|바디프렌드|코지마|세라젬|제스파|누하스|휴테크)\s*/,
+          ''
+        )
+        .replace(/\s*안마의자.*$/, '')
+        .trim();
+      const mcKey = normalizeModelMatchKey(mcName);
+      const matchedAliases = PROPER_KO_MODEL_ALIASES[mcKey];
+      if (matchedAliases) {
+        matchedAliases.forEach((a) => keys.add(normalizeModelMatchKey(a)));
+      }
     }
   }
 
-  return Array.from(keys);
+  return Array.from(keys).filter((k) => k.length >= 2);
+}
+
+function expandTargetModelCandidateKeys(modelName?: string): Set<string> {
+  const raw = String(modelName || '').trim();
+  if (!raw || isGenericNonModelLabel(raw)) return new Set();
+
+  const keys = buildCanonicalModelVariants(raw);
+
+  // 모델명 앞뒤에 설명 어구가 함께 적힌 경우(예: "비스포크 RM70F64M2X") 실제 영문+숫자 모델코드 토큰만 추출
+  if (/[\s()]/.test(raw)) {
+    const tokens = raw.match(/[A-Za-z0-9][A-Za-z0-9._/-]{3,}/g) || [];
+    for (const tok of tokens) {
+      const tu = tok.toUpperCase();
+      if (GENERIC_SPEC_TOKEN_RE.test(tu) || GENERIC_NON_MODEL_TOKEN_RE.test(tu)) {
+        continue;
+      }
+      if (/[A-Za-z]/.test(tok) && /\d/.test(tok) && !isGenericNonModelLabel(tok)) {
+        const tk = normalizeModelMatchKey(tok);
+        if (tk.length >= 4) {
+          buildCanonicalModelVariants(tok).forEach((k) => keys.add(k));
+        }
+      }
+    }
+  }
+
+  return new Set(Array.from(keys).filter((k) => k.length >= 2));
 }
 
 export function matchModelToIncentiveRule(
   modelEntry: PurchasedModelEntry,
-  rules: ModelIncentiveRule[]
+  rules: ModelIncentiveRule[],
+  precomputedRuleKeys?: Map<ModelIncentiveRule, Set<string>>
 ): ModelIncentiveRule | null {
   if (!rules || rules.length === 0) return null;
 
-  const targetCode = normalizeModelMatchKey(modelEntry.modelName);
-  const targetCat = normalizeModelMatchKey(modelEntry.category);
-  if (!targetCode && !targetCat) return null;
+  const targetKeys = expandTargetModelCandidateKeys(modelEntry.modelName);
+  if (targetKeys.size === 0) return null;
 
-  const eligibleRules = rules.filter((r) => {
-    if (!r.incentiveAmount || r.incentiveAmount <= 0) return false;
+  for (const r of rules) {
+    if (!r.incentiveAmount || r.incentiveAmount <= 0) continue;
     if (
       r.saleTypeFilter &&
       r.saleTypeFilter !== 'all' &&
       r.saleTypeFilter !== modelEntry.saleType
     ) {
-      return false;
+      continue;
     }
-    return true;
-  });
-
-  for (const r of eligibleRules) {
-    const candidateKeys = expandRuleCandidateKeys(r);
-    for (const rKey of candidateKeys) {
-      if (rKey.length >= 2 && targetCode === rKey) {
+    const rKeys =
+      precomputedRuleKeys?.get(r) ?? new Set(expandRuleCandidateKeys(r));
+    for (const tk of targetKeys) {
+      if (rKeys.has(tk)) {
         return r;
       }
-    }
-  }
-
-  let bestPrefixRule: ModelIncentiveRule | null = null;
-  let bestPrefixLen = 0;
-
-  for (const r of eligibleRules) {
-    const rKey = normalizeModelMatchKey(r.modelCode);
-    if (rKey.length < 5 || targetCode.length < 5) continue;
-
-    if (targetCode.startsWith(rKey) || rKey.startsWith(targetCode)) {
-      const matchLen = Math.min(rKey.length, targetCode.length);
-      if (matchLen > bestPrefixLen) {
-        bestPrefixLen = matchLen;
-        bestPrefixRule = r;
-      }
-    } else if (targetCode.includes(rKey) && rKey.length >= 6) {
-      if (rKey.length > bestPrefixLen) {
-        bestPrefixLen = rKey.length;
-        bestPrefixRule = r;
-      }
-    }
-  }
-  if (bestPrefixRule) return bestPrefixRule;
-
-  for (const r of eligibleRules) {
-    if (!r.productName) continue;
-    const pKey = normalizeModelMatchKey(r.productName);
-    if (pKey.length >= 4 && (targetCode === pKey || targetCat === pKey)) {
-      return r;
     }
   }
 
@@ -969,13 +1204,23 @@ export function computeMonthlySettlementReport(
   incentiveBasis: IncentiveMonthBasis = 'contract'
 ): MonthlySettlementReport {
   const rules = incentiveSheet?.rules || [];
+  const precomputedRuleKeys = new Map<ModelIncentiveRule, Set<string>>();
+  for (const r of rules) {
+    if (r.incentiveAmount && r.incentiveAmount > 0) {
+      precomputedRuleKeys.set(r, new Set(expandRuleCandidateKeys(r)));
+    }
+  }
   const confirmedCustomers = (customers || []).filter(isConfirmedPurchaseCustomer);
 
   const buildRow = (c: CustomerItem): ConfirmedCustomerSettlementRow => {
     const profile = resolveCustomerPerformanceProfile(c);
     const modelMatches: CustomerModelIncentiveMatchItem[] =
       profile.purchasedModels.map((m) => {
-        const matchedRule = matchModelToIncentiveRule(m, rules);
+        const matchedRule = matchModelToIncentiveRule(
+          m,
+          rules,
+          precomputedRuleKeys
+        );
         const unitIncentive = matchedRule ? matchedRule.incentiveAmount : 0;
         const qty = Math.max(1, Number(m.quantity) || 1);
         return {

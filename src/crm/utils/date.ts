@@ -353,9 +353,16 @@ export function formatCurrency(num: number): string {
 
 export function formatShortManwon(num: number): string {
   if (!num || isNaN(num)) return '0원';
-  if (num >= 10000) {
-    const man = Math.round(num / 10000);
+  const rounded = Math.round(num);
+  if (Math.abs(rounded) >= 1_000_000) {
+    const man = Math.round(rounded / 10_000);
     return `${man.toLocaleString('ko-KR')}만`;
   }
-  return `${num.toLocaleString('ko-KR')}원`;
+  if (Math.abs(rounded) >= 10_000) {
+    const man = rounded / 10_000;
+    return Number.isInteger(man)
+      ? `${man.toLocaleString('ko-KR')}만`
+      : `${parseFloat(man.toFixed(1)).toLocaleString('ko-KR')}만`;
+  }
+  return `${rounded.toLocaleString('ko-KR')}원`;
 }

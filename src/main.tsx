@@ -32,10 +32,26 @@ const RootDispatcher: React.FC = () => {
     return cleanupViewportGuard;
   }, []);
 
-  // 인증된 직원 기기('staff-app') 및 프로덕션 빌드에서만 PWA 서비스워커를 등록 (최초 PIN 인증 직후에도 즉시 등록)
+  // 인증된 직원 기기('staff-app') 및 프로덕션 빌드에서만 PWA 서비스워커를 등록하고, 새 버전 활성화 시 자동 새로고침
   useEffect(() => {
     if (mode === 'staff-app' && 'serviceWorker' in navigator && import.meta.env.PROD) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      let refreshing = false;
+      const hadController = Boolean(navigator.serviceWorker.controller);
+      const onControllerChange = () => {
+        if (!hadController || refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+      navigator.serviceWorker
+        .register('./sw.js', { updateViaCache: 'none' })
+        .then((reg) => {
+          reg.update().catch(() => {});
+        })
+        .catch(() => {});
+      return () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      };
     }
   }, [mode]);
 

@@ -129,6 +129,20 @@ const REMOVED_BUILTIN_LANDING_IDS = new Set([
   'himart-gj-sub-admin',
 ]);
 
+function isRemovedBuiltInLandingItem(x: any): boolean {
+  if (!x || typeof x !== 'object') return false;
+  if (REMOVED_BUILTIN_LANDING_IDS.has(String(x.id || ''))) return true;
+  if (
+    x.isBuiltIn === true &&
+    typeof x.url === 'string' &&
+    (x.url.includes('himart-gj.github.io/himart-subscription-simulator') ||
+      x.url.includes('himart-gj.github.io/himart-11'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function loadPartnerLinks(): PartnerQuickLinkItem[] {
   try {
     const raw = localStorage.getItem(PARTNER_LINKS_STORAGE_KEY);
@@ -137,9 +151,7 @@ export function loadPartnerLinks(): PartnerQuickLinkItem[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return DEFAULT_PARTNER_LINKS;
     }
-    const cleaned = parsed.filter(
-      (x: any) => !REMOVED_BUILTIN_LANDING_IDS.has(x?.id)
-    );
+    const cleaned = parsed.filter((x: any) => !isRemovedBuiltInLandingItem(x));
     if (cleaned.length !== parsed.length) {
       localStorage.setItem(PARTNER_LINKS_STORAGE_KEY, JSON.stringify(cleaned));
     }
@@ -170,7 +182,8 @@ function loadFavoriteIds(): string[] {
     const raw = localStorage.getItem(PARTNER_FAVORITES_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id) => !REMOVED_BUILTIN_LANDING_IDS.has(String(id || '')));
   } catch {
     return [];
   }

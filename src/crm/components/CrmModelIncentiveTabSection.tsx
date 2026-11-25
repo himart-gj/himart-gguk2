@@ -9,6 +9,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/date';
+import { isGenericNonModelLabel } from '../utils/settlementEngine';
 import { FormattedMoneyInput } from '../../components/FormattedMoneyInput';
 
 function formatShortManwon(val: number): string {
@@ -400,6 +401,14 @@ export const CrmModelIncentiveTabSection: React.FC<Record<string, any>> = ({
                                 {mm.modelEntry.quantity > 1 ? `×${mm.modelEntry.quantity}` : ''}{' '}
                                 +{formatShortManwon(mm.subtotalIncentive)}
                               </span>
+                            ) : isGenericNonModelLabel(mm.modelEntry.modelName) ? (
+                              <span
+                                key={`${mm.modelEntry.id}-${mIdx}`}
+                                className={`px-2 py-0.5 rounded-lg text-[11.5px] font-bold border ${subSurfaceCls} ${mutedCls}`}
+                                title="세부 모델코드가 입력되면 수당 단가표와 자동 대조됩니다"
+                              >
+                                {mm.modelEntry.modelName} (모델미기재)
+                              </span>
                             ) : (
                               <button
                                 key={`${mm.modelEntry.id}-${mIdx}`}
@@ -412,6 +421,7 @@ export const CrmModelIncentiveTabSection: React.FC<Record<string, any>> = ({
                                   setQuickAssignAmount('');
                                 }}
                                 className={`px-2 py-0.5 rounded-lg text-[11.5px] font-mono font-bold border cursor-pointer ${subSurfaceCls}`}
+                                title="공식 단가표 미등록 모델 (클릭 시 내 기기에만 수당 단가 추가)"
                               >
                                 {mm.modelEntry.modelName} +단가지정
                               </button>

@@ -46,6 +46,7 @@ import {
   getCurrentYearMonth,
   hydrateModelIncentiveSheetsFromIdb,
   IncentiveMonthBasis,
+  isGenericNonModelLabel,
   loadAllModelIncentiveSheets,
   MODEL_INCENTIVE_UPDATED_EVENT,
   parseIncentiveAmountCell,
@@ -266,6 +267,12 @@ export const CrmSalesAndIncentivePanel: React.FC<
     const amt = parseIncentiveAmountCell(manualIncentive, 1);
     if (!code) {
       const msg = '모델명(코드)을 입력해 주세요. (예: RM70F64M2X)';
+      setUploadError(msg);
+      onShowToast?.(`⚠️ ${msg}`);
+      return;
+    }
+    if (isGenericNonModelLabel(code)) {
+      const msg = '품목명("냉장고" 등)만으로는 등록할 수 없습니다. 정확한 모델코드를 입력해 주세요.';
       setUploadError(msg);
       onShowToast?.(`⚠️ ${msg}`);
       return;
