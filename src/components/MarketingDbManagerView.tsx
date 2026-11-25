@@ -70,12 +70,18 @@ import {
 import { compressImageFile } from '../utils/aiImageParser';
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from '../utils/ownerBusinessCardAsset';
 import {
+  applyCustomerFieldPatchWithSlipSync,
+  applyCustomerStatusChangeWithSlipSync,
   buildPrimaryFieldsFromQuote,
+  confirmDraftQuoteAndCleanOthers,
   CRM_CUSTOMERS_UPDATED_EVENT,
   deleteQuoteAndSyncCustomer,
   getCachedCustomers,
+  QuoteSlipInlinePatch,
   setCachedCustomers,
   syncCustomerToGas,
+  toggleSlipDeliveryStatusAndSyncCustomer,
+  updateQuoteSlipAndSyncCustomer,
 } from '../crm/services/gasApi';
 import { CustomerDetailModal } from '../crm/components/CustomerDetailModal';
 import { SMSModal } from '../crm/components/SMSModal';
@@ -1189,14 +1195,25 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
     id: string,
     nextStatus: CustomerStatus
   ) => {
-    const nowMs = Date.now();
     const updated = crmCustomers.map((c) =>
-      c.id === id ? { ...c, status: nextStatus, updatedAtMs: nowMs } : c
+      c.id === id ? applyCustomerStatusChangeWithSlipSync(c, nextStatus) : c
     );
     const deduped = setCachedCustomers(updated);
     setCrmCustomers(deduped);
-    showToast(`고객카드 상태가 [${nextStatus}]로 변경되었습니다.`);
-    await syncCustomerToGas('update', { id, status: nextStatus });
+    const synced = deduped.find((c) => c.id === id);
+    showToast(`고객카드 상태가 [${synced?.status || nextStatus}]로 변경되었습니다.`);
+    await syncCustomerToGas('update', {
+      id,
+      status: synced?.status || nextStatus,
+      ...(synced
+        ? {
+            logisticsConfirmed: synced.logisticsConfirmed,
+            deliveryDate: synced.deliveryDate,
+            quotes: synced.quotes,
+            updatedAtMs: synced.updatedAtMs,
+          }
+        : {}),
+    });
   };
 
   const handleInlineCrmMemoChange = async (id: string, nextMemo: string) => {
@@ -1216,12 +1233,131 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
   ) => {
     const nowMs = Date.now();
     const updated = crmCustomers.map((c) =>
-      c.id === id ? { ...c, ...patch, updatedAtMs: nowMs } : c
+      c.id === id
+        ? applyCustomerFieldPatchWithSlipSync(c, { ...patch, updatedAtMs: nowMs })
+        : c
     );
     const deduped = setCachedCustomers(updated);
     setCrmCustomers(deduped);
-    showToast('고객카드 정보가 업데이트되었습니다.');
-    await syncCustomerToGas('update', { id, ...patch });
+    const synced = deduped.find((c) => c.id === id);
+    showToast(
+      'logisticsConfirmed' in patch
+        ? patch.logisticsConfirmed
+          ? '🚚 물류확정 완료!'
+          : '🚚 배송대기로 변경되었습니다.'
+        : '고객카드 정보가 업데이트되었습니다.'
+    );
+    await syncCustomerToGas('update', {
+      id,
+      ...patch,
+      ...(synced
+        ? {
+            orderNo: synced.orderNo,
+            contractDate: synced.contractDate,
+            deliveryDate: synced.deliveryDate,
+            status: synced.status,
+            logisticsConfirmed: synced.logisticsConfirmed,
+            quotes: synced.quotes,
+            updatedAtMs: nowMs,
+          }
+        : {}),
+    });
+  };
+
+  const handleInlineToggleSlipDeliveryStatus = async (
+    customerId: string,
+    quoteId: string
+  ) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === customerId
+        ? toggleSlipDeliveryStatusAndSyncCustomer(c, quoteId)
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    const synced = deduped.find((c) => c.id === customerId);
+    showToast('전표 배송상태가 업데이트되었습니다.');
+    if (synced) {
+      await syncCustomerToGas('update', {
+        id: customerId,
+        status: synced.status,
+        deliveryDate: synced.deliveryDate,
+        logisticsConfirmed: synced.logisticsConfirmed,
+        quotes: synced.quotes,
+        updatedAtMs: synced.updatedAtMs,
+      });
+    }
+  };
+
+  const handleInlineUpdateQuoteSlip = async (
+    customerId: string,
+    quoteId: string,
+    patch: QuoteSlipInlinePatch
+  ) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === customerId
+        ? updateQuoteSlipAndSyncCustomer(c, quoteId, patch)
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    const synced = deduped.find((c) => c.id === customerId);
+    showToast('전표 정보가 업데이트되었습니다.');
+    if (synced) {
+      await syncCustomerToGas('update', {
+        id: customerId,
+        quotes: synced.quotes,
+        orderNo: synced.orderNo,
+        contractDate: synced.contractDate,
+        deliveryDate: synced.deliveryDate,
+        status: synced.status,
+        logisticsConfirmed: synced.logisticsConfirmed,
+        items: synced.items,
+        paidAmount: synced.paidAmount,
+        netAmount: synced.netAmount,
+        expectedBenefit: synced.expectedBenefit,
+        saleType: synced.saleType,
+        performanceAmount: synced.performanceAmount,
+        generalProductTotal: synced.generalProductTotal,
+        subscriptionPrincipal: synced.subscriptionPrincipal,
+        freedCounts: synced.freedCounts,
+        purchasedModels: synced.purchasedModels,
+        updatedAtMs: synced.updatedAtMs,
+      });
+    }
+  };
+
+  const handleInlineConfirmDraftQuote = async (
+    customerId: string,
+    quoteId: string
+  ) => {
+    const updated = crmCustomers.map((c) =>
+      c.id === customerId
+        ? confirmDraftQuoteAndCleanOthers(c, quoteId)
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCrmCustomers(deduped);
+    const synced = deduped.find((c) => c.id === customerId);
+    showToast('선택한 상담 견적으로 확정되었습니다.');
+    if (synced) {
+      await syncCustomerToGas('update', {
+        id: customerId,
+        quotes: synced.quotes,
+        updatedAtMs: synced.updatedAtMs,
+      });
+    }
+  };
+
+  const handleInlineManualSlipSaved = (
+    savedCustomer: CustomerItem,
+    orderNo?: string
+  ) => {
+    setCrmCustomers(getCachedCustomers());
+    setInlineDetailCustomerId(savedCustomer.id);
+    showToast(
+      `🧾 [${savedCustomer.name}] 새 전표${orderNo ? `(${orderNo})` : ''} 등록 완료!`
+    );
   };
 
   const handleInlineDeleteQuoteRecord = async (
@@ -1856,11 +1992,15 @@ export const MarketingDbManagerView: React.FC<MarketingDbManagerViewProps> = ({
           handleBusinessCardImageUpload,
           handleCsvFileUpload,
           handleInlineApplyQuoteAsPrimary,
+          handleInlineConfirmDraftQuote,
           handleInlineCrmFieldChange,
           handleInlineCrmMemoChange,
           handleInlineCrmStatusChange,
           handleInlineDeleteCustomer,
           handleInlineDeleteQuoteRecord,
+          handleInlineManualSlipSaved,
+          handleInlineToggleSlipDeliveryStatus,
+          handleInlineUpdateQuoteSlip,
           handlePasteImport,
           inlineSelectedCustomer,
           inlineSmsCustomer,

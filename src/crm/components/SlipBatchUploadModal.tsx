@@ -1102,40 +1102,61 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
 
                         <div>
                           <label className="block text-[11.5px] font-bold text-[#4E5968] dark:text-slate-400 mb-1">
-                            출고/배송상태 ({slip.outboundLabel || '자동판별'})
+                            출고·물류상태 ({slip.outboundLabel || '자동판별'})
                           </label>
-                          <div className="grid grid-cols-2 gap-1 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-700 bg-[#F2F4F6] dark:bg-slate-900">
+                          <div className="grid grid-cols-3 gap-1 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-700 bg-[#F2F4F6] dark:bg-slate-900">
                             <button
                               type="button"
                               onClick={() =>
                                 handleEditSlip(entry.queueId, {
                                   deliveryStatus: '배송대기',
+                                  logisticsConfirmed: false,
                                 })
                               }
-                              className={`py-1.5 px-2 rounded-lg text-[11.5px] font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
-                                slip.deliveryStatus !== '배송완료'
+                              className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap ${
+                                slip.deliveryStatus !== '배송완료' &&
+                                !slip.logisticsConfirmed
                                   ? 'bg-[#1B64DA] text-white shadow-2xs'
                                   : 'text-[#4E5968] dark:text-slate-400'
                               }`}
                             >
                               <Truck className="w-3 h-3 shrink-0" />
-                              <span>배송(물류)</span>
+                              <span>물류대기</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleEditSlip(entry.queueId, {
+                                  deliveryStatus: '배송대기',
+                                  logisticsConfirmed: true,
+                                })
+                              }
+                              className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap ${
+                                slip.deliveryStatus !== '배송완료' &&
+                                slip.logisticsConfirmed
+                                  ? 'bg-[#059669] text-white shadow-2xs'
+                                  : 'text-[#4E5968] dark:text-slate-400'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                              <span>물류확정</span>
                             </button>
                             <button
                               type="button"
                               onClick={() =>
                                 handleEditSlip(entry.queueId, {
                                   deliveryStatus: '배송완료',
+                                  logisticsConfirmed: true,
                                 })
                               }
-                              className={`py-1.5 px-2 rounded-lg text-[11.5px] font-extrabold inline-flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
+                              className={`py-1.5 px-1 rounded-lg text-[11px] font-extrabold inline-flex items-center justify-center gap-0.5 cursor-pointer whitespace-nowrap ${
                                 slip.deliveryStatus === '배송완료'
-                                  ? 'bg-[#059669] text-white shadow-2xs'
+                                  ? 'bg-emerald-700 text-white shadow-2xs'
                                   : 'text-[#4E5968] dark:text-slate-400'
                               }`}
                             >
                               <CheckCircle2 className="w-3 h-3 shrink-0" />
-                              <span>완료(자송)</span>
+                              <span>자송완료</span>
                             </button>
                           </div>
                         </div>

@@ -1060,6 +1060,10 @@ export const MarketingDbModals: React.FC<{ ctx: any }> = ({ ctx }) => {
         onFieldChange={handleInlineCrmFieldChange}
         onDeleteQuoteRecord={handleInlineDeleteQuoteRecord}
         onApplyQuoteAsPrimary={handleInlineApplyQuoteAsPrimary}
+        onToggleSlipDeliveryStatus={ctx.handleInlineToggleSlipDeliveryStatus}
+        onUpdateQuoteSlip={ctx.handleInlineUpdateQuoteSlip}
+        onConfirmDraftQuote={ctx.handleInlineConfirmDraftQuote}
+        onManualSlipSaved={ctx.handleInlineManualSlipSaved}
         onLoadQuoteRecord={(cust, quote) => {
           setInlineDetailCustomerId(null);
           if (onOpenQuoteRecordInQuoteBuilder) {

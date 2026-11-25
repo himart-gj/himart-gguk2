@@ -276,7 +276,8 @@ export function syncCustomerFromConfirmedSlips(
   if (customer.status !== '취소/보류') {
     if (pendingSlips.length > 0) {
       nextStatus = '계약완료';
-      nextLogisticsConfirmed = false;
+      // 사용자가 [배송대기] -> [물류확정]으로 전환한 상태를 덮어쓰지 않고 보존
+      nextLogisticsConfirmed = Boolean(customer.logisticsConfirmed);
       const pendingDates = pendingSlips
         .map((q) => (q.deliveryDate || '').trim())
         .filter(Boolean)
@@ -495,10 +496,14 @@ export function toggleSlipDeliveryStatusAndSyncCustomer(
   quoteId: string
 ): CustomerItem {
   const today = getTodayStr();
+  let reopenedToPending = false;
   const nextQuotes = (customer.quotes || []).map((q) => {
     if (q.id !== quoteId) return q;
     const nextDelivStatus: SlipDeliveryStatus =
       q.deliveryStatus === '배송완료' ? '배송대기' : '배송완료';
+    if (nextDelivStatus === '배송대기') {
+      reopenedToPending = true;
+    }
     const nextDelivDate =
       nextDelivStatus === '배송완료' && !(q.deliveryDate || '').trim()
         ? q.contractDate || today
@@ -511,8 +516,14 @@ export function toggleSlipDeliveryStatusAndSyncCustomer(
     };
   });
 
+  const nextLogistics =
+    reopenedToPending && customer.status === '배송완료'
+      ? false
+      : Boolean(customer.logisticsConfirmed);
+
   return syncCustomerFromConfirmedSlips({
     ...customer,
+    logisticsConfirmed: nextLogistics,
     quotes: nextQuotes,
     updatedAtMs: Date.now(),
   });
@@ -708,8 +719,105 @@ export function confirmDraftQuoteAndCleanOthers(
 }
 
 /**
- * 고객 기본정보 영역에서 대표 orderNo·계약일·배달일을 수정했을 때
- * 확정 전표가 1건인 경우 해당 전표와 양방향 동기화하여 syncCustomerFromConfirmedSlips 시 되돌아감을 방어합니다.
+ * 모든 확정 전표를 배송완료(deliveryStatus: '배송완료')로 일괄 전환하고 고객 대표 상태를 동기화합니다.
+ */
+export function markAllConfirmedSlipsDelivered(
+  customer: CustomerItem
+): CustomerItem {
+  const nowMs = Date.now();
+  const today = getTodayStr();
+  if (
+    !Array.isArray(customer.quotes) ||
+    !customer.quotes.some((q) => Boolean(q?.isConfirmedSlip))
+  ) {
+    return {
+      ...customer,
+      status: '배송완료',
+      logisticsConfirmed: true,
+      updatedAtMs: nowMs,
+    };
+  }
+  const nextQuotes = customer.quotes.map((q) =>
+    q?.isConfirmedSlip
+      ? {
+          ...q,
+          deliveryStatus: '배송완료' as const,
+          deliveryDate:
+            (q.deliveryDate || '').trim() ||
+            (q.contractDate || '').trim() ||
+            (customer.deliveryDate || '').trim() ||
+            today,
+        }
+      : q
+  );
+  return syncCustomerFromConfirmedSlips({
+    ...customer,
+    quotes: nextQuotes,
+    status: '배송완료',
+    logisticsConfirmed: true,
+    updatedAtMs: nowMs,
+  });
+}
+
+/**
+ * 고객 상태 변경 시 확정 전표(isConfirmedSlip) 보유 고객의 전표 배송상태 및 물류확정 플래그를 일관되게 동기화합니다.
+ */
+export function applyCustomerStatusChangeWithSlipSync(
+  customer: CustomerItem,
+  nextStatus: CustomerStatus
+): CustomerItem {
+  const nowMs = Date.now();
+  if (nextStatus === '배송완료') {
+    return markAllConfirmedSlipsDelivered(customer);
+  }
+  const hasConfirmed =
+    Array.isArray(customer.quotes) &&
+    customer.quotes.some((q) => Boolean(q?.isConfirmedSlip));
+
+  if (!hasConfirmed) {
+    return {
+      ...customer,
+      status: nextStatus,
+      ...(nextStatus === '계약완료' ? {} : {}),
+      updatedAtMs: nowMs,
+    };
+  }
+
+  if (nextStatus === '취소/보류') {
+    return syncCustomerFromConfirmedSlips({
+      ...customer,
+      status: '취소/보류',
+      updatedAtMs: nowMs,
+    });
+  }
+
+  // 확정 전표 보유 고객을 '계약완료'(또는 배송 단계 재오픈)로 전환할 때 모든 전표가 완료였다면 최신 전표를 배송대기로 재오픈
+  const hasPending = (customer.quotes || []).some(
+    (q) => q?.isConfirmedSlip && q.deliveryStatus !== '배송완료'
+  );
+  let reopenedFirst = false;
+  const reopenedQuotes = hasPending
+    ? customer.quotes
+    : (customer.quotes || []).map((q) => {
+        if (!reopenedFirst && q?.isConfirmedSlip) {
+          reopenedFirst = true;
+          return { ...q, deliveryStatus: '배송대기' as const };
+        }
+        return q;
+      });
+
+  return syncCustomerFromConfirmedSlips({
+    ...customer,
+    quotes: reopenedQuotes,
+    status: '계약완료',
+    logisticsConfirmed: hasPending ? Boolean(customer.logisticsConfirmed) : false,
+    updatedAtMs: nowMs,
+  });
+}
+
+/**
+ * 고객 기본정보·실적·빠른일정 바·물류확정 수정 시 내부 확정 전표와 양방향 동기화하여
+ * syncCustomerFromConfirmedSlips 재실행 시 수정한 값(물류확정, 품목, 금액, 계약일, 배달일, 전표번호)이 절대 되돌아가지 않도록 방어합니다.
  */
 export function applyCustomerFieldPatchWithSlipSync(
   customer: CustomerItem,
@@ -720,42 +828,141 @@ export function applyCustomerFieldPatchWithSlipSync(
   const confirmedSlips = rawQuotes.filter((q) => Boolean(q?.isConfirmedSlip));
 
   let nextQuotes = patch.quotes ?? rawQuotes;
-  if (
-    !patch.quotes &&
-    confirmedSlips.length === 1 &&
-    (patch.orderNo !== undefined ||
-      patch.contractDate !== undefined ||
-      patch.deliveryDate !== undefined)
-  ) {
+  if (!patch.quotes && confirmedSlips.length === 1) {
     const onlySlipId = confirmedSlips[0].id;
+    const hasSlipRelevantPatch =
+      patch.orderNo !== undefined ||
+      patch.contractDate !== undefined ||
+      patch.deliveryDate !== undefined ||
+      patch.items !== undefined ||
+      patch.saleType !== undefined ||
+      patch.performanceAmount !== undefined ||
+      patch.generalProductTotal !== undefined ||
+      patch.subscriptionPrincipal !== undefined ||
+      patch.paidAmount !== undefined ||
+      patch.netAmount !== undefined ||
+      patch.purchasedModels !== undefined;
+
+    if (hasSlipRelevantPatch) {
+      nextQuotes = rawQuotes.map((q) => {
+        if (q.id !== onlySlipId) return q;
+        const nextItemSummary =
+          patch.items !== undefined && patch.items.trim()
+            ? patch.items.trim()
+            : q.itemSummary;
+        const updatedOrderNo =
+          patch.orderNo !== undefined
+            ? patch.orderNo.trim()
+            : (q.orderNo || '').trim();
+        const coreTitle =
+          (q.title || nextItemSummary?.slice(0, 18) || '확정전표')
+            .replace(/^\[(?:전표[^\]]*|확정전표)\]\s*/, '')
+            .trim() ||
+          nextItemSummary?.slice(0, 18) ||
+          '확정전표';
+        const updatedTitle =
+          patch.orderNo !== undefined || patch.items !== undefined
+            ? updatedOrderNo
+              ? `[전표 ${updatedOrderNo}] ${
+                  patch.items !== undefined
+                    ? nextItemSummary.slice(0, 20)
+                    : coreTitle
+                }`
+              : `[확정전표] ${
+                  patch.items !== undefined
+                    ? nextItemSummary.slice(0, 20)
+                    : coreTitle
+                }`
+            : q.title;
+        return {
+          ...q,
+          title: updatedTitle,
+          orderNo: updatedOrderNo,
+          itemSummary: nextItemSummary,
+          ...(patch.saleType !== undefined ? { quoteMode: patch.saleType } : {}),
+          ...(patch.performanceAmount !== undefined
+            ? { performanceAmount: patch.performanceAmount }
+            : {}),
+          ...(patch.generalProductTotal !== undefined
+            ? { generalProductTotal: patch.generalProductTotal }
+            : {}),
+          ...(patch.subscriptionPrincipal !== undefined
+            ? { subscriptionPrincipal: patch.subscriptionPrincipal }
+            : {}),
+          ...(patch.paidAmount !== undefined
+            ? { paidAmount: patch.paidAmount }
+            : {}),
+          ...(patch.netAmount !== undefined
+            ? { netAmount: patch.netAmount }
+            : {}),
+          ...(patch.purchasedModels !== undefined
+            ? { purchasedModels: patch.purchasedModels }
+            : {}),
+          contractDate:
+            patch.contractDate !== undefined
+              ? patch.contractDate.trim()
+              : q.contractDate,
+          deliveryDate:
+            patch.deliveryDate !== undefined
+              ? patch.deliveryDate.trim()
+              : q.deliveryDate,
+        };
+      });
+    }
+  } else if (
+    !patch.quotes &&
+    confirmedSlips.length >= 2 &&
+    (patch.contractDate !== undefined || patch.deliveryDate !== undefined)
+  ) {
+    const primarySlipId = confirmedSlips[0].id;
+    const pendingSlips = confirmedSlips.filter(
+      (s) => s.deliveryStatus !== '배송완료'
+    );
+    const cleanPatchDeliv =
+      patch.deliveryDate !== undefined ? patch.deliveryDate.trim() : undefined;
+
+    // 다중 전표에서 대표 배달일 변경 시 현재 D-Day 기준이 되는 미완료 전표(없으면 최신 완료 전표)에 동기화
+    let targetDelivSlipId: string | null = null;
+    if (cleanPatchDeliv !== undefined && cleanPatchDeliv !== '') {
+      if (pendingSlips.length > 0) {
+        const datedPending = [...pendingSlips]
+          .filter((s) => Boolean((s.deliveryDate || '').trim()))
+          .sort((a, b) =>
+            (a.deliveryDate || '').localeCompare(b.deliveryDate || '')
+          );
+        targetDelivSlipId = (datedPending[0] || pendingSlips[0]).id;
+      } else {
+        targetDelivSlipId = confirmedSlips[0].id;
+      }
+    }
+
     nextQuotes = rawQuotes.map((q) => {
-      if (q.id !== onlySlipId) return q;
-      const updatedOrderNo =
-        patch.orderNo !== undefined
-          ? patch.orderNo.trim()
-          : (q.orderNo || '').trim();
-      const coreTitle =
-        (q.title || q.itemSummary?.slice(0, 18) || '확정전표')
-          .replace(/^\[(?:전표[^\]]*|확정전표)\]\s*/, '')
-          .trim() || '확정전표';
-      const updatedTitle =
-        patch.orderNo !== undefined
-          ? updatedOrderNo
-            ? `[전표 ${updatedOrderNo}] ${coreTitle}`
-            : `[확정전표] ${coreTitle}`
-          : q.title;
+      if (!q?.isConfirmedSlip) return q;
+      let nextContract = q.contractDate;
+      let nextDeliv = q.deliveryDate;
+
+      if (patch.contractDate !== undefined && q.id === primarySlipId) {
+        nextContract = patch.contractDate.trim();
+      }
+      if (cleanPatchDeliv !== undefined) {
+        if (cleanPatchDeliv === '') {
+          if (pendingSlips.length > 0) {
+            if (q.deliveryStatus !== '배송완료') nextDeliv = '';
+          } else if (q.id === primarySlipId) {
+            nextDeliv = '';
+          }
+        } else if (q.id === targetDelivSlipId) {
+          nextDeliv = cleanPatchDeliv;
+        }
+      }
+
+      if (nextContract === q.contractDate && nextDeliv === q.deliveryDate) {
+        return q;
+      }
       return {
         ...q,
-        title: updatedTitle,
-        orderNo: updatedOrderNo,
-        contractDate:
-          patch.contractDate !== undefined
-            ? patch.contractDate.trim()
-            : q.contractDate,
-        deliveryDate:
-          patch.deliveryDate !== undefined
-            ? patch.deliveryDate.trim()
-            : q.deliveryDate,
+        contractDate: nextContract,
+        deliveryDate: nextDeliv,
       };
     });
   }
@@ -1226,10 +1433,13 @@ export async function saveCustomerQuote(payload: {
       memo: mergedMemo,
       orderNo: cleanOrderNo || existing.orderNo,
       giftItems: mergedGiftItems,
-      logisticsConfirmed:
-        payload.logisticsConfirmed !== undefined
-          ? payload.logisticsConfirmed
-          : existing.logisticsConfirmed,
+      logisticsConfirmed: !effectiveIsConfirmedSlip
+        ? Boolean(existing.logisticsConfirmed)
+        : wasOverwritten
+        ? Boolean(payload.logisticsConfirmed || existing.logisticsConfirmed)
+        : effectiveSlipDelivStatus === '배송완료'
+        ? Boolean(existing.logisticsConfirmed)
+        : Boolean(payload.logisticsConfirmed),
       quotes: nextQuotes,
       deletedAt: undefined,
       updatedAtMs: Date.now(),

@@ -18,7 +18,7 @@ import { CustomerShareQuoteView } from './components/CustomerShareQuoteView';
 import { isOwnerMarketingDbUnlocked, loadMarketingDbStore, MARKETING_DB_UPDATED_EVENT, syncLeadsFromGoogleSheet, verifyAndUnlockOwnerDb } from './utils/marketingDbEngine';
 import MarketingDbManagerView from './components/MarketingDbManagerView';
 import { CustomerItem, QuoteRecord, SettlementTabId } from './crm/types/crm';
-import { CRM_CUSTOMERS_UPDATED_EVENT, getCachedCustomers, setCachedCustomers, syncCustomerToGas } from './crm/services/gasApi';
+import { CRM_CUSTOMERS_UPDATED_EVENT, getCachedCustomers, markAllConfirmedSlipsDelivered, setCachedCustomers, syncCustomerToGas } from './crm/services/gasApi';
 import { getPastDueDeliveryCustomers, isPendingLogisticsCustomer, isUrgentCustomer } from './crm/utils/date';
 import { PAST_DELIVERY_POPUP_DISMISSED_KEY } from './crm/CrmApp';
 import { CARE_TABLE_UPDATED_EVENT, CareTableDataset, fetchRemoteCareDataset, loadLocalCareDataset, saveLocalCareDataset } from './utils/careTableParser';
@@ -1482,16 +1482,16 @@ export function App() {
   const handleConfirmDeliveredFromHome = useCallback(
     async (customerId: string) => {
       const updated = crmCustomers.map((c) =>
-        c.id === customerId
-          ? { ...c, status: '배송완료' as const, logisticsConfirmed: true }
-          : c
+        c.id === customerId ? markAllConfirmedSlipsDelivered(c) : c
       );
       const deduped = setCachedCustomers(updated);
       setCrmCustomers(deduped);
+      const synced = deduped.find((c) => c.id === customerId);
       await syncCustomerToGas('update', {
         id: customerId,
         status: '배송완료',
         logisticsConfirmed: true,
+        ...(synced ? { quotes: synced.quotes, deliveryDate: synced.deliveryDate } : {}),
       });
     },
     [crmCustomers]
@@ -1501,18 +1501,18 @@ export function App() {
     async (customerIds: string[]) => {
       const idSet = new Set(customerIds);
       const updated = crmCustomers.map((c) =>
-        idSet.has(c.id)
-          ? { ...c, status: '배송완료' as const, logisticsConfirmed: true }
-          : c
+        idSet.has(c.id) ? markAllConfirmedSlipsDelivered(c) : c
       );
       const deduped = setCachedCustomers(updated);
       setCrmCustomers(deduped);
       setIsHomePastDeliveryOpen(false);
       for (const cid of customerIds) {
+        const synced = deduped.find((c) => c.id === cid);
         await syncCustomerToGas('update', {
           id: cid,
           status: '배송완료',
           logisticsConfirmed: true,
+          ...(synced ? { quotes: synced.quotes, deliveryDate: synced.deliveryDate } : {}),
         });
       }
     },

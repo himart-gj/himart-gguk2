@@ -563,7 +563,10 @@ ${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 �
                 aria-label="고객 상태 변경"
                 className={`appearance-none pl-2.5 pr-6 py-1 rounded-full text-base sm:text-xs font-extrabold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1B64DA] ${style.bg} ${style.text} ${style.border}`}
               >
-                {ALL_STATUSES.map((st) => (
+                {(confirmedSlips.length > 0
+                  ? (['계약완료', '배송완료', '취소/보류'] as CustomerStatus[])
+                  : ALL_STATUSES
+                ).map((st) => (
                   <option
                     key={st}
                     value={st}

@@ -24,15 +24,16 @@ import {
 } from './types/crm';
 import {
   applyCustomerFieldPatchWithSlipSync,
+  applyCustomerStatusChangeWithSlipSync,
   confirmDraftQuoteAndCleanOthers,
   CRM_CUSTOMERS_UPDATED_EVENT,
   deleteQuoteAndSyncCustomer,
   fetchCustomersFromGas,
   getCachedCustomers,
   getCustomerIdentityKey,
+  markAllConfirmedSlipsDelivered,
   QuoteSlipInlinePatch,
   setCachedCustomers,
-  syncCustomerFromConfirmedSlips,
   syncCustomerToGas,
   toggleSlipDeliveryStatusAndSyncCustomer,
   updateQuoteSlipAndSyncCustomer,
@@ -428,44 +429,16 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     }
   }, [pastDueDeliveryCustomers.length]);
 
-  const markCustomerSlipsDelivered = (c: CustomerItem): CustomerItem => {
-    if (!Array.isArray(c.quotes) || !c.quotes.some((q) => q?.isConfirmedSlip)) {
-      return c;
-    }
-    const nextQuotes = c.quotes.map((q) =>
-      q?.isConfirmedSlip
-        ? {
-            ...q,
-            deliveryStatus: '배송완료' as const,
-            deliveryDate: q.deliveryDate || q.contractDate || c.deliveryDate,
-          }
-        : q
-    );
-    return syncCustomerFromConfirmedSlips({
-      ...c,
-      quotes: nextQuotes,
-      status: '배송완료',
-      logisticsConfirmed: true,
-    });
-  };
-
   const handleConfirmDelivered = async (customerId: string) => {
     const target = customers.find((c) => c.id === customerId);
     if (!target) return;
     pushUndoSnapshot(`${target.name} 배송완료 처리`);
-    const nowMs = Date.now();
     const updated = customers.map((c) =>
-      c.id === customerId
-        ? {
-            ...markCustomerSlipsDelivered(c),
-            status: '배송완료' as CustomerStatus,
-            logisticsConfirmed: true,
-            updatedAtMs: nowMs,
-          }
-        : c
+      c.id === customerId ? markAllConfirmedSlipsDelivered(c) : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    const synced = deduped.find((c) => c.id === customerId);
     const keepForGift = hasUnpaidGift(target);
     showToast(
       keepForGift
@@ -477,6 +450,13 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       id: customerId,
       status: '배송완료',
       logisticsConfirmed: true,
+      ...(synced
+        ? {
+            quotes: synced.quotes,
+            deliveryDate: synced.deliveryDate,
+            updatedAtMs: synced.updatedAtMs,
+          }
+        : {}),
     });
   };
 
@@ -484,26 +464,26 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     if (customerIds.length === 0) return;
     const idSet = new Set(customerIds);
     pushUndoSnapshot(`배송완료 일괄 처리 (${customerIds.length}건)`);
-    const nowMs = Date.now();
     const updated = customers.map((c) =>
-      idSet.has(c.id)
-        ? {
-            ...markCustomerSlipsDelivered(c),
-            status: '배송완료' as CustomerStatus,
-            logisticsConfirmed: true,
-            updatedAtMs: nowMs,
-          }
-        : c
+      idSet.has(c.id) ? markAllConfirmedSlipsDelivered(c) : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
     setIsPastDeliveryModalOpen(false);
     showToast(`✅ 총 ${customerIds.length}건 배송완료 처리되었습니다.`, true);
     for (const cid of customerIds) {
+      const synced = deduped.find((c) => c.id === cid);
       await syncCustomerToGas('update', {
         id: cid,
         status: '배송완료',
         logisticsConfirmed: true,
+        ...(synced
+          ? {
+              quotes: synced.quotes,
+              deliveryDate: synced.deliveryDate,
+              updatedAtMs: synced.updatedAtMs,
+            }
+          : {}),
       });
     }
   };
@@ -523,50 +503,48 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     nextStatus: CustomerStatus
   ) => {
     const target = customers.find((c) => c.id === id);
-    if (target && target.status === nextStatus) return;
-    pushUndoSnapshot(`${target?.name || '고객'} 상태 변경`);
-    const nowMs = Date.now();
-    const updated: CustomerItem[] = customers.map((c): CustomerItem => {
-      if (c.id !== id) return c;
-      if (nextStatus === '배송완료') {
-        return {
-          ...markCustomerSlipsDelivered(c),
-          status: '배송완료',
-          updatedAtMs: nowMs,
-        };
-      }
-      if (
-        nextStatus === '계약완료' &&
-        Array.isArray(c.quotes) &&
-        c.quotes.some((q) => q?.isConfirmedSlip)
-      ) {
-        const hasPending = c.quotes.some(
-          (q) => q?.isConfirmedSlip && q.deliveryStatus !== '배송완료'
-        );
-        const reopenedQuotes = hasPending
-          ? c.quotes
-          : c.quotes.map((q, idx) =>
-              idx === 0 && q?.isConfirmedSlip
-                ? { ...q, deliveryStatus: '배송대기' as const }
-                : q
-            );
-        return {
-          ...c,
-          quotes: reopenedQuotes,
-          status: '계약완료',
-          logisticsConfirmed: false,
-          updatedAtMs: nowMs,
-        };
-      }
-      return { ...c, status: nextStatus, updatedAtMs: nowMs };
-    });
+    if (!target || target.status === nextStatus) return;
+
+    const hasConfirmedSlips =
+      Array.isArray(target.quotes) &&
+      target.quotes.some((q) => Boolean(q?.isConfirmedSlip));
+
+    if (
+      hasConfirmedSlips &&
+      nextStatus !== '계약완료' &&
+      nextStatus !== '배송완료' &&
+      nextStatus !== '취소/보류'
+    ) {
+      showToast(
+        `ℹ️ [${target.name}] 확정 전표 보유 고객은 [계약완료 / 배송완료 / 취소·보류] 단계로 관리됩니다.`,
+        false
+      );
+      return;
+    }
+
+    pushUndoSnapshot(`${target.name} 상태 변경`);
+    const updated = customers.map((c) =>
+      c.id === id ? applyCustomerStatusChangeWithSlipSync(c, nextStatus) : c
+    );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
+    const synced = deduped.find((c) => c.id === id);
     showToast(
-      `📌 [${target?.name || '고객'}] 상태 → [${nextStatus}]`,
+      `📌 [${target.name}] 상태 → [${synced?.status || nextStatus}]`,
       true
     );
-    await syncCustomerToGas('update', { id, status: nextStatus, updatedAtMs: nowMs });
+    await syncCustomerToGas('update', {
+      id,
+      status: synced?.status || nextStatus,
+      ...(synced
+        ? {
+            logisticsConfirmed: synced.logisticsConfirmed,
+            deliveryDate: synced.deliveryDate,
+            quotes: synced.quotes,
+            updatedAtMs: synced.updatedAtMs,
+          }
+        : {}),
+    });
   };
 
   const handleToggleSlipDeliveryStatus = async (

@@ -1397,6 +1397,7 @@ export function rebuildParsedHisisSlipFromEdits(
     monthlyFeeTotal?: number;
     deliveryDate?: string;
     deliveryStatus?: '배송대기' | '배송완료';
+    logisticsConfirmed?: boolean;
   }
 ): ParsedHisisSlipResult {
   const nextOrderNo =
@@ -1530,7 +1531,14 @@ export function rebuildParsedHisisSlipFromEdits(
   const nextDeliveryStatus = patch.deliveryStatus ?? prev.deliveryStatus;
   const nextCrmStatus: '계약완료' | '배송완료' =
     nextDeliveryStatus === '배송완료' ? '배송완료' : '계약완료';
-  const nextLogisticsConfirmed = nextDeliveryStatus === '배송완료';
+  const nextLogisticsConfirmed =
+    nextDeliveryStatus === '배송완료'
+      ? true
+      : patch.logisticsConfirmed !== undefined
+      ? patch.logisticsConfirmed
+      : patch.deliveryStatus !== undefined && prev.deliveryStatus === '배송완료'
+      ? false
+      : Boolean(prev.logisticsConfirmed);
 
   let nextDeliveryDate =
     patch.deliveryDate !== undefined
