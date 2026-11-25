@@ -374,7 +374,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
             <span className="font-mono">{totalPrincipal.toLocaleString()}원</span> · 5년 무상 A/S 기본 포함
           </span>
           <span className="ledger-row-value font-mono font-bold text-[#191F28] dark:text-slate-100">
-            월 합계 {totalBaseMonthly.toLocaleString()}원
+            월 합계 {(liveSubSummary.rawTotalBaseMonthly ?? totalBaseMonthly).toLocaleString()}원
           </span>
         </div>
       </div>
@@ -500,7 +500,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                 </span>
                 <span className="text-xs font-extrabold break-keep">
                   {isLotte5pOn
-                    ? '롯데카드 5% 청구할인 적용됨 (최대 5만원)'
+                    ? '롯데카드 5% 청구할인 적용됨 (원구독료 반영 · 최대 5만원)'
                     : '+ 롯데카드 5% 청구할인 적용하기 (최대 5만원)'}
                 </span>
               </div>
@@ -512,7 +512,9 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                 }`}
               >
                 {isLotte5pOn
-                  ? `-${previewLotte5p.toLocaleString()}원 청구할인`
+                  ? totalPrincipal > 0
+                    ? `-${previewLotte5p.toLocaleString()}원 · 원구독료 월 ${liveSubSummary.totalBaseMonthly.toLocaleString()}원`
+                    : `-${previewLotte5p.toLocaleString()}원 청구할인`
                   : totalPrincipal > 0
                   ? `클릭 시 -${previewLotte5p.toLocaleString()}원`
                   : '원금 5% · 최대 5만원'}
@@ -914,8 +916,13 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                 <div className="text-xs font-extrabold text-[#191F28] dark:text-slate-100">
                   월 체감 구독료 ({state.activeGeneralPlan}안 · {periodLabel})
                 </div>
-                <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 font-medium mt-0.5">
-                  기본 월 {totalBaseMonthly.toLocaleString()}원 - 카드 {cardDiscount.toLocaleString()}원
+                <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
+                  {liveSubSummary.subLotteBillingDiscount > 0
+                    ? `원구독료 월 ${totalBaseMonthly.toLocaleString()}원(5%청구할인 적용 · 전표 월 ${(
+                        liveSubSummary.rawTotalBaseMonthly ?? totalBaseMonthly
+                      ).toLocaleString()}원)`
+                    : `기본 월 ${totalBaseMonthly.toLocaleString()}원`}{' '}
+                  - 카드 {cardDiscount.toLocaleString()}원
                   {!state.hideSubPreed && hiPlusMonthly > 0
                     ? ` - 프리드 ${hiPlusMonthly.toLocaleString()}원`
                     : ''}
@@ -942,7 +949,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   {liveSubSummary.totalSubCashback > 0 &&
                   liveSubSummary.subLotteBillingDiscount > 0 ? (
                     <>
-                      5% 청구할인 · 일시 캐시백 총{' '}
+                      원구독료 5% 청구할인 · 일시 캐시백 총{' '}
                       <strong className="font-mono tabular-nums whitespace-nowrap font-extrabold">
                         -{oneTimeBenefitSum.toLocaleString()}원
                       </strong>{' '}
@@ -954,7 +961,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                       <strong className="font-mono tabular-nums whitespace-nowrap font-extrabold">
                         -{liveSubSummary.subLotteBillingDiscount.toLocaleString()}원
                       </strong>{' '}
-                      (최대 5만원) 실부담 절감 반영
+                      (최대 5만원) 원구독료 반영
                     </>
                   ) : (
                     <>

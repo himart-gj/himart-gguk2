@@ -462,11 +462,6 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
       : '청구할인';
 
   const subCashbackDetailParts: string[] = [];
-  if (subSummary.subLotteBillingDiscount > 0) {
-    subCashbackDetailParts.push(
-      `롯데카드 5% 청구할인(최대 5만원) -${subSummary.subLotteBillingDiscount.toLocaleString()}원`
-    );
-  }
   if (subSummary.subTierCashback > 0) {
     subCashbackDetailParts.push(
       `${currentCard?.shortName || '제휴카드'} 금액대별 캐시백(원금 ${Math.floor(
