@@ -1102,6 +1102,9 @@ export function App() {
             parsed.generalPlan1?.subExtraCashback ??
             parsed.subExtraCashback ??
             0,
+          subLotteBilling5p: Boolean(
+            parsed.generalPlan1?.subLotteBilling5p ?? parsed.subLotteBilling5p
+          ),
         });
 
         const mergedPlan2 = extractGeneralPlanData({

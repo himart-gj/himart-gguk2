@@ -473,19 +473,28 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         .filter(Boolean)
         .join(', ') || '맞춤 가전 패키지';
 
+  const subOneTimeExtra =
+    subSummary.totalSubCashback + subSummary.subLotteBillingDiscount;
+  const subOneTimeLabel =
+    subSummary.subLotteBillingDiscount > 0 && subSummary.totalSubCashback > 0
+      ? `5% 청구할인·캐시백 -${subOneTimeExtra.toLocaleString()}원 반영`
+      : subSummary.subLotteBillingDiscount > 0
+      ? `롯데카드 5% 청구할인 -${subSummary.subLotteBillingDiscount.toLocaleString()}원 반영`
+      : subSummary.totalSubCashback > 0
+      ? `1회 캐시백 -${subSummary.totalSubCashback.toLocaleString()}원 반영`
+      : '';
+
   const priceHighlight =
     effectiveShareState.quoteMode === 'subscription'
       ? `월 체감 ${subSummary.finalMonthlyFee.toLocaleString()}원 (최종 ${
           subSummary.periodLabel
         } 체감가 ${subSummary.finalTotalFee.toLocaleString()}원${
-          subSummary.totalSubCashback > 0
-            ? ` · 1회 캐시백 -${subSummary.totalSubCashback.toLocaleString()}원 반영`
-            : ''
+          subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''
         })`
       : effectiveShareState.quoteMode === 'hybrid'
       ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 월 ${subSummary.finalMonthlyFee.toLocaleString()}원 (통합 최종 체감가 ${(
           genSummary.rawNet + subSummary.finalTotalFee
-        ).toLocaleString()}원)`
+        ).toLocaleString()}원${subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''})`
       : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원`;
 
   const validSharePlans = getAllGeneralPlanSummaries(effectiveShareState).filter(

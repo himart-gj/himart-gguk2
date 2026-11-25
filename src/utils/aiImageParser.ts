@@ -865,6 +865,9 @@ export interface RawHisisSlipAiPayload {
   shippingRoadAddress?: string; // 하단 [출하] 도로명주소/주소
   customerRequest?: string; // 하단 [출하] 고객요청
   logisticsVendor?: string; // 하단 [출하] 의뢰물류 (예: '직사입물류')
+  paymentCreditCard?: number; // 하단 [결제] 1행 2열 '신용카드' 우측 금액
+  paymentReceiptTotal?: number; // 하단 [결제] 1행 1열 '접수금액' 우측 금액
+  paymentActualTotal?: number; // 하단 [결제] 2행 1열 '실구매가' 우측 금액
   rows?: RawHisisSlipRow[];
 }
 
@@ -1145,73 +1148,88 @@ export function normalizeHisisSlipPayload(
     if (!primaryDeliveryTime && r.deliveryTime && String(r.deliveryTime).trim()) {
       primaryDeliveryTime = String(r.deliveryTime).trim();
     }
-    if (!primaryOutboundPlace && r.outboundPlace && String(r.outboundPlace).trim()) {
-      primaryOutboundPlace = String(r.outboundPlace).trim();
-    }
-    if (!primaryDirectDelivery && r.directDelivery && String(r.directDelivery).trim()) {
-      primaryDirectDelivery = String(r.directDelivery).trim();
+    if (!primaryOutboundPlace && !primaryDirectDelivery) {
+      const rowOut = String(r.outboundPlace || '').trim();
+      const rowDir = String(r.directDelivery || '').trim();
+      if (rowOut || rowDir) {
+        primaryOutboundPlace = rowOut;
+        primaryDirectDelivery = rowDir;
+      }
     }
   };
 
   if (quoteMode === 'subscription') {
-    const defaultSubPeriod: SubscriptionPeriod =
-      setCardPeriodsInSlip[0] || 60;
+    const period: SubscriptionPeriod = setCardPeriodsInSlip[0] || 60;
 
-    for (let i = 0; i < activeRows.length; i++) {
-      const r = activeRows[i];
+    const normalizeSeqNum = (seq?: string): number | null => {
+      const digits = String(seq || '').trim().replace(/\D/g, '');
+      if (!digits) return null;
+      const n = parseInt(digits, 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+
+    const isMainSubRowCandidate = (r: RawHisisSlipRow): boolean => {
       const codeAndName = `${r.productCode || ''} ${r.productName || ''}`.trim();
-      if (!codeAndName) continue;
-      if (extractSetCardPeriod(codeAndName) !== null) continue;
-      if (isWarrantyRowText(codeAndName)) continue;
+      if (!codeAndName) return false;
+      if (extractSetCardPeriod(codeAndName) !== null) return false;
+      if (isWarrantyRowText(codeAndName)) return false;
+      return true;
+    };
 
-      const receiptAmt = Math.max(0, Math.round(Number(r.receiptAmount) || 0));
-      const actualAmt = Math.max(0, Math.round(Number(r.actualPrice) || 0));
-      const principal = receiptAmt > 0 ? receiptAmt : actualAmt;
+    const row01 =
+      activeRows.find(
+        (r) => normalizeSeqNum(r.seq) === 1 && isMainSubRowCandidate(r)
+      ) ||
+      activeRows.find((r) => isMainSubRowCandidate(r)) ||
+      null;
 
-      if (principal <= 0) {
-        const giftLabel = normalizeModelCode(r.productCode || r.productName);
-        if (giftLabel) giftCandidates.push(giftLabel);
-        continue;
-      }
+    if (row01) {
+      captureRowLogistics(row01);
+    }
 
-      captureRowLogistics(r);
+    const creditCardAmt = Math.max(
+      0,
+      Math.round(Number(raw.paymentCreditCard) || 0)
+    );
+    const fallbackAmt = Math.max(
+      0,
+      Math.round(
+        Number(raw.paymentActualTotal) ||
+          Number(row01?.actualPrice) ||
+          Number(row01?.receiptAmount) ||
+          0
+      )
+    );
+    const baseCardTotal = creditCardAmt > 0 ? creditCardAmt : fallbackAmt;
 
-      // 직후 연속된 행들 중 다음 본품 행 이전에 등장하는 SET-CARD 개월수를 매칭
-      let pairedPeriod: SubscriptionPeriod | null = null;
-      for (let j = i + 1; j < activeRows.length; j++) {
-        const nextRow = activeRows[j];
-        const nextText = `${nextRow.productCode || ''} ${nextRow.productName || ''}`.trim();
-        const foundPeriod = extractSetCardPeriod(nextText);
-        if (foundPeriod !== null) {
-          pairedPeriod = foundPeriod;
-          break;
-        }
-        const nextReceipt = Math.max(0, Math.round(Number(nextRow.receiptAmount) || 0));
-        const nextActual = Math.max(0, Math.round(Number(nextRow.actualPrice) || 0));
-        if (nextReceipt > 0 || nextActual > 0) {
-          break;
-        }
-      }
+    const isSingleMonthUnitCard =
+      creditCardAmt > 0 &&
+      creditCardAmt <= 250000 &&
+      Number(row01?.receiptAmount) >= creditCardAmt * 12;
 
-      const period: SubscriptionPeriod = pairedPeriod || defaultSubPeriod;
-      const cleanCode = normalizeModelCode(r.productCode || r.productName || '');
-      const category = inferCategoryFromModelCode(cleanCode, r.category);
-      const qty = Math.max(1, Math.round(Number(r.quantity) || 1));
-      const unitPrincipal = qty > 1 ? Math.round(principal / qty) : principal;
+    const contractAmount = isSingleMonthUnitCard
+      ? creditCardAmt * period
+      : baseCardTotal;
+    const monthlyFee = isSingleMonthUnitCard
+      ? creditCardAmt
+      : Math.round(baseCardTotal / period);
 
-      for (let qIdx = 0; qIdx < qty; qIdx++) {
-        const itemContract =
-          qIdx === qty - 1
-            ? principal - unitPrincipal * (qty - 1)
-            : unitPrincipal;
-        subscriptionItems.push({
-          category,
-          modelName: cleanCode,
-          contractAmount: itemContract,
-          period,
-          monthlyFee: Math.round(itemContract / period),
-        });
-      }
+    const row01Code = row01
+      ? normalizeModelCode(row01.productCode || row01.productName || '')
+      : '';
+    const category = inferCategoryFromModelCode(
+      row01Code,
+      row01?.category || '구독가전'
+    );
+
+    if (row01 || baseCardTotal > 0) {
+      subscriptionItems.push({
+        category,
+        modelName: row01Code,
+        contractAmount,
+        period,
+        monthlyFee,
+      });
     }
   } else {
     for (const r of activeRows) {
@@ -1254,7 +1272,14 @@ export function normalizeHisisSlipPayload(
     }
   }
 
-  // 본품 행에서 물류 정보를 못 찾은 경우 전체 활성 행에서 한 번 더 탐색
+  // 본품 행에서 물류 정보를 못 찾은 경우 비부가서비스 행 우선 → 전체 활성 행 순으로 보조 탐색
+  for (const r of activeRows) {
+    const codeAndName = `${r.productCode || ''} ${r.productName || ''}`.trim();
+    if (extractSetCardPeriod(codeAndName) !== null || isWarrantyRowText(codeAndName)) {
+      continue;
+    }
+    captureRowLogistics(r);
+  }
   for (const r of activeRows) {
     captureRowLogistics(r);
   }
@@ -1655,7 +1680,14 @@ export const HISIS_SLIP_PROMPT_TEXT = `당신은 롯데하이마트 HISIS v3 '[�
   - deliveryTime: '시간' 열 텍스트 (예: "오후FT", 비어 있으면 "")
   - outboundPlace: '출고지' 열 텍스트 정확히 (예: "자송", "타사물류", "중앙물류", "지역물류")
   - directDelivery: '직배' 열 텍스트 정확히 (예: "타사직배", 비어 있으면 "")
-  - cancelDate: '취소일자' 열에 날짜가 적혀 있으면 그 텍스트, 비어 있으면 ""`;
+  - cancelDate: '취소일자' 열에 날짜가 적혀 있으면 그 텍스트, 비어 있으면 ""
+
+[4. 하단 '[결제]' 영역 금액 추출 규칙 (매우 중요 — 구독 월요금 산출 기준)]
+- 품목 그리드 아래쪽 좌측 세로 헤더 '결제' 영역에서 다음 3개 금액을 숫자로 정확히 읽으세요 (원 단위 정수, 콤마 제외):
+  - paymentReceiptTotal: 하단 '결제' 블록 1행 1열 '접수금액' 우측 금액 (예: 1,190,000 -> 1190000)
+  - paymentActualTotal: 하단 '결제' 블록 2행 1열 '실구매가' 우측 금액 (예: 1,190,000 -> 1190000)
+  - paymentCreditCard: 하단 '결제' 블록 1행 2열(바로 오른쪽 열) '신용카드' 칸 우측 금액 (예: 1,190,000 -> 1190000). 구독 전표의 실제 월 구독료 산출 기준이므로 한 자리도 틀리지 말고 정확히 읽으세요!
+- 보조 규칙 (가접수/외상 전표): 만약 가접수/외상 상태라 '결제' 영역의 '신용카드'가 0으로 표시되어 있고 최하단 '외상' 영역의 '카드접수'(또는 '카드수금')에 금액이 찍혀 있다면 그 금액을 paymentCreditCard로 추출하세요.`;
 
 export const HISIS_SLIP_RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -1674,6 +1706,9 @@ export const HISIS_SLIP_RESPONSE_SCHEMA = {
     shippingRoadAddress: { type: Type.STRING },
     customerRequest: { type: Type.STRING },
     logisticsVendor: { type: Type.STRING },
+    paymentCreditCard: { type: Type.INTEGER },
+    paymentReceiptTotal: { type: Type.INTEGER },
+    paymentActualTotal: { type: Type.INTEGER },
     rows: {
       type: Type.ARRAY,
       items: {

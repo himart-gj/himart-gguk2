@@ -398,6 +398,7 @@ function packPlanTuple(plan: GeneralPlanData): any[] {
   const payoutMethodCode =
     payoutMethod === 'card_bill' ? 1 : payoutMethod === 'bank_bank' ? 2 : 0;
   const countPreedFlag = plan.countPreedTowardCardSpend ? 1 : 0;
+  const lotteBilling5pFlag = plan.subLotteBilling5p ? 1 : 0;
 
   return trimTrailingZeros([
     genTuples,
@@ -425,6 +426,7 @@ function packPlanTuple(plan: GeneralPlanData): any[] {
     hidePreedMask,
     payoutMethodCode,
     countPreedFlag,
+    lotteBilling5pFlag,
   ]);
 }
 
@@ -561,6 +563,7 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
     subAutoTierCashback: arr[18] === 0 ? false : true,
     subManualTierCashback: unpackMoney(arr[19]),
     subExtraCashback: unpackMoney(arr[20]),
+    subLotteBilling5p: Boolean(arr[25]),
   };
 }
 

@@ -1053,7 +1053,7 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
                         {slip.quoteMode === 'subscription' ? (
                           <div>
                             <label className="block text-[11.5px] font-bold text-[#E60012] dark:text-rose-300 mb-1">
-                              구독원금 · 월 {formatCurrency(slip.monthlyFeeTotal)}원
+                              신용카드 결제액 · 월 {formatCurrency(slip.monthlyFeeTotal)}원
                             </label>
                             <FormattedMoneyInput
                               value={slip.actualPurchaseAmount || ''}
@@ -1062,7 +1062,7 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
                                   actualPurchaseAmount: num,
                                 })
                               }
-                              placeholder="접수금액(구독원금)"
+                              placeholder="하단 신용카드 결제금액"
                               className="w-full px-2.5 py-2 rounded-xl border border-[#FECDD3] dark:border-rose-500/40 bg-[#FFF1F2]/40 dark:bg-slate-900 sm:text-xs font-mono font-black text-[#191F28] dark:text-slate-100"
                             />
                           </div>

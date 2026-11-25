@@ -442,6 +442,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       selectedCardTierId: cardSpec?.tiers[0]?.id || '',
       subAutoTierCashback: true,
       subManualTierCashback: 0,
+      subLotteBilling5p: cardId === 'lotte' ? Boolean(prev.subLotteBilling5p) : false,
     }));
   };
 
@@ -512,6 +513,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
       subAutoTierCashback: true,
       subManualTierCashback: 0,
       subExtraCashback: 0,
+      subLotteBilling5p: false,
       selectedCardId: 'none',
       selectedCardTierId: '',
       hiPlusCounts: {

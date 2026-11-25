@@ -466,6 +466,61 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
           </div>
         )}
 
+        {state.selectedCardId === 'lotte' && (() => {
+          const isLotte5pOn = Boolean(state.subLotteBilling5p);
+          const previewLotte5p = Math.min(Math.floor(totalPrincipal * 0.05), 50000);
+          return (
+            <button
+              type="button"
+              onClick={() =>
+                onChange((prev: any) => ({
+                  ...prev,
+                  subLotteBilling5p: !prev.subLotteBilling5p,
+                }))
+              }
+              className={`w-full rounded-xl px-3.5 py-2.5 border-2 flex flex-wrap items-center justify-between gap-2 text-left transition cursor-pointer schedule-tactile ${
+                isLotte5pOn
+                  ? 'bg-emerald-50/90 dark:bg-emerald-950/45 border-emerald-500 dark:border-emerald-400 text-[#191F28] dark:text-slate-100 shadow-2xs'
+                  : 'bg-white dark:bg-slate-800/90 border-[#BFDBFE] dark:border-blue-500/40 hover:bg-[#EFF6FF]/60 dark:hover:bg-blue-500/15 text-[#191F28] dark:text-slate-100'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                    isLotte5pOn
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-[#EFF6FF] dark:bg-blue-500/20 text-[#1B64DA] dark:text-blue-300 border border-[#BFDBFE] dark:border-blue-500/40'
+                  }`}
+                >
+                  {isLotte5pOn ? (
+                    <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  ) : (
+                    <CreditCard className="w-3 h-3" />
+                  )}
+                </span>
+                <span className="text-xs font-extrabold break-keep">
+                  {isLotte5pOn
+                    ? '롯데카드 5% 청구할인 적용됨 (최대 5만원)'
+                    : '+ 롯데카드 5% 청구할인 적용하기 (최대 5만원)'}
+                </span>
+              </div>
+              <span
+                className={`font-mono tabular-nums whitespace-nowrap text-xs font-extrabold px-2 py-0.5 rounded-md ml-auto ${
+                  isLotte5pOn
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-[#EFF6FF] dark:bg-blue-500/20 text-[#1B64DA] dark:text-blue-300'
+                }`}
+              >
+                {isLotte5pOn
+                  ? `-${previewLotte5p.toLocaleString()}원 청구할인`
+                  : totalPrincipal > 0
+                  ? `클릭 시 -${previewLotte5p.toLocaleString()}원`
+                  : '원금 5% · 최대 5만원'}
+              </span>
+            </button>
+          );
+        })()}
+
         {liveSubSummary.isTierCashbackCard && (
           <div
             className={`rounded-xl px-3 py-2 border text-xs font-medium ${
@@ -850,6 +905,8 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
             : liveSubSummary.finalTotalFee < 0
             ? Math.abs(liveSubSummary.finalTotalFee)
             : 0;
+        const oneTimeBenefitSum =
+          liveSubSummary.totalSubCashback + liveSubSummary.subLotteBillingDiscount;
         return (
           <div className="rounded-2xl bg-[#F8FAFC] dark:bg-slate-900/70 border border-[#E5E8EB] dark:border-slate-800 p-4 space-y-2.5">
             <div className="ledger-row">
@@ -878,15 +935,36 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
               </div>
             </div>
 
-            {/* 1회성 캐시백(300만↑ 구간 캐시백 + 추가 캐시백) 총 실부담 절감액 강조 콜아웃 배너 */}
-            {liveSubSummary.totalSubCashback > 0 ? (
+            {/* 1회성 혜택(롯데 5% 청구할인 + 300만↑ 구간 캐시백 + 추가 캐시백) 총 실부담 절감액 강조 콜아웃 배너 */}
+            {oneTimeBenefitSum > 0 ? (
               <div className="rounded-xl bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#1B64DA] dark:border-blue-400 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs text-[#1B64DA] dark:text-blue-200">
                 <div className="font-bold break-keep">
-                  1회 입금 캐시백 총{' '}
-                  <strong className="font-mono tabular-nums whitespace-nowrap font-extrabold">
-                    -{liveSubSummary.totalSubCashback.toLocaleString()}원
-                  </strong>{' '}
-                  실부담 절감 반영
+                  {liveSubSummary.totalSubCashback > 0 &&
+                  liveSubSummary.subLotteBillingDiscount > 0 ? (
+                    <>
+                      5% 청구할인 · 일시 캐시백 총{' '}
+                      <strong className="font-mono tabular-nums whitespace-nowrap font-extrabold">
+                        -{oneTimeBenefitSum.toLocaleString()}원
+                      </strong>{' '}
+                      실부담 절감 반영
+                    </>
+                  ) : liveSubSummary.subLotteBillingDiscount > 0 ? (
+                    <>
+                      롯데카드 5% 청구할인{' '}
+                      <strong className="font-mono tabular-nums whitespace-nowrap font-extrabold">
+                        -{liveSubSummary.subLotteBillingDiscount.toLocaleString()}원
+                      </strong>{' '}
+                      (최대 5만원) 실부담 절감 반영
+                    </>
+                  ) : (
+                    <>
+                      1회 입금 캐시백 총{' '}
+                      <strong className="font-mono tabular-nums whitespace-nowrap font-extrabold">
+                        -{liveSubSummary.totalSubCashback.toLocaleString()}원
+                      </strong>{' '}
+                      실부담 절감 반영
+                    </>
+                  )}
                 </div>
                 <div className="font-extrabold text-sm sm:text-[15px] font-mono tabular-nums whitespace-nowrap ml-auto text-[#1B64DA] dark:text-blue-300">
                   {liveSurplus.isSurplusZone || liveSubSummary.finalTotalFee <= 0

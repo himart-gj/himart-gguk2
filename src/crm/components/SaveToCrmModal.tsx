@@ -103,6 +103,11 @@ function buildPlanComparisonSummaryEntry(
         )}원`
       );
     }
+    if (sSum.subLotteBillingDiscount > 0) {
+      subBenefits.push(
+        `롯데카드 5% 청구할인 -${formatCurrency(sSum.subLotteBillingDiscount)}원`
+      );
+    }
     if (sSum.subTierCashback > 0) {
       subBenefits.push(
         `${sSum.currentCard?.shortName || '제휴카드'} 금액대캐시백 -${formatCurrency(
@@ -115,7 +120,7 @@ function buildPlanComparisonSummaryEntry(
         `1회 추가캐시백 -${formatCurrency(sSum.subExtraCashback)}원`
       );
     }
-    if (sSum.totalSubCashback > 0) {
+    if (sSum.totalSubCashback + sSum.subLotteBillingDiscount > 0) {
       subBenefits.push(
         `최종 ${sSum.periodLabel} 체감가 ${formatCurrency(sSum.finalTotalFee)}원`
       );
@@ -347,6 +352,13 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         )}원`
       );
     }
+    if (primarySubSummary.subLotteBillingDiscount > 0) {
+      benefitParts.push(
+        `롯데카드 5% 청구할인 -${formatCurrency(
+          primarySubSummary.subLotteBillingDiscount
+        )}원`
+      );
+    }
     if (primarySubSummary.subTierCashback > 0) {
       benefitParts.push(
         `${primarySubSummary.currentCard?.shortName || '제휴카드'} 금액대캐시백 -${formatCurrency(
@@ -359,7 +371,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
         `1회 추가캐시백 -${formatCurrency(primarySubSummary.subExtraCashback)}원`
       );
     }
-    if (primarySubSummary.totalSubCashback > 0) {
+    if (primarySubSummary.totalSubCashback + primarySubSummary.subLotteBillingDiscount > 0) {
       benefitParts.push(
         `최종 ${primarySubSummary.periodLabel} 체감가 ${formatCurrency(
           primarySubSummary.finalTotalFee
@@ -411,6 +423,20 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       ? primaryGenSummary.rawNet
       : primarySubSummary.finalMonthlyFee;
 
+  const hybOneTimeSubExtra =
+    primarySubSummary.totalSubCashback + primarySubSummary.subLotteBillingDiscount;
+  const hybOneTimeSubLabel =
+    primarySubSummary.subLotteBillingDiscount > 0 &&
+    primarySubSummary.totalSubCashback > 0
+      ? ` · 5% 청구할인·캐시백 -${formatCurrency(hybOneTimeSubExtra)}원 반영`
+      : primarySubSummary.subLotteBillingDiscount > 0
+      ? ` · 롯데카드 5% 청구할인 -${formatCurrency(
+          primarySubSummary.subLotteBillingDiscount
+        )}원 반영`
+      : primarySubSummary.totalSubCashback > 0
+      ? ` · 1회 캐시백 -${formatCurrency(primarySubSummary.totalSubCashback)}원 반영`
+      : '';
+
   const expectedBenefit = `일반 1안 실결제 ${formatCurrency(
     primaryGenSummary.payPrice
   )}원(체감 ${formatCurrency(primaryGenSummary.rawNet)}원) + 구독(${
@@ -421,11 +447,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     primarySubSummary.finalMonthlyFee
   )}원 / 최종 체감 ${formatCurrency(
     primarySubSummary.finalTotalFee
-  )}원${
-    primarySubSummary.totalSubCashback > 0
-      ? ` · 1회 캐시백 -${formatCurrency(primarySubSummary.totalSubCashback)}원 반영`
-      : ''
-  } · 통합 최종 체감가 ${formatCurrency(
+  )}원${hybOneTimeSubLabel} · 통합 최종 체감가 ${formatCurrency(
     primaryGenSummary.rawNet + primarySubSummary.finalTotalFee
   )}원)`;
 
@@ -841,7 +863,9 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 {state.quoteMode === 'subscription' ? (
                   <>
                     월 체감 구독료: {formatCurrency(extracted.netAmount)}원
-                    {extracted.primarySubSummary.totalSubCashback > 0 && (
+                    {extracted.primarySubSummary.totalSubCashback +
+                      extracted.primarySubSummary.subLotteBillingDiscount >
+                      0 && (
                       <span className="ml-1 text-emerald-700 dark:text-emerald-400">
                         (최종 {extracted.primarySubSummary.periodLabel} 체감가{' '}
                         {formatCurrency(extracted.primarySubSummary.finalTotalFee)}원)

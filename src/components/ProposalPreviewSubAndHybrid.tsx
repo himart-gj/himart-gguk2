@@ -332,14 +332,14 @@ const PreviewSubscriptionReceipt: React.FC<PreviewSubscriptionReceiptProps> = ({
           )}
         </div>
 
-        {/* 1회성 캐시백 보너스 배지 */}
+        {/* 1회성 캐시백 · 청구할인 보너스 배지 */}
         {subCashbackRows.length > 0 && (
           <div className="rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] px-3.5 py-2.5 space-y-1.5">
             {subCashbackRows.map((row) => (
               <div key={row.key} className="ledger-row items-center text-xs sm:text-sm">
                 <div className="ledger-row-label flex items-center gap-1.5">
                   <span className="px-1.5 py-0.5 rounded bg-[#1B64DA] text-white text-[10.5px] font-extrabold shrink-0">
-                    보너스 환급
+                    {row.key === 'sub-lotte-5p' ? '청구할인' : '보너스 환급'}
                   </span>
                   <span className="font-bold text-[#191F28] break-keep">
                     {row.label}
@@ -471,6 +471,15 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
   ];
 
   const subCashbackRows: { key: string; label: string; amount: number }[] = [
+    ...(subSummary.subLotteBillingDiscount > 0
+      ? [
+          {
+            key: 'sub-lotte-5p',
+            label: '롯데 제휴카드 5% 청구할인 (최대 5만원 한도)',
+            amount: subSummary.subLotteBillingDiscount,
+          },
+        ]
+      : []),
     ...(subSummary.subTierCashback > 0
       ? [
           {

@@ -277,6 +277,15 @@ export function calculateAutoSubscriptionTierCashback(
   return 0;
 }
 
+export function calculateSubLotteBilling5pDiscount(
+  totalPrincipal: number,
+  cardId?: AffiliateCardId | string,
+  enabled?: boolean
+): number {
+  if (cardId !== 'lotte' || !enabled || !(totalPrincipal > 0)) return 0;
+  return Math.min(Math.floor(totalPrincipal * 0.05), 50000);
+}
+
 export interface GeneralPlanData {
   generalItems: GeneralPurchaseItem[];
   generalCardType: GeneralCardType;
@@ -306,6 +315,7 @@ export interface GeneralPlanData {
   subAutoTierCashback?: boolean;
   subManualTierCashback?: number;
   subExtraCashback?: number;
+  subLotteBilling5p?: boolean;
 }
 
 export function extractGeneralPlanData(
@@ -357,6 +367,7 @@ export function extractGeneralPlanData(
     subAutoTierCashback: s.subAutoTierCashback ?? true,
     subManualTierCashback: Math.max(0, Number(s.subManualTierCashback) || 0),
     subExtraCashback: Math.max(0, Number(s.subExtraCashback) || 0),
+    subLotteBilling5p: Boolean(s.subLotteBilling5p),
   };
 }
 
@@ -422,6 +433,7 @@ export function cloneGeneralPlanData(
     subAutoTierCashback: source.subAutoTierCashback ?? true,
     subManualTierCashback: Math.max(0, Number(source.subManualTierCashback) || 0),
     subExtraCashback: Math.max(0, Number(source.subExtraCashback) || 0),
+    subLotteBilling5p: Boolean(source.subLotteBilling5p),
   };
 }
 
@@ -449,7 +461,8 @@ export function hasPlanMeaningfulContent(
   if (
     (Number(plan.instantDiscount) || 0) > 0 ||
     (Number(plan.extraCashback) || 0) > 0 ||
-    (Number(plan.subExtraCashback) || 0) > 0
+    (Number(plan.subExtraCashback) || 0) > 0 ||
+    Boolean(plan.subLotteBilling5p)
   ) {
     return true;
   }
@@ -1189,6 +1202,13 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
   const subExtraCashback = Math.max(0, Number(planData.subExtraCashback) || 0);
   const totalSubCashback = subTierCashback + subExtraCashback;
 
+  const subLotteBilling5p = Boolean(planData.subLotteBilling5p);
+  const subLotteBillingDiscount = calculateSubLotteBilling5pDiscount(
+    totalPrincipal,
+    planData.selectedCardId,
+    subLotteBilling5p
+  );
+
   const monthlyCashbackEquiv = 0;
 
   const baseMonthlyAfterPreed = totalBaseMonthly - hiPlusMonthly;
@@ -1213,7 +1233,7 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
     totalPrincipal - totalMonthlyDiscountOverTerm;
 
   const totalSubBenefit =
-    totalMonthlyDiscountOverTerm + totalSubCashback;
+    totalMonthlyDiscountOverTerm + totalSubCashback + subLotteBillingDiscount;
   const finalTotalFee = totalPrincipal - totalSubBenefit;
 
   const totalTermSurplus =
@@ -1264,6 +1284,8 @@ export function calculateSubscriptionSummary(planData: GeneralPlanData) {
     subTierCashback,
     subExtraCashback,
     totalSubCashback,
+    subLotteBilling5p,
+    subLotteBillingDiscount,
     monthlyCashbackEquiv,
     monthlyBillingAfterCardAndHiPlus,
     totalMonthlyDiscountOverTerm,
@@ -1519,6 +1541,7 @@ export interface ProposalState {
   subAutoTierCashback?: boolean;
   subManualTierCashback?: number;
   subExtraCashback?: number;
+  subLotteBilling5p?: boolean;
 }
 
 export const MAX_HI_PLUS_ACCOUNTS = MAX_FREED_ACCOUNTS;
@@ -1818,6 +1841,7 @@ export function resolveComparisonModePlanData(
       subAutoTierCashback: subFallback.subAutoTierCashback,
       subManualTierCashback: subFallback.subManualTierCashback,
       subExtraCashback: subFallback.subExtraCashback,
+      subLotteBilling5p: subFallback.subLotteBilling5p,
     };
   }
 
@@ -1864,6 +1888,7 @@ export function resolveComparisonModePlanData(
           subAutoTierCashback: subFallback.subAutoTierCashback,
           subManualTierCashback: subFallback.subManualTierCashback,
           subExtraCashback: subFallback.subExtraCashback,
+          subLotteBilling5p: subFallback.subLotteBilling5p,
         }
       : {}),
   };
@@ -1949,6 +1974,7 @@ export const createEmptyGeneralPlanData = (
   subAutoTierCashback: true,
   subManualTierCashback: 0,
   subExtraCashback: 0,
+  subLotteBilling5p: false,
 });
 
 export const createInitialState = (mode: QuoteMode): ProposalState => {
@@ -1982,7 +2008,7 @@ export interface HisisSlipGeneralItemInput {
 export interface HisisSlipSubscriptionItemInput {
   category: string;
   modelName: string;
-  /** 01번(본품) 행 접수금액 = 구독 원금 */
+  /** 하단 [결제] 영역 신용카드 결제금액 기준 구독 약정원금 */
   contractAmount: number;
   /** SET-CARD 뒤 숫자(36 | 48 | 60) */
   period: SubscriptionPeriod;
@@ -2062,6 +2088,7 @@ export function buildProposalStateFromHisisSlip(
       subAutoTierCashback: false,
       subManualTierCashback: 0,
       subExtraCashback: 0,
+      subLotteBilling5p: false,
     };
 
     return {
