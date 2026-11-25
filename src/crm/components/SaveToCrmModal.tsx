@@ -647,9 +647,9 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
 
     setSavedToast(
       result.wasOverwritten
-        ? `🔄 [${result.savedCustomer.name}] 고객님의 기존 견적을 수정 덮어쓰기 완료했습니다! (보관함 ${result.quoteCount}/5 유지)`
+        ? `🔄 [${result.savedCustomer.name}] 고객님의 기존 견적을 수정 덮어쓰기 완료했습니다! (보관함 ${result.quoteCount}/30 유지)`
         : result.isExistingCustomer
-        ? `✅ [${result.savedCustomer.name}] 고객님의 견적 보관함(${result.quoteCount}/5)에 새 견적으로 추가 저장되었습니다!`
+        ? `✅ [${result.savedCustomer.name}] 고객님의 견적 보관함(${result.quoteCount}/30)에 새 견적으로 추가 저장되었습니다!`
         : `✅ 신규 고객 [${result.savedCustomer.name}]님으로 등록 및 견적이 저장되었습니다!`
     );
 

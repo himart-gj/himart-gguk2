@@ -68,18 +68,38 @@ function getGenAIClient(clientApiKey?: string) {
 }
 
 function inferCategoryFromModelCode(code: string, rawCategory?: string): string {
+  const upper = (code || '').trim().toUpperCase();
   const cleanedCat = (rawCategory || '').trim();
+
+  if (
+    upper.startsWith('DDLP') ||
+    upper.startsWith('DDL') ||
+    upper.startsWith('EDL') ||
+    upper.startsWith('WDL') ||
+    upper.startsWith('GDL') ||
+    upper.startsWith('LDL') ||
+    upper.startsWith('CDL') ||
+    upper.startsWith('RK') ||
+    upper.startsWith('RQ') ||
+    upper.startsWith('Z3') ||
+    upper.startsWith('Z4') ||
+    upper.startsWith('Z5')
+  ) {
+    return '김치냉장고';
+  }
+
   if (
     cleanedCat &&
     cleanedCat !== '가전품목' &&
     cleanedCat !== '가전' &&
     cleanedCat !== '구독 가전' &&
     cleanedCat !== '구독 상품' &&
+    cleanedCat !== '일반가전' &&
+    cleanedCat !== '구독가전' &&
     cleanedCat !== '-'
   ) {
     return cleanedCat;
   }
-  const upper = (code || '').trim().toUpperCase();
   if (!upper) return cleanedCat || '가전품목';
 
   if (upper.startsWith('FG') || upper.startsWith('W2') || upper.startsWith('WT')) {
@@ -100,15 +120,6 @@ function inferCategoryFromModelCode(code: string, rawCategory?: string): string 
     upper.startsWith('J8')
   ) {
     return '냉장고';
-  }
-  if (
-    upper.startsWith('RK') ||
-    upper.startsWith('RQ') ||
-    upper.startsWith('Z3') ||
-    upper.startsWith('Z4') ||
-    upper.startsWith('Z5')
-  ) {
-    return '김치냉장고';
   }
   if (
     upper.startsWith('KU') ||
@@ -136,6 +147,18 @@ function inferCategoryFromModelCode(code: string, rawCategory?: string): string 
   }
   if (upper.startsWith('CRP') || upper.startsWith('CRT')) {
     return '전기밥솥';
+  }
+  if (
+    upper.startsWith('CP-') ||
+    upper.startsWith('CHP-') ||
+    upper.startsWith('CHPI-') ||
+    upper.startsWith('WD5') ||
+    upper.startsWith('WU')
+  ) {
+    return '정수기';
+  }
+  if (upper.startsWith('BFR') || upper.startsWith('CMC')) {
+    return '안마의자';
   }
   return cleanedCat || '가전품목';
 }
@@ -1079,6 +1102,157 @@ async function startServer() {
       res.status(502).json({ error: lastErr?.message || '모델 수당 이미지 분석 실패' });
     } catch (err: any) {
       res.status(500).json({ error: err?.message || '서버 이미지 분석 오류' });
+    }
+  });
+
+  // 5. HISIS v3 [판매접수등록] 전산 화면 사진 정밀 판독 엔드포인트 (/api/ai/parse-hisis-slip)
+  app.post('/api/ai/parse-hisis-slip', async (req, res) => {
+    try {
+      const { imageBase64, image, mimeType, apiKey: clientApiKey } = req.body || {};
+      const rawImage = imageBase64 || image;
+      if (!rawImage || typeof rawImage !== 'string') {
+        res.status(400).json({ success: false, error: '이미지 데이터가 전달되지 않았습니다.' });
+        return;
+      }
+
+      const cleanBase64 = rawImage.includes(',')
+        ? rawImage.split(',')[1]
+        : rawImage;
+      const resolvedMimeType =
+        mimeType ||
+        (rawImage.startsWith('data:image/jpeg')
+          ? 'image/jpeg'
+          : rawImage.startsWith('data:image/webp')
+          ? 'image/webp'
+          : 'image/png');
+
+      const ai = getGenAIClient(clientApiKey);
+
+      const promptText = `당신은 롯데하이마트 HISIS v3 '[판매접수등록]' 전산 화면 사진을 정밀 판독하는 전문 OCR·데이터 추출 AI입니다.
+모니터 모아레 무늬나 워터마크가 있더라도 글자와 숫자를 한 글자도 틀리지 않고 정확히 읽어 JSON으로 반환하세요.
+
+[1. 상단 '[접수]' 영역 추출 규칙]
+- receiptDate: 좌측 '접수일자' 칸의 날짜 (YYYY-MM-DD 형식, 예: "2026-11-25")
+- receiptSeq: '접수일자'와 달력 아이콘 바로 오른쪽에 있는 파란색 하이라이트 박스(또는 흰색 입력칸) 안의 4자리 숫자 전표순번 (예: "0011"). 파란 배경에 흰색/노란색 반전 글씨일 수 있으니 주의 깊게 읽으세요!
+- quoteNumberIgnore: 화면 우측 상단의 긴 '견적번호'(예: "20261125-0002-0001")는 여기에 분리 기록하고 절대 receiptSeq에 넣지 마세요!
+- saleTypeHeader: 상단 중앙 '판매유형' 드롭다운 값 (예: "일반", "구독")
+
+[2. 상단 '[고객]' 영역 및 하단 '[출하]' 영역 분리 추출 규칙]
+- customerName: 상단 '[고객]' 행의 '고객번호' 돋보기 오른쪽 성명 칸 텍스트 원문 그대로 추출 (예: 일반 실명 또는 "경기광주불명" 등 불명 표기 그대로)
+- customerMobile: 상단 '[고객]' 행 우측의 '이동통신' 번호 (예: "010-0000-0000")
+- customerPhone: 상단 '[고객]' 행의 일반 '전화번호' (예: "031-000-0000")
+- customerRoadAddress: 상단 '[고객]' 영역의 '도로명주소' (없으면 '주소')
+- recipientName: 하단 '[출하]' 영역의 '인수자' 성명 칸 텍스트 원문
+- recipientMobile: 하단 '[출하]' 영역의 '이동통신' 번호
+- recipientPhone: 하단 '[출하]' 영역의 '전화번호'
+- shippingRoadAddress: 하단 '[출하]' 영역의 '도로명주소' (없으면 '주소')
+- customerRequest: 하단 '[출하]' 영역의 '고객요청' 텍스트 (예: "빠른배송 희망합니다.")
+- logisticsVendor: 하단 '[출하]' 영역의 '의뢰물류' 텍스트 (예: "직사입물류")
+
+[3. 중앙 품목 그리드 테이블 ('01', '02', ...) 추출 규칙]
+컬럼 순서: 순번(01, 02...) | 상품코드 | 등급 | 수량 | 접수금액 | 에누리 | 실구매가 | 배달일자 | 시간 | 출고지 | 직배 | 취소일자 | 실판 | 전시
+- 표에 적힌 모든 행(01, 02, ... 본품 행뿐만 아니라 'SET-CARD36', 'SET-CARD60', 'SET-CARD-60' 등 SET-CARD 행 포함!)을 빠짐없이 순서대로 rows 배열에 추출하세요.
+- 각 행 필드:
+  - seq: 순번 (예: "01", "02")
+  - productCode: '상품코드' 열의 영문/숫자/기호 코드 정확히 그대로 (예: "DDLP22AGSTE1", "FG24GN", "SET-CARD36", "SET-CARD60")
+  - category: 상품코드로 알 수 있는 간결한 품목명 (예: DDLP/DDL/RK/RQ -> "김치냉장고", RM/RF -> "냉장고", FG/W2 -> "워시타워/세탁건조기", SET-CARD는 "")
+  - quantity: '수량' 열 정수 (예: 1)
+  - receiptAmount: '접수금액' 열 원 단위 정수 (콤마 제외, 예: 1190000)
+  - discountAmount: '에누리' 열 원 단위 정수 (없거나 0이면 0)
+  - actualPrice: '실구매가' 열 원 단위 정수 (콤마 제외, 예: 1190000)
+  - deliveryDate: '배달일자' 열 날짜 (YYYY-MM-DD, 예: "2026-11-26", 비어 있으면 "")
+  - deliveryTime: '시간' 열 텍스트 (예: "오후FT", 비어 있으면 "")
+  - outboundPlace: '출고지' 열 텍스트 정확히 (예: "자송", "타사물류", "중앙물류", "지역물류")
+  - directDelivery: '직배' 열 텍스트 정확히 (예: "타사직배", 비어 있으면 "")
+  - cancelDate: '취소일자' 열에 날짜가 적혀 있으면 그 텍스트, 비어 있으면 ""`;
+
+      const responseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          receiptDate: { type: Type.STRING },
+          receiptSeq: { type: Type.STRING },
+          quoteNumberIgnore: { type: Type.STRING },
+          saleTypeHeader: { type: Type.STRING },
+          customerName: { type: Type.STRING },
+          customerMobile: { type: Type.STRING },
+          customerPhone: { type: Type.STRING },
+          customerRoadAddress: { type: Type.STRING },
+          recipientName: { type: Type.STRING },
+          recipientMobile: { type: Type.STRING },
+          recipientPhone: { type: Type.STRING },
+          shippingRoadAddress: { type: Type.STRING },
+          customerRequest: { type: Type.STRING },
+          logisticsVendor: { type: Type.STRING },
+          rows: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                seq: { type: Type.STRING },
+                productCode: { type: Type.STRING },
+                category: { type: Type.STRING },
+                quantity: { type: Type.INTEGER },
+                receiptAmount: { type: Type.INTEGER },
+                discountAmount: { type: Type.INTEGER },
+                actualPrice: { type: Type.INTEGER },
+                deliveryDate: { type: Type.STRING },
+                deliveryTime: { type: Type.STRING },
+                outboundPlace: { type: Type.STRING },
+                directDelivery: { type: Type.STRING },
+                cancelDate: { type: Type.STRING },
+              },
+              required: ['productCode', 'quantity', 'receiptAmount', 'actualPrice'],
+            },
+          },
+        },
+        required: ['receiptDate', 'receiptSeq', 'rows'],
+      };
+
+      const GEMINI_MODELS = PAID_VISION_OCR_MODELS;
+      let responseText: string | undefined;
+      let lastError: unknown;
+
+      for (const modelName of GEMINI_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: resolvedMimeType,
+                    data: cleanBase64,
+                  },
+                },
+                { text: promptText },
+              ],
+            },
+            config: buildFastGenConfig(modelName, {
+              responseMimeType: 'application/json',
+              responseSchema,
+            }),
+          });
+          if (response.text) {
+            responseText = response.text;
+            break;
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+
+      if (!responseText) {
+        throw lastError || new Error('HISIS 전표 이미지 AI 응답을 생성하지 못했습니다.');
+      }
+
+      const parsed = JSON.parse(responseText);
+      res.json({ success: true, raw: parsed });
+    } catch (error: any) {
+      console.error('[AI HISIS Slip Parse Error]', error);
+      res.status(500).json({
+        success: false,
+        error: error?.message || 'HISIS 전표 이미지 분석 중 오류가 발생했습니다.',
+      });
     }
   });
 

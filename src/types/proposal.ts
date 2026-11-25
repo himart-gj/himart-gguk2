@@ -1664,3 +1664,190 @@ export const createInitialState = (mode: QuoteMode): ProposalState => {
     ...plan1,
   };
 };
+
+// ==================== HISIS 판매접수등록 전표 → ProposalState 정식 빌더 ====================
+export interface HisisSlipGeneralItemInput {
+  category: string;
+  modelName: string;
+  productName?: string;
+  quantity: number;
+  /** 전산 접수금액 (행 합계) */
+  receiptAmount: number;
+  /** 전산 에누리 (행 합계) */
+  discountAmount?: number;
+  /** 전산 실구매가 (행 합계) */
+  actualPrice: number;
+}
+
+export interface HisisSlipSubscriptionItemInput {
+  category: string;
+  modelName: string;
+  /** 01번(본품) 행 접수금액 = 구독 원금 */
+  contractAmount: number;
+  /** SET-CARD 뒤 숫자(36 | 48 | 60) */
+  period: SubscriptionPeriod;
+  /** 월 구독료 (미지정 시 Math.round(contractAmount / period)) */
+  monthlyFee?: number;
+  careService?: string;
+  warrantyType?: string;
+}
+
+export interface BuildProposalFromHisisSlipInput {
+  mode: 'general' | 'subscription';
+  generalItems?: HisisSlipGeneralItemInput[];
+  subscriptionItems?: HisisSlipSubscriptionItemInput[];
+  generalCardType?: GeneralCardType;
+}
+
+/**
+ * HISIS [판매접수등록] 전표 추출 품목 데이터를 통합 견적기에서 즉시 열어 수정·공유 가능한
+ * 정식 ProposalState 객체로 1원 오차 없이 변환합니다.
+ */
+export function buildProposalStateFromHisisSlip(
+  input: BuildProposalFromHisisSlipInput
+): ProposalState {
+  if (input.mode === 'subscription') {
+    const base = createInitialState('subscription');
+    const rawSubs = Array.isArray(input.subscriptionItems)
+      ? input.subscriptionItems
+      : [];
+
+    const builtSubItems: SubscriptionItem[] =
+      rawSubs.length > 0
+        ? rawSubs.map((it, idx) => {
+            const period = normalizeSubscriptionPeriod(it.period, 60);
+            const contractAmount = Math.max(
+              0,
+              Math.round(Number(it.contractAmount) || 0)
+            );
+            const monthlyFee =
+              it.monthlyFee !== undefined && Number(it.monthlyFee) > 0
+                ? Math.round(Number(it.monthlyFee))
+                : period > 0
+                ? Math.round(contractAmount / period)
+                : 0;
+            const cleanModel = (it.modelName || '').trim();
+            const cleanCat = (it.category || '').trim() || '구독가전';
+            return {
+              id: `hisis-sub-${Date.now()}-${idx}`,
+              category: cleanCat,
+              modelName: cleanModel,
+              modelCode: cleanModel,
+              monthlyFee,
+              contractAmount,
+              period,
+              careService: it.careService || SUB_CARE_OPTIONS[0],
+              careType: it.careService || SUB_CARE_OPTIONS[0],
+              warrantyType: it.warrantyType || 'AS연장보험 + 가전수리올케어',
+            };
+          })
+        : base.generalPlan1.items;
+
+    const repPeriod = normalizeSubscriptionPeriod(
+      builtSubItems[0]?.period,
+      60
+    );
+
+    const plan1: GeneralPlanData = {
+      ...base.generalPlan1,
+      items: builtSubItems,
+      subscriptionPeriod: repPeriod,
+      careService: builtSubItems[0]?.careService || SUB_CARE_OPTIONS[0],
+      warrantyType:
+        builtSubItems[0]?.warrantyType || 'AS연장보험 + 가전수리올케어',
+      warrantyYears: 5,
+      allCare: true,
+      selectedCardId: 'none',
+      selectedCardTierId: '',
+      subAutoTierCashback: false,
+      subManualTierCashback: 0,
+      subExtraCashback: 0,
+    };
+
+    return {
+      ...base,
+      quoteMode: 'subscription',
+      activeGeneralPlan: 1,
+      generalPlan1: plan1,
+      ...plan1,
+    };
+  }
+
+  // 일반구매 전표: payPrice === 실구매가 합계, rawNet === 실구매가 합계 1원 오차 없이 일치
+  const base = createInitialState('general');
+  const rawGen = Array.isArray(input.generalItems) ? input.generalItems : [];
+
+  let totalInstantDiscount = 0;
+  const builtGeneralItems: GeneralPurchaseItem[] =
+    rawGen.length > 0
+      ? rawGen.map((it, idx) => {
+          const qty = Math.max(1, Math.round(Number(it.quantity) || 1));
+          const actual = Math.max(0, Math.round(Number(it.actualPrice) || 0));
+          const receipt = Math.max(
+            actual,
+            Math.round(Number(it.receiptAmount) || actual)
+          );
+
+          let unitPrice = 0;
+          let itemDiscount = 0;
+
+          if (receipt > actual) {
+            unitPrice =
+              receipt % qty === 0 ? receipt / qty : Math.ceil(receipt / qty);
+            itemDiscount = Math.max(0, unitPrice * qty - actual);
+          } else {
+            unitPrice =
+              actual % qty === 0 ? actual / qty : Math.ceil(actual / qty);
+            itemDiscount = Math.max(0, unitPrice * qty - actual);
+          }
+
+          totalInstantDiscount += itemDiscount;
+
+          const cleanModel = (it.modelName || '').trim();
+          const cleanCat = (it.category || '').trim() || '일반가전';
+
+          return {
+            id: `hisis-gen-${Date.now()}-${idx}`,
+            category: cleanCat,
+            modelName: cleanModel,
+            code: cleanModel,
+            name: it.productName || cleanCat,
+            quantity: qty,
+            qty,
+            unitPrice,
+            price: unitPrice * qty,
+            discount1: idx === 0 ? itemDiscount : 0,
+            discount2: 0,
+            cashback: 0,
+          };
+        })
+      : base.generalPlan1.generalItems;
+
+  if (builtGeneralItems.length > 0 && totalInstantDiscount > 0) {
+    builtGeneralItems[0] = {
+      ...builtGeneralItems[0],
+      discount1: totalInstantDiscount,
+    };
+  }
+
+  const plan1: GeneralPlanData = {
+    ...base.generalPlan1,
+    generalItems: builtGeneralItems,
+    generalCardType: input.generalCardType || '일반카드',
+    instantDiscount: totalInstantDiscount,
+    earnedPoints: 0,
+    pointUsed: 0,
+    autoTierCashback: false,
+    manualTierCashback: 0,
+    extraCashback: 0,
+    extraBenefits: [],
+  };
+
+  return {
+    ...base,
+    quoteMode: 'general',
+    activeGeneralPlan: 1,
+    generalPlan1: plan1,
+    ...plan1,
+  };
+}

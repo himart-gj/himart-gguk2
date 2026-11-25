@@ -59,21 +59,51 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   onToggleGift,
 }) => {
   const dday = getDeliveryDDay(customer.deliveryDate, customer.status);
-  const isContractOrDelivered = customer.status === '계약완료' || customer.status === '배송완료';
+  const isContractOrDelivered =
+    customer.status === '계약완료' ||
+    customer.status === '발송완료' ||
+    customer.status === '배송완료';
   const followUp = getFollowUpInfo(customer);
   const urgent = isUrgentCustomer(customer);
-  const quoteCount = customer.quotes?.length || 0;
+  const allQuotes = customer.quotes || [];
+  const confirmedSlips = allQuotes.filter((q) => Boolean(q?.isConfirmedSlip));
+  const slipCount = confirmedSlips.length;
+  const draftQuoteCount = allQuotes.length - slipCount;
+
   const hasUnpaidGift =
     Boolean(customer.giftItems && customer.giftItems.trim()) &&
     !customer.giftSent;
   const perf = resolveCustomerPerformanceProfile(customer);
-  const fallbackQuoteWithNet = customer.quotes?.find(
+  const fallbackQuoteWithNet = allQuotes.find(
     (q) => (Number(q.netAmount) || 0) > 0 || (Number(q.paidAmount) || 0) > 0
   );
   const effectiveNetAmount =
     (Number(customer.netAmount) || 0) > 0
       ? customer.netAmount
       : fallbackQuoteWithNet?.netAmount ?? customer.netAmount ?? 0;
+
+  // 다중 전표 고객일 때 대표 품목 1개 + '외 N건'으로 지저분함 없이 한 줄 정돈
+  const conciseItemsHeadline = (() => {
+    if (slipCount >= 2) {
+      const firstSummary = (confirmedSlips[0]?.itemSummary || customer.items || '')
+        .split(/\s*\+\s*|\s*,\s*/)[0]
+        ?.trim();
+      return firstSummary
+        ? `${firstSummary} 외 ${slipCount - 1}건`
+        : `확정 전표 ${slipCount}건 통합`;
+    }
+    if (slipCount === 1 && confirmedSlips[0]?.itemSummary) {
+      return confirmedSlips[0].itemSummary;
+    }
+    return customer.items || '상담 품목 미입력';
+  })();
+
+  const statusDisplayLabel =
+    customer.status === '계약완료' || customer.status === '발송완료'
+      ? '🚚 배송'
+      : customer.status === '배송완료'
+      ? '✅ 배송완료'
+      : customer.status;
 
   // 모바일 좌우 스와이프 제스처 지원
   const touchStartXRef = useRef<number | null>(null);
@@ -142,7 +172,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
         }}
         className={`group relative rounded-[20px] border cursor-pointer hover:shadow-md p-4 flex flex-col justify-between gap-2.5 schedule-tactile ${cardSurface}`}
       >
-        {/* 상단: 고객명 + 연락처 + 상태/배송 뱃지 */}
+        {/* 상단: 고객명 + 연락처 + 상태/전표수/배송 뱃지 */}
         <div>
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -151,24 +181,35 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                   {customer.name}
                 </h3>
                 <span
-                  className={`px-2 py-0.5 rounded-full text-[11.5px] font-extrabold border ${
+                  className={`px-2 py-0.5 rounded-full text-[11.5px] font-extrabold border whitespace-nowrap ${
                     isDark
                       ? STATUS_BADGE_DARK[customer.status]
                       : STATUS_BADGE_LIGHT[customer.status]
                   }`}
                 >
-                  {customer.status}
+                  {statusDisplayLabel}
                 </span>
-                {quoteCount > 0 && (
+                {slipCount > 0 && (
                   <span
-                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11.5px] font-extrabold border font-mono tabular-nums ${
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11.5px] font-extrabold border font-mono tabular-nums whitespace-nowrap ${
                       isDark
-                        ? 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                        ? 'bg-blue-500/20 text-blue-200 border-blue-400/40'
                         : 'bg-[#EFF6FF] text-[#1B64DA] border-[#BFDBFE]'
                     }`}
                   >
+                    🧾 전표 {slipCount}건
+                  </span>
+                )}
+                {draftQuoteCount > 0 && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11.5px] font-extrabold border font-mono tabular-nums whitespace-nowrap ${
+                      isDark
+                        ? 'bg-slate-800 text-slate-300 border-slate-700'
+                        : 'bg-[#F8FAFC] text-[#4E5968] border-[#E5E8EB]'
+                    }`}
+                  >
                     <FolderKanban className="w-2.5 h-2.5" />
-                    견적 {quoteCount}
+                    견적 {draftQuoteCount}
                   </span>
                 )}
                 {customer.status === '배송완료' && hasUnpaidGift && (
@@ -203,6 +244,11 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
               </div>
               <p className={`text-xs font-semibold font-mono tabular-nums mt-0.5 ${mutedText}`}>
                 {customer.phone || '연락처 미입력'}
+                {slipCount === 1 && confirmedSlips[0]?.orderNo && (
+                  <span className="ml-1.5 opacity-80">
+                    · {confirmedSlips[0].orderNo}
+                  </span>
+                )}
               </p>
             </div>
 
@@ -214,17 +260,19 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
             </span>
           </div>
 
-          {/* 중단: 관심품목 1줄 요약 + 실적기준액/체감가 */}
+          {/* 중단: 대표 품목 1줄 요약 + 통합 실적기준액/체감가 */}
           <div className={`mt-2.5 rounded-2xl px-3 py-2.5 border ${stripSurface}`}>
             <p className="text-xs font-bold text-[#191F28] dark:text-slate-100 line-clamp-1">
-              {customer.items || '상담 품목 미입력'}
+              {conciseItemsHeadline}
             </p>
             <div className="mt-1 ledger-row text-[11.5px] font-mono tabular-nums">
               <span className={`ledger-row-label truncate ${mutedText}`}>
                 {perf.saleType === 'subscription'
                   ? '구독원금 '
                   : perf.saleType === 'hybrid'
-                  ? '실적합계 '
+                  ? '통합실적 '
+                  : slipCount >= 2
+                  ? '통합실적 '
                   : '제품합계 '}
                 <strong
                   className={
@@ -239,14 +287,18 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                   isDark ? 'text-[#FF3B47]' : 'text-[#E60012]'
                 }`}
               >
-                {perf.saleType === 'subscription' ? '월체감 ' : '체감 '}
+                {perf.saleType === 'subscription'
+                  ? '월체감 '
+                  : perf.saleType === 'hybrid'
+                  ? '일반결제 '
+                  : '체감 '}
                 {formatCurrency(effectiveNetAmount)}원
               </span>
             </div>
           </div>
         </div>
 
-        {/* 하단: 원터치 물류/사은품 토글 배지 + 빠른 액션 (모든 스마트폰·폴드 해상도 및 다중 배지 시 카드 잘림 0%) */}
+        {/* 하단: 원터치 물류/사은품 토글 배지 + 빠른 액션 */}
         <div
           className={`flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 pt-2.5 border-t ${
             isDark ? 'border-slate-800' : 'border-[#E5E8EB]'
@@ -276,7 +328,13 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                 ) : (
                   <Truck className="w-2.5 h-2.5 shrink-0" />
                 )}
-                <span className="whitespace-nowrap">{customer.logisticsConfirmed ? '물류확정' : '물류대기'}</span>
+                <span className="whitespace-nowrap">
+                  {customer.status === '배송완료'
+                    ? '배송완료'
+                    : customer.logisticsConfirmed
+                    ? '물류확정'
+                    : '배송대기'}
+                </span>
               </button>
             ) : (
               customer.deliveryDate && (

@@ -9,11 +9,24 @@ export type CustomerStatus =
 
 export type SortOrder = 'regDesc' | 'deliveryAsc' | 'amountDesc' | 'urgentFirst';
 
+export type CrmPrimaryTab =
+  | '전체'
+  | '🔥 할일·긴급'
+  | '💬 상담중'
+  | '🚚 배송'
+  | '✅ 배송완료'
+  | '취소/보류';
+
 export type FilterTab =
+  | CrmPrimaryTab
   | '🔥긴급/오늘할일'
   | '🚚물류/배송대기'
   | '🎁사은품미지급'
   | CustomerStatus;
+
+export type SlipDeliveryStatus = '배송대기' | '배송완료';
+
+export const MAX_QUOTES_PER_CUSTOMER = 30;
 
 export type CustomerSaleType = 'general' | 'subscription' | 'hybrid';
 
@@ -35,7 +48,7 @@ export interface PurchasedModelEntry {
   modelName: string;
   quantity: number;
   saleType: 'general' | 'subscription';
-  /** 일반: 제품 행사가 합계(단가×수량), 구독: 구독원금 */
+  /** 일반: 제품 행사가/실구매가 합계(단가×수량), 구독: 구독원금 */
   principalAmount: number;
 }
 
@@ -88,6 +101,14 @@ export interface QuoteRecord {
   subscriptionPrincipal?: number;
   freedCounts?: CustomerFreedCounts;
   purchasedModels?: PurchasedModelEntry[];
+  // HISIS 판매접수등록 확정 전표 전용 메타데이터
+  orderNo?: string; // 전표번호 (예: 20261125-0011)
+  isConfirmedSlip?: boolean; // HISIS 확정 전표 여부
+  contractDate?: string; // 전표별 계약/접수일 (YYYY-MM-DD, 총판 기준월)
+  deliveryDate?: string; // 전표별 배달일자 (YYYY-MM-DD, 실판 기준월)
+  deliveryStatus?: SlipDeliveryStatus; // '배송대기' | '배송완료'
+  outboundType?: string; // 출고지/직배 요약 (예: '자송', '타사물류 / 타사직배')
+  deliveryTimeSlot?: string; // 배달 시간대 (예: '오후FT')
 }
 
 export interface CustomerItem {
@@ -113,7 +134,7 @@ export interface CustomerItem {
   purchasedModels?: PurchasedModelEntry[]; // 구매 확정 모델 상세 목록
 
   // 매장 실전 추가 항목
-  orderNo?: string; // 전표번호 / 계약번호
+  orderNo?: string; // 대표/최신 전표번호
   giftItems?: string; // 약속 사은품 내역
   giftSent?: boolean; // 사은품 지급 완료 여부
   logisticsConfirmed?: boolean; // 물류/기사 배정 확인 여부
@@ -121,7 +142,7 @@ export interface CustomerItem {
   // 미결/고민 고객 재연락 예정일 (YYYY-MM-DD)
   followUpDate?: string;
 
-  // 고객별 다중 견적 보관함 (최대 5개)
+  // 고객별 다중 전표·견적 보관함 (최대 30개)
   quotes?: QuoteRecord[];
 
   // 휴지통 (소프트 삭제: 삭제된 시각 타임스탬프 ms)

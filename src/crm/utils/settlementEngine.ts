@@ -74,6 +74,7 @@ import {
   ModelIncentivesMap,
   MonthlyModelIncentiveSheet,
   PurchasedModelEntry,
+  QuoteRecord,
 } from '../types/crm';
 
 export const PLUS_SUBSCRIPTION_INCENTIVE_UNIT = 90_000;
@@ -664,9 +665,272 @@ export interface ResolvedCustomerPerformanceProfile {
   isConfirmed: boolean;
 }
 
+export interface ConfirmedSlipUnitProfile {
+  quote: QuoteRecord;
+  saleType: CustomerSaleType;
+  generalProductTotal: number;
+  subscriptionPrincipal: number;
+  performanceAmount: number;
+  subscriptionItemCount: number;
+  freedCounts: CustomerFreedCounts;
+  purchasedModels: PurchasedModelEntry[];
+  contractDateStr: string;
+  contractYearMonth: string;
+  deliveryDateStr: string;
+  deliveryYearMonth: string;
+}
+
+export function getConfirmedSlipQuotes(customer?: CustomerItem | null): QuoteRecord[] {
+  if (!customer || !Array.isArray(customer.quotes)) return [];
+  return customer.quotes.filter(
+    (q): q is QuoteRecord => Boolean(q && q.isConfirmedSlip)
+  );
+}
+
+export function buildConfirmedSlipUnitProfiles(
+  customer: CustomerItem
+): ConfirmedSlipUnitProfile[] {
+  const slips = getConfirmedSlipQuotes(customer);
+  if (slips.length === 0) return [];
+
+  const rawUnits = slips.map((q, sIdx) => {
+    const fromProposal = extractPerformanceFromProposalState(q.proposalState);
+    const mode: CustomerSaleType =
+      q.quoteMode || fromProposal?.saleType || 'general';
+
+    let generalProductTotal = 0;
+    let subscriptionPrincipal = 0;
+
+    if (mode === 'subscription') {
+      subscriptionPrincipal = Math.max(
+        0,
+        Number(q.subscriptionPrincipal) ||
+          Number(q.performanceAmount) ||
+          fromProposal?.subscriptionPrincipal ||
+          0
+      );
+    } else if (mode === 'general') {
+      // HISIS 일반 확정 전표는 실구매가(paidAmount / generalProductTotal)를 매출 실적으로 정확히 귀속
+      generalProductTotal = Math.max(
+        0,
+        Number(q.generalProductTotal) ||
+          Number(q.performanceAmount) ||
+          Number(q.paidAmount) ||
+          fromProposal?.generalProductTotal ||
+          0
+      );
+    } else {
+      generalProductTotal = Math.max(
+        0,
+        Number(q.generalProductTotal) || fromProposal?.generalProductTotal || 0
+      );
+      subscriptionPrincipal = Math.max(
+        0,
+        Number(q.subscriptionPrincipal) ||
+          fromProposal?.subscriptionPrincipal ||
+          0
+      );
+    }
+
+    const performanceAmount = generalProductTotal + subscriptionPrincipal;
+
+    let rawModels: PurchasedModelEntry[] = [];
+    if (Array.isArray(q.purchasedModels) && q.purchasedModels.length > 0) {
+      rawModels = q.purchasedModels;
+    } else if (fromProposal && fromProposal.purchasedModels.length > 0) {
+      rawModels = fromProposal.purchasedModels;
+    } else if (q.itemSummary) {
+      rawModels = parsePurchasedModelsFromItemsText(
+        q.itemSummary,
+        mode === 'subscription' ? 'subscription' : 'general'
+      );
+    }
+
+    const purchasedModels: PurchasedModelEntry[] = rawModels
+      .filter((m) => m && !/^[A-Za-z]?\)$/.test(String(m.modelName || '').trim()))
+      .map((m, mIdx) => ({
+        ...m,
+        id: `${q.id || `slip-${sIdx}`}-${m.id || mIdx}`,
+        quantity:
+          Number(m.quantity) > 20 || Number(m.quantity) < 1
+            ? 1
+            : Math.floor(Number(m.quantity) || 1),
+      }));
+
+    const parsedSubUnits = purchasedModels
+      .filter((m) => m.saleType === 'subscription')
+      .reduce(
+        (acc, m) => acc + Math.max(1, Math.floor(Number(m.quantity) || 1)),
+        0
+      );
+    const subscriptionItemCount =
+      parsedSubUnits > 0
+        ? parsedSubUnits
+        : mode === 'subscription' || subscriptionPrincipal > 0
+        ? 1
+        : 0;
+
+    const contractDateStr =
+      normalizeIsoDateStr(q.contractDate) ||
+      getCustomerContractDateStr(customer);
+    const contractYearMonth =
+      extractYearMonthFromDateStr(contractDateStr) ||
+      getCustomerContractYearMonth(customer);
+
+    const fallbackYear = contractYearMonth
+      ? contractYearMonth.slice(0, 4)
+      : String(new Date().getFullYear());
+    const rawSlipDelivery =
+      q.deliveryDate !== undefined
+        ? q.deliveryDate
+        : slips.length === 1
+        ? customer.deliveryDate
+        : '';
+    const deliveryDateStr = normalizeIsoDateStr(rawSlipDelivery, fallbackYear);
+    const deliveryYearMonth = extractYearMonthFromDateStr(
+      deliveryDateStr,
+      fallbackYear
+    );
+
+    const freedCounts = sanitizeFreedCounts(
+      q.freedCounts || fromProposal?.freedCounts
+    );
+
+    return {
+      quote: q,
+      saleType: mode,
+      generalProductTotal,
+      subscriptionPrincipal,
+      performanceAmount,
+      subscriptionItemCount,
+      freedCounts,
+      purchasedModels,
+      contractDateStr,
+      contractYearMonth,
+      deliveryDateStr,
+      deliveryYearMonth,
+    };
+  });
+
+  // 고객 카드에서 수동으로 추가/조정한 프리드 구좌가 있다면 중복 없이 대표(최신) 전표 1곳에만 안전 귀속
+  if (customer.freedCounts && rawUnits.length > 0) {
+    const custFreed = sanitizeFreedCounts(customer.freedCounts);
+    const keys: (keyof CustomerFreedCounts)[] = [
+      'hi72',
+      'hi90',
+      'hi108',
+      'hf75',
+      'hf150',
+      'hf225',
+      'hf300',
+    ];
+    for (const k of keys) {
+      const sumInSlips = rawUnits.reduce((s, u) => s + u.freedCounts[k], 0);
+      if (custFreed[k] > sumInSlips) {
+        rawUnits[0].freedCounts[k] += custFreed[k] - sumInSlips;
+      } else if (custFreed[k] < sumInSlips) {
+        let remaining = custFreed[k];
+        for (const u of rawUnits) {
+          const take = Math.min(remaining, u.freedCounts[k]);
+          u.freedCounts[k] = take;
+          remaining -= take;
+        }
+      }
+    }
+  }
+
+  return rawUnits;
+}
+
+export function aggregateSlipUnitsToProfile(
+  customer: CustomerItem,
+  units: ConfirmedSlipUnitProfile[],
+  overrides?: {
+    contractYearMonth?: string;
+    deliveryYearMonth?: string;
+  }
+): ResolvedCustomerPerformanceProfile {
+  const generalProductTotal = units.reduce(
+    (s, u) => s + u.generalProductTotal,
+    0
+  );
+  const subscriptionPrincipal = units.reduce(
+    (s, u) => s + u.subscriptionPrincipal,
+    0
+  );
+  const performanceAmount = generalProductTotal + subscriptionPrincipal;
+
+  const hasGen = units.some(
+    (u) =>
+      u.saleType === 'general' ||
+      u.saleType === 'hybrid' ||
+      u.generalProductTotal > 0
+  );
+  const hasSub = units.some(
+    (u) =>
+      u.saleType === 'subscription' ||
+      u.saleType === 'hybrid' ||
+      u.subscriptionPrincipal > 0
+  );
+  const saleType: CustomerSaleType =
+    hasGen && hasSub ? 'hybrid' : hasSub ? 'subscription' : 'general';
+
+  const subscriptionItemCount = units.reduce(
+    (s, u) => s + u.subscriptionItemCount,
+    0
+  );
+
+  const freedCounts = createEmptyFreedCounts();
+  for (const u of units) {
+    freedCounts.hi72 += u.freedCounts.hi72;
+    freedCounts.hi90 += u.freedCounts.hi90;
+    freedCounts.hi108 += u.freedCounts.hi108;
+    freedCounts.hf75 += u.freedCounts.hf75;
+    freedCounts.hf150 += u.freedCounts.hf150;
+    freedCounts.hf225 += u.freedCounts.hf225;
+    freedCounts.hf300 += u.freedCounts.hf300;
+  }
+  const freedDetail = calculateFreedIncentiveDetail(freedCounts);
+
+  const purchasedModels = units.flatMap((u) => u.purchasedModels);
+
+  const contractDateStr =
+    units[0]?.contractDateStr || getCustomerContractDateStr(customer);
+  const contractYearMonth =
+    overrides?.contractYearMonth ??
+    (units[0]?.contractYearMonth || getCustomerContractYearMonth(customer));
+  const deliveryYearMonth =
+    overrides?.deliveryYearMonth ??
+    (units.every((u) => Boolean(u.deliveryYearMonth))
+      ? units[0]?.deliveryYearMonth || getCustomerDeliveryYearMonth(customer)
+      : '');
+
+  return {
+    saleType,
+    generalProductTotal,
+    subscriptionPrincipal,
+    performanceAmount,
+    subscriptionItemCount,
+    freedCounts,
+    freedDetail,
+    purchasedModels,
+    contractYearMonth,
+    contractDateStr,
+    deliveryYearMonth,
+    isConfirmed: isConfirmedPurchaseCustomer(customer),
+  };
+}
+
 export function resolveCustomerPerformanceProfile(
   customer: CustomerItem
 ): ResolvedCustomerPerformanceProfile {
+  const slipUnits = buildConfirmedSlipUnitProfiles(customer);
+  if (slipUnits.length > 0) {
+    return aggregateSlipUnitsToProfile(customer, slipUnits, {
+      deliveryYearMonth: getCustomerDeliveryYearMonth(customer),
+    });
+  }
+
   const primaryQuote = customer.quotes?.[0];
   const fromProposal = extractPerformanceFromProposalState(
     primaryQuote?.proposalState
@@ -1212,8 +1476,10 @@ export function computeMonthlySettlementReport(
   }
   const confirmedCustomers = (customers || []).filter(isConfirmedPurchaseCustomer);
 
-  const buildRow = (c: CustomerItem): ConfirmedCustomerSettlementRow => {
-    const profile = resolveCustomerPerformanceProfile(c);
+  const buildRowWithProfile = (
+    c: CustomerItem,
+    profile: ResolvedCustomerPerformanceProfile
+  ): ConfirmedCustomerSettlementRow => {
     const modelMatches: CustomerModelIncentiveMatchItem[] =
       profile.purchasedModels.map((m) => {
         const matchedRule = matchModelToIncentiveRule(
@@ -1252,11 +1518,100 @@ export function computeMonthlySettlementReport(
     };
   };
 
-  const allConfirmedRows = confirmedCustomers.map(buildRow);
+  const grossRows: ConfirmedCustomerSettlementRow[] = [];
+  const netDeliveryRows: ConfirmedCustomerSettlementRow[] = [];
+  let undatedConfirmedCount = 0;
 
-  const grossRows = allConfirmedRows.filter(
-    (r) => r.profile.contractYearMonth === yearMonth
-  );
+  for (const c of confirmedCustomers) {
+    const slipUnits = buildConfirmedSlipUnitProfiles(c);
+
+    if (slipUnits.length === 0) {
+      // 확정 전표가 없는 기존 수기/상담 고객은 단일 고객 정산 방식 100% 그대로 유지
+      const singleRow = buildRowWithProfile(
+        c,
+        resolveCustomerPerformanceProfile(c)
+      );
+      if (singleRow.profile.contractYearMonth === yearMonth) {
+        grossRows.push(singleRow);
+        if (!singleRow.profile.deliveryYearMonth) {
+          undatedConfirmedCount += 1;
+        }
+      }
+      if (singleRow.profile.deliveryYearMonth === yearMonth) {
+        netDeliveryRows.push(singleRow);
+      }
+      continue;
+    }
+
+    // 다중(또는 단일) HISIS 확정 전표 보유 고객: 각 전표별 계약월(총판)과 배달월(실판)로 개별 분리 집계
+    const grossMatchingUnits = slipUnits.filter(
+      (u) => u.contractYearMonth === yearMonth
+    );
+    if (grossMatchingUnits.length > 0) {
+      const undatedInMonth = grossMatchingUnits.filter(
+        (u) => !u.deliveryYearMonth
+      ).length;
+      undatedConfirmedCount += undatedInMonth;
+
+      const grossProfile = aggregateSlipUnitsToProfile(c, grossMatchingUnits, {
+        contractYearMonth: yearMonth,
+        deliveryYearMonth:
+          undatedInMonth > 0
+            ? ''
+            : grossMatchingUnits[0]?.deliveryYearMonth || '',
+      });
+      const scopedGrossItems =
+        grossMatchingUnits.length < slipUnits.length
+          ? grossMatchingUnits
+              .map((u) => u.quote.itemSummary)
+              .filter(Boolean)
+              .join(' + ') || c.items
+          : c.items;
+      const scopedGrossDelivery =
+        grossMatchingUnits[0]?.deliveryDateStr || c.deliveryDate;
+
+      grossRows.push(
+        buildRowWithProfile(
+          {
+            ...c,
+            items: scopedGrossItems,
+            deliveryDate: undatedInMonth > 0 ? '' : scopedGrossDelivery,
+          },
+          grossProfile
+        )
+      );
+    }
+
+    const netMatchingUnits = slipUnits.filter(
+      (u) => u.deliveryYearMonth === yearMonth
+    );
+    if (netMatchingUnits.length > 0) {
+      const netProfile = aggregateSlipUnitsToProfile(c, netMatchingUnits, {
+        deliveryYearMonth: yearMonth,
+      });
+      const scopedNetItems =
+        netMatchingUnits.length < slipUnits.length
+          ? netMatchingUnits
+              .map((u) => u.quote.itemSummary)
+              .filter(Boolean)
+              .join(' + ') || c.items
+          : c.items;
+      const scopedNetDelivery =
+        netMatchingUnits[0]?.deliveryDateStr || c.deliveryDate;
+
+      netDeliveryRows.push(
+        buildRowWithProfile(
+          {
+            ...c,
+            items: scopedNetItems,
+            deliveryDate: scopedNetDelivery,
+          },
+          netProfile
+        )
+      );
+    }
+  }
+
   const grossSalesTotal = grossRows.reduce(
     (s, r) => s + r.profile.performanceAmount,
     0
@@ -1278,9 +1633,6 @@ export function computeMonthlySettlementReport(
   );
   const grossSubscriptionCustomerCount = grossSubscriptionRows.length;
 
-  const netDeliveryRows = allConfirmedRows.filter(
-    (r) => r.profile.deliveryYearMonth === yearMonth
-  );
   const netDeliverySalesTotal = netDeliveryRows.reduce(
     (s, r) => s + r.profile.performanceAmount,
     0
@@ -1297,10 +1649,6 @@ export function computeMonthlySettlementReport(
     (s, r) => s + r.profile.subscriptionItemCount,
     0
   );
-
-  const undatedConfirmedCount = grossRows.filter(
-    (r) => !r.profile.deliveryYearMonth
-  ).length;
 
   const confirmedRowsForIncentive =
     incentiveBasis === 'delivery' ? netDeliveryRows : grossRows;

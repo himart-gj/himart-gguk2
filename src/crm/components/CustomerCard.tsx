@@ -27,6 +27,7 @@ import {
   CustomerItem,
   CustomerSaleType,
   CustomerStatus,
+  MAX_QUOTES_PER_CUSTOMER,
   QuoteRecord,
 } from '../types/crm';
 import {
@@ -53,6 +54,7 @@ interface CustomerCardProps {
   onFieldChange: (id: string, patch: Partial<CustomerItem>) => void;
   onDeleteQuoteRecord: (customerId: string, quoteId: string) => void;
   onApplyQuoteAsPrimary: (customerId: string, quote: QuoteRecord) => void;
+  onToggleSlipDeliveryStatus?: (customerId: string, quoteId: string) => void;
   onLoadQuoteRecord: (customer: CustomerItem, quote: QuoteRecord) => void;
   onDelete: (id: string) => void;
   onOpenSMS: (customer: CustomerItem) => void;
@@ -124,6 +126,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   onFieldChange,
   onDeleteQuoteRecord,
   onApplyQuoteAsPrimary,
+  onToggleSlipDeliveryStatus,
   onLoadQuoteRecord,
   onDelete,
   onOpenSMS,
@@ -145,7 +148,9 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [isEditingMemo, setIsEditingMemo] = useState(false);
   const [memoDraft, setMemoDraft] = useState(customer.memo);
   const [showDetailFields, setShowDetailFields] = useState(false);
-  const [showQuotesDrawer, setShowQuotesDrawer] = useState(false);
+  const [showQuotesDrawer, setShowQuotesDrawer] = useState<boolean>(() =>
+    Boolean(customer.quotes && customer.quotes.length > 0)
+  );
 
   const [nameDraft, setNameDraft] = useState(customer.name || '');
   const [phoneDraft, setPhoneDraft] = useState(customer.phone || '');
@@ -481,7 +486,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11.5px] font-extrabold bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 border border-[#BFDBFE] dark:border-blue-500/30 hover:bg-blue-100 dark:hover:bg-blue-500/25 transition cursor-pointer whitespace-nowrap"
                 >
                   <FolderKanban className="w-3 h-3 shrink-0" />
-                  견적 보관함 ({quotes.length}/5)
+                  전표·견적 ({quotes.length}/{MAX_QUOTES_PER_CUSTOMER})
                 </button>
               )}
               {followUp.hasFollowUp && (
@@ -683,7 +688,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
           </p>
         </div>
 
-        {/* 고객별 다중 견적 보관함 서랍 (최대 5개) */}
+        {/* 고객별 다중 전표 · 견적 보관함 타임라인 (최대 30개) */}
         {quotes.length > 0 && (
           <div className="border border-[#BFDBFE] dark:border-blue-500/30 bg-[#EFF6FF]/60 dark:bg-blue-500/10 rounded-xl overflow-hidden">
             <button
@@ -693,7 +698,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
             >
               <span className="flex items-center gap-1.5">
                 <FolderKanban className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400" />
-                저장된 견적 히스토리 ({quotes.length}개 / 최대 5개)
+                보관된 전표 · 견적 타임라인 ({quotes.length}건 / 최대{' '}
+                {MAX_QUOTES_PER_CUSTOMER}건)
               </span>
               {showQuotesDrawer ? (
                 <ChevronUp className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400" />
@@ -704,93 +710,202 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
 
             {showQuotesDrawer && (
               <div className="p-2.5 space-y-2 border-t border-[#BFDBFE] dark:border-slate-800 bg-white dark:bg-[#131C2E]">
-                {quotes.map((q, idx) => (
-                  <div
-                    key={q.id}
-                    className={`p-2.5 rounded-xl border transition ${
-                      idx === 0
-                        ? 'border-[#BFDBFE] dark:border-blue-500/40 bg-[#EFF6FF]/40 dark:bg-blue-500/10'
-                        : 'border-[#E5E8EB] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/70'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="px-1.5 py-0.5 rounded-md text-[11.5px] font-black bg-[#1B64DA] text-white">
-                            견적 #{idx + 1}
+                {quotes.map((q, idx) => {
+                  const isSlip = Boolean(q.isConfirmedSlip);
+                  const isSlipDone = q.deliveryStatus === '배송완료';
+                  const subPeriodMatch =
+                    q.proposalState?.subscriptionPeriod ||
+                    (q.itemSummary?.includes('36') ? 36 : 60);
+                  const modeBadgeLabel =
+                    q.quoteMode === 'subscription'
+                      ? `구독 ${subPeriodMatch}M`
+                      : q.quoteMode === 'hybrid'
+                      ? '일반+구독'
+                      : '일반';
+
+                  return (
+                    <div
+                      key={q.id}
+                      className={`p-2.5 rounded-xl border transition ${
+                        isSlip
+                          ? isSlipDone
+                            ? 'border-emerald-200 dark:border-emerald-500/35 bg-emerald-50/35 dark:bg-emerald-500/10'
+                            : 'border-[#BFDBFE] dark:border-blue-500/40 bg-[#EFF6FF]/40 dark:bg-blue-500/10'
+                          : idx === 0
+                          ? 'border-[#BFDBFE] dark:border-blue-500/40 bg-[#EFF6FF]/40 dark:bg-blue-500/10'
+                          : 'border-[#E5E8EB] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/70'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        {/* 좌측: 전표번호 · 구매유형 · 계약/배달일자 */}
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                          <span
+                            className={`px-1.5 py-0.5 rounded-md text-[11.5px] font-black font-mono whitespace-nowrap ${
+                              isSlip
+                                ? 'bg-[#191F28] dark:bg-slate-800 text-white'
+                                : 'bg-[#1B64DA] text-white'
+                            }`}
+                          >
+                            {isSlip
+                              ? q.orderNo
+                                ? `🧾 ${q.orderNo}`
+                                : `🧾 전표 #${idx + 1}`
+                              : `견적 #${idx + 1}`}
                           </span>
-                          <span className="text-xs font-extrabold text-[#191F28] dark:text-slate-100 truncate">
-                            {q.title}
+
+                          <span
+                            className={`px-1.5 py-0.5 rounded-md text-[11px] font-extrabold whitespace-nowrap ${
+                              q.quoteMode === 'subscription'
+                                ? 'bg-[#FFF1F2] dark:bg-rose-500/20 text-[#E60012] dark:text-rose-300 border border-[#FECDD3] dark:border-rose-500/30'
+                                : 'bg-[#F2F4F6] dark:bg-slate-800 text-[#4E5968] dark:text-slate-200 border border-[#E5E8EB] dark:border-slate-700'
+                            }`}
+                          >
+                            {modeBadgeLabel}
                           </span>
+
+                          {isSlip && q.deliveryDate && (
+                            <span className="text-[11px] font-mono font-bold text-[#1B64DA] dark:text-blue-300 whitespace-nowrap">
+                              배달 {q.deliveryDate}
+                            </span>
+                          )}
+                          {!isSlip && (
+                            <span className="text-xs font-extrabold text-[#191F28] dark:text-slate-100 truncate">
+                              {q.title}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-[11.5px] font-mono tabular-nums text-[#8B95A1] dark:text-slate-400 mt-0.5">
-                          저장일시: {q.createdAt}
-                        </p>
+
+                        {/* 우측 액션: 전표 상태 토글([🚚 배송] <-> [✅ 배송완료]) · [견적서 열기] · 카톡복사 · 삭제 */}
+                        <div className="flex items-center gap-1 flex-wrap ml-auto">
+                          {isSlip && onToggleSlipDeliveryStatus && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onToggleSlipDeliveryStatus(customer.id, q.id)
+                              }
+                              title="클릭하여 이 전표의 배송 상태(배송 ↔ 배송완료) 변경"
+                              className={`px-2 py-1 rounded-md text-[11.5px] font-extrabold inline-flex items-center gap-0.5 border transition cursor-pointer whitespace-nowrap ${
+                                isSlipDone
+                                  ? 'bg-[#059669] hover:bg-emerald-700 text-white border-[#059669]'
+                                  : 'bg-[#EFF6FF] dark:bg-blue-500/20 hover:bg-blue-100 text-[#1B64DA] dark:text-blue-200 border-[#BFDBFE] dark:border-blue-400/40'
+                              }`}
+                            >
+                              {isSlipDone ? (
+                                <>
+                                  <Check className="w-3 h-3 shrink-0" />
+                                  <span>배송완료</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Truck className="w-3 h-3 shrink-0" />
+                                  <span>배송</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => onLoadQuoteRecord(customer, q)}
+                            className="px-2 py-1 rounded-md text-[11.5px] font-extrabold bg-[#191F28] dark:bg-[#60A5FA] text-white dark:text-[#0B1120] hover:opacity-90 transition cursor-pointer whitespace-nowrap"
+                          >
+                            견적서 열기
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyQuoteToClipboard(q)}
+                            className="px-2 py-1 rounded-md text-[11.5px] font-bold bg-white dark:bg-slate-800 border border-[#D1D6DB] dark:border-slate-700 text-[#4E5968] dark:text-slate-200 hover:bg-[#F2F4F6] dark:hover:bg-slate-700 flex items-center gap-0.5 cursor-pointer whitespace-nowrap"
+                          >
+                            {copiedQuoteId === q.id ? (
+                              <>
+                                <ClipboardCheck className="w-3 h-3 text-[#059669] dark:text-emerald-400" />
+                                <span className="text-[#059669] dark:text-emerald-400">
+                                  복사됨
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>복사</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onDeleteQuoteRecord(customer.id, q.id)
+                            }
+                            className="p-1 rounded-md text-[#8B95A1] hover:text-[#E60012] hover:bg-[#FFF1F2] dark:hover:bg-rose-500/15 cursor-pointer"
+                            title="이 전표/견적 삭제"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => onLoadQuoteRecord(customer, q)}
-                          className="px-2 py-1 rounded-md text-[11.5px] font-extrabold bg-[#191F28] dark:bg-[#60A5FA] text-white dark:text-[#0B1120] hover:opacity-90 transition cursor-pointer"
-                        >
-                          계산기로 열기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyQuoteToClipboard(q)}
-                          className="px-2 py-1 rounded-md text-[11.5px] font-bold bg-white dark:bg-slate-800 border border-[#D1D6DB] dark:border-slate-700 text-[#4E5968] dark:text-slate-200 hover:bg-[#F2F4F6] dark:hover:bg-slate-700 flex items-center gap-0.5 cursor-pointer"
-                        >
-                          {copiedQuoteId === q.id ? (
+                      {/* 품목 · 금액 1줄 요약 */}
+                      <div className="mt-1.5 pt-1.5 border-t border-[#E5E8EB] dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11.5px]">
+                        <span className="font-bold text-[#191F28] dark:text-slate-200 truncate max-w-full sm:max-w-[55%]">
+                          {q.itemSummary || '품목 요약 없음'}
+                        </span>
+
+                        <div className="font-mono tabular-nums flex items-center gap-1.5 ml-auto">
+                          {q.quoteMode === 'subscription' ? (
                             <>
-                              <ClipboardCheck className="w-3 h-3 text-[#059669] dark:text-emerald-400" />
-                              <span className="text-[#059669] dark:text-emerald-400">복사됨</span>
+                              <span className="text-[#4E5968] dark:text-slate-400">
+                                원금{' '}
+                                {formatCurrency(
+                                  q.subscriptionPrincipal ||
+                                    q.performanceAmount ||
+                                    0
+                                )}
+                                원
+                              </span>
+                              <span className="text-[#D1D6DB] dark:text-slate-700">
+                                |
+                              </span>
+                              <strong className="text-[#E60012] dark:text-rose-400 font-extrabold">
+                                월 {formatCurrency(q.paidAmount)}원
+                              </strong>
                             </>
                           ) : (
                             <>
-                              <Copy className="w-3 h-3" />
-                              <span>카톡복사</span>
+                              <span className="text-[#4E5968] dark:text-slate-400">
+                                실구매가
+                              </span>
+                              <strong className="text-[#059669] dark:text-emerald-400 font-extrabold">
+                                {formatCurrency(q.paidAmount)}원
+                              </strong>
+                              {q.netAmount > 0 &&
+                                q.netAmount !== q.paidAmount && (
+                                  <>
+                                    <span className="text-[#D1D6DB] dark:text-slate-700">
+                                      |
+                                    </span>
+                                    <span className="text-[#E60012] dark:text-rose-400 font-bold">
+                                      체감 {formatCurrency(q.netAmount)}원
+                                    </span>
+                                  </>
+                                )}
                             </>
                           )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDeleteQuoteRecord(customer.id, q.id)}
-                          className="p-1 rounded-md text-[#8B95A1] hover:text-[#E60012] hover:bg-[#FFF1F2] dark:hover:bg-rose-500/15 cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+
+                          {!isSlip && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onApplyQuoteAsPrimary(customer.id, q)
+                              }
+                              className="ml-1 text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-400 hover:underline cursor-pointer"
+                            >
+                              대표설정
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-
-                    <p className="text-xs font-semibold text-[#4E5968] dark:text-slate-300 mt-1.5 line-clamp-2">
-                      {q.itemSummary || '품목 요약 없음'}
-                    </p>
-
-                    <div className="mt-1.5 pt-1.5 border-t border-[#E5E8EB] dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11.5px]">
-                      <div className="font-mono tabular-nums">
-                        <span className="text-[#4E5968] dark:text-slate-400">
-                          {q.quoteMode === 'subscription' ? '월구독: ' : '결제: '}
-                        </span>
-                        <strong className="text-[#191F28] dark:text-slate-100">
-                          {formatCurrency(q.paidAmount)}원
-                        </strong>
-                        <span className="mx-1.5 text-[#D1D6DB] dark:text-slate-700">|</span>
-                        <span className="text-[#E60012] dark:text-rose-400 font-bold">
-                          체감: {formatCurrency(q.netAmount)}원
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => onApplyQuoteAsPrimary(customer.id, q)}
-                        className="text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-400 hover:underline cursor-pointer"
-                      >
-                        대표 견적으로 설정
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

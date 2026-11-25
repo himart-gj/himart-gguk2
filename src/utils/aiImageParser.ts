@@ -1,5 +1,15 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { AffiliateCardId, GeneralCardType, getValidDisplayModelName } from '../types/proposal';
+import {
+  AffiliateCardId,
+  buildProposalStateFromHisisSlip,
+  GeneralCardType,
+  getValidDisplayModelName,
+  HisisSlipGeneralItemInput,
+  HisisSlipSubscriptionItemInput,
+  normalizeSubscriptionPeriod,
+  ProposalState,
+  SubscriptionPeriod,
+} from '../types/proposal';
 
 export const GEMINI_API_KEY_STORAGE_KEY = 'gemini_api_key';
 export const LEGACY_GEMINI_API_KEY_STORAGE_KEY = 'geminiApiKey';
@@ -196,18 +206,39 @@ export function inferCategoryFromModelCode(
   code: string,
   rawCategory?: string
 ): string {
+  const upper = (code || '').trim().toUpperCase();
   const cleanedCat = (rawCategory || '').trim();
+
+  // 김치냉장고 전용 모델코드(DDLP, DDL, EDL, WDL, RK, RQ, Z3~Z5 등)는 AI가 '냉장고'로 오분류해도 무조건 '김치냉장고'로 우선 확정
+  if (
+    upper.startsWith('DDLP') ||
+    upper.startsWith('DDL') ||
+    upper.startsWith('EDL') ||
+    upper.startsWith('WDL') ||
+    upper.startsWith('GDL') ||
+    upper.startsWith('LDL') ||
+    upper.startsWith('CDL') ||
+    upper.startsWith('RK') ||
+    upper.startsWith('RQ') ||
+    upper.startsWith('Z3') ||
+    upper.startsWith('Z4') ||
+    upper.startsWith('Z5')
+  ) {
+    return '김치냉장고';
+  }
+
   if (
     cleanedCat &&
     cleanedCat !== '가전품목' &&
     cleanedCat !== '가전' &&
     cleanedCat !== '구독 가전' &&
     cleanedCat !== '구독 상품' &&
+    cleanedCat !== '일반가전' &&
+    cleanedCat !== '구독가전' &&
     cleanedCat !== '-'
   ) {
     return cleanedCat;
   }
-  const upper = (code || '').trim().toUpperCase();
   if (!upper) return cleanedCat || '가전품목';
 
   if (
@@ -242,15 +273,6 @@ export function inferCategoryFromModelCode(
     return '냉장고';
   }
   if (
-    upper.startsWith('RK') ||
-    upper.startsWith('RQ') ||
-    upper.startsWith('Z3') ||
-    upper.startsWith('Z4') ||
-    upper.startsWith('Z5')
-  ) {
-    return '김치냉장고';
-  }
-  if (
     upper.startsWith('KU') ||
     upper.startsWith('KQ') ||
     upper.startsWith('UN') ||
@@ -281,6 +303,18 @@ export function inferCategoryFromModelCode(
   }
   if (upper.startsWith('CRP') || upper.startsWith('CRT')) {
     return '전기밥솥';
+  }
+  if (
+    upper.startsWith('CP-') ||
+    upper.startsWith('CHP-') ||
+    upper.startsWith('CHPI-') ||
+    upper.startsWith('WD5') ||
+    upper.startsWith('WU')
+  ) {
+    return '정수기';
+  }
+  if (upper.startsWith('BFR') || upper.startsWith('CMC')) {
+    return '안마의자';
   }
   return cleanedCat || '가전품목';
 }
@@ -790,4 +824,1042 @@ export async function parseSubscriptionImageWithFallback(
       parsed.detectedTextSummary || ''
     ),
   };
+}
+
+// ==================== HISIS v3 [판매접수등록] 전표 정밀 파서 & 정규화 엔진 ====================
+
+export const UNKNOWN_HISIS_CUSTOMER_RE =
+  /(불명|무기명|미상|미등록|임시고객|현금고객|^임시$|^현금$)/i;
+
+export const HISIS_SET_CARD_RE = /set[\s_-]*card[\s_-]*(\d{2})?/i;
+
+export interface RawHisisSlipRow {
+  seq?: string; // '01', '02', ...
+  productCode?: string; // 상품코드 (예: 'DDLP22AGSTE1', 'FG24GN', 'SET-CARD36')
+  productName?: string; // 상품명 보조 텍스트 (있는 경우)
+  category?: string; // 품목 추론 힌트
+  quantity?: number; // 수량
+  receiptAmount?: number; // 접수금액
+  discountAmount?: number; // 에누리
+  actualPrice?: number; // 실구매가
+  deliveryDate?: string; // 배달일자 (YYYY-MM-DD)
+  deliveryTime?: string; // 시간 (예: '오후FT')
+  outboundPlace?: string; // 출고지 (예: '자송', '타사물류')
+  directDelivery?: string; // 직배 (예: '타사직배')
+  cancelDate?: string; // 취소일자 (기재 시 취소 행 제외)
+}
+
+export interface RawHisisSlipAiPayload {
+  receiptDate?: string; // 상단 [접수] 접수일자 (YYYY-MM-DD)
+  receiptSeq?: string; // 상단 [접수] 접수일자 바로 우측 파란 박스 4자리 순번 (예: '0011')
+  orderNo?: string; // 직접 전달된 전표번호 후보 (예: '20261125-0011')
+  quoteNumberIgnore?: string; // 우측 견적번호 분리 격리용 (예: '20261125-0002-0001')
+  saleTypeHeader?: string; // 상단 판매유형 (예: '일반', '구독')
+  customerName?: string; // 상단 [고객] 행 성명
+  customerMobile?: string; // 상단 [고객] 행 이동통신 (1순위)
+  customerPhone?: string; // 상단 [고객] 행 전화번호 (2순위)
+  customerRoadAddress?: string; // 상단 [고객] 도로명주소/주소
+  recipientName?: string; // 하단 [출하] 인수자 성명
+  recipientMobile?: string; // 하단 [출하] 이동통신
+  recipientPhone?: string; // 하단 [출하] 전화번호
+  shippingRoadAddress?: string; // 하단 [출하] 도로명주소/주소
+  customerRequest?: string; // 하단 [출하] 고객요청
+  logisticsVendor?: string; // 하단 [출하] 의뢰물류 (예: '직사입물류')
+  rows?: RawHisisSlipRow[];
+}
+
+export interface ParsedHisisSlipResult {
+  orderNo: string; // '20261125-0011'
+  contractDate: string; // '2026-11-25'
+  customerName: string; // 최종 채택 고객명
+  customerPhone: string; // 최종 채택 연락처
+  rawCustomerName: string; // 상단 [고객] 원문 성명
+  recipientName: string; // 하단 [출하] 인수자 성명
+  usedRecipientFallback: boolean; // 불명고객 -> 인수자 자동 대체 여부
+  needsManualIdentity: boolean; // 상/하단 모두 불명·공란이어서 수동 입력 필요 여부
+  quoteMode: 'general' | 'subscription';
+  subscriptionPeriod: SubscriptionPeriod;
+  generalItems: HisisSlipGeneralItemInput[];
+  subscriptionItems: HisisSlipSubscriptionItemInput[];
+  itemSummary: string;
+  modelCodesSummary: string;
+  totalReceiptAmount: number;
+  totalDiscountAmount: number;
+  actualPurchaseAmount: number; // 일반: 실구매가 합계 / 구독: 구독원금 합계
+  monthlyFeeTotal: number; // 구독: 월 구독료 합계 (일반은 0)
+  performanceAmount: number; // 실적기준액 (일반: 실구매가 합계, 구독: 구독원금 합계)
+  deliveryDate: string; // 배달일자 (자송 공란 시 contractDate 자동 입력)
+  deliveryTimeSlot: string;
+  outboundPlace: string;
+  directDelivery: string;
+  outboundLabel: string;
+  deliveryStatus: '배송대기' | '배송완료';
+  crmStatus: '계약완료' | '배송완료';
+  logisticsConfirmed: boolean;
+  roadAddress: string;
+  customerRequest: string;
+  giftItems: string;
+  memoSummary: string;
+  proposalState: ProposalState;
+}
+
+export function isUnknownHisisCustomerName(rawName?: string): boolean {
+  const s = String(rawName || '').trim();
+  if (!s || s === '-') return true;
+  if (/^\d+$/.test(s.replace(/[-\s]/g, ''))) return true;
+  return UNKNOWN_HISIS_CUSTOMER_RE.test(s);
+}
+
+export function formatHisisPhoneNumber(raw?: string): string {
+  const digits = String(raw || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('02')) {
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `02-${digits.slice(2)}`;
+    if (digits.length === 9) {
+      return `02-${digits.slice(2, 5)}-${digits.slice(5, 9)}`;
+    }
+    return `02-${digits.slice(2, 6)}-${digits.slice(6, 10)}`;
+  }
+  if (digits.startsWith('050') && digits.length >= 11) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, digits.length - 4)}-${digits.slice(-4)}`;
+  }
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  }
+  const clamped = digits.slice(0, 11);
+  return `${clamped.slice(0, 3)}-${clamped.slice(3, 7)}-${clamped.slice(7)}`;
+}
+
+export function normalizeHisisIsoDate(
+  raw?: string,
+  fallbackYear?: string
+): string {
+  const s = String(raw || '').trim();
+  if (!s || s === '-' || s === '0') return '';
+  const isoMatch = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  }
+  const compactMatch = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactMatch) {
+    return `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}`;
+  }
+  const shortMatch = s.match(/^(\d{1,2})[-./](\d{1,2})$/);
+  if (shortMatch) {
+    const yyyy = fallbackYear || String(new Date().getFullYear());
+    return `${yyyy}-${shortMatch[1].padStart(2, '0')}-${shortMatch[2].padStart(2, '0')}`;
+  }
+  return '';
+}
+
+export function formatHisisOrderNo(
+  contractDate: string,
+  receiptSeq?: string,
+  rawOrderNo?: string
+): string {
+  const dateDigits = contractDate.replace(/\D/g, '').slice(0, 8);
+  const cleanRawOrder = String(rawOrderNo || '').trim();
+
+  // 직접 전달된 YYYYMMDD-NNNN 형태가 있으면 우선 활용 (단, 3단 견적번호 YYYYMMDD-NNNN-NNNN은 제외)
+  const twoPartMatch = cleanRawOrder.match(/^(\d{8})[-_\s]?(\d{4})$/);
+  if (twoPartMatch && !/^\d{8}[-_\s]\d{4}[-_\s]\d{4}$/.test(cleanRawOrder)) {
+    return `${twoPartMatch[1]}-${twoPartMatch[2]}`;
+  }
+
+  let seqClean = String(receiptSeq || '').trim();
+  // 만약 receiptSeq에 실수로 3단 견적번호(YYYYMMDD-0002-0001)가 들어온 경우 무시
+  if (/^\d{8}[-_\s]\d{4}[-_\s]\d{4}$/.test(seqClean)) {
+    seqClean = '';
+  }
+  const fullInSeq = seqClean.match(/^(\d{8})[-_\s]?(\d{1,4})$/);
+  if (fullInSeq) {
+    return `${fullInSeq[1]}-${fullInSeq[2].padStart(4, '0')}`;
+  }
+  const seqDigits = seqClean.replace(/\D/g, '');
+  if (dateDigits.length === 8 && seqDigits.length >= 1 && seqDigits.length <= 4) {
+    return `${dateDigits}-${seqDigits.padStart(4, '0')}`;
+  }
+  if (dateDigits.length === 8 && seqDigits.length > 4) {
+    return `${dateDigits}-${seqDigits.slice(-4)}`;
+  }
+  return cleanRawOrder && !/^\d{8}-\d{4}-\d{4}$/.test(cleanRawOrder)
+    ? cleanRawOrder
+    : '';
+}
+
+export function extractSetCardPeriod(rawText?: string): SubscriptionPeriod | null {
+  const s = String(rawText || '').trim();
+  if (!s) return null;
+  const m = s.match(HISIS_SET_CARD_RE);
+  if (!m) return null;
+  if (m[1]) {
+    const num = parseInt(m[1], 10);
+    return normalizeSubscriptionPeriod(num, 60);
+  }
+  return 60;
+}
+
+export function resolveHisisDeliveryStatus(params: {
+  outboundPlace?: string;
+  directDelivery?: string;
+  logisticsVendor?: string;
+  contractDate?: string;
+  rawDeliveryDate?: string;
+}): {
+  deliveryStatus: '배송대기' | '배송완료';
+  crmStatus: '계약완료' | '배송완료';
+  logisticsConfirmed: boolean;
+  deliveryDate: string;
+  outboundLabel: string;
+} {
+  const outPlace = String(params.outboundPlace || '').trim();
+  const dirDeliv = String(params.directDelivery || '').trim();
+  const vendor = String(params.logisticsVendor || '').trim();
+  const fallbackYear = params.contractDate
+    ? params.contractDate.slice(0, 4)
+    : undefined;
+  const normDeliv = normalizeHisisIsoDate(params.rawDeliveryDate, fallbackYear);
+  const normContract = normalizeHisisIsoDate(params.contractDate);
+
+  const labelParts = [outPlace, dirDeliv].filter(Boolean);
+  const outboundLabel =
+    labelParts.length > 0 ? labelParts.join(' / ') : vendor || '';
+
+  const rowCombined = `${outPlace} ${dirDeliv}`;
+  if (/자송/.test(rowCombined)) {
+    return {
+      deliveryStatus: '배송완료',
+      crmStatus: '배송완료',
+      logisticsConfirmed: true,
+      deliveryDate: normDeliv || normContract,
+      outboundLabel: outboundLabel || '자송',
+    };
+  }
+
+  // 타사직배 / 타사물류 / 물류 / 직배 (또는 기타 출고) → 배송대기 ('계약완료')
+  return {
+    deliveryStatus: '배송대기',
+    crmStatus: '계약완료',
+    logisticsConfirmed: false,
+    deliveryDate: normDeliv,
+    outboundLabel:
+      outboundLabel || (/타사직배|물류|직배/.test(vendor) ? vendor : '물류/직배'),
+  };
+}
+
+function isCancelledHisisRow(row: RawHisisSlipRow): boolean {
+  const cancel = String(row.cancelDate || '').trim();
+  if (!cancel || cancel === '-' || cancel === '0' || cancel === '미취소') {
+    return false;
+  }
+  return /\d{2,4}[-./]?\d{1,2}|취소|반품/.test(cancel);
+}
+
+function isWarrantyRowText(text: string): boolean {
+  return /hiwarranty|하이워런티|보증연장|연장보증|↳/i.test(text);
+}
+
+/**
+ * AI가 추출한 원시 HISIS 전표 데이터를 비즈니스 규칙(전표번호 조합, 불명고객->인수자 대체,
+ * SET-CARD 구독 원금/개월수 계산, 자송 vs 타사직배/물류 배송상태 자동 분기, ProposalState 빌드)에 맞춰 정규화합니다.
+ */
+export function normalizeHisisSlipPayload(
+  raw: RawHisisSlipAiPayload
+): ParsedHisisSlipResult {
+  const contractDate = normalizeHisisIsoDate(raw.receiptDate);
+  const orderNo = formatHisisOrderNo(
+    contractDate,
+    raw.receiptSeq,
+    raw.orderNo
+  );
+
+  const rawCustomerName = String(raw.customerName || '').trim();
+  const recipientName = String(raw.recipientName || '').trim();
+
+  let customerName = '';
+  let customerPhone = '';
+  let usedRecipientFallback = false;
+  let needsManualIdentity = false;
+
+  if (isUnknownHisisCustomerName(rawCustomerName)) {
+    if (!isUnknownHisisCustomerName(recipientName)) {
+      customerName = recipientName;
+      customerPhone = formatHisisPhoneNumber(
+        raw.recipientMobile ||
+          raw.recipientPhone ||
+          raw.customerMobile ||
+          raw.customerPhone
+      );
+      usedRecipientFallback = true;
+    } else {
+      customerName = '';
+      customerPhone = formatHisisPhoneNumber(
+        raw.recipientMobile ||
+          raw.recipientPhone ||
+          raw.customerMobile ||
+          raw.customerPhone
+      );
+      needsManualIdentity = true;
+    }
+  } else {
+    customerName = rawCustomerName;
+    customerPhone = formatHisisPhoneNumber(
+      raw.customerMobile ||
+        raw.customerPhone ||
+        raw.recipientMobile ||
+        raw.recipientPhone
+    );
+  }
+
+  const allRows = Array.isArray(raw.rows) ? raw.rows : [];
+  const activeRows = allRows.filter((r) => r && !isCancelledHisisRow(r));
+
+  const setCardPeriodsInSlip: SubscriptionPeriod[] = [];
+  for (const r of activeRows) {
+    const p = extractSetCardPeriod(`${r.productCode || ''} ${r.productName || ''}`);
+    if (p !== null) setCardPeriodsInSlip.push(p);
+  }
+
+  const isHeaderSubscription = String(raw.saleTypeHeader || '').includes('구독');
+  const quoteMode: 'general' | 'subscription' =
+    setCardPeriodsInSlip.length > 0 || isHeaderSubscription
+      ? 'subscription'
+      : 'general';
+
+  const giftCandidates: string[] = [];
+  const generalItems: HisisSlipGeneralItemInput[] = [];
+  const subscriptionItems: HisisSlipSubscriptionItemInput[] = [];
+
+  let primaryDeliveryDateRaw = '';
+  let primaryDeliveryTime = '';
+  let primaryOutboundPlace = '';
+  let primaryDirectDelivery = '';
+
+  const captureRowLogistics = (r: RawHisisSlipRow) => {
+    if (!primaryDeliveryDateRaw && r.deliveryDate && String(r.deliveryDate).trim()) {
+      primaryDeliveryDateRaw = String(r.deliveryDate).trim();
+    }
+    if (!primaryDeliveryTime && r.deliveryTime && String(r.deliveryTime).trim()) {
+      primaryDeliveryTime = String(r.deliveryTime).trim();
+    }
+    if (!primaryOutboundPlace && r.outboundPlace && String(r.outboundPlace).trim()) {
+      primaryOutboundPlace = String(r.outboundPlace).trim();
+    }
+    if (!primaryDirectDelivery && r.directDelivery && String(r.directDelivery).trim()) {
+      primaryDirectDelivery = String(r.directDelivery).trim();
+    }
+  };
+
+  if (quoteMode === 'subscription') {
+    const defaultSubPeriod: SubscriptionPeriod =
+      setCardPeriodsInSlip[0] || 60;
+
+    for (let i = 0; i < activeRows.length; i++) {
+      const r = activeRows[i];
+      const codeAndName = `${r.productCode || ''} ${r.productName || ''}`.trim();
+      if (!codeAndName) continue;
+      if (extractSetCardPeriod(codeAndName) !== null) continue;
+      if (isWarrantyRowText(codeAndName)) continue;
+
+      const receiptAmt = Math.max(0, Math.round(Number(r.receiptAmount) || 0));
+      const actualAmt = Math.max(0, Math.round(Number(r.actualPrice) || 0));
+      const principal = receiptAmt > 0 ? receiptAmt : actualAmt;
+
+      if (principal <= 0) {
+        const giftLabel = normalizeModelCode(r.productCode || r.productName);
+        if (giftLabel) giftCandidates.push(giftLabel);
+        continue;
+      }
+
+      captureRowLogistics(r);
+
+      // 직후 연속된 행들 중 다음 본품 행 이전에 등장하는 SET-CARD 개월수를 매칭
+      let pairedPeriod: SubscriptionPeriod | null = null;
+      for (let j = i + 1; j < activeRows.length; j++) {
+        const nextRow = activeRows[j];
+        const nextText = `${nextRow.productCode || ''} ${nextRow.productName || ''}`.trim();
+        const foundPeriod = extractSetCardPeriod(nextText);
+        if (foundPeriod !== null) {
+          pairedPeriod = foundPeriod;
+          break;
+        }
+        const nextReceipt = Math.max(0, Math.round(Number(nextRow.receiptAmount) || 0));
+        const nextActual = Math.max(0, Math.round(Number(nextRow.actualPrice) || 0));
+        if (nextReceipt > 0 || nextActual > 0) {
+          break;
+        }
+      }
+
+      const period: SubscriptionPeriod = pairedPeriod || defaultSubPeriod;
+      const cleanCode = normalizeModelCode(r.productCode || r.productName || '');
+      const category = inferCategoryFromModelCode(cleanCode, r.category);
+      const qty = Math.max(1, Math.round(Number(r.quantity) || 1));
+      const unitPrincipal = qty > 1 ? Math.round(principal / qty) : principal;
+
+      for (let qIdx = 0; qIdx < qty; qIdx++) {
+        const itemContract =
+          qIdx === qty - 1
+            ? principal - unitPrincipal * (qty - 1)
+            : unitPrincipal;
+        subscriptionItems.push({
+          category,
+          modelName: cleanCode,
+          contractAmount: itemContract,
+          period,
+          monthlyFee: Math.round(itemContract / period),
+        });
+      }
+    }
+  } else {
+    for (const r of activeRows) {
+      const codeAndName = `${r.productCode || ''} ${r.productName || ''}`.trim();
+      if (!codeAndName) continue;
+      if (isWarrantyRowText(codeAndName)) continue;
+
+      const receiptAmt = Math.max(0, Math.round(Number(r.receiptAmount) || 0));
+      const actualAmt = Math.max(0, Math.round(Number(r.actualPrice) || 0));
+      const resolvedActual =
+        actualAmt > 0
+          ? actualAmt
+          : receiptAmt > 0 && !(Number(r.discountAmount) > 0)
+          ? receiptAmt
+          : 0;
+
+      if (resolvedActual <= 0 && receiptAmt <= 0) {
+        const giftLabel = normalizeModelCode(r.productCode || r.productName);
+        if (giftLabel) giftCandidates.push(giftLabel);
+        continue;
+      }
+
+      captureRowLogistics(r);
+
+      const cleanCode = normalizeModelCode(r.productCode || r.productName || '');
+      const category = inferCategoryFromModelCode(cleanCode, r.category);
+      const quantity = Math.max(1, Math.round(Number(r.quantity) || 1));
+      const resolvedReceipt = Math.max(resolvedActual, receiptAmt || resolvedActual);
+      const discountAmount = Math.max(0, resolvedReceipt - resolvedActual);
+
+      generalItems.push({
+        category,
+        modelName: cleanCode,
+        productName: r.productName || category,
+        quantity,
+        receiptAmount: resolvedReceipt,
+        discountAmount,
+        actualPrice: resolvedActual,
+      });
+    }
+  }
+
+  // 본품 행에서 물류 정보를 못 찾은 경우 전체 활성 행에서 한 번 더 탐색
+  for (const r of activeRows) {
+    captureRowLogistics(r);
+  }
+
+  const deliveryMeta = resolveHisisDeliveryStatus({
+    outboundPlace: primaryOutboundPlace,
+    directDelivery: primaryDirectDelivery,
+    logisticsVendor: raw.logisticsVendor,
+    contractDate,
+    rawDeliveryDate: primaryDeliveryDateRaw,
+  });
+
+  const proposalState = buildProposalStateFromHisisSlip({
+    mode: quoteMode,
+    generalItems,
+    subscriptionItems,
+  });
+
+  const totalReceiptAmount =
+    quoteMode === 'subscription'
+      ? subscriptionItems.reduce((s, it) => s + it.contractAmount, 0)
+      : generalItems.reduce((s, it) => s + it.receiptAmount, 0);
+
+  const actualPurchaseAmount =
+    quoteMode === 'subscription'
+      ? subscriptionItems.reduce((s, it) => s + it.contractAmount, 0)
+      : generalItems.reduce((s, it) => s + it.actualPrice, 0);
+
+  const totalDiscountAmount =
+    quoteMode === 'subscription'
+      ? 0
+      : Math.max(0, totalReceiptAmount - actualPurchaseAmount);
+
+  const monthlyFeeTotal =
+    quoteMode === 'subscription'
+      ? subscriptionItems.reduce((s, it) => s + (it.monthlyFee || 0), 0)
+      : 0;
+
+  const subscriptionPeriod: SubscriptionPeriod =
+    quoteMode === 'subscription'
+      ? subscriptionItems[0]?.period || setCardPeriodsInSlip[0] || 60
+      : 60;
+
+  const modelCodesSummary =
+    quoteMode === 'subscription'
+      ? subscriptionItems.map((it) => it.modelName).filter(Boolean).join(', ')
+      : generalItems
+          .map((it) =>
+            it.quantity > 1 ? `${it.modelName}×${it.quantity}` : it.modelName
+          )
+          .filter(Boolean)
+          .join(', ');
+
+  const itemSummary =
+    quoteMode === 'subscription'
+      ? subscriptionItems.length > 0
+        ? `[${subscriptionPeriod}개월 구독] ${subscriptionItems
+            .map((it) =>
+              it.modelName
+                ? `${it.category}(${it.modelName}·${it.period}M)`
+                : `${it.category}(${it.period}M)`
+            )
+            .join(', ')}`
+        : `[${subscriptionPeriod}개월 구독] 구독 가전`
+      : generalItems.length > 0
+      ? generalItems
+          .map((it) => {
+            const baseLabel = it.modelName
+              ? `${it.category}(${it.modelName})`
+              : it.category;
+            return it.quantity > 1 ? `${baseLabel} ×${it.quantity}` : baseLabel;
+          })
+          .join(', ')
+      : '일반가전';
+
+  const roadAddress = String(
+    raw.shippingRoadAddress || raw.customerRoadAddress || ''
+  ).trim();
+  const customerRequest = String(raw.customerRequest || '').trim();
+
+  const memoParts: string[] = [];
+  if (roadAddress) memoParts.push(`주소: ${roadAddress}`);
+  if (primaryDeliveryTime) memoParts.push(`배달시간: ${primaryDeliveryTime}`);
+  if (customerRequest) memoParts.push(`요청: ${customerRequest}`);
+  const memoPrefix = orderNo ? `[전표 ${orderNo}] ` : '[전표] ';
+  const memoSummary =
+    memoParts.length > 0 ? `${memoPrefix}${memoParts.join(' | ')}` : '';
+
+  return {
+    orderNo,
+    contractDate,
+    customerName,
+    customerPhone,
+    rawCustomerName,
+    recipientName,
+    usedRecipientFallback,
+    needsManualIdentity,
+    quoteMode,
+    subscriptionPeriod,
+    generalItems,
+    subscriptionItems,
+    itemSummary,
+    modelCodesSummary,
+    totalReceiptAmount,
+    totalDiscountAmount,
+    actualPurchaseAmount,
+    monthlyFeeTotal,
+    performanceAmount: actualPurchaseAmount,
+    deliveryDate: deliveryMeta.deliveryDate,
+    deliveryTimeSlot: primaryDeliveryTime,
+    outboundPlace: primaryOutboundPlace,
+    directDelivery: primaryDirectDelivery,
+    outboundLabel: deliveryMeta.outboundLabel,
+    deliveryStatus: deliveryMeta.deliveryStatus,
+    crmStatus: deliveryMeta.crmStatus,
+    logisticsConfirmed: deliveryMeta.logisticsConfirmed,
+    roadAddress,
+    customerRequest,
+    giftItems: giftCandidates.join(', '),
+    memoSummary,
+    proposalState,
+  };
+}
+
+/**
+ * 다중 업로드 검수 카드에서 사용자가 인라인으로 수정한 값(고객명, 연락처, 전표번호, 구매유형/개월수,
+ * 상품코드, 실구매가/구독원금·월구독료, 배달일자, 출고상태)을 바탕으로 ParsedHisisSlipResult와 ProposalState를 즉시 재구성합니다.
+ */
+export function rebuildParsedHisisSlipFromEdits(
+  prev: ParsedHisisSlipResult,
+  patch: {
+    orderNo?: string;
+    contractDate?: string;
+    customerName?: string;
+    customerPhone?: string;
+    quoteMode?: 'general' | 'subscription';
+    subscriptionPeriod?: SubscriptionPeriod;
+    modelCodesSummary?: string;
+    actualPurchaseAmount?: number;
+    monthlyFeeTotal?: number;
+    deliveryDate?: string;
+    deliveryStatus?: '배송대기' | '배송완료';
+  }
+): ParsedHisisSlipResult {
+  const nextOrderNo =
+    patch.orderNo !== undefined ? patch.orderNo.trim() : prev.orderNo;
+  const nextContractDate =
+    patch.contractDate !== undefined
+      ? patch.contractDate.trim()
+      : prev.contractDate;
+  const nextCustomerName =
+    patch.customerName !== undefined
+      ? patch.customerName
+      : prev.customerName;
+  const nextCustomerPhone =
+    patch.customerPhone !== undefined
+      ? formatHisisPhoneNumber(patch.customerPhone)
+      : prev.customerPhone;
+  const nextMode = patch.quoteMode ?? prev.quoteMode;
+  const nextPeriod = normalizeSubscriptionPeriod(
+    patch.subscriptionPeriod ?? prev.subscriptionPeriod,
+    60
+  );
+  const nextModelCodesStr =
+    patch.modelCodesSummary !== undefined
+      ? patch.modelCodesSummary
+      : prev.modelCodesSummary;
+
+  const parsedCodeTokens = nextModelCodesStr
+    .split(/[,+]+/)
+    .map((tok) => tok.trim())
+    .filter(Boolean)
+    .map((tok) => {
+      const qtyMatch = tok.match(/^(.*?)\s*[×xX*]\s*(\d+)$/);
+      const rawCode = qtyMatch ? qtyMatch[1].trim() : tok;
+      const qty = qtyMatch ? Math.max(1, parseInt(qtyMatch[2], 10) || 1) : 1;
+      const code = normalizeModelCode(rawCode);
+      return {
+        code,
+        category: inferCategoryFromModelCode(code),
+        quantity: qty,
+      };
+    });
+
+  const nextActualAmount =
+    patch.actualPurchaseAmount !== undefined
+      ? Math.max(0, Math.round(Number(patch.actualPurchaseAmount) || 0))
+      : prev.actualPurchaseAmount;
+
+  let nextGeneralItems = prev.generalItems;
+  let nextSubItems = prev.subscriptionItems;
+  let nextMonthlyTotal = prev.monthlyFeeTotal;
+  let nextTotalReceipt = prev.totalReceiptAmount;
+  let nextTotalDiscount = prev.totalDiscountAmount;
+
+  if (nextMode === 'subscription') {
+    const explicitMonthly =
+      patch.monthlyFeeTotal !== undefined
+        ? Math.max(0, Math.round(Number(patch.monthlyFeeTotal) || 0))
+        : nextPeriod > 0
+        ? Math.round(nextActualAmount / nextPeriod)
+        : 0;
+    const tokens =
+      parsedCodeTokens.length > 0
+        ? parsedCodeTokens
+        : [{ code: '', category: '구독가전', quantity: 1 }];
+    const count = tokens.length;
+    const perPrincipal =
+      count > 1 ? Math.floor(nextActualAmount / count) : nextActualAmount;
+    const perMonthly =
+      count > 1 ? Math.floor(explicitMonthly / count) : explicitMonthly;
+
+    nextSubItems = tokens.map((t, idx) => {
+      const itemPrincipal =
+        idx === count - 1
+          ? nextActualAmount - perPrincipal * (count - 1)
+          : perPrincipal;
+      const itemMonthly =
+        idx === count - 1
+          ? explicitMonthly - perMonthly * (count - 1)
+          : perMonthly;
+      return {
+        category: t.category,
+        modelName: t.code,
+        contractAmount: itemPrincipal,
+        period: nextPeriod,
+        monthlyFee: itemMonthly,
+      };
+    });
+    nextGeneralItems = [];
+    nextMonthlyTotal = explicitMonthly;
+    nextTotalReceipt = nextActualAmount;
+    nextTotalDiscount = 0;
+  } else {
+    const tokens =
+      parsedCodeTokens.length > 0
+        ? parsedCodeTokens
+        : [{ code: '', category: '일반가전', quantity: 1 }];
+    const keepOriginalBreakdown =
+      patch.actualPurchaseAmount === undefined &&
+      patch.modelCodesSummary === undefined &&
+      prev.quoteMode === 'general' &&
+      prev.generalItems.length > 0;
+
+    if (keepOriginalBreakdown) {
+      nextGeneralItems = prev.generalItems;
+    } else {
+      const count = tokens.length;
+      const perActual =
+        count > 1 ? Math.floor(nextActualAmount / count) : nextActualAmount;
+      nextGeneralItems = tokens.map((t, idx) => {
+        const itemActual =
+          idx === count - 1
+            ? nextActualAmount - perActual * (count - 1)
+            : perActual;
+        return {
+          category: t.category,
+          modelName: t.code,
+          productName: t.category,
+          quantity: t.quantity,
+          receiptAmount: itemActual,
+          discountAmount: 0,
+          actualPrice: itemActual,
+        };
+      });
+      nextTotalReceipt = nextActualAmount;
+      nextTotalDiscount = 0;
+    }
+    nextSubItems = [];
+    nextMonthlyTotal = 0;
+  }
+
+  const nextDeliveryStatus = patch.deliveryStatus ?? prev.deliveryStatus;
+  const nextCrmStatus: '계약완료' | '배송완료' =
+    nextDeliveryStatus === '배송완료' ? '배송완료' : '계약완료';
+  const nextLogisticsConfirmed = nextDeliveryStatus === '배송완료';
+
+  let nextDeliveryDate =
+    patch.deliveryDate !== undefined
+      ? patch.deliveryDate.trim()
+      : prev.deliveryDate;
+  if (
+    nextDeliveryStatus === '배송완료' &&
+    !nextDeliveryDate &&
+    nextContractDate
+  ) {
+    nextDeliveryDate = nextContractDate;
+  }
+
+  const nextOutboundLabel =
+    patch.deliveryStatus !== undefined && patch.deliveryStatus !== prev.deliveryStatus
+      ? nextDeliveryStatus === '배송완료'
+        ? '자송'
+        : '타사직배/물류'
+      : prev.outboundLabel;
+
+  const proposalState = buildProposalStateFromHisisSlip({
+    mode: nextMode,
+    generalItems: nextGeneralItems,
+    subscriptionItems: nextSubItems,
+  });
+
+  const itemSummary =
+    nextMode === 'subscription'
+      ? `[${nextPeriod}개월 구독] ${nextSubItems
+          .map((it) =>
+            it.modelName
+              ? `${it.category}(${it.modelName}·${it.period}M)`
+              : `${it.category}(${it.period}M)`
+          )
+          .join(', ')}`
+      : nextGeneralItems
+          .map((it) => {
+            const baseLabel = it.modelName
+              ? `${it.category}(${it.modelName})`
+              : it.category;
+            return it.quantity > 1 ? `${baseLabel} ×${it.quantity}` : baseLabel;
+          })
+          .join(', ');
+
+  const memoParts: string[] = [];
+  if (prev.roadAddress) memoParts.push(`주소: ${prev.roadAddress}`);
+  if (prev.deliveryTimeSlot) memoParts.push(`배달시간: ${prev.deliveryTimeSlot}`);
+  if (prev.customerRequest) memoParts.push(`요청: ${prev.customerRequest}`);
+  const memoPrefix = nextOrderNo ? `[전표 ${nextOrderNo}] ` : '[전표] ';
+  const memoSummary =
+    memoParts.length > 0 ? `${memoPrefix}${memoParts.join(' | ')}` : prev.memoSummary;
+
+  return {
+    ...prev,
+    orderNo: nextOrderNo,
+    contractDate: nextContractDate,
+    customerName: nextCustomerName,
+    customerPhone: nextCustomerPhone,
+    needsManualIdentity: !nextCustomerName.trim(),
+    quoteMode: nextMode,
+    subscriptionPeriod: nextPeriod,
+    generalItems: nextGeneralItems,
+    subscriptionItems: nextSubItems,
+    itemSummary,
+    modelCodesSummary: nextModelCodesStr,
+    totalReceiptAmount: nextTotalReceipt,
+    totalDiscountAmount: nextTotalDiscount,
+    actualPurchaseAmount: nextActualAmount,
+    monthlyFeeTotal: nextMonthlyTotal,
+    performanceAmount: nextActualAmount,
+    deliveryDate: nextDeliveryDate,
+    outboundLabel: nextOutboundLabel,
+    deliveryStatus: nextDeliveryStatus,
+    crmStatus: nextCrmStatus,
+    logisticsConfirmed: nextLogisticsConfirmed,
+    memoSummary,
+    proposalState,
+  };
+}
+
+export const HISIS_SLIP_PROMPT_TEXT = `당신은 롯데하이마트 HISIS v3 '[판매접수등록]' 전산 화면 사진을 정밀 판독하는 전문 OCR·데이터 추출 AI입니다.
+모니터 모아레 무늬나 워터마크가 있더라도 글자와 숫자를 한 글자도 틀리지 않고 정확히 읽어 JSON으로 반환하세요.
+
+[1. 상단 '[접수]' 영역 추출 규칙]
+- receiptDate: 좌측 '접수일자' 칸의 날짜 (YYYY-MM-DD 형식, 예: "2026-11-25")
+- receiptSeq: '접수일자'와 달력 아이콘 바로 오른쪽에 있는 파란색 하이라이트 박스(또는 흰색 입력칸) 안의 4자리 숫자 전표순번 (예: "0011"). 파란 배경에 흰색/노란색 반전 글씨일 수 있으니 주의 깊게 읽으세요!
+- quoteNumberIgnore: 화면 우측 상단의 긴 '견적번호'(예: "20261125-0002-0001")는 여기에 분리 기록하고 절대 receiptSeq에 넣지 마세요!
+- saleTypeHeader: 상단 중앙 '판매유형' 드롭다운 값 (예: "일반", "구독")
+
+[2. 상단 '[고객]' 영역 및 하단 '[출하]' 영역 분리 추출 규칙]
+- customerName: 상단 '[고객]' 행의 '고객번호' 돋보기 오른쪽 성명 칸 텍스트 원문 그대로 추출 (예: 일반 실명 또는 "경기광주불명" 등 불명 표기 그대로)
+- customerMobile: 상단 '[고객]' 행 우측의 '이동통신' 번호 (예: "010-0000-0000")
+- customerPhone: 상단 '[고객]' 행의 일반 '전화번호' (예: "031-000-0000")
+- customerRoadAddress: 상단 '[고객]' 영역의 '도로명주소' (없으면 '주소')
+- recipientName: 하단 '[출하]' 영역의 '인수자' 성명 칸 텍스트 원문
+- recipientMobile: 하단 '[출하]' 영역의 '이동통신' 번호
+- recipientPhone: 하단 '[출하]' 영역의 '전화번호'
+- shippingRoadAddress: 하단 '[출하]' 영역의 '도로명주소' (없으면 '주소')
+- customerRequest: 하단 '[출하]' 영역의 '고객요청' 텍스트 (예: "빠른배송 희망합니다.")
+- logisticsVendor: 하단 '[출하]' 영역의 '의뢰물류' 텍스트 (예: "직사입물류")
+
+[3. 중앙 품목 그리드 테이블 ('01', '02', ...) 추출 규칙]
+컬럼 순서: 순번(01, 02...) | 상품코드 | 등급 | 수량 | 접수금액 | 에누리 | 실구매가 | 배달일자 | 시간 | 출고지 | 직배 | 취소일자 | 실판 | 전시
+- 표에 적힌 모든 행(01, 02, ... 본품 행뿐만 아니라 'SET-CARD36', 'SET-CARD60', 'SET-CARD-60' 등 SET-CARD 행 포함!)을 빠짐없이 순서대로 rows 배열에 추출하세요.
+- 각 행 필드:
+  - seq: 순번 (예: "01", "02")
+  - productCode: '상품코드' 열의 영문/숫자/기호 코드 정확히 그대로 (예: "DDLP22AGSTE1", "FG24GN", "SET-CARD36", "SET-CARD60")
+  - category: 상품코드로 알 수 있는 간결한 품목명 (예: DDLP/DDL/RK/RQ -> "김치냉장고", RM/RF -> "냉장고", FG/W2 -> "워시타워/세탁건조기", SET-CARD는 "")
+  - quantity: '수량' 열 정수 (예: 1)
+  - receiptAmount: '접수금액' 열 원 단위 정수 (콤마 제외, 예: 1190000)
+  - discountAmount: '에누리' 열 원 단위 정수 (없거나 0이면 0)
+  - actualPrice: '실구매가' 열 원 단위 정수 (콤마 제외, 예: 1190000)
+  - deliveryDate: '배달일자' 열 날짜 (YYYY-MM-DD, 예: "2026-11-26", 비어 있으면 "")
+  - deliveryTime: '시간' 열 텍스트 (예: "오후FT", 비어 있으면 "")
+  - outboundPlace: '출고지' 열 텍스트 정확히 (예: "자송", "타사물류", "중앙물류", "지역물류")
+  - directDelivery: '직배' 열 텍스트 정확히 (예: "타사직배", 비어 있으면 "")
+  - cancelDate: '취소일자' 열에 날짜가 적혀 있으면 그 텍스트, 비어 있으면 ""`;
+
+export const HISIS_SLIP_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    receiptDate: { type: Type.STRING },
+    receiptSeq: { type: Type.STRING },
+    quoteNumberIgnore: { type: Type.STRING },
+    saleTypeHeader: { type: Type.STRING },
+    customerName: { type: Type.STRING },
+    customerMobile: { type: Type.STRING },
+    customerPhone: { type: Type.STRING },
+    customerRoadAddress: { type: Type.STRING },
+    recipientName: { type: Type.STRING },
+    recipientMobile: { type: Type.STRING },
+    recipientPhone: { type: Type.STRING },
+    shippingRoadAddress: { type: Type.STRING },
+    customerRequest: { type: Type.STRING },
+    logisticsVendor: { type: Type.STRING },
+    rows: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          seq: { type: Type.STRING },
+          productCode: { type: Type.STRING },
+          category: { type: Type.STRING },
+          quantity: { type: Type.INTEGER },
+          receiptAmount: { type: Type.INTEGER },
+          discountAmount: { type: Type.INTEGER },
+          actualPrice: { type: Type.INTEGER },
+          deliveryDate: { type: Type.STRING },
+          deliveryTime: { type: Type.STRING },
+          outboundPlace: { type: Type.STRING },
+          directDelivery: { type: Type.STRING },
+          cancelDate: { type: Type.STRING },
+        },
+        required: ['productCode', 'quantity', 'receiptAmount', 'actualPrice'],
+      },
+    },
+  },
+  required: ['receiptDate', 'receiptSeq', 'rows'],
+};
+
+/**
+ * HISIS v3 [판매접수등록] 전산 화면 사진 AI 판독
+ * (서버 우선 호출 -> GitHub Pages 등 정적 환경에서는 브라우저 직접 @google/genai 호출 Fallback)
+ */
+export async function parseHisisSlipImageWithFallback(
+  file: File,
+  explicitApiKey?: string
+): Promise<ParsedHisisSlipResult> {
+  const compressed = await compressImageFile(file, 1920, 0.88);
+  const storedKey = explicitApiKey?.trim() || getStoredGeminiApiKey();
+
+  // 1차 시도: 백엔드 /api/ai/parse-hisis-slip 호출
+  try {
+    const response = await fetch('/api/ai/parse-hisis-slip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        imageBase64: compressed.base64,
+        mimeType: compressed.mimeType,
+        apiKey: storedKey || undefined,
+      }),
+    });
+
+    if (response.ok) {
+      const json = await response.json();
+      const rawPayload = (json && (json.raw || json.data || json)) as RawHisisSlipAiPayload;
+      if (rawPayload && Array.isArray(rawPayload.rows)) {
+        return normalizeHisisSlipPayload(rawPayload);
+      }
+    }
+  } catch (serverErr) {
+    console.warn(
+      '서버 HISIS 전표 판독 실패, 프론트엔드 직접 호출로 전환합니다:',
+      serverErr
+    );
+  }
+
+  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출 (GitHub Pages 완벽 지원)
+  const apiKey = getEffectiveGeminiApiKey(storedKey);
+  if (!apiKey) {
+    throw new Error(
+      'Gemini API 키가 설정되어 있지 않습니다. 모달 상단 키 입력칸 또는 [🔑 AI 키 설정]에서 API 키를 입력해 주세요.'
+    );
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  let responseText = '';
+  let lastError: unknown = null;
+
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: compressed.mimeType,
+                data: compressed.base64,
+              },
+            },
+            { text: HISIS_SLIP_PROMPT_TEXT },
+          ],
+        },
+        config: buildGeminiFastConfig(modelName, {
+          responseMimeType: 'application/json',
+          responseSchema: HISIS_SLIP_RESPONSE_SCHEMA,
+        }),
+      });
+      if (response.text) {
+        responseText = response.text;
+        break;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!responseText) {
+    throw (
+      lastError ||
+      new Error('HISIS 전표 이미지 AI 판독 응답을 가져오지 못했습니다.')
+    );
+  }
+
+  const parsedRaw = JSON.parse(responseText) as RawHisisSlipAiPayload;
+  return normalizeHisisSlipPayload(parsedRaw);
+}
+
+export interface HisisBatchQueueProgress {
+  index: number;
+  completedCount: number;
+  totalCount: number;
+  result?: ParsedHisisSlipResult;
+  error?: string;
+}
+
+/**
+ * 여러 장의 HISIS 전표 사진을 동시 최대 concurrency(기본 3장) 병렬 워커 큐로 고속 판독합니다.
+ */
+export async function parseHisisSlipBatchWithConcurrency(
+  files: File[],
+  options: {
+    concurrency?: number;
+    apiKey?: string;
+    onItemStart?: (index: number) => void;
+    onItemFinish?: (progress: HisisBatchQueueProgress) => void;
+  } = {}
+): Promise<
+  {
+    index: number;
+    result?: ParsedHisisSlipResult;
+    error?: string;
+  }[]
+> {
+  const totalCount = files.length;
+  if (totalCount === 0) return [];
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 3, 5));
+
+  const outputs: {
+    index: number;
+    result?: ParsedHisisSlipResult;
+    error?: string;
+  }[] = new Array(totalCount);
+
+  let cursor = 0;
+  let completedCount = 0;
+
+  const worker = async () => {
+    while (true) {
+      const currentIdx = cursor;
+      cursor += 1;
+      if (currentIdx >= totalCount) break;
+
+      options.onItemStart?.(currentIdx);
+      try {
+        const result = await parseHisisSlipImageWithFallback(
+          files[currentIdx],
+          options.apiKey
+        );
+        completedCount += 1;
+        outputs[currentIdx] = { index: currentIdx, result };
+        options.onItemFinish?.({
+          index: currentIdx,
+          completedCount,
+          totalCount,
+          result,
+        });
+      } catch (err: any) {
+        completedCount += 1;
+        const errMsg =
+          err instanceof Error
+            ? err.message
+            : '전표 판독 중 오류가 발생했습니다.';
+        outputs[currentIdx] = { index: currentIdx, error: errMsg };
+        options.onItemFinish?.({
+          index: currentIdx,
+          completedCount,
+          totalCount,
+          error: errMsg,
+        });
+      }
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, totalCount) },
+    () => worker()
+  );
+  await Promise.all(workers);
+  return outputs;
 }

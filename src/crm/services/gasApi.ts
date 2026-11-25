@@ -3,17 +3,25 @@ import {
   CustomerItem,
   CustomerSaleType,
   CustomerStatus,
+  MAX_QUOTES_PER_CUSTOMER,
   PurchasedModelEntry,
   QuoteRecord,
+  SlipDeliveryStatus,
 } from '../types/crm';
 import { getNowDateTimeStr, getTodayStr } from '../utils/date';
-import { extractPerformanceFromProposalState } from '../utils/settlementEngine';
+import {
+  aggregateSlipUnitsToProfile,
+  buildConfirmedSlipUnitProfiles,
+  extractPerformanceFromProposalState,
+  getConfirmedSlipQuotes,
+} from '../utils/settlementEngine';
 import {
   calculateGeneralPurchaseSummary,
   calculateSubscriptionSummary,
   getGeneralPlan1And2Summaries,
   ProposalState,
 } from '../../types/proposal';
+import type { ParsedHisisSlipResult } from '../../utils/aiImageParser';
 import {
   enqueueOfflineMutation,
   flushPendingOutbox,
@@ -21,17 +29,26 @@ import {
   idbMirrorSet,
 } from '../../utils/offlineDbQueue';
 
+export { MAX_QUOTES_PER_CUSTOMER };
+
 export const STORAGE_KEY_CACHE = 'gookji_crm_customers_cache_v3';
 
 let inMemoryCustomersCache: CustomerItem[] | null = null;
 export const CRM_CUSTOMERS_UPDATED_EVENT = 'himart_crm_customers_updated';
 
-function normalizePhoneKey(phone: string): string {
+export function normalizePhoneKey(phone: string): string {
   return String(phone || '').replace(/\D/g, '');
 }
 
-function normalizeNameKey(name: string): string {
+export function normalizeNameKey(name: string): string {
   return String(name || '').trim().toLowerCase();
+}
+
+export function normalizeOrderNoKey(orderNo?: string): string {
+  return String(orderNo || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
 }
 
 export function getCustomerIdentityKey(c: CustomerItem): string {
@@ -52,7 +69,7 @@ export function isDummyInstaZeroQuote(q?: QuoteRecord | null): boolean {
     (Number(q.paidAmount) || 0) > 0 ||
     (Number(q.netAmount) || 0) > 0 ||
     (Number(q.performanceAmount) || 0) > 0;
-  if (hasRealAmount || q.proposalState) return false;
+  if (hasRealAmount || q.proposalState || q.isConfirmedSlip) return false;
   const title = String(q.title || '').trim();
   const benefit = String(q.benefit || '').trim();
   return (
@@ -99,10 +116,9 @@ export function buildPrimaryFieldsFromQuote(
     fallbackCustomer?.saleType ||
     'general';
 
-  const performanceAmount =
-    extractedPerf?.performanceAmount ??
-    quote.performanceAmount ??
-    resolvedPaid;
+  const performanceAmount = quote.isConfirmedSlip
+    ? quote.performanceAmount ?? extractedPerf?.performanceAmount ?? resolvedPaid
+    : extractedPerf?.performanceAmount ?? quote.performanceAmount ?? resolvedPaid;
 
   return {
     items: (quote.itemSummary || '').trim() || fallbackCustomer?.items || '',
@@ -111,16 +127,142 @@ export function buildPrimaryFieldsFromQuote(
     expectedBenefit: (quote.benefit || '').trim() || fallbackCustomer?.expectedBenefit || '',
     saleType,
     performanceAmount,
-    generalProductTotal:
-      extractedPerf?.generalProductTotal ?? quote.generalProductTotal ?? 0,
-    subscriptionPrincipal:
-      extractedPerf?.subscriptionPrincipal ?? quote.subscriptionPrincipal ?? 0,
+    generalProductTotal: quote.isConfirmedSlip
+      ? quote.generalProductTotal ?? extractedPerf?.generalProductTotal ?? 0
+      : extractedPerf?.generalProductTotal ?? quote.generalProductTotal ?? 0,
+    subscriptionPrincipal: quote.isConfirmedSlip
+      ? quote.subscriptionPrincipal ?? extractedPerf?.subscriptionPrincipal ?? 0
+      : extractedPerf?.subscriptionPrincipal ?? quote.subscriptionPrincipal ?? 0,
     freedCounts:
       extractedPerf?.freedCounts ?? quote.freedCounts ?? fallbackCustomer?.freedCounts,
     purchasedModels:
       extractedPerf?.purchasedModels ??
       quote.purchasedModels ??
       fallbackCustomer?.purchasedModels,
+  };
+}
+
+/**
+ * HISIS 확정 전표(isConfirmedSlip: true)를 1건 이상 보유한 고객의
+ * 통합 실적(일반 2회+ / 구독 2회+ / 일반+구독 혼합), 품목, 대표 배송상태(하나라도 배송대기면 계약완료, 모두 완료면 배송완료),
+ * 가장 빠른 미완료 배달일자(D-Day 기준)를 자동으로 합산·동기화합니다.
+ */
+export function syncCustomerFromConfirmedSlips(
+  customer: CustomerItem
+): CustomerItem {
+  const confirmedSlips = getConfirmedSlipQuotes(customer);
+  if (confirmedSlips.length === 0) return customer;
+
+  const slipUnits = buildConfirmedSlipUnitProfiles(customer);
+  const agg = aggregateSlipUnitsToProfile(customer, slipUnits);
+
+  const genSlips = confirmedSlips.filter(
+    (q) =>
+      q.quoteMode === 'general' ||
+      (!q.quoteMode && (Number(q.generalProductTotal) || 0) > 0)
+  );
+  const subSlips = confirmedSlips.filter(
+    (q) =>
+      q.quoteMode === 'subscription' ||
+      (Number(q.subscriptionPrincipal) || 0) > 0
+  );
+
+  const genPaidSum = genSlips.reduce(
+    (s, q) => s + Math.max(0, Number(q.paidAmount) || 0),
+    0
+  );
+  const genNetSum = genSlips.reduce(
+    (s, q) => s + Math.max(0, Number(q.netAmount) || Number(q.paidAmount) || 0),
+    0
+  );
+  const subMonthlyPaidSum = subSlips.reduce(
+    (s, q) => s + Math.max(0, Number(q.paidAmount) || 0),
+    0
+  );
+  const subMonthlyNetSum = subSlips.reduce(
+    (s, q) => s + Math.max(0, Number(q.netAmount) || Number(q.paidAmount) || 0),
+    0
+  );
+
+  let paidAmount = customer.paidAmount;
+  let netAmount = customer.netAmount;
+  let expectedBenefit = customer.expectedBenefit;
+
+  if (agg.saleType === 'general') {
+    paidAmount = genPaidSum;
+    netAmount = genNetSum;
+    expectedBenefit =
+      confirmedSlips.length >= 2
+        ? `확정 일반전표 ${confirmedSlips.length}건 통합 (실구매합계 ${genPaidSum.toLocaleString('ko-KR')}원)`
+        : confirmedSlips[0]?.benefit || customer.expectedBenefit;
+  } else if (agg.saleType === 'subscription') {
+    paidAmount = subMonthlyPaidSum;
+    netAmount = subMonthlyNetSum;
+    expectedBenefit =
+      confirmedSlips.length >= 2
+        ? `확정 구독전표 ${confirmedSlips.length}건 통합 (구독원금 ${agg.subscriptionPrincipal.toLocaleString('ko-KR')}원 · 월 ${subMonthlyPaidSum.toLocaleString('ko-KR')}원)`
+        : confirmedSlips[0]?.benefit || customer.expectedBenefit;
+  } else {
+    paidAmount = genPaidSum > 0 ? genPaidSum : subMonthlyPaidSum;
+    netAmount = genNetSum > 0 ? genNetSum : subMonthlyNetSum;
+    expectedBenefit = `일반 ${genSlips.length}건(${genPaidSum.toLocaleString('ko-KR')}원) + 구독 ${subSlips.length}건(월 ${subMonthlyPaidSum.toLocaleString('ko-KR')}원 · 원금 ${agg.subscriptionPrincipal.toLocaleString('ko-KR')}원)`;
+  }
+
+  const combinedItems =
+    confirmedSlips
+      .map((q) => (q.itemSummary || '').trim())
+      .filter(Boolean)
+      .join(' + ') || customer.items;
+
+  // 대표 배송 상태 및 다음 배송일(D-Day) 자동 산정
+  const pendingSlips = confirmedSlips.filter(
+    (q) => q.deliveryStatus !== '배송완료'
+  );
+  let nextStatus: CustomerStatus = customer.status;
+  let nextLogisticsConfirmed = Boolean(customer.logisticsConfirmed);
+  let nextDeliveryDate = customer.deliveryDate || '';
+
+  if (customer.status !== '취소/보류') {
+    if (pendingSlips.length > 0) {
+      nextStatus = '계약완료';
+      nextLogisticsConfirmed = false;
+      const pendingDates = pendingSlips
+        .map((q) => (q.deliveryDate || '').trim())
+        .filter(Boolean)
+        .sort();
+      nextDeliveryDate = pendingDates[0] || '';
+    } else {
+      nextStatus = '배송완료';
+      nextLogisticsConfirmed = true;
+      const doneDates = confirmedSlips
+        .map((q) => (q.deliveryDate || q.contractDate || '').trim())
+        .filter(Boolean)
+        .sort();
+      nextDeliveryDate =
+        doneDates[doneDates.length - 1] || customer.deliveryDate || '';
+    }
+  }
+
+  const latestSlip = confirmedSlips[0];
+
+  return {
+    ...customer,
+    items: combinedItems,
+    paidAmount,
+    netAmount,
+    expectedBenefit,
+    saleType: agg.saleType,
+    performanceAmount: agg.performanceAmount,
+    generalProductTotal: agg.generalProductTotal,
+    subscriptionPrincipal: agg.subscriptionPrincipal,
+    freedCounts: agg.freedCounts,
+    purchasedModels: agg.purchasedModels,
+    status: nextStatus,
+    logisticsConfirmed: nextLogisticsConfirmed,
+    deliveryDate: nextDeliveryDate,
+    contractDate:
+      latestSlip?.contractDate || customer.contractDate || agg.contractDateStr,
+    orderNo: latestSlip?.orderNo || customer.orderNo,
   };
 }
 
@@ -134,17 +276,42 @@ function isInstaPlaceholderItems(items?: string): boolean {
   );
 }
 
+function deduplicateQuoteRecords(quotes: QuoteRecord[]): QuoteRecord[] {
+  const result: QuoteRecord[] = [];
+  const seenIds = new Set<string>();
+  const seenOrderNos = new Set<string>();
+
+  for (const q of quotes) {
+    if (!q || !q.id || isDummyInstaZeroQuote(q)) continue;
+    if (seenIds.has(q.id)) continue;
+    const orderKey = normalizeOrderNoKey(q.orderNo);
+    if (orderKey && seenOrderNos.has(orderKey)) {
+      continue;
+    }
+    seenIds.add(q.id);
+    if (orderKey) seenOrderNos.add(orderKey);
+    result.push(q);
+    if (result.length >= MAX_QUOTES_PER_CUSTOMER) break;
+  }
+  return result;
+}
+
 /**
  * [자가 치유 엔진]
  * 1) 0원 더미 '인스타DB (...)' 견적이 남아 있으면 자동 제거
- * 2) 기존 견적서가 보관함에 살아있는데 고객 요약카드 최상위 최종혜택가(netAmount)/실결제가(paidAmount)/품목이 0원 또는 인스타 문구로 덮어써진 경우,
- *    보관된 최상위 실제 견적서 데이터로 100% 자동 복원!
+ * 2) 확정 전표 보유 고객은 다중 전표 통합 집계(syncCustomerFromConfirmedSlips) 항상 유지
+ * 3) 일반 상담 고객 중 최상위 요약 필드가 비어 있으면 보관된 대표 견적으로 복원
  */
 export function healCustomerPrimaryQuoteFields(item: CustomerItem): CustomerItem {
   const rawQuotes = Array.isArray(item.quotes) ? item.quotes : [];
-  const cleanedQuotes = rawQuotes
-    .filter((q) => Boolean(q) && !isDummyInstaZeroQuote(q))
-    .slice(0, 5);
+  const cleanedQuotes = deduplicateQuoteRecords(rawQuotes);
+
+  if (cleanedQuotes.some((q) => q.isConfirmedSlip)) {
+    return syncCustomerFromConfirmedSlips({
+      ...item,
+      quotes: cleanedQuotes,
+    });
+  }
 
   const primaryValidQuote = cleanedQuotes.find(
     (q) =>
@@ -221,7 +388,7 @@ export function healCustomerPrimaryQuoteFields(item: CustomerItem): CustomerItem
 }
 
 /**
- * 견적 보관함에서 특정 견적을 삭제할 때 남은 최상위 견적으로 고객 요약카드(최종혜택가·실결제가·품목·실적)를 즉시 동기화
+ * 견적/전표 보관함에서 특정 항목을 삭제할 때 남은 전표/견적으로 고객 요약카드를 즉시 재동기화
  */
 export function deleteQuoteAndSyncCustomer(
   customer: CustomerItem,
@@ -230,6 +397,13 @@ export function deleteQuoteAndSyncCustomer(
   const nextQuotes = (customer.quotes || []).filter(
     (q) => q.id !== quoteId && !isDummyInstaZeroQuote(q)
   );
+  if (nextQuotes.some((q) => q.isConfirmedSlip)) {
+    return syncCustomerFromConfirmedSlips({
+      ...customer,
+      quotes: nextQuotes,
+      updatedAtMs: Date.now(),
+    });
+  }
   if (nextQuotes.length > 0) {
     const topValid =
       nextQuotes.find(
@@ -243,12 +417,45 @@ export function deleteQuoteAndSyncCustomer(
       ...customer,
       ...syncedPatch,
       quotes: nextQuotes,
+      updatedAtMs: Date.now(),
     };
   }
   return {
     ...customer,
     quotes: [],
+    updatedAtMs: Date.now(),
   };
+}
+
+/**
+ * 특정 확정 전표의 배송 상태([🚚 배송] <-> [✅ 배송완료])를 토글하고 고객 대표 상태·D-Day를 즉시 재산정
+ */
+export function toggleSlipDeliveryStatusAndSyncCustomer(
+  customer: CustomerItem,
+  quoteId: string
+): CustomerItem {
+  const today = getTodayStr();
+  const nextQuotes = (customer.quotes || []).map((q) => {
+    if (q.id !== quoteId) return q;
+    const nextDelivStatus: SlipDeliveryStatus =
+      q.deliveryStatus === '배송완료' ? '배송대기' : '배송완료';
+    const nextDelivDate =
+      nextDelivStatus === '배송완료' && !(q.deliveryDate || '').trim()
+        ? q.contractDate || today
+        : q.deliveryDate;
+    return {
+      ...q,
+      isConfirmedSlip: true,
+      deliveryStatus: nextDelivStatus,
+      deliveryDate: nextDelivDate,
+    };
+  });
+
+  return syncCustomerFromConfirmedSlips({
+    ...customer,
+    quotes: nextQuotes,
+    updatedAtMs: Date.now(),
+  });
 }
 
 export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
@@ -263,18 +470,11 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
     if (!existing) {
       map.set(key, {
         ...item,
-        quotes: Array.isArray(item.quotes) ? item.quotes.slice(0, 5) : [],
+        quotes: Array.isArray(item.quotes)
+          ? deduplicateQuoteRecords(item.quotes)
+          : [],
       });
     } else {
-      const mergedQuotesMap = new Map<string, QuoteRecord>();
-      const allQuotes = [...(item.quotes || []), ...(existing.quotes || [])];
-      for (const q of allQuotes) {
-        if (q && q.id && !isDummyInstaZeroQuote(q) && !mergedQuotesMap.has(q.id)) {
-          mergedQuotesMap.set(q.id, q);
-        }
-      }
-      const mergedQuotes = Array.from(mergedQuotesMap.values()).slice(0, 5);
-
       const itemTouch = item.updatedAtMs || item.deletedAt || 0;
       const existTouch = existing.updatedAtMs || existing.deletedAt || 0;
       const isItemNewer =
@@ -283,6 +483,29 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
           : (item.regDate || '') >= (existing.regDate || '');
       const primary = isItemNewer ? item : existing;
       const secondary = isItemNewer ? existing : item;
+
+      // 최신 레코드의 전표가 우선순위를 갖도록 병합 후 중복 제거(최대 30건)
+      const mergedQuotes = deduplicateQuoteRecords([
+        ...(primary.quotes || []),
+        ...(secondary.quotes || []),
+      ]);
+
+      const mergedMemo = (() => {
+        const pMemo = (primary.memo || '').trim();
+        const sMemo = (secondary.memo || '').trim();
+        if (!pMemo) return sMemo;
+        if (!sMemo || pMemo.includes(sMemo)) return pMemo;
+        if (sMemo.includes(pMemo)) return sMemo;
+        return `${pMemo}\n${sMemo}`;
+      })();
+
+      const mergedGifts = (() => {
+        const pGift = (primary.giftItems || '').trim();
+        const sGift = (secondary.giftItems || '').trim();
+        if (!pGift) return sGift;
+        if (!sGift || pGift.includes(sGift)) return pGift;
+        return `${pGift}, ${sGift}`;
+      })();
 
       const mergedCandidate: CustomerItem = {
         ...secondary,
@@ -305,13 +528,13 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
             ? primary.expectedBenefit
             : secondary.expectedBenefit || primary.expectedBenefit,
         contractDate:
-          primary.contractDate !== undefined && primary.contractDate !== ""
+          primary.contractDate !== undefined && primary.contractDate !== ''
             ? primary.contractDate
             : secondary.contractDate || undefined,
         deliveryDate:
           primary.deliveryDate !== undefined
             ? primary.deliveryDate
-            : secondary.deliveryDate || "",
+            : secondary.deliveryDate || '',
         saleType: primary.saleType || secondary.saleType || undefined,
         performanceAmount:
           (Number(primary.performanceAmount) || 0) > 0
@@ -324,16 +547,18 @@ export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
         freedCounts: primary.freedCounts ?? secondary.freedCounts,
         purchasedModels: primary.purchasedModels ?? secondary.purchasedModels,
         orderNo: primary.orderNo ?? secondary.orderNo ?? '',
-        giftItems: primary.giftItems ?? secondary.giftItems ?? '',
+        giftItems: mergedGifts,
         giftSent: Boolean(primary.giftSent ?? secondary.giftSent),
         logisticsConfirmed: Boolean(
           primary.logisticsConfirmed ?? secondary.logisticsConfirmed
         ),
         followUpDate: primary.followUpDate ?? secondary.followUpDate ?? '',
-        memo: primary.memo ?? secondary.memo ?? '',
+        memo: mergedMemo,
         quotes: mergedQuotes,
         deletedAt: primary.deletedAt,
-        updatedAtMs: Math.max(primary.updatedAtMs || 0, secondary.updatedAtMs || 0) || undefined,
+        updatedAtMs:
+          Math.max(primary.updatedAtMs || 0, secondary.updatedAtMs || 0) ||
+          undefined,
       };
 
       map.set(key, healCustomerPrimaryQuoteFields(mergedCandidate));
@@ -446,6 +671,11 @@ export async function saveCustomerQuote(payload: {
   };
   saveMode?: 'overwrite' | 'append';
   overwriteQuoteId?: string;
+  isConfirmedSlip?: boolean;
+  slipDeliveryStatus?: SlipDeliveryStatus;
+  outboundType?: string;
+  deliveryTimeSlot?: string;
+  logisticsConfirmed?: boolean;
 }): Promise<{
   customers: CustomerItem[];
   savedCustomer: CustomerItem;
@@ -477,6 +707,10 @@ export async function saveCustomerQuote(payload: {
   const resolvedPurchasedModels =
     payload.purchasedModels ?? extractedPerf?.purchasedModels;
 
+  const cleanOrderNo = (payload.orderNo || '').trim();
+  const cleanContractDate = payload.contractDate?.trim() || todayStr;
+  const cleanDeliveryDate = (payload.deliveryDate || '').trim();
+
   const newQuote: QuoteRecord = {
     id: `QT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     title:
@@ -497,6 +731,19 @@ export async function saveCustomerQuote(payload: {
     subscriptionPrincipal: resolvedSubPrincipal,
     freedCounts: resolvedFreedCounts,
     purchasedModels: resolvedPurchasedModels,
+    ...(cleanOrderNo ? { orderNo: cleanOrderNo } : {}),
+    ...(payload.isConfirmedSlip
+      ? {
+          isConfirmedSlip: true,
+          contractDate: cleanContractDate,
+          deliveryDate: cleanDeliveryDate,
+          deliveryStatus:
+            payload.slipDeliveryStatus ||
+            (payload.status === '배송완료' ? '배송완료' : '배송대기'),
+          outboundType: payload.outboundType || '',
+          deliveryTimeSlot: payload.deliveryTimeSlot || '',
+        }
+      : {}),
   };
 
   let existingIndex = -1;
@@ -514,7 +761,7 @@ export async function saveCustomerQuote(payload: {
       if (targetNameKey && targetPhoneKey) {
         return cName === targetNameKey && cPhone === targetPhoneKey;
       }
-      return cName === targetNameKey && cPhone === '';
+      return targetNameKey !== '' && cName === targetNameKey && cPhone === '';
     });
   }
 
@@ -530,8 +777,29 @@ export async function saveCustomerQuote(payload: {
     const prevQuotes = (Array.isArray(existing.quotes) ? existing.quotes : []).filter(
       (q) => Boolean(q) && !isDummyInstaZeroQuote(q)
     );
+
+    const incomingOrderKey = normalizeOrderNoKey(cleanOrderNo);
+    const duplicateOrderIdx = incomingOrderKey
+      ? prevQuotes.findIndex(
+          (q) => normalizeOrderNoKey(q.orderNo) === incomingOrderKey
+        )
+      : -1;
+
     let nextQuotes: QuoteRecord[];
-    if (payload.saveMode === 'overwrite' && prevQuotes.length > 0) {
+    if (duplicateOrderIdx >= 0) {
+      // 동일 전표번호(orderNo) 재업로드 시 중복 추가 대신 해당 전표만 안전하게 업데이트
+      wasOverwritten = true;
+      const preservedId = prevQuotes[duplicateOrderIdx]?.id || newQuote.id;
+      savedQuoteId = preservedId;
+      const overwrittenQuote: QuoteRecord = {
+        ...prevQuotes[duplicateOrderIdx],
+        ...newQuote,
+        id: preservedId,
+      };
+      nextQuotes = prevQuotes
+        .map((q, idx) => (idx === duplicateOrderIdx ? overwrittenQuote : q))
+        .slice(0, MAX_QUOTES_PER_CUSTOMER);
+    } else if (payload.saveMode === 'overwrite' && prevQuotes.length > 0) {
       wasOverwritten = true;
       const targetIdx = payload.overwriteQuoteId
         ? prevQuotes.findIndex((q) => q.id === payload.overwriteQuoteId)
@@ -544,12 +812,29 @@ export async function saveCustomerQuote(payload: {
         id: preservedId,
       };
       const remaining = prevQuotes.filter((_, idx) => idx !== replaceIdx);
-      nextQuotes = [overwrittenQuote, ...remaining].slice(0, 5);
+      nextQuotes = [overwrittenQuote, ...remaining].slice(
+        0,
+        MAX_QUOTES_PER_CUSTOMER
+      );
     } else {
-      nextQuotes = [newQuote, ...prevQuotes].slice(0, 5);
+      nextQuotes = [newQuote, ...prevQuotes].slice(0, MAX_QUOTES_PER_CUSTOMER);
     }
 
-    savedCustomer = {
+    const mergedMemo = payload.memo
+      ? existing.memo && !existing.memo.includes(payload.memo)
+        ? `${payload.memo}\n${existing.memo}`
+        : existing.memo || payload.memo
+      : existing.memo;
+
+    const mergedGiftItems = (() => {
+      const incGift = (payload.giftItems || '').trim();
+      const exGift = (existing.giftItems || '').trim();
+      if (!incGift) return exGift;
+      if (!exGift || exGift.includes(incGift)) return exGift || incGift;
+      return `${exGift}, ${incGift}`;
+    })();
+
+    const rawUpdatedCustomer: CustomerItem = {
       ...existing,
       regDate: nowStr,
       contractDate:
@@ -567,7 +852,7 @@ export async function saveCustomerQuote(payload: {
       performanceAmount: resolvedPerformanceAmount,
       generalProductTotal: resolvedGeneralTotal,
       subscriptionPrincipal: resolvedSubPrincipal,
-      freedCounts: resolvedFreedCounts,
+      freedCounts: existing.freedCounts ?? resolvedFreedCounts,
       purchasedModels: resolvedPurchasedModels,
       deliveryDate:
         payload.deliveryDate !== undefined
@@ -578,27 +863,31 @@ export async function saveCustomerQuote(payload: {
           ? payload.followUpDate
           : existing.followUpDate,
       status: payload.status || existing.status,
-      memo: payload.memo
-        ? existing.memo && !existing.memo.includes(payload.memo)
-          ? `${payload.memo}\n${existing.memo}`
-          : existing.memo || payload.memo
-        : existing.memo,
-      orderNo: payload.orderNo || existing.orderNo,
-      giftItems: payload.giftItems || existing.giftItems,
+      memo: mergedMemo,
+      orderNo: cleanOrderNo || existing.orderNo,
+      giftItems: mergedGiftItems,
+      logisticsConfirmed:
+        payload.logisticsConfirmed !== undefined
+          ? payload.logisticsConfirmed
+          : existing.logisticsConfirmed,
       quotes: nextQuotes,
       deletedAt: undefined,
       updatedAtMs: Date.now(),
     };
+
+    savedCustomer = nextQuotes.some((q) => q.isConfirmedSlip)
+      ? syncCustomerFromConfirmedSlips(rawUpdatedCustomer)
+      : rawUpdatedCustomer;
 
     updatedList = [
       savedCustomer,
       ...current.filter((_, idx) => idx !== existingIndex),
     ];
   } else {
-    savedCustomer = {
-      id: `CUST-${Date.now()}`,
+    const rawNewCustomer: CustomerItem = {
+      id: `CUST-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       regDate: nowStr,
-      contractDate: payload.contractDate?.trim() || todayStr,
+      contractDate: cleanContractDate,
       name: payload.name.trim(),
       phone: payload.phone.trim(),
       items: payload.items,
@@ -611,32 +900,162 @@ export async function saveCustomerQuote(payload: {
       subscriptionPrincipal: resolvedSubPrincipal,
       freedCounts: resolvedFreedCounts,
       purchasedModels: resolvedPurchasedModels,
-      deliveryDate: payload.deliveryDate,
+      deliveryDate: cleanDeliveryDate,
       followUpDate: payload.followUpDate || '',
       status: payload.status,
       memo: payload.memo,
-      orderNo: payload.orderNo || '',
-      giftItems: payload.giftItems || '',
+      orderNo: cleanOrderNo,
+      giftItems: (payload.giftItems || '').trim(),
       giftSent: false,
-      logisticsConfirmed: false,
+      logisticsConfirmed: Boolean(payload.logisticsConfirmed),
       quotes: [newQuote],
       deletedAt: undefined,
       updatedAtMs: Date.now(),
     };
 
+    savedCustomer = newQuote.isConfirmedSlip
+      ? syncCustomerFromConfirmedSlips(rawNewCustomer)
+      : rawNewCustomer;
+
     updatedList = [savedCustomer, ...current];
   }
 
   const deduped = setCachedCustomers(updatedList);
-  await syncCustomerToGas('upsertCustomer', savedCustomer);
+  const syncedFinal =
+    deduped.find((c) => c.id === savedCustomer.id) || savedCustomer;
+  await syncCustomerToGas('upsertCustomer', syncedFinal);
 
   return {
     customers: deduped,
-    savedCustomer,
+    savedCustomer: syncedFinal,
     isExistingCustomer,
-    quoteCount: savedCustomer.quotes?.length || 1,
+    quoteCount: syncedFinal.quotes?.length || 1,
     savedQuoteId,
     wasOverwritten,
+  };
+}
+
+/**
+ * 다중 업로드된 HISIS 확정 전표(1장~수십 장)를 원클릭 일괄 등록합니다.
+ * - 동일 고객(이름 + 전화번호 숫자 일치)은 단 1개의 고객 카드로 자동 통합(일반 2회+ / 구독 2회+ / 혼합 자동 합산)
+ * - 동일 전표번호(orderNo) 재업로드 시 중복 생성 없이 기존 전표 항목만 덮어쓰기 업데이트
+ */
+export async function saveHisisSlipsBatch(
+  slips: ParsedHisisSlipResult[],
+  options: { targetCustomerId?: string } = {}
+): Promise<{
+  customers: CustomerItem[];
+  customerCount: number;
+  createdCustomerCount: number;
+  mergedCustomerCount: number;
+  totalSlipCount: number;
+  overwrittenSlipCount: number;
+  savedCustomerIds: string[];
+}> {
+  const savedCustomerIdSet = new Set<string>();
+  const newlyCreatedCustomerIds = new Set<string>();
+  let overwrittenSlipCount = 0;
+
+  for (let i = 0; i < slips.length; i++) {
+    const slip = slips[i];
+    const cleanName = slip.customerName.trim() || '고객명미입력';
+    const cleanPhone = slip.customerPhone.trim();
+
+    const purchasedModels: PurchasedModelEntry[] =
+      slip.quoteMode === 'subscription'
+        ? slip.subscriptionItems.map((it, idx) => ({
+            id: `slip-sub-${i}-${idx}-${it.modelName || it.category}`,
+            category: it.category || '구독가전',
+            modelName: it.modelName || it.category || '구독가전',
+            quantity: 1,
+            saleType: 'subscription',
+            principalAmount: it.contractAmount,
+          }))
+        : slip.generalItems.map((it, idx) => ({
+            id: `slip-gen-${i}-${idx}-${it.modelName || it.category}`,
+            category: it.category || '일반가전',
+            modelName: it.modelName || it.category || '일반가전',
+            quantity: Math.max(1, it.quantity || 1),
+            saleType: 'general',
+            principalAmount: it.actualPrice,
+          }));
+
+    const paidAmount =
+      slip.quoteMode === 'subscription'
+        ? slip.monthlyFeeTotal
+        : slip.actualPurchaseAmount;
+    const netAmount = paidAmount;
+
+    const expectedBenefit =
+      slip.quoteMode === 'subscription'
+        ? `${slip.subscriptionPeriod}개월 구독 (구독원금 ${slip.actualPurchaseAmount.toLocaleString('ko-KR')}원 · 월 ${slip.monthlyFeeTotal.toLocaleString('ko-KR')}원)`
+        : slip.totalDiscountAmount > 0
+        ? `에누리 ${slip.totalDiscountAmount.toLocaleString('ko-KR')}원 반영 (실구매가 ${slip.actualPurchaseAmount.toLocaleString('ko-KR')}원)`
+        : `전표 실구매가 ${slip.actualPurchaseAmount.toLocaleString('ko-KR')}원 확정`;
+
+    const quoteTitle = slip.orderNo
+      ? `[전표 ${slip.orderNo}] ${
+          slip.modelCodesSummary || slip.itemSummary.slice(0, 18)
+        }`
+      : `[확정전표] ${slip.modelCodesSummary || slip.itemSummary.slice(0, 18)}`;
+
+    const res = await saveCustomerQuote({
+      targetCustomerId: options.targetCustomerId,
+      name: cleanName,
+      phone: cleanPhone,
+      items: slip.itemSummary,
+      paidAmount,
+      netAmount,
+      expectedBenefit,
+      contractDate: slip.contractDate,
+      deliveryDate: slip.deliveryDate,
+      status: slip.crmStatus,
+      memo: slip.memoSummary,
+      orderNo: slip.orderNo,
+      giftItems: slip.giftItems,
+      quoteTitle,
+      proposalState: slip.proposalState,
+      quoteMode: slip.quoteMode,
+      saleType: slip.quoteMode,
+      performanceAmount: slip.performanceAmount,
+      generalProductTotal:
+        slip.quoteMode === 'general' ? slip.actualPurchaseAmount : 0,
+      subscriptionPrincipal:
+        slip.quoteMode === 'subscription' ? slip.actualPurchaseAmount : 0,
+      purchasedModels,
+      saveMode: 'append',
+      isConfirmedSlip: true,
+      slipDeliveryStatus: slip.deliveryStatus,
+      outboundType: slip.outboundLabel,
+      deliveryTimeSlot: slip.deliveryTimeSlot,
+      logisticsConfirmed: slip.logisticsConfirmed,
+    });
+
+    savedCustomerIdSet.add(res.savedCustomer.id);
+    if (!res.isExistingCustomer) {
+      newlyCreatedCustomerIds.add(res.savedCustomer.id);
+    }
+    if (res.wasOverwritten) {
+      overwrittenSlipCount += 1;
+    }
+  }
+
+  const finalCustomers = getCachedCustomers();
+  const savedCustomerIds = Array.from(savedCustomerIdSet);
+  const createdCustomerCount = newlyCreatedCustomerIds.size;
+  const mergedCustomerCount = Math.max(
+    0,
+    savedCustomerIds.length - createdCustomerCount
+  );
+
+  return {
+    customers: finalCustomers,
+    customerCount: savedCustomerIds.length,
+    createdCustomerCount,
+    mergedCustomerCount,
+    totalSlipCount: slips.length,
+    overwrittenSlipCount,
+    savedCustomerIds,
   };
 }
 

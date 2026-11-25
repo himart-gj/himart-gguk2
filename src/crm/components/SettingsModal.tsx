@@ -178,7 +178,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             💾 기기 내 영구 저장 & 파일 백업 / 복원
           </h4>
           <p className="text-[11.5px] text-[#4E5968] dark:text-slate-300 mt-0.5 leading-relaxed">
-            등록하신 모든 고객·다중 견적(최대 5개) 및 월별 제품 모델 수당 단가표는 현재 기기에 자동 저장됩니다. 기기 변경 시 백업 파일로 언제든 옮길 수 있습니다.
+            등록하신 모든 고객·다중 전표/견적(최대 30개) 및 월별 제품 모델 수당 단가표는 현재 기기에 자동 저장됩니다. 기기 변경 시 백업 파일로 언제든 옮길 수 있습니다.
           </p>
         </div>
 
