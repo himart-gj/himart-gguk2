@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AFFILIATE_CARDS,
   applyAllGeneralPlansPatch,
@@ -22,6 +22,7 @@ import {
   ArrowRight,
   Camera,
   Check,
+  ChevronDown,
   CreditCard,
   Eye,
   EyeOff,
@@ -84,7 +85,42 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
   validSubPlans,
 }) => {
   const [customCareItemIds, setCustomCareItemIds] = useState<Record<string, boolean>>({});
+  const [openCareDropdownId, setOpenCareDropdownId] = useState<string | null>(null);
   const customCareInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const careDropdownWrapRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const prevPreedSnapshotRef = useRef<
+    Record<
+      number,
+      {
+        hideSubPreed: boolean;
+        countPreedTowardCardSpend: boolean;
+        hiPlusPayoutMethod: HiPlusPayoutMethod;
+        hiPlusCounts: { hi72: number; hi90: number; hi108: number };
+      }
+    >
+  >({});
+
+  useEffect(() => {
+    if (!openCareDropdownId) return;
+    const handlePointerDown = (ev: MouseEvent | PointerEvent) => {
+      const wrapEl = careDropdownWrapRefs.current[openCareDropdownId];
+      if (wrapEl && ev.target instanceof Node && wrapEl.contains(ev.target)) {
+        return;
+      }
+      setOpenCareDropdownId(null);
+    };
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        setOpenCareDropdownId(null);
+      }
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openCareDropdownId]);
 
   const handleToggleHideSubPreed = () => {
     onChange((prev: any) => {
@@ -180,6 +216,40 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
 
   const handleApplyAutoSpendHiPlusPreset = () => {
     if (!autoSpendHiPlusPreset) return;
+    const planKey = Math.max(1, Number(state.activeGeneralPlan) || 1);
+
+    if (isAutoSpendPresetApplied) {
+      const saved = prevPreedSnapshotRef.current[planKey];
+      delete prevPreedSnapshotRef.current[planKey];
+      onChange((prev: any) => {
+        if (saved) {
+          return {
+            ...prev,
+            hideSubPreed: saved.hideSubPreed,
+            countPreedTowardCardSpend: saved.countPreedTowardCardSpend,
+            hiPlusPayoutMethod: saved.hiPlusPayoutMethod,
+            hiPlusCounts: { ...saved.hiPlusCounts },
+          };
+        }
+        return {
+          ...prev,
+          hiPlusCounts: { hi72: 0, hi90: 0, hi108: 0 },
+        };
+      });
+      return;
+    }
+
+    prevPreedSnapshotRef.current[planKey] = {
+      hideSubPreed: Boolean(state.hideSubPreed),
+      countPreedTowardCardSpend: Boolean(state.countPreedTowardCardSpend),
+      hiPlusPayoutMethod: activePayoutMethod,
+      hiPlusCounts: {
+        hi72: Number(state.hiPlusCounts?.hi72) || 0,
+        hi90: Number(state.hiPlusCounts?.hi90) || 0,
+        hi108: Number(state.hiPlusCounts?.hi108) || 0,
+      },
+    };
+
     onChange((prev: any) => ({
       ...prev,
       hideSubPreed: false,
@@ -384,42 +454,99 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                     ))}
                   </div>
 
-                  <select
-                    value={isCustomCare ? 'custom' : item.careService}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === 'custom') {
-                        setCustomCareItemIds((prev) => ({ ...prev, [item.id]: true }));
-                        const nextCustomValue = SUB_CARE_OPTIONS.includes(item.careService)
-                          ? ''
-                          : item.careService || '';
-                        handleUpdateSubItem(item.id, {
-                          careService: nextCustomValue,
-                          careType: nextCustomValue,
-                        });
-                        requestAnimationFrame(() => {
-                          customCareInputRefs.current[item.id]?.focus({
-                            preventScroll: true,
-                          });
-                        });
-                      } else {
-                        setCustomCareItemIds((prev) => ({ ...prev, [item.id]: false }));
-                        handleUpdateSubItem(item.id, {
-                          careService: val,
-                          careType: val,
-                        });
-                      }
+                  <div
+                    ref={(el) => {
+                      careDropdownWrapRefs.current[item.id] = el;
                     }}
-                    aria-label={`품목 ${index + 1} 케어서비스 선택`}
-                    className="col-span-7 sm:col-span-4 px-2 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-[#E5E8EB] dark:border-slate-700 text-base sm:text-xs font-medium text-[#191F28] dark:text-slate-100 focus:border-[#1B64DA] focus:outline-none"
+                    className="col-span-7 sm:col-span-4 relative"
                   >
-                    {SUB_CARE_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                    <option value="custom">직접 입력</option>
-                  </select>
+                    <button
+                      type="button"
+                      aria-label={`품목 ${index + 1} 케어서비스 선택`}
+                      aria-expanded={openCareDropdownId === item.id}
+                      onClick={() =>
+                        setOpenCareDropdownId((prev) =>
+                          prev === item.id ? null : item.id
+                        )
+                      }
+                      className={`w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border text-left text-base sm:text-xs font-medium text-[#191F28] dark:text-slate-100 flex items-center justify-between gap-1.5 transition cursor-pointer ${
+                        openCareDropdownId === item.id
+                          ? 'border-[#1B64DA] ring-2 ring-[#1B64DA]/15'
+                          : 'border-[#E5E8EB] dark:border-slate-700 hover:border-[#CBD5E1]'
+                      }`}
+                    >
+                      <span className="truncate">
+                        {isCustomCare ? '직접 입력' : item.careService}
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 shrink-0 text-[#4E5968] dark:text-slate-400 transition-transform duration-150 ${
+                          openCareDropdownId === item.id
+                            ? 'rotate-180 text-[#1B64DA] dark:text-blue-400'
+                            : ''
+                        }`}
+                      />
+                    </button>
+
+                    {openCareDropdownId === item.id && (
+                      <div className="absolute left-0 right-0 sm:min-w-[235px] top-[calc(100%+4px)] z-30 rounded-xl bg-white dark:bg-slate-800 border border-[#D1D6DB] dark:border-slate-700 shadow-[0_10px_28px_rgba(15,23,42,0.14)] overflow-hidden divide-y divide-[#F2F4F6] dark:divide-slate-700/70">
+                        {[...SUB_CARE_OPTIONS, 'custom'].map((opt) => {
+                          const isOptCustom = opt === 'custom';
+                          const isSelectedOpt = isOptCustom
+                            ? isCustomCare
+                            : !isCustomCare && item.careService === opt;
+                          const labelText = isOptCustom ? '직접 입력' : opt;
+                          return (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                setOpenCareDropdownId(null);
+                                if (isOptCustom) {
+                                  setCustomCareItemIds((prev) => ({
+                                    ...prev,
+                                    [item.id]: true,
+                                  }));
+                                  const nextCustomValue = SUB_CARE_OPTIONS.includes(
+                                    item.careService
+                                  )
+                                    ? ''
+                                    : item.careService || '';
+                                  handleUpdateSubItem(item.id, {
+                                    careService: nextCustomValue,
+                                    careType: nextCustomValue,
+                                  });
+                                  requestAnimationFrame(() => {
+                                    customCareInputRefs.current[item.id]?.focus({
+                                      preventScroll: true,
+                                    });
+                                  });
+                                } else {
+                                  setCustomCareItemIds((prev) => ({
+                                    ...prev,
+                                    [item.id]: false,
+                                  }));
+                                  handleUpdateSubItem(item.id, {
+                                    careService: opt,
+                                    careType: opt,
+                                  });
+                                }
+                              }}
+                              className={`w-full px-3 py-2.5 text-left text-sm sm:text-xs font-bold flex items-center justify-between gap-2 transition cursor-pointer ${
+                                isSelectedOpt
+                                  ? 'bg-[#EFF6FF] dark:bg-blue-500/20 text-[#1B64DA] dark:text-blue-300'
+                                  : 'text-[#191F28] dark:text-slate-100 hover:bg-[#F8FAFC] dark:hover:bg-slate-700/60'
+                              }`}
+                            >
+                              <span className="break-keep">{labelText}</span>
+                              {isSelectedOpt && (
+                                <Check className="w-3.5 h-3.5 shrink-0 text-[#1B64DA] dark:text-blue-400" />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
 
                   <div className="col-span-12 sm:col-span-5 relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] font-semibold text-[#8B95A1] dark:text-slate-400">
@@ -968,16 +1095,21 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   <button
                     type="button"
                     onClick={handleApplyAutoSpendHiPlusPreset}
+                    title={
+                      isAutoSpendPresetApplied
+                        ? '다시 누르면 이전 구좌 선택으로 되돌아갑니다'
+                        : '클릭 시 카드 전월실적을 충족하는 추천 구좌가 자동 선택됩니다'
+                    }
                     className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold border transition cursor-pointer shrink-0 whitespace-nowrap ${
                       isAutoSpendPresetApplied
-                        ? 'bg-emerald-600 text-white border-emerald-600'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600'
                         : 'bg-[#EFF6FF] dark:bg-blue-500/15 hover:bg-[#DBEAFE] text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/40'
                     }`}
                   >
                     {isAutoSpendPresetApplied ? (
                       <>
                         <Check className="w-3 h-3 shrink-0" />
-                        <span>실적 자동충족 적용됨</span>
+                        <span>실적 자동충족 적용됨 (해제)</span>
                       </>
                     ) : (
                       <>
@@ -1053,6 +1185,34 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
             : 0;
         const oneTimeBenefitSum =
           liveSubSummary.totalSubCashback + liveSubSummary.subLotteBillingDiscount;
+        const effectiveBaseMonthly =
+          liveSubSummary.totalBaseMonthly ?? totalBaseMonthly;
+        const compareList =
+          Array.isArray(validSubPlans) && validSubPlans.length >= 2
+            ? validSubPlans
+            : [
+                { planNum: 1, subSummary: plan1SubSummary },
+                { planNum: 2, subSummary: plan2SubSummary },
+              ];
+        let minSubEntry = compareList[0];
+        let maxSubEntry = compareList[0];
+        for (const entry of compareList) {
+          if (entry.subSummary.finalMonthlyFee < minSubEntry.subSummary.finalMonthlyFee) {
+            minSubEntry = entry;
+          }
+          if (entry.subSummary.finalMonthlyFee > maxSubEntry.subSummary.finalMonthlyFee) {
+            maxSubEntry = entry;
+          }
+        }
+        const clearMonthlyGap = Math.abs(
+          maxSubEntry.subSummary.finalMonthlyFee -
+            minSubEntry.subSummary.finalMonthlyFee
+        );
+        const clearTotalGap = Math.abs(
+          maxSubEntry.subSummary.finalTotalFee -
+            minSubEntry.subSummary.finalTotalFee
+        );
+
         return (
           <div className="rounded-2xl bg-[#F8FAFC] dark:bg-slate-900/70 border border-[#E5E8EB] dark:border-slate-800 p-4 space-y-2.5">
             <div className="ledger-row">
@@ -1062,10 +1222,10 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                 </div>
                 <div className="text-[11.5px] text-[#4E5968] dark:text-slate-400 font-medium mt-0.5 break-keep">
                   {liveSubSummary.subLotteBillingDiscount > 0
-                    ? `원구독료 월 ${totalBaseMonthly.toLocaleString()}원(5%청구할인 적용 · 전표 월 ${(
+                    ? `원구독료 월 ${effectiveBaseMonthly.toLocaleString()}원(5%청구할인 적용 · 전표 월 ${(
                         liveSubSummary.rawTotalBaseMonthly ?? totalBaseMonthly
                       ).toLocaleString()}원)`
-                    : `기본 월 ${totalBaseMonthly.toLocaleString()}원`}{' '}
+                    : `기본 월 ${effectiveBaseMonthly.toLocaleString()}원`}{' '}
                   - 카드 {cardDiscount.toLocaleString()}원
                   {!state.hideSubPreed && hiPlusMonthly > 0
                     ? ` - 프리드 ${hiPlusMonthly.toLocaleString()}원`
@@ -1138,45 +1298,36 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
               </div>
             ) : null}
 
-            {/* 다중 안(1안~N안) 구독 차액: 월 차액 · 총 계약기간(36/60개월) 총차액 병기 */}
+            {/* 다중 안(1안~N안) 구독 비교 요약: 각 안의 실제 혜택(초과혜택 포함)과 비교 대상 안 번호를 명확히 표기 */}
             {bothSubPlansHavePrice && (
               <div className="pt-2.5 border-t border-[#E5E8EB] dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11.5px]">
                 <div className="font-mono tabular-nums font-semibold text-[#4E5968] dark:text-slate-300 break-keep">
-                  {Array.isArray(validSubPlans) && validSubPlans.length >= 2
-                    ? validSubPlans
-                        .map(
-                          (p: any) =>
-                            `[${p.planNum}안: 월 ${Math.max(
-                              0,
-                              p.subSummary.finalMonthlyFee
-                            ).toLocaleString()}원 · 총 ${Math.max(
-                              0,
-                              p.subSummary.finalTotalFee
-                            ).toLocaleString()}원]`
-                        )
-                        .join(' vs ')
-                    : `[1안: 월 ${Math.max(
-                        0,
-                        plan1SubSummary.finalMonthlyFee
-                      ).toLocaleString()}원 · 총 ${Math.max(
-                        0,
-                        plan1SubSummary.finalTotalFee
-                      ).toLocaleString()}원] vs [2안: 월 ${Math.max(
-                        0,
-                        plan2SubSummary.finalMonthlyFee
-                      ).toLocaleString()}원 · 총 ${Math.max(
-                        0,
-                        plan2SubSummary.finalTotalFee
-                      ).toLocaleString()}원]`}
+                  {compareList
+                    .map((p: any) => {
+                      const pSurplus = getSubscriptionSurplusMeta(
+                        p.subSummary.finalMonthlyFee,
+                        p.subSummary.hiPlusPayoutMethod
+                      );
+                      const mLabel = pSurplus.isSurplusZone
+                        ? pSurplus.monthlySurplus > 0
+                          ? `월 0원(+${pSurplus.monthlySurplus.toLocaleString()}원 혜택)`
+                          : '월 0원'
+                        : `월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+                      return `[${p.planNum}안: ${mLabel}]`;
+                    })
+                    .join(' vs ')}
                 </div>
-                <span className="px-2.5 py-1 rounded-lg bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 font-mono tabular-nums font-extrabold text-[#1B64DA] dark:text-blue-300 whitespace-nowrap ml-auto">
-                  월 차액 {subNetDiff > 0 ? `+${subNetDiff.toLocaleString()}` : subNetDiff.toLocaleString()}원 ·{' '}
-                  {periodLabel} 총차액{' '}
-                  {subTotalNetDiff > 0
-                    ? `+${subTotalNetDiff.toLocaleString()}`
-                    : subTotalNetDiff.toLocaleString()}
-                  원
-                </span>
+                {clearMonthlyGap > 0 || clearTotalGap > 0 ? (
+                  <span className="px-2.5 py-1 rounded-lg bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 font-mono tabular-nums font-extrabold text-[#1B64DA] dark:text-blue-300 whitespace-nowrap ml-auto">
+                    {minSubEntry.planNum}안이 {maxSubEntry.planNum}안보다 월{' '}
+                    {clearMonthlyGap.toLocaleString()}원 · {periodLabel} 총{' '}
+                    {clearTotalGap.toLocaleString()}원 유리
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-1 rounded-lg bg-[#F2F4F6] dark:bg-slate-800 text-[#4E5968] dark:text-slate-300 font-bold whitespace-nowrap ml-auto">
+                    안별 체감 요금 동일
+                  </span>
+                )}
               </div>
             )}
           </div>
