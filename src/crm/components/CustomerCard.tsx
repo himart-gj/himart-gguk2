@@ -29,6 +29,7 @@ import {
   CustomerStatus,
   MAX_QUOTES_PER_CUSTOMER,
   QuoteRecord,
+  SlipDeliveryStatus,
 } from '../types/crm';
 import {
   formatCurrency,
@@ -37,6 +38,7 @@ import {
   getFollowUpInfo,
   getFridayDateStr,
   getOffsetDateStr,
+  getTodayStr,
   isUrgentCustomer,
 } from '../utils/date';
 import { safeCopyText } from '../../utils/mobileQaRuntime';
@@ -45,6 +47,10 @@ import {
   parsePurchasedModelsFromItemsText,
   resolveCustomerPerformanceProfile,
 } from '../utils/settlementEngine';
+import {
+  normalizeOrderNoKey,
+  QuoteSlipInlinePatch,
+} from '../services/gasApi';
 import { FormattedMoneyInput } from '../../components/FormattedMoneyInput';
 
 interface CustomerCardProps {
@@ -55,6 +61,12 @@ interface CustomerCardProps {
   onDeleteQuoteRecord: (customerId: string, quoteId: string) => void;
   onApplyQuoteAsPrimary: (customerId: string, quote: QuoteRecord) => void;
   onToggleSlipDeliveryStatus?: (customerId: string, quoteId: string) => void;
+  onUpdateQuoteSlip?: (
+    customerId: string,
+    quoteId: string,
+    patch: QuoteSlipInlinePatch
+  ) => void;
+  onConfirmDraftQuote?: (customerId: string, quoteId: string) => void;
   onLoadQuoteRecord: (customer: CustomerItem, quote: QuoteRecord) => void;
   onDelete: (id: string) => void;
   onOpenSMS: (customer: CustomerItem) => void;
@@ -119,6 +131,8 @@ const ALL_STATUSES: CustomerStatus[] = [
   '취소/보류',
 ];
 
+const PLAN_BOOK_ICONS = ['📘', '📗', '📙', '📕', '📒', '📓'];
+
 export const CustomerCard: React.FC<CustomerCardProps> = ({
   customer,
   onStatusChange,
@@ -127,6 +141,8 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   onDeleteQuoteRecord,
   onApplyQuoteAsPrimary,
   onToggleSlipDeliveryStatus,
+  onUpdateQuoteSlip,
+  onConfirmDraftQuote,
   onLoadQuoteRecord,
   onDelete,
   onOpenSMS,
@@ -151,6 +167,16 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const [showQuotesDrawer, setShowQuotesDrawer] = useState<boolean>(() =>
     Boolean(customer.quotes && customer.quotes.length > 0)
   );
+
+  // 인라인 전표 수정 상태
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [slipOrderNoDraft, setSlipOrderNoDraft] = useState('');
+  const [slipContractDateDraft, setSlipContractDateDraft] = useState('');
+  const [slipDeliveryDateDraft, setSlipDeliveryDateDraft] = useState('');
+  const [slipDeliveryStatusDraft, setSlipDeliveryStatusDraft] =
+    useState<SlipDeliveryStatus>('배송대기');
+  const [slipItemSummaryDraft, setSlipItemSummaryDraft] = useState('');
+  const [slipEditError, setSlipEditError] = useState<string | null>(null);
 
   const [nameDraft, setNameDraft] = useState(customer.name || '');
   const [phoneDraft, setPhoneDraft] = useState(customer.phone || '');
@@ -250,6 +276,68 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   const style = STATUS_STYLES[customer.status] || STATUS_STYLES['신규/미발송'];
   const urgent = isUrgentCustomer(customer);
   const quotes = Array.isArray(customer.quotes) ? customer.quotes : [];
+  const confirmedSlips = quotes.filter((q) => Boolean(q?.isConfirmedSlip));
+  const draftQuotes = quotes.filter((q) => !q?.isConfirmedSlip);
+
+  const allDisplayOrderNos = Array.from(
+    new Set(
+      [
+        ...confirmedSlips.map((s) => (s.orderNo || '').trim()),
+        (customer.orderNo || '').trim(),
+      ].filter(Boolean)
+    )
+  );
+
+  const openInlineSlipEditor = (q: QuoteRecord) => {
+    if (editingQuoteId === q.id) {
+      setEditingQuoteId(null);
+      setSlipEditError(null);
+      return;
+    }
+    setEditingQuoteId(q.id);
+    setSlipOrderNoDraft(q.orderNo || '');
+    setSlipContractDateDraft(
+      q.contractDate ||
+        customer.contractDate ||
+        q.createdAt?.slice(0, 10) ||
+        getTodayStr()
+    );
+    setSlipDeliveryDateDraft(q.deliveryDate || '');
+    setSlipDeliveryStatusDraft(q.deliveryStatus || '배송대기');
+    setSlipItemSummaryDraft(q.itemSummary || '');
+    setSlipEditError(null);
+  };
+
+  const handleSaveInlineSlipEdit = (
+    q: QuoteRecord,
+    promoteToConfirmedSlip: boolean
+  ) => {
+    if (!onUpdateQuoteSlip) return;
+    const cleanOrderKey = normalizeOrderNoKey(slipOrderNoDraft);
+    if (cleanOrderKey) {
+      const hasCollision = quotes.some(
+        (other) =>
+          other.id !== q.id &&
+          normalizeOrderNoKey(other.orderNo) === cleanOrderKey
+      );
+      if (hasCollision) {
+        setSlipEditError(
+          `이미 이 고객의 다른 전표에 동일한 전표번호(${slipOrderNoDraft.trim()})가 등록되어 있습니다.`
+        );
+        return;
+      }
+    }
+    onUpdateQuoteSlip(customer.id, q.id, {
+      orderNo: slipOrderNoDraft.trim(),
+      contractDate: slipContractDateDraft.trim(),
+      deliveryDate: slipDeliveryDateDraft.trim(),
+      deliveryStatus: slipDeliveryStatusDraft,
+      itemSummary: slipItemSummaryDraft.trim(),
+      promoteToConfirmedSlip,
+    });
+    setEditingQuoteId(null);
+    setSlipEditError(null);
+  };
 
   const handleSaveMemo = () => {
     onMemoChange(customer.id, memoDraft);
@@ -324,60 +412,80 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
   };
 
   const handleCopyQuoteToClipboard = async (q: QuoteRecord) => {
+    const extraPlans =
+      Array.isArray(q.planSummaries) && q.planSummaries.length > 0
+        ? q.planSummaries.filter((ps) => Boolean(ps && ps.itemSummary))
+        : q.plan2Summary && q.plan2Summary.itemSummary
+        ? [q.plan2Summary]
+        : [];
+    const totalPlans = extraPlans.length + 1;
+    const rangeLabel = Array.from(
+      { length: totalPlans },
+      (_, i) => `${i + 1}안`
+    ).join(' vs ');
+
     let text = '';
-    if (q.plan2Summary && q.plan2Summary.itemSummary) {
+    if (extraPlans.length > 0) {
       if (q.quoteMode === 'subscription') {
-        text = `[롯데하이마트 국지점 구독 1안 vs 2안 비교 견적 안내]
+        const blocks = [
+          `📘 [구독 1안] ${q.itemSummary || '맞춤 구독 가전 1안'}\n- 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원\n- 최종 월 체감가: 월 ${formatCurrency(q.netAmount)}원${
+            q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
+          }`,
+          ...extraPlans.map((ps, idx) => {
+            const pNum = idx + 2;
+            const icon = PLAN_BOOK_ICONS[(pNum - 1) % PLAN_BOOK_ICONS.length];
+            return `${icon} [구독 ${pNum}안] ${ps.itemSummary}\n- 월 기준 구독료: 월 ${formatCurrency(ps.paidAmount)}원\n- 최종 월 체감가: 월 ${formatCurrency(ps.netAmount)}원${
+              ps.benefit ? `\n- 혜택요약: ${ps.benefit}` : ''
+            }`;
+          }),
+        ];
+        text = `[롯데하이마트 국지점 구독 ${rangeLabel} 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
-📘 [구독 1안] ${q.itemSummary || '맞춤 구독 가전 1안'}
-- 월 기준 구독료: 월 ${formatCurrency(q.paidAmount)}원
-- 최종 월 체감가: 월 ${formatCurrency(q.netAmount)}원${
-          q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
-        }
-
-📗 [구독 2안] ${q.plan2Summary.itemSummary}
-- 월 기준 구독료: 월 ${formatCurrency(q.plan2Summary.paidAmount)}원
-- 최종 월 체감가: 월 ${formatCurrency(q.plan2Summary.netAmount)}원${
-          q.plan2Summary.benefit ? `\n- 혜택요약: ${q.plan2Summary.benefit}` : ''
-        }
+${blocks.join('\n\n')}
 ━━━━━━━━━━━━━━━━━━
-두 가지 구독 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
+${totalPlans}가지 구독 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
       } else if (q.quoteMode === 'hybrid') {
-        text = `[롯데하이마트 국지점 혼합 1안 vs 2안 비교 견적 안내]
+        const blocks = [
+          `📘 [혼합 1안] ${q.itemSummary || '일반+구독 혼합 1안'}\n- 일반 일시불 실결제가: ${formatCurrency(q.paidAmount)}원 (최종 체감가: ${formatCurrency(q.netAmount)}원)${
+            q.benefit ? `\n- 상세 구성: ${q.benefit}` : ''
+          }`,
+          ...extraPlans.map((ps, idx) => {
+            const pNum = idx + 2;
+            const icon = PLAN_BOOK_ICONS[(pNum - 1) % PLAN_BOOK_ICONS.length];
+            return `${icon} [혼합 ${pNum}안] ${ps.itemSummary}\n- 일반 일시불 실결제가: ${formatCurrency(ps.paidAmount)}원 (최종 체감가: ${formatCurrency(ps.netAmount)}원)${
+              ps.benefit ? `\n- 상세 구성: ${ps.benefit}` : ''
+            }`;
+          }),
+        ];
+        text = `[롯데하이마트 국지점 혼합 ${rangeLabel} 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
-📘 [혼합 1안] ${q.itemSummary || '일반+구독 혼합 1안'}
-- 일반 일시불 실결제가: ${formatCurrency(q.paidAmount)}원 (최종 체감가: ${formatCurrency(q.netAmount)}원)${
-          q.benefit ? `\n- 상세 구성: ${q.benefit}` : ''
-        }
-
-📗 [혼합 2안] ${q.plan2Summary.itemSummary}
-- 일반 일시불 실결제가: ${formatCurrency(q.plan2Summary.paidAmount)}원 (최종 체감가: ${formatCurrency(q.plan2Summary.netAmount)}원)${
-          q.plan2Summary.benefit ? `\n- 상세 구성: ${q.plan2Summary.benefit}` : ''
-        }
+${blocks.join('\n\n')}
 ━━━━━━━━━━━━━━━━━━
-두 가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
+${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
       } else {
-        text = `[롯데하이마트 국지점 1안 vs 2안 비교 견적 안내]
+        const blocks = [
+          `📘 [1안] ${q.itemSummary || '맞춤 가전 1안'}\n- 실결제가: ${formatCurrency(q.paidAmount)}원\n- 최종 체감가: ${formatCurrency(q.netAmount)}원${
+            q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
+          }`,
+          ...extraPlans.map((ps, idx) => {
+            const pNum = idx + 2;
+            const icon = PLAN_BOOK_ICONS[(pNum - 1) % PLAN_BOOK_ICONS.length];
+            return `${icon} [${pNum}안] ${ps.itemSummary}\n- 실결제가: ${formatCurrency(ps.paidAmount)}원\n- 최종 체감가: ${formatCurrency(ps.netAmount)}원${
+              ps.benefit ? `\n- 혜택요약: ${ps.benefit}` : ''
+            }`;
+          }),
+        ];
+        text = `[롯데하이마트 국지점 ${rangeLabel} 비교 견적 안내]
 👤 고객명: ${customer.name} 고객님
 
 ━━━━━━━━━━━━━━━━━━
-📘 [1안] ${q.itemSummary || '맞춤 가전 1안'}
-- 실결제가: ${formatCurrency(q.paidAmount)}원
-- 최종 체감가: ${formatCurrency(q.netAmount)}원${
-          q.benefit ? `\n- 혜택요약: ${q.benefit}` : ''
-        }
-
-📗 [2안] ${q.plan2Summary.itemSummary}
-- 실결제가: ${formatCurrency(q.plan2Summary.paidAmount)}원
-- 최종 체감가: ${formatCurrency(q.plan2Summary.netAmount)}원${
-          q.plan2Summary.benefit ? `\n- 혜택요약: ${q.plan2Summary.benefit}` : ''
-        }
+${blocks.join('\n\n')}
 ━━━━━━━━━━━━━━━━━━
-두 가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
+${totalPlans}가지 플랜 중 예산과 구성에 맞춰 편하게 선택해 주세요! 😊`;
       }
     } else if (q.quoteMode === 'subscription') {
       text = `[롯데하이마트 국지점 맞춤 구독 견적 안내]
@@ -422,18 +530,21 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
     >
       {/* 상단 영역 */}
       <div className="p-4 sm:p-5 space-y-3.5">
-        {/* 1행: 계약일/전표번호 & 배송 D-Day + 상태 드롭다운 */}
+        {/* 1행: 계약일/다중 전표번호 & 배송 D-Day + 상태 드롭다운 */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[11.5px] font-semibold font-mono tabular-nums text-[#4E5968] dark:text-slate-400">
               계약(총판) {perf.contractDateStr || customer.regDate}
             </span>
-            {customer.orderNo && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11.5px] font-bold font-mono tabular-nums bg-[#F2F4F6] dark:bg-slate-800 text-[#191F28] dark:text-slate-200 border border-[#E5E8EB] dark:border-slate-700">
-                <FileSpreadsheet className="w-3 h-3 text-[#4E5968] dark:text-slate-400" />
-                {customer.orderNo}
+            {allDisplayOrderNos.map((oNo) => (
+              <span
+                key={oNo}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11.5px] font-bold font-mono tabular-nums bg-[#F2F4F6] dark:bg-slate-800 text-[#191F28] dark:text-slate-200 border border-[#E5E8EB] dark:border-slate-700"
+              >
+                <FileSpreadsheet className="w-3 h-3 text-[#4E5968] dark:text-slate-400 shrink-0" />
+                {oNo}
               </span>
-            )}
+            ))}
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap">
@@ -713,6 +824,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                 {quotes.map((q, idx) => {
                   const isSlip = Boolean(q.isConfirmedSlip);
                   const isSlipDone = q.deliveryStatus === '배송완료';
+                  const isEditingThis = editingQuoteId === q.id;
                   const subPeriodMatch =
                     q.proposalState?.subscriptionPeriod ||
                     (q.itemSummary?.includes('36') ? 36 : 60);
@@ -763,6 +875,12 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                             {modeBadgeLabel}
                           </span>
 
+                          {isSlip && q.contractDate && (
+                            <span className="text-[11px] font-mono font-semibold text-[#4E5968] dark:text-slate-400 whitespace-nowrap">
+                              접수 {q.contractDate.slice(5)}
+                            </span>
+                          )}
+
                           {isSlip && q.deliveryDate && (
                             <span className="text-[11px] font-mono font-bold text-[#1B64DA] dark:text-blue-300 whitespace-nowrap">
                               배달 {q.deliveryDate}
@@ -775,7 +893,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                           )}
                         </div>
 
-                        {/* 우측 액션: 전표 상태 토글([🚚 배송] <-> [✅ 배송완료]) · [견적서 열기] · 카톡복사 · 삭제 */}
+                        {/* 우측 액션: 전표 상태 토글 · [✏️ 전표수정] · [✅ 선택 견적 확정] · [견적서 열기] · 카톡복사 · 삭제 */}
                         <div className="flex items-center gap-1 flex-wrap ml-auto">
                           {isSlip && onToggleSlipDeliveryStatus && (
                             <button
@@ -803,6 +921,40 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                               )}
                             </button>
                           )}
+
+                          {onUpdateQuoteSlip && (
+                            <button
+                              id={`crm-quote-edit-slip-${idx + 1}`}
+                              type="button"
+                              onClick={() => openInlineSlipEditor(q)}
+                              title="전표번호 · 계약일 · 배달일 · 배송상태 인라인 수정 또는 확정 전표 등록"
+                              className={`px-2 py-1 rounded-md text-[11.5px] font-extrabold inline-flex items-center gap-0.5 border transition cursor-pointer whitespace-nowrap ${
+                                isEditingThis
+                                  ? 'bg-[#1B64DA] text-white border-[#1B64DA]'
+                                  : 'bg-white dark:bg-slate-800 hover:bg-[#EFF6FF] dark:hover:bg-slate-700 text-[#191F28] dark:text-slate-200 border-[#D1D6DB] dark:border-slate-700'
+                              }`}
+                            >
+                              <Edit3 className="w-3 h-3 shrink-0" />
+                              <span>{isSlip ? '전표수정' : '전표등록·수정'}</span>
+                            </button>
+                          )}
+
+                          {!isSlip &&
+                            draftQuotes.length >= 2 &&
+                            onConfirmDraftQuote && (
+                              <button
+                                id={`crm-quote-confirm-draft-${idx + 1}`}
+                                type="button"
+                                onClick={() =>
+                                  onConfirmDraftQuote(customer.id, q.id)
+                                }
+                                title="이 상담견적만 남기고 나머지 비교 상담견적을 정리합니다 (확정 전표는 절대 삭제되지 않음)"
+                                className="px-2 py-1 rounded-md text-[11.5px] font-extrabold inline-flex items-center gap-0.5 bg-[#059669] hover:bg-emerald-700 text-white transition cursor-pointer whitespace-nowrap"
+                              >
+                                <Check className="w-3 h-3 shrink-0" />
+                                <span>선택 견적 확정</span>
+                              </button>
+                            )}
 
                           <button
                             type="button"
@@ -903,6 +1055,175 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
                           )}
                         </div>
                       </div>
+
+                      {/* 인라인 전표 수정 · 확정 전표 승격 바 */}
+                      {isEditingThis && onUpdateQuoteSlip && (
+                        <div className="mt-2 pt-2.5 border-t border-[#BFDBFE] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900/90 rounded-lg p-2.5 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-[#191F28] dark:text-slate-200 mb-0.5">
+                                전표번호 (orderNo)
+                              </label>
+                              <input
+                                type="text"
+                                value={slipOrderNoDraft}
+                                onChange={(e) => {
+                                  setSlipOrderNoDraft(e.target.value);
+                                  if (slipEditError) setSlipEditError(null);
+                                }}
+                                placeholder="예: 20261125-0011"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-[#D1D6DB] dark:border-slate-700 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-mono font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-[#059669] dark:text-emerald-300 mb-0.5">
+                                접수/계약일 (총판월)
+                              </label>
+                              <input
+                                type="date"
+                                value={slipContractDateDraft}
+                                onChange={(e) =>
+                                  setSlipContractDateDraft(e.target.value)
+                                }
+                                className="w-full px-2 py-1.5 rounded-lg border border-emerald-200 dark:border-emerald-500/40 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-mono font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+
+                            <div>
+                              <div className="flex items-center justify-between mb-0.5">
+                                <label className="text-[11px] font-extrabold text-[#1B64DA] dark:text-blue-300">
+                                  배달일자 (실판월)
+                                </label>
+                                {slipDeliveryDateDraft && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSlipDeliveryDateDraft('')}
+                                    className="text-[10.5px] font-bold text-[#8B95A1] hover:text-[#E60012] cursor-pointer"
+                                  >
+                                    미정
+                                  </button>
+                                )}
+                              </div>
+                              <input
+                                type="date"
+                                value={slipDeliveryDateDraft}
+                                onChange={(e) =>
+                                  setSlipDeliveryDateDraft(e.target.value)
+                                }
+                                className="w-full px-2 py-1.5 rounded-lg border border-[#BFDBFE] dark:border-blue-500/40 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-mono font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-0.5">
+                                품목 · 모델 요약
+                              </label>
+                              <input
+                                type="text"
+                                value={slipItemSummaryDraft}
+                                onChange={(e) =>
+                                  setSlipItemSummaryDraft(e.target.value)
+                                }
+                                placeholder="예: 김치냉장고(RQ48C9421AP)"
+                                className="w-full px-2.5 py-1.5 rounded-lg border border-[#D1D6DB] dark:border-slate-700 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-semibold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-0.5">
+                                출고 / 배송 상태
+                              </label>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSlipDeliveryStatusDraft('배송대기')
+                                  }
+                                  className={`py-1.5 px-2 rounded-lg text-[11.5px] font-extrabold border inline-flex items-center justify-center gap-1 transition cursor-pointer ${
+                                    slipDeliveryStatusDraft !== '배송완료'
+                                      ? 'bg-[#1B64DA] text-white border-[#1B64DA]'
+                                      : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#D1D6DB] dark:border-slate-700'
+                                  }`}
+                                >
+                                  <Truck className="w-3 h-3 shrink-0" />
+                                  <span>🚚 배송</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSlipDeliveryStatusDraft('배송완료')
+                                  }
+                                  className={`py-1.5 px-2 rounded-lg text-[11.5px] font-extrabold border inline-flex items-center justify-center gap-1 transition cursor-pointer ${
+                                    slipDeliveryStatusDraft === '배송완료'
+                                      ? 'bg-[#059669] text-white border-[#059669]'
+                                      : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#D1D6DB] dark:border-slate-700'
+                                  }`}
+                                >
+                                  <Check className="w-3 h-3 shrink-0" />
+                                  <span>✅ 배송완료</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {slipEditError && (
+                            <div className="px-2.5 py-1.5 rounded-lg bg-[#FFF1F2] dark:bg-rose-500/15 border border-[#FECDD3] dark:border-rose-500/30 text-[#E60012] dark:text-rose-300 text-[11px] font-bold">
+                              ⚠️ {slipEditError}
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingQuoteId(null);
+                                setSlipEditError(null);
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold text-[#4E5968] dark:text-slate-300 hover:bg-[#E5E8EB] dark:hover:bg-slate-800 cursor-pointer"
+                            >
+                              취소
+                            </button>
+
+                            {isSlip ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleSaveInlineSlipEdit(q, true)
+                                }
+                                className="px-3 py-1.5 rounded-lg bg-[#191F28] dark:bg-[#60A5FA] text-white dark:text-[#0B1120] text-xs font-extrabold inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                              >
+                                <Save className="w-3 h-3 shrink-0" />
+                                <span>전표 수정 저장</span>
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleSaveInlineSlipEdit(q, false)
+                                  }
+                                  className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-[#D1D6DB] dark:border-slate-700 text-[#191F28] dark:text-slate-200 text-xs font-bold cursor-pointer"
+                                >
+                                  견적정보만 저장
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleSaveInlineSlipEdit(q, true)
+                                  }
+                                  className="px-3 py-1.5 rounded-lg bg-[#059669] hover:bg-emerald-700 text-white text-xs font-extrabold inline-flex items-center gap-1 shadow-2xs cursor-pointer"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                  <span>🧾 확정 전표로 등록</span>
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -4,6 +4,7 @@ import {
   calculateGeneralPurchaseSummary,
   calculateSubscriptionSummary,
   getActiveCompareModes,
+  getAllGeneralPlanSummaries,
   hasMeaningfulGeneralItems,
   hasMeaningfulSubItems,
   ProposalState,
@@ -487,6 +488,14 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         ).toLocaleString()}원)`
       : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원`;
 
+  const validSharePlans = getAllGeneralPlanSummaries(effectiveShareState).filter(
+    (p) => p.hasData
+  );
+  const hasMultipleGeneralPlans = validSharePlans.length >= 2;
+  const planRangeText = hasMultipleGeneralPlans
+    ? validSharePlans.map((p) => `${p.planNum}안`).join('·')
+    : '';
+
   const buildSmsShareMessage = () => {
     const shortItem =
       itemLine.length > 42 ? `${itemLine.slice(0, 40)}...` : itemLine;
@@ -509,8 +518,21 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       `[${profile.storeName}] ${honorific} 맞춤 견적서 안내`,
       `품목: ${shortItem}`,
       `혜택: ${priceHighlight}`,
+      ...(hasMultipleGeneralPlans
+        ? validSharePlans.map((p) => {
+            if (effectiveShareState.quoteMode === 'subscription') {
+              return `• ${p.planNum}안: 월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+            }
+            if (effectiveShareState.quoteMode === 'hybrid') {
+              return `• ${p.planNum}안: 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+            }
+            return `• ${p.planNum}안: 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
+          })
+        : []),
       ``,
-      `아래 링크를 누르시면 스마트폰에서 1안·2안 및 제휴카드·라이프케어 체감가를 직접 비교하실 수 있습니다.`,
+      hasMultipleGeneralPlans
+        ? `아래 링크를 누르시면 스마트폰에서 [${planRangeText}] 및 제휴카드·라이프케어 체감가를 직접 비교하실 수 있습니다.`
+        : `아래 전용 링크를 누르시면 스마트폰에서 상세 혜택 내역과 제휴카드·라이프케어 조건을 확인하실 수 있습니다.`,
       ``,
       activeUrl,
       ``,
@@ -540,11 +562,26 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         .join('\n');
     }
     return [
-      `[${profile.storeName}] ${honorific} 맞춤 비교 견적서`,
+      `[${profile.storeName}] ${honorific} ${
+        hasMultipleGeneralPlans ? '맞춤 비교 견적서' : '공식 맞춤 견적서'
+      }`,
       `상담 품목: ${itemLine}`,
       `핵심 혜택: ${priceHighlight}`,
+      ...(hasMultipleGeneralPlans
+        ? validSharePlans.map((p) => {
+            if (effectiveShareState.quoteMode === 'subscription') {
+              return `• [${p.planNum}안] 월 체감 ${p.subSummary.finalMonthlyFee.toLocaleString()}원 (${p.subSummary.periodLabel} 총 ${p.subSummary.finalTotalFee.toLocaleString()}원)`;
+            }
+            if (effectiveShareState.quoteMode === 'hybrid') {
+              return `• [${p.planNum}안] 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 구독 월 ${p.subSummary.finalMonthlyFee.toLocaleString()}원`;
+            }
+            return `• [${p.planNum}안] 실결제 ${p.genSummary.payPrice.toLocaleString()}원 / 최종 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
+          })
+        : []),
       ``,
-      `아래 전용 링크에서 [1안 vs 2안] 및 제휴카드·구좌별 체감가를 직접 비교하실 수 있습니다.`,
+      hasMultipleGeneralPlans
+        ? `아래 전용 링크에서 [${planRangeText}] 및 제휴카드·구좌별 체감가를 직접 비교하실 수 있습니다.`
+        : `아래 전용 링크에서 상세 혜택과 제휴카드·구좌별 조건을 확인하실 수 있습니다.`,
       ``,
       activeUrl,
       ``,

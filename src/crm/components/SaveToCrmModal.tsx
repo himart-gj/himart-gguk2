@@ -5,6 +5,7 @@ import {
   PhoneCall,
   RefreshCw,
   Save,
+  ShieldAlert,
   Sparkles,
   UserCheck,
   UserPlus,
@@ -14,14 +15,18 @@ import { FlagshipModalShell } from '../../components/ui/FlagshipModalShell';
 import {
   GeneralPlanData,
   ProposalState,
+  QuoteMode,
+  ResolvedPlanSummaryEntry,
   calculateGeneralHiPreedSummary,
   getGeneralPlan1And2Summaries,
+  syncActivePlanIntoGeneralPlans,
 } from '../../types/proposal';
 import {
   CustomerFreedCounts,
   CustomerItem,
   CustomerSaleType,
   CustomerStatus,
+  MAX_QUOTES_PER_CUSTOMER,
   PurchasedModelEntry,
   QuotePlan2Summary,
 } from '../types/crm';
@@ -36,7 +41,11 @@ import {
   calculateFreedIncentiveDetail,
   extractPerformanceFromProposalState,
 } from '../utils/settlementEngine';
-import { getCachedCustomers, saveCustomerQuote } from '../services/gasApi';
+import {
+  getCachedCustomers,
+  normalizeOrderNoKey,
+  saveCustomerQuote,
+} from '../services/gasApi';
 
 interface SaveToCrmModalProps {
   isOpen: boolean;
@@ -67,6 +76,120 @@ function getValidGeneralItemNames(planData: GeneralPlanData): string[] {
     .filter(Boolean);
 }
 
+function buildPlanComparisonSummaryEntry(
+  planEntry: ResolvedPlanSummaryEntry,
+  displayPlanNum: number,
+  mode: QuoteMode
+): QuotePlan2Summary {
+  const genNames = getValidGeneralItemNames(planEntry.data);
+  const gSum = planEntry.genSummary;
+  const sSum = planEntry.subSummary;
+
+  if (mode === 'subscription') {
+    const subNames =
+      sSum.validSubNames.length > 0
+        ? `[${sSum.periodLabel} 구독] ${sSum.validSubNames.join(', ')}`
+        : `[${sSum.periodLabel} 구독] 맞춤 구독 ${displayPlanNum}안`;
+    const subBenefits: string[] = [];
+    if (sSum.cardDiscount > 0 && sSum.currentCard) {
+      subBenefits.push(
+        `${sSum.currentCard.name} 월 -${formatCurrency(sSum.cardDiscount)}원`
+      );
+    }
+    if (sSum.hiPlusMonthly > 0) {
+      subBenefits.push(
+        `구독프리드(${sSum.hiSummary.totalAccounts}구좌) 월 -${formatCurrency(
+          sSum.hiPlusMonthly
+        )}원`
+      );
+    }
+    if (sSum.subTierCashback > 0) {
+      subBenefits.push(
+        `${sSum.currentCard?.shortName || '제휴카드'} 금액대캐시백 -${formatCurrency(
+          sSum.subTierCashback
+        )}원`
+      );
+    }
+    if (sSum.subExtraCashback > 0) {
+      subBenefits.push(
+        `1회 추가캐시백 -${formatCurrency(sSum.subExtraCashback)}원`
+      );
+    }
+    if (sSum.totalSubCashback > 0) {
+      subBenefits.push(
+        `최종 ${sSum.periodLabel} 체감가 ${formatCurrency(sSum.finalTotalFee)}원`
+      );
+    }
+    return {
+      itemSummary: subNames,
+      paidAmount: sSum.totalBaseMonthly,
+      netAmount: sSum.finalMonthlyFee,
+      performanceAmount: sSum.totalPrincipal,
+      benefit:
+        subBenefits.join(' + ') ||
+        `${sSum.periodLabel} 총 체감가 ${formatCurrency(
+          sSum.finalTotalFee
+        )}원 (원금 ${formatCurrency(sSum.totalPrincipal)}원)`,
+    };
+  }
+
+  if (mode === 'hybrid') {
+    const genLabel = genNames.length > 0 ? genNames.join(', ') : '일반가전';
+    const subLabel =
+      sSum.validSubNames.length > 0
+        ? sSum.validSubNames.join(', ')
+        : `구독가전(${sSum.periodLabel})`;
+    return {
+      itemSummary: `일반 ${displayPlanNum}안(${genLabel}) + 구독 ${displayPlanNum}안(${subLabel})`,
+      paidAmount: gSum.sum > 0 ? gSum.payPrice : sSum.totalBaseMonthly,
+      netAmount: gSum.sum > 0 ? gSum.rawNet : sSum.finalMonthlyFee,
+      performanceAmount: gSum.sum + sSum.totalPrincipal,
+      benefit: `일반 ${displayPlanNum}안 실결제 ${formatCurrency(
+        gSum.payPrice
+      )}원(체감 ${formatCurrency(gSum.rawNet)}원) + 구독(${
+        sSum.periodLabel
+      }) 월 기본 ${formatCurrency(
+        sSum.totalBaseMonthly
+      )}원(월 체감 ${formatCurrency(
+        sSum.finalMonthlyFee
+      )}원 / 총 체감 ${formatCurrency(
+        sSum.finalTotalFee
+      )}원 · 원금 ${formatCurrency(sSum.totalPrincipal)}원)`,
+    };
+  }
+
+  const pNames =
+    genNames.length > 0 ? genNames.join(', ') : `일반가전 ${displayPlanNum}안`;
+  const benefitParts: string[] = [];
+  if (gSum.totalStep1InstantDiscount > 0) {
+    benefitParts.push(
+      `즉시할인 ${formatCurrency(gSum.totalStep1InstantDiscount)}원`
+    );
+  }
+  if (gSum.hiFreedSupport > 0) {
+    benefitParts.push(`하이프리드 ${formatCurrency(gSum.hiFreedSupport)}원`);
+  }
+  if (gSum.totalStep2Cashback > 0) {
+    benefitParts.push(`캐시백 ${formatCurrency(gSum.totalStep2Cashback)}원`);
+  }
+  if (gSum.totalStep2ExtraBenefit > 0) {
+    benefitParts.push(
+      `추가혜택 ${formatCurrency(gSum.totalStep2ExtraBenefit)}원`
+    );
+  }
+  return {
+    itemSummary: pNames,
+    paidAmount: gSum.payPrice,
+    netAmount: gSum.rawNet,
+    performanceAmount: gSum.sum,
+    benefit:
+      benefitParts.join(' + ') ||
+      (gSum.totalDiscountAndBenefit > 0
+        ? `총 혜택 ${formatCurrency(gSum.totalDiscountAndBenefit)}원`
+        : undefined),
+  };
+}
+
 export function extractQuotePayloadFromProposalState(state: ProposalState): {
   itemsSummary: string;
   paidAmount: number;
@@ -80,6 +203,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
   freedCounts: CustomerFreedCounts;
   purchasedModels: PurchasedModelEntry[];
   plan2Summary?: QuotePlan2Summary;
+  planSummaries?: QuotePlan2Summary[];
   plan1Data: GeneralPlanData;
   plan2Data: GeneralPlanData;
   primaryGenSummary: ReturnType<typeof getGeneralPlan1And2Summaries>['plan1Summary'];
@@ -94,18 +218,27 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     plan2Summary: plan2GenSummary,
     plan1SubSummary,
     plan2SubSummary,
-    hasPlan1Data,
-    hasPlan2Data,
+    allPlans,
   } = getGeneralPlan1And2Summaries(state);
 
-  // 만약 1안은 비어 있고 2안에만 데이터가 있다면 2안을 기본 대표 데이터로 사용
-  const usePlan2AsPrimary = !hasPlan1Data && hasPlan2Data;
-  const primaryData = usePlan2AsPrimary ? plan2Data : plan1Data;
-  const primaryGenSummary = usePlan2AsPrimary ? plan2GenSummary : plan1Summary;
-  const primarySubSummary = usePlan2AsPrimary
-    ? plan2SubSummary
+  const validPlans = allPlans.filter((p) => p.hasData);
+  const primaryEntry = validPlans[0] || allPlans[0];
+  const primaryData = primaryEntry ? primaryEntry.data : plan1Data;
+  const primaryGenSummary = primaryEntry
+    ? primaryEntry.genSummary
+    : plan1Summary;
+  const primarySubSummary = primaryEntry
+    ? primaryEntry.subSummary
     : plan1SubSummary;
-  const hasSecondPlan = !usePlan2AsPrimary && hasPlan2Data;
+
+  const extraPlanEntries = validPlans.length >= 2 ? validPlans.slice(1) : [];
+  const builtPlanSummaries: QuotePlan2Summary[] | undefined =
+    extraPlanEntries.length > 0
+      ? extraPlanEntries.map((entry, idx) =>
+          buildPlanComparisonSummaryEntry(entry, idx + 2, state.quoteMode)
+        )
+      : undefined;
+  const plan2Summary: QuotePlan2Summary | undefined = builtPlanSummaries?.[0];
 
   const perfInfo = extractPerformanceFromProposalState(state);
   const saleType: CustomerSaleType = perfInfo?.saleType || state.quoteMode;
@@ -132,7 +265,6 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
   const purchasedModels = perfInfo?.purchasedModels || [];
 
   const primaryGenNames = getValidGeneralItemNames(primaryData);
-  const plan2GenNames = getValidGeneralItemNames(plan2Data);
 
   if (state.quoteMode === 'general') {
     const itemsSummary =
@@ -167,47 +299,6 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       );
     }
 
-    let plan2Summary: QuotePlan2Summary | undefined;
-    if (hasSecondPlan && plan2GenSummary.sum > 0) {
-      const p2Names =
-        plan2GenNames.length > 0 ? plan2GenNames.join(', ') : '일반가전 2안';
-      const p2BenefitParts: string[] = [];
-      if (plan2GenSummary.totalStep1InstantDiscount > 0) {
-        p2BenefitParts.push(
-          `즉시할인 ${formatCurrency(plan2GenSummary.totalStep1InstantDiscount)}원`
-        );
-      }
-      if (plan2GenSummary.hiFreedSupport > 0) {
-        p2BenefitParts.push(
-          `하이프리드 ${formatCurrency(plan2GenSummary.hiFreedSupport)}원`
-        );
-      }
-      if (plan2GenSummary.totalStep2Cashback > 0) {
-        p2BenefitParts.push(
-          `캐시백 ${formatCurrency(plan2GenSummary.totalStep2Cashback)}원`
-        );
-      }
-      if (plan2GenSummary.totalStep2ExtraBenefit > 0) {
-        p2BenefitParts.push(
-          `추가혜택 ${formatCurrency(plan2GenSummary.totalStep2ExtraBenefit)}원`
-        );
-      }
-
-      plan2Summary = {
-        itemSummary: p2Names,
-        paidAmount: plan2GenSummary.payPrice,
-        netAmount: plan2GenSummary.rawNet,
-        performanceAmount: plan2GenSummary.sum,
-        benefit:
-          p2BenefitParts.join(' + ') ||
-          (plan2GenSummary.totalDiscountAndBenefit > 0
-            ? `총 혜택 ${formatCurrency(
-                plan2GenSummary.totalDiscountAndBenefit
-              )}원`
-            : undefined),
-      };
-    }
-
     return {
       itemsSummary,
       paidAmount: primaryGenSummary.payPrice,
@@ -225,6 +316,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       freedCounts,
       purchasedModels,
       plan2Summary,
+      planSummaries: builtPlanSummaries,
       plan1Data,
       plan2Data,
       primaryGenSummary,
@@ -275,60 +367,6 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       );
     }
 
-    let plan2Summary: QuotePlan2Summary | undefined;
-    if (hasSecondPlan && plan2SubSummary.totalBaseMonthly > 0) {
-      const p2SubNames =
-        plan2SubSummary.validSubNames.length > 0
-          ? `[${plan2SubSummary.periodLabel} 구독] ${plan2SubSummary.validSubNames.join(', ')}`
-          : `[${plan2SubSummary.periodLabel} 구독] 맞춤 구독 2안`;
-      const p2SubBenefits: string[] = [];
-      if (plan2SubSummary.cardDiscount > 0 && plan2SubSummary.currentCard) {
-        p2SubBenefits.push(
-          `${plan2SubSummary.currentCard.name} 월 -${formatCurrency(
-            plan2SubSummary.cardDiscount
-          )}원`
-        );
-      }
-      if (plan2SubSummary.hiPlusMonthly > 0) {
-        p2SubBenefits.push(
-          `구독프리드(${plan2SubSummary.hiSummary.totalAccounts}구좌) 월 -${formatCurrency(
-            plan2SubSummary.hiPlusMonthly
-          )}원`
-        );
-      }
-      if (plan2SubSummary.subTierCashback > 0) {
-        p2SubBenefits.push(
-          `${plan2SubSummary.currentCard?.shortName || '제휴카드'} 금액대캐시백 -${formatCurrency(
-            plan2SubSummary.subTierCashback
-          )}원`
-        );
-      }
-      if (plan2SubSummary.subExtraCashback > 0) {
-        p2SubBenefits.push(
-          `1회 추가캐시백 -${formatCurrency(plan2SubSummary.subExtraCashback)}원`
-        );
-      }
-      if (plan2SubSummary.totalSubCashback > 0) {
-        p2SubBenefits.push(
-          `최종 ${plan2SubSummary.periodLabel} 체감가 ${formatCurrency(
-            plan2SubSummary.finalTotalFee
-          )}원`
-        );
-      }
-
-      plan2Summary = {
-        itemSummary: p2SubNames,
-        paidAmount: plan2SubSummary.totalBaseMonthly,
-        netAmount: plan2SubSummary.finalMonthlyFee,
-        performanceAmount: plan2SubSummary.totalPrincipal,
-        benefit:
-          p2SubBenefits.join(' + ') ||
-          `${plan2SubSummary.periodLabel} 총 체감가 ${formatCurrency(
-            plan2SubSummary.finalTotalFee
-          )}원 (원금 ${formatCurrency(plan2SubSummary.totalPrincipal)}원)`,
-      };
-    }
-
     return {
       itemsSummary,
       paidAmount: primarySubSummary.totalBaseMonthly,
@@ -345,6 +383,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
       freedCounts,
       purchasedModels,
       plan2Summary,
+      planSummaries: builtPlanSummaries,
       plan1Data,
       plan2Data,
       primaryGenSummary,
@@ -390,43 +429,6 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     primaryGenSummary.rawNet + primarySubSummary.finalTotalFee
   )}원)`;
 
-  let plan2Summary: QuotePlan2Summary | undefined;
-  if (
-    hasSecondPlan &&
-    (plan2GenSummary.sum > 0 || plan2SubSummary.totalBaseMonthly > 0)
-  ) {
-    const p2GenLabel =
-      plan2GenNames.length > 0 ? plan2GenNames.join(', ') : '일반가전';
-    const p2SubLabel =
-      plan2SubSummary.validSubNames.length > 0
-        ? plan2SubSummary.validSubNames.join(', ')
-        : `구독가전(${plan2SubSummary.periodLabel})`;
-
-    plan2Summary = {
-      itemSummary: `일반 2안(${p2GenLabel}) + 구독 2안(${p2SubLabel})`,
-      paidAmount:
-        plan2GenSummary.sum > 0
-          ? plan2GenSummary.payPrice
-          : plan2SubSummary.totalBaseMonthly,
-      netAmount:
-        plan2GenSummary.sum > 0
-          ? plan2GenSummary.rawNet
-          : plan2SubSummary.finalMonthlyFee,
-      performanceAmount: plan2GenSummary.sum + plan2SubSummary.totalPrincipal,
-      benefit: `일반 2안 실결제 ${formatCurrency(
-        plan2GenSummary.payPrice
-      )}원(체감 ${formatCurrency(plan2GenSummary.rawNet)}원) + 구독(${
-        plan2SubSummary.periodLabel
-      }) 월 기본 ${formatCurrency(
-        plan2SubSummary.totalBaseMonthly
-      )}원(월 체감 ${formatCurrency(
-        plan2SubSummary.finalMonthlyFee
-      )}원 / 총 체감 ${formatCurrency(
-        plan2SubSummary.finalTotalFee
-      )}원 · 원금 ${formatCurrency(plan2SubSummary.totalPrincipal)}원)`,
-    };
-  }
-
   return {
     itemsSummary,
     paidAmount: primaryPaidAmount,
@@ -440,6 +442,7 @@ export function extractQuotePayloadFromProposalState(state: ProposalState): {
     freedCounts,
     purchasedModels,
     plan2Summary,
+    planSummaries: builtPlanSummaries,
     plan1Data,
     plan2Data,
     primaryGenSummary,
@@ -487,6 +490,51 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     [extracted.freedCounts]
   );
 
+  const applyCustomerToForm = (c: CustomerItem, loadedQuoteId?: string) => {
+    const today = getTodayStr();
+    const quotes = Array.isArray(c.quotes) ? c.quotes : [];
+    const hasConfirmedSlip = quotes.some((q) => Boolean(q?.isConfirmedSlip));
+    const isPurchasedStatus =
+      c.status === '계약완료' || c.status === '배송완료';
+    const loadedDraft = loadedQuoteId
+      ? quotes.find((q) => q.id === loadedQuoteId && !q.isConfirmedSlip)
+      : undefined;
+    const firstDraft = quotes.find((q) => !q.isConfirmedSlip);
+
+    setSelectedExistingId(c.id);
+    setName(c.name);
+    setPhone(c.phone || '');
+    setStatus(c.status || '상담진행중');
+    setDeliveryDate(c.deliveryDate || '');
+    setFollowUpDate(c.followUpDate || '');
+    setGiftItems(c.giftItems || '');
+    setMemo('');
+
+    if (loadedDraft) {
+      setSaveMode('overwrite');
+      setOverwriteQuoteId(loadedDraft.id);
+      setOrderNo(loadedDraft.orderNo || '');
+      setContractDate(
+        c.contractDate || c.regDate?.slice(0, 10) || today
+      );
+      return;
+    }
+
+    if (hasConfirmedSlip || isPurchasedStatus) {
+      // 배송 전 재방문 추가 구매 보호: 기본 저장 방식을 무조건 'append'로 세팅하고 이전 전표번호를 비워 덮어쓰기 원천 차단
+      setSaveMode('append');
+      setOverwriteQuoteId(firstDraft?.id || '');
+      setOrderNo('');
+      setContractDate(today);
+      return;
+    }
+
+    setSaveMode(quotes.length > 0 ? 'overwrite' : 'append');
+    setOverwriteQuoteId(firstDraft?.id || quotes[0]?.id || '');
+    setOrderNo(c.orderNo || '');
+    setContractDate(c.contractDate || c.regDate?.slice(0, 10) || today);
+  };
+
   useEffect(() => {
     if (!isOpen) return;
     const cached = getCachedCustomers().filter((c) => !c.deletedAt);
@@ -499,26 +547,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       const found = cached.find((c) => c.id === activeCustomer.id);
       if (found) {
         setTabMode('existing');
-        setSelectedExistingId(found.id);
-        setName(found.name);
-        setPhone(found.phone || '');
-        setStatus(found.status || '상담진행중');
-        setContractDate(
-          found.contractDate || found.regDate?.slice(0, 10) || today
-        );
-        setDeliveryDate(found.deliveryDate || '');
-        setFollowUpDate(found.followUpDate || '');
-        setOrderNo(found.orderNo || '');
-        setGiftItems(found.giftItems || '');
-        setMemo('');
-        const hasQuotes = (found.quotes?.length || 0) > 0;
-        setSaveMode(hasQuotes ? 'overwrite' : 'append');
-        const preferredQuoteId =
-          activeCustomer.activeQuoteId &&
-          found.quotes?.some((q) => q.id === activeCustomer.activeQuoteId)
-            ? activeCustomer.activeQuoteId
-            : found.quotes?.[0]?.id || '';
-        setOverwriteQuoteId(preferredQuoteId);
+        applyCustomerToForm(found, activeCustomer.activeQuoteId);
         return;
       }
     }
@@ -541,20 +570,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
   if (!isOpen) return null;
 
   const handleSelectExistingCustomer = (c: CustomerItem) => {
-    setSelectedExistingId(c.id);
-    setName(c.name);
-    setPhone(c.phone || '');
-    setStatus(c.status || '상담진행중');
-    setContractDate(
-      c.contractDate || c.regDate?.slice(0, 10) || getTodayStr()
-    );
-    setDeliveryDate(c.deliveryDate || '');
-    setFollowUpDate(c.followUpDate || '');
-    setOrderNo(c.orderNo || '');
-    setGiftItems(c.giftItems || '');
-    const hasQuotes = (c.quotes?.length || 0) > 0;
-    setSaveMode(hasQuotes ? 'overwrite' : 'append');
-    setOverwriteQuoteId(c.quotes?.[0]?.id || '');
+    applyCustomerToForm(c);
   };
 
   const matchedExistingCustomer = (() => {
@@ -577,14 +593,56 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
   })();
 
   const existingQuotesForTarget = matchedExistingCustomer?.quotes || [];
+  const confirmedSlipsForTarget = existingQuotesForTarget.filter((q) =>
+    Boolean(q?.isConfirmedSlip)
+  );
+  const draftQuotesForTarget = existingQuotesForTarget.filter(
+    (q) => !q?.isConfirmedSlip
+  );
+  const targetIsPurchasedOrHasSlip =
+    confirmedSlipsForTarget.length > 0 ||
+    matchedExistingCustomer?.status === '계약완료' ||
+    matchedExistingCustomer?.status === '배송완료';
+
+  const existingOrderNosForTarget = Array.from(
+    new Set(
+      [
+        ...confirmedSlipsForTarget.map((q) => (q.orderNo || '').trim()),
+        (matchedExistingCustomer?.orderNo || '').trim(),
+      ].filter(Boolean)
+    )
+  );
+
+  const handleOrderNoChange = (nextVal: string) => {
+    setOrderNo(nextVal);
+    const trimmedKey = normalizeOrderNoKey(nextVal);
+    if (trimmedKey && matchedExistingCustomer) {
+      const matchesOverwriteTarget =
+        overwriteQuoteId &&
+        existingQuotesForTarget.some(
+          (q) =>
+            q.id === overwriteQuoteId &&
+            normalizeOrderNoKey(q.orderNo) === trimmedKey
+        );
+      if (!matchesOverwriteTarget) {
+        setSaveMode('append');
+      }
+    }
+  };
 
   const filteredExisting = existingCustomers.filter((c) => {
     if (!searchTerm.trim()) return true;
     const q = searchTerm.trim().toLowerCase();
+    const qCompact = q.replace(/[-\s]/g, '');
     return (
       c.name.toLowerCase().includes(q) ||
       c.phone.toLowerCase().includes(q) ||
-      c.items.toLowerCase().includes(q)
+      c.phone.replace(/\D/g, '').includes(qCompact) ||
+      c.items.toLowerCase().includes(q) ||
+      Boolean(c.orderNo && c.orderNo.toLowerCase().includes(q)) ||
+      (c.quotes || []).some((qt) =>
+        Boolean(qt.orderNo && qt.orderNo.toLowerCase().includes(q))
+      )
     );
   });
 
@@ -592,22 +650,45 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     e.preventDefault();
     if (!name.trim()) return;
 
-    const syncedProposalState: ProposalState = {
+    const syncedProposalState: ProposalState = syncActivePlanIntoGeneralPlans({
       ...state,
       generalPlan1: extracted.plan1Data,
       generalPlan2: extracted.plan2Data,
-    };
+    });
 
     const effectiveTargetId =
       tabMode === 'existing' && selectedExistingId
         ? selectedExistingId
         : matchedExistingCustomer?.id;
-    const effectiveSaveMode =
-      existingQuotesForTarget.length > 0 ? saveMode : 'append';
+
+    const cleanOrderNo = orderNo.trim();
+    const incomingOrderKey = normalizeOrderNoKey(cleanOrderNo);
+    const isNewDistinctOrderNo =
+      Boolean(incomingOrderKey) &&
+      existingOrderNosForTarget.length > 0 &&
+      !existingOrderNosForTarget.some(
+        (no) => normalizeOrderNoKey(no) === incomingOrderKey
+      );
+
+    // 확정 전표만 있고 미확정 상담견적이 없거나, 새 전표번호가 입력된 경우 무조건 append 강제
+    const canOverwriteDraft =
+      existingQuotesForTarget.length > 0 &&
+      draftQuotesForTarget.length > 0 &&
+      !isNewDistinctOrderNo;
+    const effectiveSaveMode: 'overwrite' | 'append' =
+      saveMode === 'overwrite' && canOverwriteDraft ? 'overwrite' : 'append';
+
     const effectiveOverwriteId =
       effectiveSaveMode === 'overwrite'
-        ? overwriteQuoteId || existingQuotesForTarget[0]?.id
+        ? draftQuotesForTarget.some((q) => q.id === overwriteQuoteId)
+          ? overwriteQuoteId
+          : draftQuotesForTarget[0]?.id
         : undefined;
+
+    const isConfirmedSlipSave =
+      status === '계약완료' ||
+      status === '배송완료' ||
+      Boolean(cleanOrderNo);
 
     const result = await saveCustomerQuote({
       targetCustomerId: effectiveTargetId,
@@ -622,7 +703,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       followUpDate: followUpDate.trim(),
       status,
       memo: memo.trim(),
-      orderNo: orderNo.trim(),
+      orderNo: cleanOrderNo,
       giftItems: giftItems.trim(),
       quoteTitle: quoteTitle.trim() || extracted.defaultQuoteTitle,
       proposalState: syncedProposalState,
@@ -634,8 +715,12 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
       freedCounts: extracted.freedCounts,
       purchasedModels: extracted.purchasedModels,
       plan2Summary: extracted.plan2Summary,
+      planSummaries: extracted.planSummaries,
       saveMode: effectiveSaveMode,
       overwriteQuoteId: effectiveOverwriteId,
+      isConfirmedSlip: isConfirmedSlipSave,
+      slipDeliveryStatus:
+        status === '배송완료' ? '배송완료' : '배송대기',
     });
 
     onSavedSuccess({
@@ -647,10 +732,12 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
 
     setSavedToast(
       result.wasOverwritten
-        ? `🔄 [${result.savedCustomer.name}] 고객님의 기존 견적을 수정 덮어쓰기 완료했습니다! (보관함 ${result.quoteCount}/30 유지)`
+        ? `🔄 [${result.savedCustomer.name}] 고객님의 기존 항목을 수정 업데이트했습니다! (보관함 ${result.quoteCount}/${MAX_QUOTES_PER_CUSTOMER})`
         : result.isExistingCustomer
-        ? `✅ [${result.savedCustomer.name}] 고객님의 견적 보관함(${result.quoteCount}/30)에 새 견적으로 추가 저장되었습니다!`
-        : `✅ 신규 고객 [${result.savedCustomer.name}]님으로 등록 및 견적이 저장되었습니다!`
+        ? isConfirmedSlipSave
+          ? `🧾 [${result.savedCustomer.name}] 고객님께 추가 구매 전표가 별도 추가되고 통합 실적이 자동 합산되었습니다! (${result.quoteCount}/${MAX_QUOTES_PER_CUSTOMER})`
+          : `✅ [${result.savedCustomer.name}] 고객님의 견적 보관함(${result.quoteCount}/${MAX_QUOTES_PER_CUSTOMER})에 새 견적으로 추가 저장되었습니다!`
+        : `✅ 신규 고객 [${result.savedCustomer.name}]님으로 등록 및 저장되었습니다!`
     );
 
     setTimeout(() => {
@@ -658,12 +745,14 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
     }, 900);
   };
 
+  const extraSummaries = extracted.planSummaries || [];
+
   return (
     <FlagshipModalShell
       isOpen={isOpen}
       onClose={onClose}
       title="CRM 고객 저장 & 총판·실판·수당 자동 연동"
-      subtitle="계약완료/발송완료 시 총판·실판 실적(원금/제품합계) 및 프리드·모델 수당에 자동 반영됩니다"
+      subtitle="계약완료/전표번호 입력 시 확정 전표로 기록되며 다중 전표 통합 실적·배송상태에 자동 반영됩니다"
       icon={<Save className="w-4 h-4 text-[#E60012] dark:text-rose-400" />}
       maxWidthClass="max-w-xl"
       bodyClassName="flex flex-col flex-1 min-h-0 overflow-hidden"
@@ -693,7 +782,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 hover:text-[#191F28] dark:hover:text-white border border-[#E5E8EB] dark:border-slate-700'
           }`}
         >
-          <Users className="w-4 h-4" />👥 기존 CRM 고객 선택하여 견적 추가 (
+          <Users className="w-4 h-4" />👥 기존 CRM 고객 선택 · 추가구매 (
           <span className="font-mono tabular-nums">{existingCustomers.length}</span>명)
         </button>
       </div>
@@ -774,10 +863,14 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               </span>
             </div>
 
-            {extracted.plan2Summary && (
-              <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11.5px] font-bold text-emerald-800 dark:text-emerald-300">
-                <Sparkles className="w-3 h-3 inline mr-1" />
-                [2안 동시 저장] {extracted.plan2Summary.itemSummary}
+            {extraSummaries.length > 0 && (
+              <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11.5px] font-bold text-emerald-800 dark:text-emerald-300 space-y-0.5">
+                {extraSummaries.map((ps, idx) => (
+                  <div key={idx} className="truncate">
+                    <Sparkles className="w-3 h-3 inline mr-1" />[{idx + 2}안 동시 저장]{' '}
+                    {ps.itemSummary} ({formatCurrency(ps.netAmount)}원)
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -788,13 +881,13 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <label className="text-xs font-black text-[#1B64DA] dark:text-blue-300 flex items-center gap-1">
                   <UserCheck className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400" />
-                  견적을 추가할 기존 고객 선택
+                  전표/견적을 추가할 기존 고객 선택
                 </label>
                 <input
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="고객명/연락처 검색..."
+                  placeholder="고객명/연락처/전표번호 검색..."
                   className="px-2.5 py-1 rounded-lg border border-[#BFDBFE] dark:border-slate-700 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-semibold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
                 />
               </div>
@@ -807,25 +900,31 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 <div className="max-h-32 overflow-y-auto space-y-1 pr-1">
                   {filteredExisting.map((c) => {
                     const isSel = selectedExistingId === c.id;
+                    const cSlips = (c.quotes || []).filter((q) => q?.isConfirmedSlip);
                     return (
                       <button
                         key={c.id}
                         type="button"
                         onClick={() => handleSelectExistingCustomer(c)}
-                        className={`w-full px-3 py-2 rounded-xl text-left text-xs flex items-center justify-between transition cursor-pointer ${
+                        className={`w-full px-3 py-2 rounded-xl text-left text-xs flex items-center justify-between gap-2 transition cursor-pointer ${
                           isSel
                             ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] font-black'
                             : 'bg-white dark:bg-[#131C2E] hover:bg-[#EFF6FF] dark:hover:bg-slate-800 text-[#191F28] dark:text-slate-100 border border-[#E5E8EB] dark:border-slate-700 font-bold'
                         }`}
                       >
-                        <div className="truncate">
+                        <div className="truncate min-w-0">
                           <span>{c.name} 고객님</span>
                           <span className="ml-2 opacity-75 font-mono tabular-nums">
                             {c.phone || '번호없음'}
                           </span>
+                          {cSlips.length > 0 && (
+                            <span className="ml-1.5 text-[11px] font-mono opacity-85">
+                              · 🧾전표 {cSlips.length}건
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11.5px] px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono tabular-nums shrink-0">
-                          견적 {c.quotes?.length || 0}/5
+                          보관 {c.quotes?.length || 0}/{MAX_QUOTES_PER_CUSTOMER}
                         </span>
                       </button>
                     );
@@ -835,88 +934,134 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
             </div>
           )}
 
-          {/* 기존 견적이 있는 고객일 때: 덮어쓰기 vs 새로 추가 저장 선택 박스 */}
+          {/* 기존 전표/견적이 있는 고객일 때: 덮어쓰기 보호 vs 추가 구매(새 전표/견적 별도 추가) 선택 박스 */}
           {matchedExistingCustomer && existingQuotesForTarget.length > 0 && (
             <div className="bg-[#EFF6FF] dark:bg-blue-950/30 border border-[#BFDBFE] dark:border-blue-800/70 rounded-2xl p-3.5 space-y-2.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-xs font-black text-[#191F28] dark:text-slate-100 flex items-center gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400" />
-                  [{matchedExistingCustomer.name}] 고객님 견적 저장 방식 (현재{' '}
-                  <span className="font-mono tabular-nums">{existingQuotesForTarget.length}</span>/5개 보관 중)
+                  [{matchedExistingCustomer.name}] 고객님 저장 방식 (현재{' '}
+                  <span className="font-mono tabular-nums">{existingQuotesForTarget.length}</span>/
+                  {MAX_QUOTES_PER_CUSTOMER}개 보관 중)
                 </span>
-                <span className="text-[11.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#1B64DA] text-white">
-                  {saveMode === 'overwrite'
-                    ? '중복 생성 방지 · 기존 견적 수정'
-                    : '별도 비교용 새 견적 추가'}
+                <span
+                  className={`text-[11.5px] font-extrabold px-2 py-0.5 rounded-full text-white ${
+                    saveMode === 'append' || draftQuotesForTarget.length === 0
+                      ? 'bg-[#059669]'
+                      : 'bg-[#1B64DA]'
+                  }`}
+                >
+                  {saveMode === 'append' || draftQuotesForTarget.length === 0
+                    ? targetIsPurchasedOrHasSlip
+                      ? '🛡️ 기존 전표 보존 · 추가 구매 별도 추가'
+                      : '별도 비교용 새 견적 추가'
+                    : '상담 견적 수정 덮어쓰기'}
                 </span>
               </div>
+
+              {targetIsPurchasedOrHasSlip && (
+                <div className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-[11.5px] font-bold text-emerald-900 dark:text-emerald-200 flex items-start gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-[#059669] dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <span className="break-keep">
+                    기존 확정 전표(
+                    {confirmedSlipsForTarget.length > 0
+                      ? `${confirmedSlipsForTarget.length}건${
+                          existingOrderNosForTarget.length > 0
+                            ? `: ${existingOrderNosForTarget.join(', ')}`
+                            : ''
+                        }`
+                      : matchedExistingCustomer.status}
+                    ) 보호를 위해 <strong>[➕ 추가 구매 · 새 전표/견적으로 별도 추가]</strong>가 자동 선택되었습니다.
+                  </span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSaveMode('overwrite');
-                    if (!overwriteQuoteId && existingQuotesForTarget[0]?.id) {
-                      setOverwriteQuoteId(existingQuotesForTarget[0].id);
-                    }
-                  }}
-                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col gap-0.5 ${
-                    saveMode === 'overwrite'
-                      ? 'bg-[#1B64DA] text-white border-[#1B64DA] shadow-xs'
-                      : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#BFDBFE] dark:border-slate-700 hover:bg-white/90 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <div className="text-xs font-black flex items-center gap-1">
-                    <span>🔄 기존 견적 덮어쓰기 (권장)</span>
-                  </div>
-                  <div
-                    className={`text-[11.5px] font-semibold ${
-                      saveMode === 'overwrite'
-                        ? 'text-blue-100'
-                        : 'text-[#8B95A1] dark:text-slate-400'
-                    }`}
-                  >
-                    잘못 저장했거나 수정 시 견적 개수({existingQuotesForTarget.length}개) 유지
-                  </div>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => setSaveMode('append')}
                   className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex flex-col gap-0.5 ${
-                    saveMode === 'append'
+                    saveMode === 'append' || draftQuotesForTarget.length === 0
                       ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] border-[#191F28] dark:border-[#60A5FA] shadow-xs'
                       : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#BFDBFE] dark:border-slate-700 hover:bg-white/90 dark:hover:bg-slate-800'
                   }`}
                 >
                   <div className="text-xs font-black flex items-center gap-1">
-                    <span>➕ 새 견적으로 추가 저장</span>
+                    <span>
+                      ➕ 추가 구매 · 새 전표/견적 별도 추가
+                      {targetIsPurchasedOrHasSlip ? ' (권장)' : ''}
+                    </span>
                   </div>
                   <div
                     className={`text-[11.5px] font-semibold ${
-                      saveMode === 'append'
+                      saveMode === 'append' || draftQuotesForTarget.length === 0
                         ? 'text-slate-300 dark:text-slate-900/80'
                         : 'text-[#8B95A1] dark:text-slate-400'
                     }`}
                   >
-                    기존 견적 유지 + 새 견적 추가 ({Math.min(5, existingQuotesForTarget.length + 1)}/5개)
+                    기존 전표·견적 보존 + 새 항목 나란히 추가 (
+                    {Math.min(
+                      MAX_QUOTES_PER_CUSTOMER,
+                      existingQuotesForTarget.length + 1
+                    )}
+                    /{MAX_QUOTES_PER_CUSTOMER})
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={draftQuotesForTarget.length === 0}
+                  onClick={() => {
+                    if (draftQuotesForTarget.length === 0) return;
+                    setSaveMode('overwrite');
+                    if (
+                      !overwriteQuoteId ||
+                      !draftQuotesForTarget.some((q) => q.id === overwriteQuoteId)
+                    ) {
+                      setOverwriteQuoteId(draftQuotesForTarget[0]?.id || '');
+                    }
+                  }}
+                  className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-0.5 ${
+                    draftQuotesForTarget.length === 0
+                      ? 'bg-slate-100 dark:bg-slate-900/50 text-[#8B95A1] dark:text-slate-500 border-[#E5E8EB] dark:border-slate-800 cursor-not-allowed opacity-70'
+                      : saveMode === 'overwrite'
+                      ? 'bg-[#1B64DA] text-white border-[#1B64DA] shadow-xs cursor-pointer'
+                      : 'bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#BFDBFE] dark:border-slate-700 hover:bg-white/90 dark:hover:bg-slate-800 cursor-pointer'
+                  }`}
+                >
+                  <div className="text-xs font-black flex items-center gap-1">
+                    <span>
+                      🔄 미확정 상담 견적 덮어쓰기
+                      {!targetIsPurchasedOrHasSlip ? ' (권장)' : ''}
+                    </span>
+                  </div>
+                  <div
+                    className={`text-[11.5px] font-semibold ${
+                      saveMode === 'overwrite' && draftQuotesForTarget.length > 0
+                        ? 'text-blue-100'
+                        : 'text-[#8B95A1] dark:text-slate-400'
+                    }`}
+                  >
+                    {draftQuotesForTarget.length === 0
+                      ? '확정 전표는 덮어쓰기 불가 (상세카드 [✏️전표수정] 이용)'
+                      : `상담 견적(${draftQuotesForTarget.length}건) 중 선택하여 수정`}
                   </div>
                 </button>
               </div>
 
-              {saveMode === 'overwrite' && existingQuotesForTarget.length > 0 && (
+              {saveMode === 'overwrite' && draftQuotesForTarget.length > 0 && (
                 <div className="pt-1">
                   <label className="block text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-300 mb-1">
-                    덮어쓸 대상 견적 선택:
+                    덮어쓸 상담 견적 선택 (확정 전표는 목록에서 자동 보호됨):
                   </label>
                   <select
-                    value={overwriteQuoteId || existingQuotesForTarget[0]?.id || ''}
+                    value={overwriteQuoteId || draftQuotesForTarget[0]?.id || ''}
                     onChange={(e) => setOverwriteQuoteId(e.target.value)}
                     className="w-full px-3 py-1.5 rounded-xl border border-[#BFDBFE] dark:border-slate-700 bg-white dark:bg-[#131C2E] text-base sm:text-xs font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
                   >
-                    {existingQuotesForTarget.map((q, idx) => (
+                    {draftQuotesForTarget.map((q, idx) => (
                       <option key={q.id} value={q.id}>
-                        [견적 #{idx + 1}] {q.title} ({formatCurrency(q.netAmount)}원 · {q.createdAt.slice(5, 16)})
+                        [상담견적 #{idx + 1}] {q.title} ({formatCurrency(q.netAmount)}원 · {q.createdAt.slice(5, 16)})
                       </option>
                     ))}
                   </select>
@@ -928,13 +1073,13 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
           {/* 견적 제목 */}
           <div>
             <label className="block text-xs font-bold text-[#4E5968] dark:text-slate-300 mb-1">
-              견적 보관함 제목 (자동 완성 · 수정 가능)
+              전표 · 견적 보관함 제목 (자동 완성 · 수정 가능)
             </label>
             <input
               type="text"
               value={quoteTitle}
               onChange={(e) => setQuoteTitle(e.target.value)}
-              placeholder="예: 85인치 TV + 오브제 냉장고 1안"
+              placeholder="예: 85인치 TV + 오브제 냉장고"
               className="w-full px-3.5 py-2 rounded-xl border border-[#D1D6DB] dark:border-slate-700 bg-white dark:bg-slate-900/70 text-base sm:text-xs font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
             />
           </div>
@@ -982,9 +1127,9 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
                 <option value="상담진행중">상담진행중 (미구매)</option>
                 <option value="신규/미발송">신규/미발송 (미구매)</option>
                 <option value="미구매/고민중">미구매/고민중</option>
-                <option value="계약완료">✅ 계약완료 (구매확정)</option>
+                <option value="계약완료">✅ 계약완료 (구매·배송대기 전표)</option>
                 <option value="발송완료">📩 발송완료 (견적안내 완료)</option>
-                <option value="배송완료">🚚 배송완료 (설치·인도 완료)</option>
+                <option value="배송완료">🚚 배송완료 (당일자송·인도완료 전표)</option>
                 <option value="취소/보류">취소/보류</option>
               </select>
             </div>
@@ -1001,7 +1146,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
             </div>
             <div>
               <label className="block text-xs font-bold text-[#1B64DA] dark:text-blue-400 mb-1">
-                배송 예정일 (실판월 기준)
+                이 전표 배달일자 (실판월 기준)
               </label>
               <input
                 type="date"
@@ -1062,13 +1207,17 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-[#4E5968] dark:text-slate-300 mb-1">
-                전표번호 (선택)
+                전표번호 (입력 시 확정 전표로 자동 등록)
               </label>
               <input
                 type="text"
                 value={orderNo}
-                onChange={(e) => setOrderNo(e.target.value)}
-                placeholder="예: 250516-0042"
+                onChange={(e) => handleOrderNoChange(e.target.value)}
+                placeholder={
+                  targetIsPurchasedOrHasSlip
+                    ? '새 추가구매 전표번호 (예: 20261127-0004)'
+                    : '예: 20261125-0011'
+                }
                 className="w-full px-3 py-2 rounded-xl border border-[#D1D6DB] dark:border-slate-700 bg-white dark:bg-slate-900/70 text-base sm:text-xs font-semibold font-mono tabular-nums text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
               />
             </div>
@@ -1095,7 +1244,7 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
               rows={2}
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
-              placeholder="고객 요청사항, 타사 비교견적, 카드 발급 일정 등"
+              placeholder="고객 요청사항, 추가 구매 메모, 카드 발급 일정 등"
               className="w-full px-3.5 py-2 rounded-xl border border-[#D1D6DB] dark:border-slate-700 bg-white dark:bg-slate-900/70 text-base sm:text-xs text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
             />
           </div>
@@ -1123,8 +1272,10 @@ export const SaveToCrmModal: React.FC<SaveToCrmModalProps> = ({
           >
             <Save className="w-4 h-4" />
             {matchedExistingCustomer && existingQuotesForTarget.length > 0
-              ? saveMode === 'overwrite'
-                ? '🔄 기존 견적 덮어쓰기 저장'
+              ? saveMode === 'overwrite' && draftQuotesForTarget.length > 0
+                ? '🔄 상담 견적 덮어쓰기 저장'
+                : targetIsPurchasedOrHasSlip
+                ? '➕ 추가 구매 · 새 전표/견적 추가 저장'
                 : '➕ 새 견적으로 추가 저장'
               : 'CRM에 고객 및 견적 저장하기'}
           </button>

@@ -23,15 +23,19 @@ import {
   SortOrder,
 } from './types/crm';
 import {
+  applyCustomerFieldPatchWithSlipSync,
+  confirmDraftQuoteAndCleanOthers,
   CRM_CUSTOMERS_UPDATED_EVENT,
   deleteQuoteAndSyncCustomer,
   fetchCustomersFromGas,
   getCachedCustomers,
   getCustomerIdentityKey,
+  QuoteSlipInlinePatch,
   setCachedCustomers,
   syncCustomerFromConfirmedSlips,
   syncCustomerToGas,
   toggleSlipDeliveryStatusAndSyncCustomer,
+  updateQuoteSlipAndSyncCustomer,
 } from './services/gasApi';
 import {
   getBriefingSummary,
@@ -624,14 +628,18 @@ export const CrmApp: React.FC<CrmAppProps> = ({
       updatedAtMs: nowMs,
     };
     const updated = customers.map((c) =>
-      c.id === id ? { ...c, ...stampedPatch } : c
+      c.id === id ? applyCustomerFieldPatchWithSlipSync(c, stampedPatch) : c
     );
     const deduped = setCachedCustomers(updated);
     setCustomers(deduped);
-    if (selectedCustomerId === id && !deduped.some((c) => c.id === id) && target) {
+    let syncedTarget = deduped.find((c) => c.id === id);
+    if (selectedCustomerId === id && !syncedTarget && target) {
       const mergedKey = getCustomerIdentityKey({ ...target, ...stampedPatch } as CustomerItem);
       const survivor = deduped.find((c) => !c.deletedAt && getCustomerIdentityKey(c) === mergedKey);
-      if (survivor) setSelectedCustomerId(survivor.id);
+      if (survivor) {
+        setSelectedCustomerId(survivor.id);
+        syncedTarget = survivor;
+      }
     }
     if ('logisticsConfirmed' in patch) {
       showToast(
@@ -650,8 +658,129 @@ export const CrmApp: React.FC<CrmAppProps> = ({
     } else {
       showToast(`✅ [${target?.name || '고객'}] 정보가 업데이트되었습니다.`, true);
     }
-    await syncCustomerToGas('update', { id, ...patch });
+    if (syncedTarget) {
+      await syncCustomerToGas('update', {
+        id: syncedTarget.id,
+        ...patch,
+        orderNo: syncedTarget.orderNo,
+        contractDate: syncedTarget.contractDate,
+        deliveryDate: syncedTarget.deliveryDate,
+        status: syncedTarget.status,
+        logisticsConfirmed: syncedTarget.logisticsConfirmed,
+        quotes: syncedTarget.quotes,
+        updatedAtMs: nowMs,
+      });
+    } else {
+      await syncCustomerToGas('update', { id, ...patch });
+    }
   };
+
+  const handleUpdateQuoteSlip = async (
+    customerId: string,
+    quoteId: string,
+    patch: QuoteSlipInlinePatch
+  ) => {
+    const target = customers.find((c) => c.id === customerId);
+    if (!target) return;
+    pushUndoSnapshot(`${target.name} 전표 정보 수정`);
+    const updated = customers.map((c) =>
+      c.id === customerId
+        ? updateQuoteSlipAndSyncCustomer(c, quoteId, patch)
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCustomers(deduped);
+    const synced = deduped.find((c) => c.id === customerId);
+    const updatedQuote = synced?.quotes?.find((q) => q.id === quoteId);
+    showToast(
+      patch.promoteToConfirmedSlip && !target.quotes?.find((q) => q.id === quoteId)?.isConfirmedSlip
+        ? `🧾 [${target.name}] 상담 견적이 확정 전표${
+            updatedQuote?.orderNo ? `(${updatedQuote.orderNo})` : ''
+          }로 등록·합산되었습니다.`
+        : `✏️ [${target.name}] 전표 정보${
+            updatedQuote?.orderNo ? `(${updatedQuote.orderNo})` : ''
+          }가 수정되었습니다.`,
+      true
+    );
+    if (synced) {
+      await syncCustomerToGas('update', {
+        id: customerId,
+        quotes: synced.quotes,
+        orderNo: synced.orderNo,
+        contractDate: synced.contractDate,
+        deliveryDate: synced.deliveryDate,
+        status: synced.status,
+        logisticsConfirmed: synced.logisticsConfirmed,
+        items: synced.items,
+        paidAmount: synced.paidAmount,
+        netAmount: synced.netAmount,
+        expectedBenefit: synced.expectedBenefit,
+        saleType: synced.saleType,
+        performanceAmount: synced.performanceAmount,
+        generalProductTotal: synced.generalProductTotal,
+        subscriptionPrincipal: synced.subscriptionPrincipal,
+        freedCounts: synced.freedCounts,
+        purchasedModels: synced.purchasedModels,
+        updatedAtMs: synced.updatedAtMs,
+      });
+    }
+  };
+
+  const handleConfirmDraftQuote = async (
+    customerId: string,
+    quoteId: string
+  ) => {
+    const target = customers.find((c) => c.id === customerId);
+    if (!target) return;
+    pushUndoSnapshot(`${target.name} 선택 상담견적 확정`);
+    const updated = customers.map((c) =>
+      c.id === customerId
+        ? confirmDraftQuoteAndCleanOthers(c, quoteId)
+        : c
+    );
+    const deduped = setCachedCustomers(updated);
+    setCustomers(deduped);
+    const synced = deduped.find((c) => c.id === customerId);
+    showToast(
+      `✅ [${target.name}] 선택한 상담 견적으로 확정되었습니다. (기존 확정 전표는 100% 보존됨)`,
+      true
+    );
+    if (synced) {
+      await syncCustomerToGas('update', {
+        id: customerId,
+        quotes: synced.quotes,
+        items: synced.items,
+        paidAmount: synced.paidAmount,
+        netAmount: synced.netAmount,
+        expectedBenefit: synced.expectedBenefit,
+        saleType: synced.saleType,
+        performanceAmount: synced.performanceAmount,
+        generalProductTotal: synced.generalProductTotal,
+        subscriptionPrincipal: synced.subscriptionPrincipal,
+        freedCounts: synced.freedCounts,
+        purchasedModels: synced.purchasedModels,
+        updatedAtMs: synced.updatedAtMs,
+      });
+    }
+  };
+
+  const handleManualSlipSaved = useCallback(
+    (savedCustomer: CustomerItem, orderNo?: string) => {
+      const latest = getCachedCustomers();
+      setCustomers(latest);
+      setSelectedCustomerId(savedCustomer.id);
+      const slipCount = (savedCustomer.quotes || []).filter(
+        (q) => q?.isConfirmedSlip
+      ).length;
+      showToast(
+        `🧾 [${savedCustomer.name}] 새 전표${
+          orderNo ? `(${orderNo})` : ''
+        } 추가 완료! (총 확정전표 ${slipCount}건 합산)`,
+        false
+      );
+    },
+    [showToast]
+  );
 
   const handleDeleteQuoteRecord = async (
     customerId: string,
@@ -931,23 +1060,36 @@ export const CrmApp: React.FC<CrmAppProps> = ({
   const filteredCustomers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
 
+    const qNoHyphen = q.replace(/-/g, '');
+
     const matchesSearch = (c: CustomerItem) => {
       if (!q) return true;
+      const topOrder = (c.orderNo || '').toLowerCase();
       const inTop =
         c.name.toLowerCase().includes(q) ||
         c.phone.toLowerCase().includes(q) ||
         c.phone.replace(/\D/g, '').includes(q) ||
         c.items.toLowerCase().includes(q) ||
         c.memo.toLowerCase().includes(q) ||
-        Boolean(c.orderNo && c.orderNo.toLowerCase().includes(q)) ||
+        Boolean(
+          topOrder &&
+            (topOrder.includes(q) ||
+              (qNoHyphen && topOrder.replace(/-/g, '').includes(qNoHyphen)))
+        ) ||
         Boolean(c.giftItems && c.giftItems.toLowerCase().includes(q));
       if (inTop) return true;
-      return (c.quotes || []).some(
-        (qt) =>
-          Boolean(qt.orderNo && qt.orderNo.toLowerCase().includes(q)) ||
+      return (c.quotes || []).some((qt) => {
+        const qtOrder = (qt.orderNo || '').toLowerCase();
+        return (
+          Boolean(
+            qtOrder &&
+              (qtOrder.includes(q) ||
+                (qNoHyphen && qtOrder.replace(/-/g, '').includes(qNoHyphen)))
+          ) ||
           Boolean(qt.itemSummary && qt.itemSummary.toLowerCase().includes(q)) ||
           Boolean(qt.title && qt.title.toLowerCase().includes(q))
-      );
+        );
+      });
     };
 
     const filtered = activeCustomers.filter((c) => {
@@ -1526,10 +1668,13 @@ export const CrmApp: React.FC<CrmAppProps> = ({
         onDeleteQuoteRecord={handleDeleteQuoteRecord}
         onApplyQuoteAsPrimary={handleApplyQuoteAsPrimary}
         onToggleSlipDeliveryStatus={handleToggleSlipDeliveryStatus}
+        onUpdateQuoteSlip={handleUpdateQuoteSlip}
+        onConfirmDraftQuote={handleConfirmDraftQuote}
         onAddSlipForCustomer={(cust) => {
           setSlipUploadTargetCustomer(cust);
           setIsSlipUploadOpen(true);
         }}
+        onManualSlipSaved={handleManualSlipSaved}
         onLoadQuoteRecord={(customer, quote) => {
           onOpenQuoteRecordInQuoteBuilder(customer, quote);
         }}

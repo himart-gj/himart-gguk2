@@ -95,6 +95,7 @@ export interface QuoteRecord {
   proposalState?: any;
   quoteMode?: 'general' | 'subscription' | 'hybrid';
   plan2Summary?: QuotePlan2Summary;
+  planSummaries?: QuotePlan2Summary[];
   // 실적 정산 기준 (일반: 제품 합계 금액 / 구독: 구독원금 / 혼합: 합산)
   performanceAmount?: number;
   generalProductTotal?: number;

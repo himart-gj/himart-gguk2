@@ -1,5 +1,5 @@
 import React, { Component, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AppStep, createInitialState, extractGeneralPlanData, getSubscriptionPeriodSummary, hasMeaningfulGeneralItems, hasMeaningfulSubItems, normalizeSubscriptionPeriod, ProposalState, QuoteMode, resolveComparisonModePlanData, SUB_CARE_OPTIONS, SubscriptionPeriod } from './types/proposal';
+import { AppStep, createEmptyGeneralPlanData, createInitialState, extractGeneralPlanData, getSubscriptionPeriodSummary, hasMeaningfulGeneralItems, hasMeaningfulSubItems, hasPlanMeaningfulContent, MAX_QUOTE_PLANS, normalizeSubscriptionPeriod, ProposalState, QuoteMode, resolveComparisonModePlanData, SUB_CARE_OPTIONS, SubscriptionPeriod, syncActivePlanIntoGeneralPlans } from './types/proposal';
 import { ControlPanel } from './components/ControlPanel';
 import { ProposalPreview } from './components/ProposalPreview';
 import { fetchRemoteSchedules } from './components/ScheduleModal';
@@ -882,17 +882,7 @@ export function App() {
             compareModesChanged = true;
             syncedCompareModes = nextState.compareModes;
           }
-          const snapshot = extractGeneralPlanData(nextState);
-          if (nextState.activeGeneralPlan === 2) {
-            return {
-              ...nextState,
-              generalPlan2: snapshot,
-            };
-          }
-          return {
-            ...nextState,
-            generalPlan1: snapshot,
-          };
+          return syncActivePlanIntoGeneralPlans(nextState);
         };
 
         if (activeMode === 'general') {
@@ -919,12 +909,16 @@ export function App() {
       if (nextMode === 'general' && !hasMeaningfulGeneralItems(generalState)) {
         const seeded = resolveComparisonModePlanData(currentState, 'general');
         if (hasMeaningfulGeneralItems(seeded)) {
-          setGeneralState((prev) => ({
-            ...prev,
-            ...seeded,
-            quoteMode: 'general',
-            generalPlan1: seeded,
-          }));
+          setGeneralState((prev) =>
+            syncActivePlanIntoGeneralPlans({
+              ...prev,
+              ...seeded,
+              quoteMode: 'general',
+              activeGeneralPlan: 1,
+              generalPlans: [seeded],
+              generalPlan1: seeded,
+            })
+          );
         }
       } else if (
         nextMode === 'subscription' &&
@@ -932,24 +926,32 @@ export function App() {
       ) {
         const seeded = resolveComparisonModePlanData(currentState, 'subscription');
         if (hasMeaningfulSubItems(seeded)) {
-          setSubscriptionState((prev) => ({
-            ...prev,
-            ...seeded,
-            quoteMode: 'subscription',
-            generalPlan1: seeded,
-          }));
+          setSubscriptionState((prev) =>
+            syncActivePlanIntoGeneralPlans({
+              ...prev,
+              ...seeded,
+              quoteMode: 'subscription',
+              activeGeneralPlan: 1,
+              generalPlans: [seeded],
+              generalPlan1: seeded,
+            })
+          );
         }
       } else if (nextMode === 'hybrid') {
         const hasGen = hasMeaningfulGeneralItems(hybridState);
         const hasSub = hasMeaningfulSubItems(hybridState);
         if (!hasGen || !hasSub) {
           const seeded = resolveComparisonModePlanData(currentState, 'hybrid');
-          setHybridState((prev) => ({
-            ...prev,
-            ...seeded,
-            quoteMode: 'hybrid',
-            generalPlan1: seeded,
-          }));
+          setHybridState((prev) =>
+            syncActivePlanIntoGeneralPlans({
+              ...prev,
+              ...seeded,
+              quoteMode: 'hybrid',
+              activeGeneralPlan: 1,
+              generalPlans: [seeded],
+              generalPlan1: seeded,
+            })
+          );
         }
       }
       setActiveMode(nextMode);
@@ -1058,9 +1060,26 @@ export function App() {
           ...(parsed.generalPlan2 || {}),
         });
 
-        const activePlanNum: 1 | 2 = parsed.activeGeneralPlan === 2 ? 2 : 1;
-        const activePlanFields =
-          activePlanNum === 2 ? mergedPlan2 : mergedPlan1;
+        const restoredPlans: ReturnType<typeof extractGeneralPlanData>[] =
+          Array.isArray(parsed.generalPlans) && parsed.generalPlans.length > 0
+            ? parsed.generalPlans
+                .slice(0, MAX_QUOTE_PLANS)
+                .map((p: any, idx: number) =>
+                  extractGeneralPlanData({
+                    ...createEmptyGeneralPlanData(targetMode, idx + 1),
+                    ...(p || {}),
+                  })
+                )
+            : parsed.activeGeneralPlan === 2 ||
+              hasPlanMeaningfulContent(mergedPlan2)
+            ? [mergedPlan1, mergedPlan2]
+            : [mergedPlan1];
+
+        const activePlanNum = Math.min(
+          restoredPlans.length,
+          Math.max(1, Math.floor(Number(parsed.activeGeneralPlan) || 1))
+        );
+        const activePlanFields = restoredPlans[activePlanNum - 1] || mergedPlan1;
 
         const restored: ProposalState = {
           ...base,
@@ -1068,8 +1087,11 @@ export function App() {
           ...activePlanFields,
           quoteMode: targetMode,
           activeGeneralPlan: activePlanNum,
-          generalPlan1: mergedPlan1,
-          generalPlan2: mergedPlan2,
+          generalPlans: restoredPlans,
+          generalPlan1: restoredPlans[0] || mergedPlan1,
+          generalPlan2:
+            restoredPlans[1] ??
+            createEmptyGeneralPlanData(targetMode, 2),
         };
 
         if (parsed.modeConfigs && typeof parsed.modeConfigs === 'object') {
@@ -1081,6 +1103,7 @@ export function App() {
               ...gSnap,
               quoteMode: 'general',
               compareModes: parsed.compareModes,
+              generalPlans: [gSnap],
               generalPlan1: gSnap,
             });
           }
@@ -1092,6 +1115,7 @@ export function App() {
               ...sSnap,
               quoteMode: 'subscription',
               compareModes: parsed.compareModes,
+              generalPlans: [sSnap],
               generalPlan1: sSnap,
             });
           }
@@ -1103,6 +1127,7 @@ export function App() {
               ...hSnap,
               quoteMode: 'hybrid',
               compareModes: parsed.compareModes,
+              generalPlans: [hSnap],
               generalPlan1: hSnap,
             });
           }
@@ -1140,7 +1165,9 @@ export function App() {
           careService: SUB_CARE_OPTIONS[0],
         };
         nextSub.items = [firstSubItem];
-        nextSub.generalPlan1 = extractGeneralPlanData(nextSub);
+        const subSnap = extractGeneralPlanData(nextSub);
+        nextSub.generalPlans = [subSnap];
+        nextSub.generalPlan1 = subSnap;
         setSubscriptionState(nextSub);
       } else {
         const nextGen = createInitialState('general');
@@ -1152,7 +1179,9 @@ export function App() {
           unitPrice: paidNum,
         };
         nextGen.generalItems = [firstItem];
-        nextGen.generalPlan1 = extractGeneralPlanData(nextGen);
+        const genSnap = extractGeneralPlanData(nextGen);
+        nextGen.generalPlans = [genSnap];
+        nextGen.generalPlan1 = genSnap;
         setGeneralState(nextGen);
       }
 
@@ -1275,14 +1304,7 @@ export function App() {
             ...updatedPlanFields,
           };
 
-          const snapshot = extractGeneralPlanData(nextState);
-          if (nextState.activeGeneralPlan === 2) {
-            nextState.generalPlan2 = snapshot;
-          } else {
-            nextState.generalPlan1 = snapshot;
-          }
-
-          return nextState;
+          return syncActivePlanIntoGeneralPlans(nextState);
         });
       } catch (err: any) {
         setParseGeneralError(

@@ -7,11 +7,13 @@ import {
   GeneralPlanData,
   getActiveCompareModes,
   HiPlusPayoutMethod,
+  MAX_QUOTE_PLANS,
   normalizeHiPlusPayoutMethod,
   normalizeSubscriptionPeriod,
   ProposalState,
   QuoteMode,
   resolveComparisonModePlanData,
+  resolveGeneralPlansFromState,
   SUB_CARE_OPTIONS,
   SubscriptionPeriod,
   switchQuoteModeInState,
@@ -566,25 +568,34 @@ function isPlanEffectivelyEmpty(plan: GeneralPlanData): boolean {
 
 export function packCompactQuoteV2(payload: SharedQuotePayload): any[] {
   const st = payload.state;
-  const activePlan: 1 | 2 = st.activeGeneralPlan === 2 ? 2 : 1;
+  const rawPlans = resolveGeneralPlansFromState(st);
+  const validIndexed = rawPlans
+    .map((p, idx) => ({
+      p,
+      origNum: idx + 1,
+      empty: isPlanEffectivelyEmpty(p),
+    }))
+    .filter((entry, idx) => idx === 0 || !entry.empty);
 
-  const p1Data =
-    activePlan === 1
-      ? extractGeneralPlanData(st)
-      : extractGeneralPlanData(st.generalPlan1);
-  const p2Data =
-    activePlan === 2
-      ? extractGeneralPlanData(st)
-      : extractGeneralPlanData(st.generalPlan2);
+  const rawActiveOrig = Math.max(
+    1,
+    Math.floor(Number(st.activeGeneralPlan) || 1)
+  );
+  const matchedActiveIdx = validIndexed.findIndex(
+    (entry) => entry.origNum === rawActiveOrig
+  );
+  const packedActivePlan = matchedActiveIdx >= 0 ? matchedActiveIdx + 1 : 1;
 
-  const p1Tuple = packPlanTuple(p1Data);
-  const p2Empty = isPlanEffectivelyEmpty(p2Data);
-  const p2TupleCandidate = p2Empty ? 0 : packPlanTuple(p2Data);
+  const packedTuples = validIndexed.map((entry) => packPlanTuple(entry.p));
+  const p1Tuple = packedTuples[0];
   const p2Tuple =
-    p2TupleCandidate !== 0 &&
-    JSON.stringify(p2TupleCandidate) !== JSON.stringify(p1Tuple)
-      ? p2TupleCandidate
+    packedTuples.length >= 2 &&
+    (packedTuples.length >= 3 ||
+      JSON.stringify(packedTuples[1]) !== JSON.stringify(p1Tuple))
+      ? packedTuples[1]
       : 0;
+  const extraPlanTuples =
+    packedTuples.length >= 3 ? packedTuples.slice(2) : 0;
 
   const c = payload.consultant;
   const profTuple = trimTrailingZeros([
@@ -619,17 +630,25 @@ export function packCompactQuoteV2(payload: SharedQuotePayload): any[] {
         ]
       : 0;
 
+  const effectiveActiveSlot =
+    packedActivePlan >= 3 && Array.isArray(extraPlanTuples)
+      ? packedActivePlan
+      : packedActivePlan === 2 && p2Tuple !== 0
+      ? 2
+      : 1;
+
   return trimTrailingZeros([
     2,
     dateCompact,
     payload.customerName || '',
     profTuple,
     modeIdx,
-    activePlan === 2 && p2Tuple !== 0 ? 2 : 1,
+    effectiveActiveSlot,
     p1Tuple,
     p2Tuple,
     compareMask,
     modeConfigsTuple,
+    extraPlanTuples,
   ]);
 }
 
@@ -652,13 +671,36 @@ export function unpackCompactQuoteV2(arr: any[]): SharedQuotePayload | null {
 
   const quoteMode: QuoteMode = QUOTE_MODES[Number(arr[4]) || 0] || 'general';
   const hasPlan2 = Array.isArray(arr[7]);
-  const activeGeneralPlan: 1 | 2 = arr[5] === 2 && hasPlan2 ? 2 : 1;
 
   const plan1 = unpackPlanTuple(arr[6], 'p1');
   const plan2 = hasPlan2
     ? unpackPlanTuple(arr[7], 'p2')
     : unpackPlanTuple([], 'p2');
-  const activeFields = activeGeneralPlan === 2 ? plan2 : plan1;
+
+  const rawExtra = Array.isArray(arr[10])
+    ? arr[10].filter(Array.isArray).slice(0, MAX_QUOTE_PLANS - 2)
+    : [];
+  const extraPlans = rawExtra.map((tuple: any[], idx: number) =>
+    extractGeneralPlanData(unpackPlanTuple(tuple, `p${idx + 3}`))
+  );
+
+  const generalPlans: GeneralPlanData[] =
+    extraPlans.length > 0
+      ? [
+          extractGeneralPlanData(plan1),
+          extractGeneralPlanData(plan2),
+          ...extraPlans,
+        ]
+      : hasPlan2
+      ? [extractGeneralPlanData(plan1), extractGeneralPlanData(plan2)]
+      : [extractGeneralPlanData(plan1)];
+
+  const rawActiveNum = Math.floor(Number(arr[5]) || 1);
+  const activeGeneralPlan =
+    rawActiveNum >= 1 && rawActiveNum <= generalPlans.length
+      ? rawActiveNum
+      : 1;
+  const activeFields = generalPlans[activeGeneralPlan - 1] || generalPlans[0];
 
   const compareMask = Number(arr[8]) || 0;
   const compareModes: QuoteMode[] = [];
@@ -686,8 +728,9 @@ export function unpackCompactQuoteV2(arr: any[]): SharedQuotePayload | null {
     ...(compareModes.length >= 2 ? { compareModes } : {}),
     ...(modeConfigs ? { modeConfigs } : {}),
     activeGeneralPlan,
-    generalPlan1: extractGeneralPlanData(plan1),
-    generalPlan2: extractGeneralPlanData(plan2),
+    generalPlans,
+    generalPlan1: generalPlans[0],
+    generalPlan2: generalPlans[1] ?? extractGeneralPlanData(plan2),
     ...extractGeneralPlanData(activeFields),
   };
 

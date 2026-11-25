@@ -1,9 +1,11 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  applyAllGeneralPlansPatch,
   calculateGeneralHiPreedSummary,
   calculateGeneralPurchaseSummary,
   calculateHiPlusSummary,
   calculateSubscriptionSummary,
+  confirmActiveGeneralPlanInState,
   getActiveCompareModes,
   getGeneralPlan1And2Summaries,
   getValidDisplayModelName,
@@ -15,6 +17,7 @@ import {
 import {
   ArrowLeft,
   BookOpen,
+  Check,
   ChevronDown,
   CreditCard,
   Download,
@@ -105,14 +108,10 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
   const activePlan = state.activeGeneralPlan || 1;
   const {
-    plan1Summary,
-    plan2Summary,
-    plan1SubSummary,
-    plan2SubSummary,
-    hasPlan1Data,
-    hasPlan2Data,
+    allPlans,
+    hasMultiplePlans,
   } = getGeneralPlan1And2Summaries(state);
-  const hasBothPlans = hasPlan1Data && hasPlan2Data;
+  const hasBothPlans = hasMultiplePlans;
 
   // ==================== 데이터 계산 ====================
   const generalSummary = calculateGeneralPurchaseSummary(state);
@@ -165,12 +164,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     if (nextHidden && activeTab === 'guide-general') {
       setActiveTab('proposal');
     }
-    onChange((prev) => ({
-      ...prev,
-      hideHiPreed: nextHidden,
-      generalPlan1: { ...prev.generalPlan1, hideHiPreed: nextHidden },
-      generalPlan2: { ...prev.generalPlan2, hideHiPreed: nextHidden },
-    }));
+    onChange((prev) =>
+      applyAllGeneralPlansPatch(prev, (plan) => ({
+        ...plan,
+        hideHiPreed: nextHidden,
+      }))
+    );
   };
 
   const handleToggleHideSubPreed = () => {
@@ -178,12 +177,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     if (nextHidden && activeTab === 'guide-sub') {
       setActiveTab('proposal');
     }
-    onChange((prev) => ({
-      ...prev,
-      hideSubPreed: nextHidden,
-      generalPlan1: { ...prev.generalPlan1, hideSubPreed: nextHidden },
-      generalPlan2: { ...prev.generalPlan2, hideSubPreed: nextHidden },
-    }));
+    onChange((prev) =>
+      applyAllGeneralPlansPatch(prev, (plan) => ({
+        ...plan,
+        hideSubPreed: nextHidden,
+      }))
+    );
   };
 
   useEffect(() => {
@@ -292,8 +291,12 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
     };
   }, [activeTab, isGuideTab, state]);
 
-  const handleSwitchGeneralPlan = (targetPlan: 1 | 2) => {
+  const handleSwitchGeneralPlan = (targetPlan: number) => {
     onChange((prev) => switchGeneralPlanInState(prev, targetPlan));
+  };
+
+  const handleConfirmSinglePlanInPreview = () => {
+    onChange((prev) => confirmActiveGeneralPlanInState(prev, activePlan));
   };
 
   const handleDownloadPng = async (maskModels = false) => {
@@ -483,9 +486,11 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const activeCompareModes = getActiveCompareModes(state);
   const todayText = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
-  const formatPlanBadgePrice = (planNum: 1 | 2) => {
-    const gSum = planNum === 1 ? plan1Summary : plan2Summary;
-    const sSum = planNum === 1 ? plan1SubSummary : plan2SubSummary;
+  const formatPlanBadgePrice = (planNum: number) => {
+    const pEntry = allPlans[planNum - 1];
+    if (!pEntry) return `${planNum}안`;
+    const gSum = pEntry.genSummary;
+    const sSum = pEntry.subSummary;
     if (state.quoteMode === 'subscription') {
       return sSum.totalBaseMonthly > 0
         ? `${planNum}안 · 월 ${sSum.finalMonthlyFee.toLocaleString()}`
@@ -635,41 +640,45 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
           {/* 좌우 동시 보기(embeddedSplitMode)에서는 바로 왼쪽 패널에 동일한 컨트롤이 있으므로 중복 노출하지 않고 전체화면 제안서에서만 표시 */}
           {!embeddedSplitMode && (
             <>
-              {/* 1안 / 2안 전환 세그먼트 */}
-              <div
-                className={`inline-flex items-center p-0.5 rounded-lg border shrink-0 ${
-                  isDark
-                    ? 'bg-[#0B1120] border-white/10'
-                    : 'bg-[#F2F4F6] border-[#E5E8EB]'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleSwitchGeneralPlan(1)}
-                  className={`px-2.5 py-1 rounded-md font-extrabold text-xs tabular-nums transition cursor-pointer whitespace-nowrap ${
-                    activePlan === 1
-                      ? 'bg-[#1B64DA] text-white shadow-xs'
-                      : isDark
-                      ? 'text-slate-400 hover:text-white'
-                      : 'text-[#4E5968] hover:text-[#191F28]'
-                  }`}
-                >
-                  {formatPlanBadgePrice(1)}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSwitchGeneralPlan(2)}
-                  className={`px-2.5 py-1 rounded-md font-extrabold text-xs tabular-nums transition cursor-pointer whitespace-nowrap ${
-                    activePlan === 2
-                      ? 'bg-[#1B64DA] text-white shadow-xs'
-                      : isDark
-                      ? 'text-slate-400 hover:text-white'
-                      : 'text-[#4E5968] hover:text-[#191F28]'
-                  }`}
-                >
-                  {formatPlanBadgePrice(2)}
-                </button>
-              </div>
+              {/* 다중 안(1안 ~ N안) 전환 세그먼트 + 선택안 확정 버튼 (2안 이상일 때만 노출) */}
+              {allPlans.length >= 2 && (
+                <>
+                  <div
+                    className={`inline-flex flex-wrap items-center p-0.5 rounded-lg border shrink-0 ${
+                      isDark
+                        ? 'bg-[#0B1120] border-white/10'
+                        : 'bg-[#F2F4F6] border-[#E5E8EB]'
+                    }`}
+                  >
+                    {allPlans.map((pEntry) => (
+                      <button
+                        key={pEntry.planNum}
+                        type="button"
+                        onClick={() => handleSwitchGeneralPlan(pEntry.planNum)}
+                        className={`px-2.5 py-1 rounded-md font-extrabold text-xs tabular-nums transition cursor-pointer whitespace-nowrap ${
+                          activePlan === pEntry.planNum
+                            ? 'bg-[#1B64DA] text-white shadow-xs'
+                            : isDark
+                            ? 'text-slate-400 hover:text-white'
+                            : 'text-[#4E5968] hover:text-[#191F28]'
+                        }`}
+                      >
+                        {formatPlanBadgePrice(pEntry.planNum)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmSinglePlanInPreview}
+                    title="현재 보고 있는 안만 남기고 나머지 비교안을 정리해 단독 1안으로 확정합니다"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#059669] hover:bg-emerald-700 text-white text-[11.5px] font-extrabold transition cursor-pointer whitespace-nowrap shrink-0"
+                  >
+                    <Check className="w-3 h-3" />
+                    <span>{activePlan}안 확정</span>
+                  </button>
+                </>
+              )}
 
               {/* 프리드 표시/숨김 컴팩트 토글 */}
               {(state.quoteMode === 'general' || state.quoteMode === 'hybrid') && (

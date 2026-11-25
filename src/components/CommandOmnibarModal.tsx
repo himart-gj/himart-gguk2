@@ -437,24 +437,54 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     }
 
     // 검색어가 있을 때 6대 인덱스 동시 고속 스캔
-    // 1. 고객 CRM
+    // 1. 고객 CRM (고객 최상위 orderNo + 모든 전표/견적 quotes[].orderNo 100% 매칭)
     customers
-      .filter(
-        (c) =>
-          !c.deletedAt &&
-          (matchSearch(c.name, q) ||
-            matchSearch(c.phone || '', q) ||
-            matchSearch(c.items || '', q) ||
-            matchSearch(c.orderNo || '', q) ||
-            matchSearch(c.memo || '', q))
-      )
+      .filter((c) => {
+        if (c.deletedAt) return false;
+        const cleanQNoHyphen = q.replace(/[-\s]/g, '');
+        if (
+          matchSearch(c.name, q) ||
+          matchSearch(c.phone || '', q) ||
+          matchSearch(c.items || '', q) ||
+          matchSearch(c.orderNo || '', q) ||
+          (cleanQNoHyphen &&
+            (c.orderNo || '')
+              .toLowerCase()
+              .replace(/[-\s]/g, '')
+              .includes(cleanQNoHyphen)) ||
+          matchSearch(c.memo || '', q)
+        ) {
+          return true;
+        }
+        return (c.quotes || []).some(
+          (qt) =>
+            matchSearch(qt.orderNo || '', q) ||
+            (cleanQNoHyphen &&
+              (qt.orderNo || '')
+                .toLowerCase()
+                .replace(/[-\s]/g, '')
+                .includes(cleanQNoHyphen)) ||
+            matchSearch(qt.itemSummary || '', q) ||
+            matchSearch(qt.title || '', q)
+        );
+      })
       .slice(0, 5)
       .forEach((c) => {
+        const allOrderNos = Array.from(
+          new Set(
+            [
+              (c.orderNo || '').trim(),
+              ...(c.quotes || []).map((qt) => (qt.orderNo || '').trim()),
+            ].filter(Boolean)
+          )
+        );
+        const orderPrefix =
+          allOrderNos.length > 0 ? `🧾 ${allOrderNos.join(' · ')} · ` : '';
         list.push({
           id: `cust-${c.id}`,
           group: '고객 CRM',
           title: `${c.name} (${c.phone || '연락처 미등록'})`,
-          subtitle: `${c.items || '품목 미입력'} · 결제 ${(
+          subtitle: `${orderPrefix}${c.items || '품목 미입력'} · 결제 ${(
             c.paidAmount || 0
           ).toLocaleString()}원 / 체감 ${(c.netAmount || 0).toLocaleString()}원`,
           badge: c.status,

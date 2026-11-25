@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
   AFFILIATE_CARDS,
+  applyAllGeneralPlansPatch,
   getHiPlusUnitMonthlySupport,
   getSubscriptionItemPrincipal,
   getSubscriptionSurplusMeta,
@@ -65,6 +66,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
   subTotalNetDiff,
   totalBaseMonthly,
   totalPrincipal,
+  validSubPlans,
 }) => {
   const [customCareItemIds, setCustomCareItemIds] = useState<Record<string, boolean>>({});
   const customCareInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -72,12 +74,10 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
   const handleToggleHideSubPreed = () => {
     onChange((prev: any) => {
       const nextHidden = !prev.hideSubPreed;
-      return {
-        ...prev,
+      return applyAllGeneralPlansPatch(prev, (plan) => ({
+        ...plan,
         hideSubPreed: nextHidden,
-        generalPlan1: { ...prev.generalPlan1, hideSubPreed: nextHidden },
-        generalPlan2: { ...prev.generalPlan2, hideSubPreed: nextHidden },
-      };
+      }));
     });
   };
 
@@ -909,19 +909,36 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
               </div>
             ) : null}
 
-            {/* 1안 vs 2안 구독 차액: 월 차액 · 총 계약기간(36/60개월) 총차액 병기 */}
+            {/* 다중 안(1안~N안) 구독 차액: 월 차액 · 총 계약기간(36/60개월) 총차액 병기 */}
             {bothSubPlansHavePrice && (
               <div className="pt-2.5 border-t border-[#E5E8EB] dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11.5px]">
                 <div className="font-mono tabular-nums font-semibold text-[#4E5968] dark:text-slate-300 break-keep">
-                  <span>
-                    [1안: 월 {Math.max(0, plan1SubSummary.finalMonthlyFee).toLocaleString()}원 · 총{' '}
-                    {Math.max(0, plan1SubSummary.finalTotalFee).toLocaleString()}원]
-                  </span>{' '}
-                  vs{' '}
-                  <span>
-                    [2안: 월 {Math.max(0, plan2SubSummary.finalMonthlyFee).toLocaleString()}원 · 총{' '}
-                    {Math.max(0, plan2SubSummary.finalTotalFee).toLocaleString()}원]
-                  </span>
+                  {Array.isArray(validSubPlans) && validSubPlans.length >= 2
+                    ? validSubPlans
+                        .map(
+                          (p: any) =>
+                            `[${p.planNum}안: 월 ${Math.max(
+                              0,
+                              p.subSummary.finalMonthlyFee
+                            ).toLocaleString()}원 · 총 ${Math.max(
+                              0,
+                              p.subSummary.finalTotalFee
+                            ).toLocaleString()}원]`
+                        )
+                        .join(' vs ')
+                    : `[1안: 월 ${Math.max(
+                        0,
+                        plan1SubSummary.finalMonthlyFee
+                      ).toLocaleString()}원 · 총 ${Math.max(
+                        0,
+                        plan1SubSummary.finalTotalFee
+                      ).toLocaleString()}원] vs [2안: 월 ${Math.max(
+                        0,
+                        plan2SubSummary.finalMonthlyFee
+                      ).toLocaleString()}원 · 총 ${Math.max(
+                        0,
+                        plan2SubSummary.finalTotalFee
+                      ).toLocaleString()}원]`}
                 </div>
                 <span className="px-2.5 py-1 rounded-lg bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 font-mono tabular-nums font-extrabold text-[#1B64DA] dark:text-blue-300 whitespace-nowrap ml-auto">
                   월 차액 {subNetDiff > 0 ? `+${subNetDiff.toLocaleString()}` : subNetDiff.toLocaleString()}원 ·{' '}

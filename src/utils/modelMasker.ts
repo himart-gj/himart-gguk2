@@ -108,6 +108,13 @@ export function maskProposalStateModels(state: ProposalState): ProposalState {
     cloned.generalPlan2.generalItems = maskGenList(cloned.generalPlan2.generalItems);
     cloned.generalPlan2.items = maskSubList(cloned.generalPlan2.items);
   }
+  if (Array.isArray(cloned.generalPlans)) {
+    cloned.generalPlans = cloned.generalPlans.map((plan) => ({
+      ...plan,
+      generalItems: maskGenList(plan.generalItems),
+      items: maskSubList(plan.items),
+    }));
+  }
   if (cloned.modeConfigs) {
     if (cloned.modeConfigs.general) {
       cloned.modeConfigs.general.generalItems = maskGenList(cloned.modeConfigs.general.generalItems);

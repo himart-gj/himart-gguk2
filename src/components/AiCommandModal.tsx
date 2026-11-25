@@ -241,8 +241,21 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
 
     if (merged.activeGeneralPlan === 1) {
       merged.generalPlan1 = { ...merged.generalPlan1, ...merged };
-    } else {
+    } else if (merged.activeGeneralPlan === 2) {
       merged.generalPlan2 = { ...merged.generalPlan2, ...merged };
+    }
+    if (Array.isArray(merged.generalPlans) && merged.generalPlans.length > 0) {
+      const aIdx = Math.min(
+        merged.generalPlans.length,
+        Math.max(1, Math.floor(Number(merged.activeGeneralPlan) || 1))
+      ) - 1;
+      merged.generalPlans = merged.generalPlans.map((p, idx) =>
+        idx === aIdx ? { ...p, ...merged } : p
+      );
+      merged.generalPlan1 = merged.generalPlans[0];
+      if (merged.generalPlans[1]) {
+        merged.generalPlan2 = merged.generalPlans[1];
+      }
     }
     return merged;
   }, [effectiveParsedCommand, hasQuoteItems, appendToCurrentQuote, currentProposalState]);
@@ -503,6 +516,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
               proposalState: nextState,
               quoteMode: nextState.quoteMode,
               plan2Summary: payload.plan2Summary,
+              planSummaries: payload.planSummaries,
             });
 
             onCustomerSaved(savedRes.savedCustomer, nextState);
@@ -585,6 +599,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
       proposalState: generatedState,
       quoteMode: generatedState.quoteMode,
       plan2Summary: quotePayload.plan2Summary,
+      planSummaries: quotePayload.planSummaries,
     });
 
     onCustomerSaved(savedRes.savedCustomer, generatedState);

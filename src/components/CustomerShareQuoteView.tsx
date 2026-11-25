@@ -113,14 +113,13 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
 
   const activePlan = simState.activeGeneralPlan || 1;
   const {
-    plan1Summary,
-    plan2Summary,
-    plan1SubSummary,
-    plan2SubSummary,
-    hasPlan1Data,
-    hasPlan2Data,
+    allPlans,
   } = getGeneralPlan1And2Summaries(simState);
-  const hasBothPlans = hasPlan1Data && hasPlan2Data;
+  const validSharePlans = useMemo(
+    () => allPlans.filter((p) => p.hasData),
+    [allPlans]
+  );
+  const hasBothPlans = allPlans.length >= 2 && validSharePlans.length >= 2;
 
   const generalSummary = calculateGeneralPurchaseSummary(simState);
   const generalHiPreed = calculateGeneralHiPreedSummary(
@@ -153,14 +152,20 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
     if (payloadCompareModes.length >= 2) {
       return resolveComparisonModePlanData(payload.state, simState.quoteMode);
     }
-    if (activePlan === 2 && hasPlan2Data && payload.state.generalPlan2) {
+    if (
+      Array.isArray(payload.state.generalPlans) &&
+      payload.state.generalPlans[activePlan - 1]
+    ) {
+      return payload.state.generalPlans[activePlan - 1];
+    }
+    if (activePlan === 2 && payload.state.generalPlan2) {
       return payload.state.generalPlan2;
     }
     if (payload.state.generalPlan1) {
       return payload.state.generalPlan1;
     }
     return payload.state;
-  }, [payloadCompareModes, payload.state, simState.quoteMode, activePlan, hasPlan2Data]);
+  }, [payloadCompareModes, payload.state, simState.quoteMode, activePlan]);
 
   const originGeneralAffiliateCard = isAffiliateGeneralCardType(
     originPlanData.generalCardType
@@ -470,28 +475,39 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
     showSub && (Boolean(originSubAffiliateCard) || !simState.hideSubPreed);
   const showSimulatorSection = hasGeneralSim || hasSubSim;
 
-  const plan1ComparePrice =
-    simState.quoteMode === 'subscription'
-      ? plan1SubSummary.finalMonthlyFee
-      : simState.quoteMode === 'hybrid'
-      ? plan1Summary.rawNet + plan1SubSummary.finalTotalFee
-      : plan1Summary.rawNet;
-  const plan2ComparePrice =
-    simState.quoteMode === 'subscription'
-      ? plan2SubSummary.finalMonthlyFee
-      : simState.quoteMode === 'hybrid'
-      ? plan2Summary.rawNet + plan2SubSummary.finalTotalFee
-      : plan2Summary.rawNet;
-  const planDiffAmount = Math.abs(plan1ComparePrice - plan2ComparePrice);
-  const planTotalSubDiff = Math.abs(
-    plan1SubSummary.finalTotalFee - plan2SubSummary.finalTotalFee
-  );
-  const cheaperPlanNum =
-    plan1ComparePrice < plan2ComparePrice
-      ? 1
-      : plan2ComparePrice < plan1ComparePrice
-      ? 2
-      : 0;
+  const planCompareMetrics = useMemo(() => {
+    if (validSharePlans.length < 2) {
+      return { cheaperPlanNum: 0, planDiffAmount: 0, planTotalSubDiff: 0 };
+    }
+    const priced = validSharePlans.map((p) => {
+      const compareVal =
+        simState.quoteMode === 'subscription'
+          ? p.subSummary.finalMonthlyFee
+          : simState.quoteMode === 'hybrid'
+          ? p.genSummary.rawNet + p.subSummary.finalTotalFee
+          : p.genSummary.rawNet;
+      return {
+        planNum: p.planNum,
+        compareVal,
+        subTotalVal: p.subSummary.finalTotalFee,
+      };
+    });
+    let minItem = priced[0];
+    let maxItem = priced[0];
+    for (const item of priced) {
+      if (item.compareVal < minItem.compareVal) minItem = item;
+      if (item.compareVal > maxItem.compareVal) maxItem = item;
+    }
+    const diff = Math.abs(maxItem.compareVal - minItem.compareVal);
+    const subTotalDiff = Math.abs(maxItem.subTotalVal - minItem.subTotalVal);
+    return {
+      cheaperPlanNum: diff > 0 ? minItem.planNum : 0,
+      planDiffAmount: diff,
+      planTotalSubDiff: subTotalDiff,
+    };
+  }, [validSharePlans, simState.quoteMode]);
+
+  const { cheaperPlanNum, planDiffAmount, planTotalSubDiff } = planCompareMetrics;
 
   const containerMaxW = 'max-w-2xl min-[700px]:max-w-3xl lg:max-w-4xl';
 
@@ -588,19 +604,23 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
           />
         )}
 
-        {/* 1안 vs 2안 실시간 비교 스위치 */}
+        {/* 다중 안(1안 ~ N안) 실시간 비교 스위치 */}
         {activeCompareModes.length < 2 && hasBothPlans && (
           <div className="no-print rounded-2xl bg-white dark:bg-[#131C2E] border border-[#D1D6DB] dark:border-white/10 p-3 sm:p-4 space-y-2 shadow-[0_2px_10px_rgba(25,31,40,0.03)]">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span className="font-black text-[#191F28] dark:text-white flex items-center gap-1.5 whitespace-nowrap shrink-0">
                 <Layers className="w-4 h-4 text-[#1B64DA] dark:text-[#60A5FA] shrink-0" />
-                <span>맞춤 설계 1안 ↔ 2안 비교</span>
+                <span>
+                  맞춤 설계{' '}
+                  {validSharePlans.map((p) => `${p.planNum}안`).join(' ↔ ')}{' '}
+                  비교
+                </span>
               </span>
               {cheaperPlanNum > 0 && planDiffAmount > 0 ? (
                 <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] dark:bg-[#1E3A8A]/40 border border-[#BFDBFE] dark:border-[#3B82F6]/40 text-[#1B64DA] dark:text-[#93C5FD] text-[11px] font-extrabold font-mono tabular-nums break-keep">
                   {simState.quoteMode === 'subscription'
-                    ? `${cheaperPlanNum}안 선택 시 월 ${planDiffAmount.toLocaleString()}원 · ${subSummary.representativePeriod}개월 총 ${planTotalSubDiff.toLocaleString()}원 절감`
-                    : `${cheaperPlanNum}안 선택 시 ${planDiffAmount.toLocaleString()}원 추가 절감`}
+                    ? `${cheaperPlanNum}안 선택 시 최대 월 ${planDiffAmount.toLocaleString()}원 · ${subSummary.representativePeriod}개월 총 ${planTotalSubDiff.toLocaleString()}원 절감`
+                    : `${cheaperPlanNum}안 선택 시 최대 ${planDiffAmount.toLocaleString()}원 절감`}
                 </span>
               ) : (
                 <span className="text-[11px] font-semibold text-[#8B95A1] dark:text-slate-400 whitespace-nowrap">
@@ -608,11 +628,16 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
-              {[1, 2].map((pNum) => {
+            <div
+              className={`grid grid-cols-1 min-[380px]:grid-cols-2 ${
+                validSharePlans.length >= 3 ? 'md:grid-cols-3' : ''
+              } gap-2`}
+            >
+              {validSharePlans.map((pEntry) => {
+                const pNum = pEntry.planNum;
                 const isSelected = activePlan === pNum;
-                const gSum = pNum === 1 ? plan1Summary : plan2Summary;
-                const sSum = pNum === 1 ? plan1SubSummary : plan2SubSummary;
+                const gSum = pEntry.genSummary;
+                const sSum = pEntry.subSummary;
                 const sSurplus = getSubscriptionSurplusMeta(
                   sSum.finalMonthlyFee,
                   sSum.hiPlusPayoutMethod
@@ -646,7 +671,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
                     type="button"
                     onClick={() =>
                       setSimState((prev) =>
-                        switchGeneralPlanInState(prev, pNum as 1 | 2)
+                        switchGeneralPlanInState(prev, pNum)
                       )
                     }
                     className={`p-2.5 sm:p-3 rounded-xl text-left border-2 transition cursor-pointer schedule-tactile min-w-0 ${

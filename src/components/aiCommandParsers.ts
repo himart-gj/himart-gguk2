@@ -449,7 +449,12 @@ export function searchCrmCustomersFromCommand(
       nameTokens.some((tok) => (c.name || '').includes(tok));
     const phoneMatch =
       numTokens.length > 0 &&
-      numTokens.some((num) => (c.phone || '').includes(num));
+      numTokens.some(
+        (num) =>
+          (c.phone || '').includes(num) ||
+          (c.orderNo || '').includes(num) ||
+          (c.quotes || []).some((qt) => (qt.orderNo || '').includes(num))
+      );
     if (nameTokens.length === 0 && numTokens.length === 0) return true;
     return nameMatch || phoneMatch;
   });
@@ -1197,10 +1202,12 @@ export function buildProposalStateFromAiCommand(cmd: ParsedAiCommand): ProposalS
     hiPlusCounts: { hi72: 0, hi90: 0, hi108: 0 },
   };
 
+  const cleanPlan1 = extractGeneralPlanData(plan1);
   return {
     quoteMode: cmd.quoteMode,
     activeGeneralPlan: 1,
-    generalPlan1: extractGeneralPlanData(plan1),
+    generalPlans: [cleanPlan1],
+    generalPlan1: cleanPlan1,
     generalPlan2: extractGeneralPlanData(emptyPlan2),
     ...plan1,
   };

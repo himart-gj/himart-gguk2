@@ -5,6 +5,7 @@ import {
   CustomerStatus,
   MAX_QUOTES_PER_CUSTOMER,
   PurchasedModelEntry,
+  QuotePlan2Summary,
   QuoteRecord,
   SlipDeliveryStatus,
 } from '../types/crm';
@@ -14,6 +15,7 @@ import {
   buildConfirmedSlipUnitProfiles,
   extractPerformanceFromProposalState,
   getConfirmedSlipQuotes,
+  parsePurchasedModelsFromItemsText,
 } from '../utils/settlementEngine';
 import {
   calculateGeneralPurchaseSummary,
@@ -159,6 +161,7 @@ export function syncCustomerFromConfirmedSlips(
   const genSlips = confirmedSlips.filter(
     (q) =>
       q.quoteMode === 'general' ||
+      (q.quoteMode === 'hybrid' && (Number(q.generalProductTotal) || 0) > 0) ||
       (!q.quoteMode && (Number(q.generalProductTotal) || 0) > 0)
   );
   const subSlips = confirmedSlips.filter(
@@ -244,6 +247,9 @@ export function syncCustomerFromConfirmedSlips(
   }
 
   const latestSlip = confirmedSlips[0];
+  const latestSlipWithOrder = confirmedSlips.find((s) =>
+    Boolean((s.orderNo || '').trim())
+  );
 
   return {
     ...customer,
@@ -262,7 +268,7 @@ export function syncCustomerFromConfirmedSlips(
     deliveryDate: nextDeliveryDate,
     contractDate:
       latestSlip?.contractDate || customer.contractDate || agg.contractDateStr,
-    orderNo: latestSlip?.orderNo || customer.orderNo,
+    orderNo: latestSlipWithOrder?.orderNo?.trim() || customer.orderNo || '',
   };
 }
 
@@ -456,6 +462,255 @@ export function toggleSlipDeliveryStatusAndSyncCustomer(
     quotes: nextQuotes,
     updatedAtMs: Date.now(),
   });
+}
+
+export interface QuoteSlipInlinePatch {
+  orderNo?: string;
+  contractDate?: string;
+  deliveryDate?: string;
+  deliveryStatus?: SlipDeliveryStatus;
+  itemSummary?: string;
+  promoteToConfirmedSlip?: boolean;
+}
+
+/**
+ * 개별 전표/견적의 전표번호(orderNo)·계약일·배달일·배송상태·품목요약을 인라인 수정하거나
+ * 일반 상담 견적을 확정 전표(isConfirmedSlip: true)로 즉시 승격하고 고객 통합 실적을 재동기화합니다.
+ */
+export function updateQuoteSlipAndSyncCustomer(
+  customer: CustomerItem,
+  quoteId: string,
+  patch: QuoteSlipInlinePatch
+): CustomerItem {
+  const today = getTodayStr();
+  const rawQuotes = Array.isArray(customer.quotes) ? customer.quotes : [];
+  let editedOrderNo: string | undefined = undefined;
+  let wasPrimarySlipEdited = false;
+
+  const prevConfirmedIds = rawQuotes
+    .filter((q) => Boolean(q?.isConfirmedSlip))
+    .map((q) => q.id);
+
+  const nextQuotes = rawQuotes.map((q) => {
+    if (q.id !== quoteId) return q;
+
+    const nextIsSlip = Boolean(
+      q.isConfirmedSlip || patch.promoteToConfirmedSlip
+    );
+    const nextOrderNo =
+      patch.orderNo !== undefined
+        ? patch.orderNo.trim()
+        : (q.orderNo || '').trim();
+    editedOrderNo = nextOrderNo;
+    if (
+      prevConfirmedIds.length <= 1 &&
+      (prevConfirmedIds[0] === q.id || prevConfirmedIds.length === 0)
+    ) {
+      wasPrimarySlipEdited = true;
+    }
+
+    const nextContractDate =
+      patch.contractDate !== undefined
+        ? patch.contractDate.trim()
+        : q.contractDate || customer.contractDate || today;
+    const nextDelivStatus: SlipDeliveryStatus =
+      patch.deliveryStatus || q.deliveryStatus || '배송대기';
+    const rawDelivDate =
+      patch.deliveryDate !== undefined
+        ? patch.deliveryDate.trim()
+        : q.deliveryDate || '';
+    const nextDeliveryDate =
+      nextDelivStatus === '배송완료' && !rawDelivDate
+        ? nextContractDate || today
+        : rawDelivDate;
+
+    const nextItemSummary =
+      patch.itemSummary !== undefined && patch.itemSummary.trim()
+        ? patch.itemSummary.trim()
+        : q.itemSummary;
+
+    const coreTitle =
+      (q.title || nextItemSummary.slice(0, 18) || '맞춤 견적')
+        .replace(/^\[(?:전표[^\]]*|확정전표)\]\s*/, '')
+        .trim() ||
+      nextItemSummary.slice(0, 18) ||
+      '확정전표';
+
+    const nextTitle = nextIsSlip
+      ? nextOrderNo
+        ? `[전표 ${nextOrderNo}] ${coreTitle}`
+        : `[확정전표] ${coreTitle}`
+      : q.title;
+
+    let nextPurchasedModels = q.purchasedModels;
+    if (
+      patch.itemSummary !== undefined &&
+      nextItemSummary !== q.itemSummary &&
+      nextItemSummary
+    ) {
+      const parsedModels = parsePurchasedModelsFromItemsText(
+        nextItemSummary,
+        q.quoteMode === 'subscription' ? 'subscription' : 'general'
+      );
+      if (parsedModels.length > 0) {
+        const prevPrincipal =
+          (q.quoteMode === 'subscription'
+            ? q.subscriptionPrincipal
+            : q.generalProductTotal) ||
+          q.performanceAmount ||
+          q.paidAmount ||
+          0;
+        nextPurchasedModels = parsedModels.map((pm, idx) => ({
+          ...pm,
+          principalAmount:
+            idx === 0 && parsedModels.length === 1 && prevPrincipal > 0
+              ? prevPrincipal
+              : pm.principalAmount,
+        }));
+      }
+    }
+
+    return {
+      ...q,
+      title: nextTitle,
+      itemSummary: nextItemSummary,
+      orderNo: nextOrderNo,
+      purchasedModels: nextPurchasedModels,
+      ...(nextIsSlip
+        ? {
+            isConfirmedSlip: true,
+            contractDate: nextContractDate,
+            deliveryDate: nextDeliveryDate,
+            deliveryStatus: nextDelivStatus,
+          }
+        : {}),
+    };
+  });
+
+  const nextTopOrderNo =
+    wasPrimarySlipEdited && editedOrderNo !== undefined
+      ? editedOrderNo
+      : customer.orderNo;
+
+  if (nextQuotes.some((q) => q.isConfirmedSlip)) {
+    return syncCustomerFromConfirmedSlips({
+      ...customer,
+      orderNo: nextTopOrderNo,
+      quotes: nextQuotes,
+      updatedAtMs: Date.now(),
+    });
+  }
+
+  const topQuote = nextQuotes[0];
+  const syncedPatch = topQuote
+    ? buildPrimaryFieldsFromQuote(topQuote, customer)
+    : {};
+  return {
+    ...customer,
+    ...syncedPatch,
+    orderNo: editedOrderNo !== undefined ? editedOrderNo : customer.orderNo,
+    quotes: nextQuotes,
+    updatedAtMs: Date.now(),
+  };
+}
+
+/**
+ * 상담 견적(미확정 견적)이 여러 개일 때 선택된 견적만 남기고 나머지 비교 상담견적을 정리합니다.
+ * 단, 확정 전표(isConfirmedSlip: true)는 절대 삭제되지 않도록 100% 보호합니다.
+ */
+export function confirmDraftQuoteAndCleanOthers(
+  customer: CustomerItem,
+  keepQuoteId: string
+): CustomerItem {
+  const rawQuotes = Array.isArray(customer.quotes) ? customer.quotes : [];
+  const targetQuote = rawQuotes.find((q) => q.id === keepQuoteId);
+  if (!targetQuote || targetQuote.isConfirmedSlip) return customer;
+
+  const nextQuotes = rawQuotes.filter(
+    (q) => Boolean(q?.isConfirmedSlip) || q.id === keepQuoteId
+  );
+
+  if (nextQuotes.some((q) => q.isConfirmedSlip)) {
+    return syncCustomerFromConfirmedSlips({
+      ...customer,
+      quotes: nextQuotes,
+      updatedAtMs: Date.now(),
+    });
+  }
+
+  const syncedPatch = buildPrimaryFieldsFromQuote(targetQuote, customer);
+  return {
+    ...customer,
+    ...syncedPatch,
+    quotes: nextQuotes,
+    updatedAtMs: Date.now(),
+  };
+}
+
+/**
+ * 고객 기본정보 영역에서 대표 orderNo·계약일·배달일을 수정했을 때
+ * 확정 전표가 1건인 경우 해당 전표와 양방향 동기화하여 syncCustomerFromConfirmedSlips 시 되돌아감을 방어합니다.
+ */
+export function applyCustomerFieldPatchWithSlipSync(
+  customer: CustomerItem,
+  patch: Partial<CustomerItem>
+): CustomerItem {
+  const nowMs = Date.now();
+  const rawQuotes = Array.isArray(customer.quotes) ? customer.quotes : [];
+  const confirmedSlips = rawQuotes.filter((q) => Boolean(q?.isConfirmedSlip));
+
+  let nextQuotes = patch.quotes ?? rawQuotes;
+  if (
+    !patch.quotes &&
+    confirmedSlips.length === 1 &&
+    (patch.orderNo !== undefined ||
+      patch.contractDate !== undefined ||
+      patch.deliveryDate !== undefined)
+  ) {
+    const onlySlipId = confirmedSlips[0].id;
+    nextQuotes = rawQuotes.map((q) => {
+      if (q.id !== onlySlipId) return q;
+      const updatedOrderNo =
+        patch.orderNo !== undefined
+          ? patch.orderNo.trim()
+          : (q.orderNo || '').trim();
+      const coreTitle =
+        (q.title || q.itemSummary?.slice(0, 18) || '확정전표')
+          .replace(/^\[(?:전표[^\]]*|확정전표)\]\s*/, '')
+          .trim() || '확정전표';
+      const updatedTitle =
+        patch.orderNo !== undefined
+          ? updatedOrderNo
+            ? `[전표 ${updatedOrderNo}] ${coreTitle}`
+            : `[확정전표] ${coreTitle}`
+          : q.title;
+      return {
+        ...q,
+        title: updatedTitle,
+        orderNo: updatedOrderNo,
+        contractDate:
+          patch.contractDate !== undefined
+            ? patch.contractDate.trim()
+            : q.contractDate,
+        deliveryDate:
+          patch.deliveryDate !== undefined
+            ? patch.deliveryDate.trim()
+            : q.deliveryDate,
+      };
+    });
+  }
+
+  const candidate: CustomerItem = {
+    ...customer,
+    ...patch,
+    quotes: nextQuotes,
+    updatedAtMs: nowMs,
+  };
+
+  if (nextQuotes.some((q) => q?.isConfirmedSlip)) {
+    return syncCustomerFromConfirmedSlips(candidate);
+  }
+  return candidate;
 }
 
 export function deduplicateCustomers(list: CustomerItem[]): CustomerItem[] {
@@ -662,15 +917,11 @@ export async function saveCustomerQuote(payload: {
   subscriptionPrincipal?: number;
   freedCounts?: CustomerFreedCounts;
   purchasedModels?: PurchasedModelEntry[];
-  plan2Summary?: {
-    itemSummary: string;
-    paidAmount: number;
-    netAmount: number;
-    benefit?: string;
-    performanceAmount?: number;
-  };
+  plan2Summary?: QuotePlan2Summary;
+  planSummaries?: QuotePlan2Summary[];
   saveMode?: 'overwrite' | 'append';
   overwriteQuoteId?: string;
+  allowOverwriteConfirmedSlip?: boolean;
   isConfirmedSlip?: boolean;
   slipDeliveryStatus?: SlipDeliveryStatus;
   outboundType?: string;
@@ -709,13 +960,36 @@ export async function saveCustomerQuote(payload: {
 
   const cleanOrderNo = (payload.orderNo || '').trim();
   const cleanContractDate = payload.contractDate?.trim() || todayStr;
-  const cleanDeliveryDate = (payload.deliveryDate || '').trim();
+  const rawDeliveryDate = (payload.deliveryDate || '').trim();
+  const effectiveIsConfirmedSlip = Boolean(
+    payload.isConfirmedSlip ||
+      payload.status === '계약완료' ||
+      payload.status === '배송완료' ||
+      cleanOrderNo
+  );
+  const effectiveSlipDelivStatus: SlipDeliveryStatus =
+    payload.slipDeliveryStatus ||
+    (payload.status === '배송완료' ? '배송완료' : '배송대기');
+  const cleanDeliveryDate =
+    effectiveIsConfirmedSlip &&
+    effectiveSlipDelivStatus === '배송완료' &&
+    !rawDeliveryDate
+      ? cleanContractDate
+      : rawDeliveryDate;
+
+  const baseTitle =
+    payload.quoteTitle?.trim() ||
+    `${payload.items.slice(0, 18) || '맞춤 견적'}`;
+  const resolvedQuoteTitle =
+    effectiveIsConfirmedSlip &&
+    cleanOrderNo &&
+    !baseTitle.includes(cleanOrderNo)
+      ? `[전표 ${cleanOrderNo}] ${baseTitle.replace(/^\[(?:전표[^\]]*|확정전표)\]\s*/, '')}`
+      : baseTitle;
 
   const newQuote: QuoteRecord = {
     id: `QT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    title:
-      payload.quoteTitle?.trim() ||
-      `${payload.items.slice(0, 18) || '맞춤 견적'}`,
+    title: resolvedQuoteTitle,
     createdAt: nowStr,
     itemSummary: payload.items,
     paidAmount: payload.paidAmount,
@@ -726,20 +1000,21 @@ export async function saveCustomerQuote(payload: {
       : undefined,
     quoteMode: payload.quoteMode,
     plan2Summary: payload.plan2Summary,
+    ...(payload.planSummaries && payload.planSummaries.length > 0
+      ? { planSummaries: payload.planSummaries }
+      : {}),
     performanceAmount: resolvedPerformanceAmount,
     generalProductTotal: resolvedGeneralTotal,
     subscriptionPrincipal: resolvedSubPrincipal,
     freedCounts: resolvedFreedCounts,
     purchasedModels: resolvedPurchasedModels,
     ...(cleanOrderNo ? { orderNo: cleanOrderNo } : {}),
-    ...(payload.isConfirmedSlip
+    ...(effectiveIsConfirmedSlip
       ? {
           isConfirmedSlip: true,
           contractDate: cleanContractDate,
           deliveryDate: cleanDeliveryDate,
-          deliveryStatus:
-            payload.slipDeliveryStatus ||
-            (payload.status === '배송완료' ? '배송완료' : '배송대기'),
+          deliveryStatus: effectiveSlipDelivStatus,
           outboundType: payload.outboundType || '',
           deliveryTimeSlot: payload.deliveryTimeSlot || '',
         }
@@ -787,7 +1062,7 @@ export async function saveCustomerQuote(payload: {
 
     let nextQuotes: QuoteRecord[];
     if (duplicateOrderIdx >= 0) {
-      // 동일 전표번호(orderNo) 재업로드 시 중복 추가 대신 해당 전표만 안전하게 업데이트
+      // 동일 전표번호(orderNo) 재업로드/재저장 시 중복 추가 대신 해당 전표만 안전하게 업데이트
       wasOverwritten = true;
       const preservedId = prevQuotes[duplicateOrderIdx]?.id || newQuote.id;
       savedQuoteId = preservedId;
@@ -800,22 +1075,39 @@ export async function saveCustomerQuote(payload: {
         .map((q, idx) => (idx === duplicateOrderIdx ? overwrittenQuote : q))
         .slice(0, MAX_QUOTES_PER_CUSTOMER);
     } else if (payload.saveMode === 'overwrite' && prevQuotes.length > 0) {
-      wasOverwritten = true;
-      const targetIdx = payload.overwriteQuoteId
+      const explicitIdx = payload.overwriteQuoteId
         ? prevQuotes.findIndex((q) => q.id === payload.overwriteQuoteId)
-        : 0;
-      const replaceIdx = targetIdx >= 0 ? targetIdx : 0;
-      const preservedId = prevQuotes[replaceIdx]?.id || newQuote.id;
-      savedQuoteId = preservedId;
-      const overwrittenQuote: QuoteRecord = {
-        ...newQuote,
-        id: preservedId,
-      };
-      const remaining = prevQuotes.filter((_, idx) => idx !== replaceIdx);
-      nextQuotes = [overwrittenQuote, ...remaining].slice(
-        0,
-        MAX_QUOTES_PER_CUSTOMER
-      );
+        : -1;
+      const fallbackDraftIdx = prevQuotes.findIndex((q) => !q.isConfirmedSlip);
+      const candidateIdx =
+        explicitIdx >= 0 ? explicitIdx : fallbackDraftIdx;
+      const candidateTarget =
+        candidateIdx >= 0 ? prevQuotes[candidateIdx] : undefined;
+
+      // 확정 전표는 명시적 허용(allowOverwriteConfirmedSlip) 없이는 절대 덮어쓰지 않고 새 전표/견적으로 안전 추가
+      if (
+        candidateTarget &&
+        (!candidateTarget.isConfirmedSlip ||
+          payload.allowOverwriteConfirmedSlip)
+      ) {
+        wasOverwritten = true;
+        const preservedId = candidateTarget.id || newQuote.id;
+        savedQuoteId = preservedId;
+        const overwrittenQuote: QuoteRecord = {
+          ...newQuote,
+          id: preservedId,
+        };
+        const remaining = prevQuotes.filter((_, idx) => idx !== candidateIdx);
+        nextQuotes = [overwrittenQuote, ...remaining].slice(
+          0,
+          MAX_QUOTES_PER_CUSTOMER
+        );
+      } else {
+        nextQuotes = [newQuote, ...prevQuotes].slice(
+          0,
+          MAX_QUOTES_PER_CUSTOMER
+        );
+      }
     } else {
       nextQuotes = [newQuote, ...prevQuotes].slice(0, MAX_QUOTES_PER_CUSTOMER);
     }

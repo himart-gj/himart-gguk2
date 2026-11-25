@@ -70,6 +70,45 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   const slipCount = confirmedSlips.length;
   const draftQuoteCount = allQuotes.length - slipCount;
 
+  const sortedSlips = [...confirmedSlips].sort((a, b) => {
+    const da = (a.contractDate || a.createdAt || '').slice(0, 10);
+    const db = (b.contractDate || b.createdAt || '').slice(0, 10);
+    if (da !== db) return db.localeCompare(da);
+    return 0;
+  });
+  const slipOrderNos = sortedSlips
+    .map((s) => (s.orderNo || '').trim())
+    .filter(Boolean);
+  if (slipOrderNos.length === 0 && customer.orderNo?.trim()) {
+    slipOrderNos.push(customer.orderNo.trim());
+  }
+
+  const pendingSlipCount = confirmedSlips.filter(
+    (s) => s.deliveryStatus !== '배송완료'
+  ).length;
+  const doneSlipCount = confirmedSlips.filter(
+    (s) => s.deliveryStatus === '배송완료'
+  ).length;
+
+  const orderNoChipText = (() => {
+    if (slipCount <= 1) {
+      return slipOrderNos[0] ? `🧾 ${slipOrderNos[0]}` : '';
+    }
+    if (slipCount === 2) {
+      if (slipOrderNos.length >= 2) {
+        return `🧾 ${slipOrderNos[0]} · ${slipOrderNos[1]}`;
+      }
+      if (slipOrderNos.length === 1) {
+        return `🧾 ${slipOrderNos[0]} 외 1건`;
+      }
+      return '';
+    }
+    if (slipOrderNos.length >= 1) {
+      return `🧾 ${slipOrderNos[0]} 외 ${slipCount - 1}건`;
+    }
+    return '';
+  })();
+
   const hasUnpaidGift =
     Boolean(customer.giftItems && customer.giftItems.trim()) &&
     !customer.giftSent;
@@ -85,7 +124,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
   // 다중 전표 고객일 때 대표 품목 1개 + '외 N건'으로 지저분함 없이 한 줄 정돈
   const conciseItemsHeadline = (() => {
     if (slipCount >= 2) {
-      const firstSummary = (confirmedSlips[0]?.itemSummary || customer.items || '')
+      const firstSummary = (sortedSlips[0]?.itemSummary || customer.items || '')
         .split(/\s*\+\s*|\s*,\s*/)[0]
         ?.trim();
       return firstSummary
@@ -175,7 +214,7 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
         {/* 상단: 고객명 + 연락처 + 상태/전표수/배송 뱃지 */}
         <div>
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h3 className="text-base sm:text-lg font-extrabold tracking-tight truncate">
                   {customer.name}
@@ -198,6 +237,21 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                     }`}
                   >
                     🧾 전표 {slipCount}건
+                  </span>
+                )}
+                {slipCount >= 2 && (
+                  <span
+                    className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-extrabold border font-mono tabular-nums whitespace-nowrap ${
+                      pendingSlipCount > 0
+                        ? isDark
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-400/35'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                        : isDark
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-400/35'
+                        : 'bg-emerald-50 text-[#059669] border-emerald-200'
+                    }`}
+                  >
+                    배송 {pendingSlipCount} · 완료 {doneSlipCount}
                   </span>
                 )}
                 {draftQuoteCount > 0 && (
@@ -242,14 +296,24 @@ export const CompactCustomerCard: React.FC<CompactCustomerCardProps> = ({
                   </span>
                 )}
               </div>
-              <p className={`text-xs font-semibold font-mono tabular-nums mt-0.5 ${mutedText}`}>
-                {customer.phone || '연락처 미입력'}
-                {slipCount === 1 && confirmedSlips[0]?.orderNo && (
-                  <span className="ml-1.5 opacity-80">
-                    · {confirmedSlips[0].orderNo}
+
+              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className={`text-xs font-semibold font-mono tabular-nums ${mutedText}`}>
+                  {customer.phone || '연락처 미입력'}
+                </span>
+                {orderNoChipText && (
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-extrabold font-mono tabular-nums border max-w-full truncate ${
+                      isDark
+                        ? 'bg-slate-800/90 text-slate-200 border-slate-700'
+                        : 'bg-[#F2F4F6] text-[#191F28] border-[#E5E8EB]'
+                    }`}
+                    title={slipOrderNos.join(', ')}
+                  >
+                    {orderNoChipText}
                   </span>
                 )}
-              </p>
+              </div>
             </div>
 
             {/* 배송 D-Day 뱃지 */}

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AFFILIATE_CARDS, AffiliateCardId, calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, copyPlan1ToPlan2InState, AFFILIATE_GENERAL_CARD_OPTIONS, GENERAL_CATEGORY_PRESETS, isAffiliateGeneralCardType, MAX_FREED_ACCOUNTS, GENERAL_HIPREED_PLANS, GeneralExtraBenefitItem, GeneralExtraBenefitType, GeneralHiPreedKey, GeneralPurchaseItem, getGeneralPlan1And2Summaries, getSubscriptionPeriodSummary, getSubscriptionSurplusMeta, HiPlusKey, normalizeSubscriptionPeriod, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionItem, SubscriptionPeriod, switchGeneralPlanInState } from '../types/proposal';
+import { addEmptyGeneralPlanInState, AFFILIATE_CARDS, AffiliateCardId, AFFILIATE_GENERAL_CARD_OPTIONS, applyAllGeneralPlansPatch, calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, confirmActiveGeneralPlanInState, copyPlan1ToPlan2InState, deleteGeneralPlanInState, duplicateActiveGeneralPlanInState, GENERAL_CATEGORY_PRESETS, GENERAL_HIPREED_PLANS, GeneralExtraBenefitItem, GeneralExtraBenefitType, GeneralHiPreedKey, GeneralPurchaseItem, getGeneralPlan1And2Summaries, getSubscriptionPeriodSummary, getSubscriptionSurplusMeta, HiPlusKey, isAffiliateGeneralCardType, MAX_FREED_ACCOUNTS, MAX_QUOTE_PLANS, normalizeSubscriptionPeriod, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionItem, SubscriptionPeriod, switchGeneralPlanInState } from '../types/proposal';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import { getStoredGeminiApiKey, setStoredGeminiApiKey } from '../utils/aiImageParser';
 import { ArrowLeft, Camera, Check, Copy, CreditCard, Eye, EyeOff, KeyRound, Loader2, Minus, Plus, RotateCcw, Save, ShieldCheck, ShoppingBag, User, X } from 'lucide-react';
@@ -146,33 +146,92 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
     }, 800);
   };
 
-  // ==================== 일반구매 & 구독구매 1안/2안 요약 핸들러 ====================
+  const [planActionNotice, setPlanActionNotice] = useState<string | null>(null);
+  const triggerPlanNotice = (msg: string) => {
+    setPlanActionNotice(msg);
+    setTimeout(() => {
+      setPlanActionNotice((prev) => (prev === msg ? null : prev));
+    }, 2200);
+  };
+
+  // ==================== 일반구매 & 구독구매 다중 안(1안~6안) 요약 핸들러 ====================
   const generalSummary = calculateGeneralPurchaseSummary(state);
   const generalHiPreedSummary = calculateGeneralHiPreedSummary(
     state.generalHiPreedCounts,
     Boolean(state.hideHiPreed)
   );
-  const { plan1Summary, plan2Summary, plan1SubSummary, plan2SubSummary } =
-    getGeneralPlan1And2Summaries(state);
-  const bothPlansHavePrice = plan1Summary.sum > 0 && plan2Summary.sum > 0;
-  const planNetDiff = plan2Summary.rawNet - plan1Summary.rawNet;
+  const {
+    plan1Summary,
+    plan2Summary,
+    plan1SubSummary,
+    plan2SubSummary,
+    allPlans,
+  } = getGeneralPlan1And2Summaries(state);
 
-  const bothSubPlansHavePrice =
-    plan1SubSummary.totalBaseMonthly > 0 &&
-    plan2SubSummary.totalBaseMonthly > 0;
+  const validGenPlans = allPlans.filter((p) => p.genSummary.sum > 0);
+  const bothPlansHavePrice = validGenPlans.length >= 2;
+  const planNetDiff =
+    validGenPlans.length >= 2
+      ? validGenPlans[validGenPlans.length - 1].genSummary.rawNet -
+        validGenPlans[0].genSummary.rawNet
+      : plan2Summary.rawNet - plan1Summary.rawNet;
+
+  const validSubPlans = allPlans.filter(
+    (p) => p.subSummary.totalBaseMonthly > 0
+  );
+  const bothSubPlansHavePrice = validSubPlans.length >= 2;
   const subNetDiff =
-    plan2SubSummary.finalMonthlyFee - plan1SubSummary.finalMonthlyFee;
+    validSubPlans.length >= 2
+      ? validSubPlans[validSubPlans.length - 1].subSummary.finalMonthlyFee -
+        validSubPlans[0].subSummary.finalMonthlyFee
+      : plan2SubSummary.finalMonthlyFee - plan1SubSummary.finalMonthlyFee;
   const subTotalNetDiff =
-    plan2SubSummary.finalTotalFee - plan1SubSummary.finalTotalFee;
+    validSubPlans.length >= 2
+      ? validSubPlans[validSubPlans.length - 1].subSummary.finalTotalFee -
+        validSubPlans[0].subSummary.finalTotalFee
+      : plan2SubSummary.finalTotalFee - plan1SubSummary.finalTotalFee;
 
-  const handleSelectGeneralPlan = (targetPlan: 1 | 2) => {
+  const canAddMorePlans = allPlans.length < MAX_QUOTE_PLANS;
+
+  const handleSelectGeneralPlan = (targetPlan: number) => {
     onChange((prev) => switchGeneralPlanInState(prev, targetPlan));
   };
 
-  const handleCopyPlan1ToPlan2 = () => {
-    onChange((prev) => copyPlan1ToPlan2InState(prev));
+  const handleAddEmptyPlan = () => {
+    if (!canAddMorePlans) return;
+    const nextNum = allPlans.length + 1;
+    onChange((prev) => addEmptyGeneralPlanInState(prev));
+    triggerPlanNotice(`✓ 새 견적 ${nextNum}안이 추가되었습니다`);
+  };
+
+  const handleDuplicateCurrentPlan = () => {
+    if (!canAddMorePlans) return;
+    const srcNum = state.activeGeneralPlan || 1;
+    const nextNum = allPlans.length + 1;
+    onChange((prev) => duplicateActiveGeneralPlanInState(prev));
     setCopiedNotice(true);
     setTimeout(() => setCopiedNotice(false), 2000);
+    triggerPlanNotice(`✓ ${srcNum}안 구성을 ${nextNum}안으로 복제했습니다`);
+  };
+
+  const handleDeletePlan = (targetPlan: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (allPlans.length <= 1) return;
+    onChange((prev) => deleteGeneralPlanInState(prev, targetPlan));
+    triggerPlanNotice(
+      allPlans.length === 2
+        ? '✓ 남은 견적안이 단독 1안으로 자동 정렬되었습니다'
+        : `✓ ${targetPlan}안 삭제 후 번호가 자동 정렬되었습니다`
+    );
+  };
+
+  const handleConfirmCurrentPlan = () => {
+    if (allPlans.length <= 1) return;
+    const chosenNum = state.activeGeneralPlan || 1;
+    onChange((prev) => confirmActiveGeneralPlanInState(prev, chosenNum));
+    triggerPlanNotice(
+      `✓ 선택하신 ${chosenNum}안이 단독 1안으로 확정되었습니다 (나머지 비교안 정리 완료)`
+    );
   };
 
   const handleGeneralFileChange = async (
@@ -359,12 +418,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const handleToggleHideHiPreed = () => {
     onChange((prev) => {
       const nextHidden = !prev.hideHiPreed;
-      return {
-        ...prev,
+      return applyAllGeneralPlansPatch(prev, (plan) => ({
+        ...plan,
         hideHiPreed: nextHidden,
-        generalPlan1: { ...prev.generalPlan1, hideHiPreed: nextHidden },
-        generalPlan2: { ...prev.generalPlan2, hideHiPreed: nextHidden },
-      };
+      }));
     });
   };
 
@@ -623,55 +680,133 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           onShowProposal={onShowProposal}
         />
 
-        {/* Bottom Row: Plan 1 vs Plan 2 Segmented Switcher + Copy Action */}
-        <div className="pt-2.5 border-t border-[#E5E8EB] dark:border-slate-800 flex flex-col @lg:flex-row @lg:items-center justify-between gap-2">
-          <div className="grid grid-cols-1 @xs:grid-cols-2 @lg:inline-flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 p-1 rounded-xl border border-[#E5E8EB] dark:border-slate-800 w-full @lg:w-auto">
-            {[1, 2].map((planNum) => {
-              const pNum = planNum as 1 | 2;
-              const isAct = state.activeGeneralPlan === pNum;
-              const pGen = pNum === 1 ? plan1Summary : plan2Summary;
-              const pSub = pNum === 1 ? plan1SubSummary : plan2SubSummary;
-              return (
-                <button
-                  key={pNum}
-                  type="button"
-                  onClick={() => handleSelectGeneralPlan(pNum)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5 ${
-                    isAct
-                      ? 'bg-white dark:bg-[#131C2E] text-[#191F28] dark:text-slate-50 shadow-xs border border-[#E5E8EB] dark:border-slate-700'
-                      : 'text-[#8B95A1] dark:text-slate-400 hover:text-[#191F28] dark:hover:text-slate-100'
-                  }`}
-                >
-                  <span>견적 {pNum}안</span>
-                  {state.quoteMode === 'general' && pGen.sum > 0 && (
-                    <span className="font-mono text-[11.5px] text-[#E60012] dark:text-[#FF3B47]">
-                      {(pGen.rawNet / 10000).toFixed(0)}만
-                    </span>
-                  )}
-                  {state.quoteMode === 'subscription' && pSub.totalBaseMonthly > 0 && (
-                    <span className="font-mono text-[11.5px] text-[#E60012] dark:text-[#FF3B47]">
-                      월 {Math.max(0, pSub.finalMonthlyFee).toLocaleString()}원
-                    </span>
-                  )}
-                  {state.quoteMode === 'hybrid' &&
-                    (pGen.sum > 0 || pSub.totalBaseMonthly > 0) && (
-                      <span className="font-mono text-[11.5px] text-[#E60012] dark:text-[#FF3B47]">
-                        {(pGen.rawNet / 10000).toFixed(0)}만+월 {Math.max(0, pSub.finalMonthlyFee).toLocaleString()}원
-                      </span>
+        {/* Bottom Row: Dynamic Multi-Plan Switcher (1안 ~ 최대 6안) + Add / Duplicate / Confirm Actions */}
+        <div className="pt-2.5 border-t border-[#E5E8EB] dark:border-slate-800 space-y-2">
+          <div className="flex flex-col @lg:flex-row @lg:items-center justify-between gap-2">
+            {/* 좌측: 동적 안 탭 목록 (1안 ~ N안 + 개별 삭제 ✕) */}
+            <div className="flex flex-wrap items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 p-1 rounded-xl border border-[#E5E8EB] dark:border-slate-800 w-full @lg:w-auto">
+              {allPlans.map((pEntry) => {
+                const pNum = pEntry.planNum;
+                const isAct = (state.activeGeneralPlan || 1) === pNum;
+                const pGen = pEntry.genSummary;
+                const pSub = pEntry.subSummary;
+                return (
+                  <div
+                    key={pNum}
+                    className={`inline-flex items-center rounded-lg transition max-w-full ${
+                      isAct
+                        ? 'bg-white dark:bg-[#131C2E] text-[#191F28] dark:text-slate-50 shadow-xs border border-[#E5E8EB] dark:border-slate-700'
+                        : 'text-[#8B95A1] dark:text-slate-400 hover:text-[#191F28] dark:hover:text-slate-100'
+                    }`}
+                  >
+                    <button
+                      id={`quote-plan-tab-${pNum}`}
+                      type="button"
+                      onClick={() => handleSelectGeneralPlan(pNum)}
+                      className="px-2.5 py-1.5 text-xs font-extrabold cursor-pointer whitespace-nowrap flex items-center gap-1.5 min-w-0"
+                    >
+                      <span>{pNum}안</span>
+                      {state.quoteMode === 'general' && pGen.sum > 0 && (
+                        <span className="font-mono text-[11px] text-[#E60012] dark:text-[#FF3B47] tabular-nums">
+                          {Math.round(pGen.rawNet / 10000).toLocaleString()}만
+                        </span>
+                      )}
+                      {state.quoteMode === 'subscription' &&
+                        pSub.totalBaseMonthly > 0 && (
+                          <span className="font-mono text-[11px] text-[#E60012] dark:text-[#FF3B47] tabular-nums">
+                            월 {Math.max(0, pSub.finalMonthlyFee).toLocaleString()}원
+                          </span>
+                        )}
+                      {state.quoteMode === 'hybrid' &&
+                        (pGen.sum > 0 || pSub.totalBaseMonthly > 0) && (
+                          <span className="font-mono text-[11px] text-[#E60012] dark:text-[#FF3B47] tabular-nums">
+                            {Math.round(pGen.rawNet / 10000).toLocaleString()}만+월{' '}
+                            {Math.max(0, pSub.finalMonthlyFee).toLocaleString()}원
+                          </span>
+                        )}
+                    </button>
+
+                    {allPlans.length >= 2 && (
+                      <button
+                        id={`quote-plan-delete-${pNum}`}
+                        type="button"
+                        onClick={(e) => handleDeletePlan(pNum, e)}
+                        title={`${pNum}안 삭제 (남은 안은 1안부터 자동 재정렬됩니다)`}
+                        aria-label={`${pNum}안 삭제`}
+                        className={`mr-1 p-1 rounded-md transition cursor-pointer shrink-0 ${
+                          isAct
+                            ? 'text-[#8B95A1] hover:text-[#E60012] hover:bg-[#FFF1F2] dark:hover:bg-rose-500/20 dark:hover:text-rose-300'
+                            : 'text-[#8B95A1]/80 hover:text-[#E60012] hover:bg-white/70 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 우측: [+ 새 안 추가] / [📋 현재 안 복제] / [✅ 이 안만 남기고 확정] */}
+            <div className="flex flex-wrap items-center gap-1.5 w-full @lg:w-auto">
+              <button
+                id="quote-plan-add-btn"
+                type="button"
+                disabled={!canAddMorePlans}
+                onClick={handleAddEmptyPlan}
+                title={
+                  canAddMorePlans
+                    ? `빈 견적 ${allPlans.length + 1}안을 새로 추가합니다`
+                    : `최대 ${MAX_QUOTE_PLANS}안까지 추가할 수 있습니다`
+                }
+                className="flex-1 @sm:flex-initial inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#EFF6FF] dark:bg-blue-500/15 hover:bg-[#DBEAFE] dark:hover:bg-blue-500/25 text-[#1B64DA] dark:text-blue-300 border border-[#BFDBFE] dark:border-blue-500/30 font-extrabold text-xs transition cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {canAddMorePlans
+                    ? `안 추가 (${allPlans.length + 1}안)`
+                    : `최대 ${MAX_QUOTE_PLANS}안`}
+                </span>
+              </button>
+
+              <button
+                id="quote-plan-duplicate-btn"
+                type="button"
+                disabled={!canAddMorePlans}
+                onClick={handleDuplicateCurrentPlan}
+                title="현재 보고 있는 안의 품목·카드·프리드 구성을 그대로 복제한 새 비교안을 추가합니다"
+                className="flex-1 @sm:flex-initial inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 hover:bg-[#F2F4F6] dark:hover:bg-slate-700 text-[#4E5968] dark:text-slate-300 border border-[#E5E8EB] dark:border-slate-700 font-bold text-xs transition cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <Copy className="w-3.5 h-3.5 shrink-0" />
+                <span>
+                  {copiedNotice
+                    ? `✓ 복제 완료`
+                    : `${state.activeGeneralPlan || 1}안 복제 추가`}
+                </span>
+              </button>
+
+              {allPlans.length >= 2 && (
+                <button
+                  id="quote-plan-confirm-btn"
+                  type="button"
+                  onClick={handleConfirmCurrentPlan}
+                  title="현재 보고 있는 안만 남기고 나머지 미선택 비교안을 모두 정리하여 단독 1안으로 확정합니다"
+                  className="w-full @sm:w-auto inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg bg-[#059669] hover:bg-emerald-700 text-white font-extrabold text-xs shadow-2xs transition cursor-pointer whitespace-nowrap"
+                >
+                  <Check className="w-3.5 h-3.5 shrink-0" />
+                  <span>
+                    이 안({state.activeGeneralPlan || 1}안)만 남기고 확정
+                  </span>
                 </button>
-              );
-            })}
+              )}
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleCopyPlan1ToPlan2}
-            className="w-full @lg:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 hover:bg-[#F2F4F6] dark:hover:bg-slate-700 text-[#4E5968] dark:text-slate-300 border border-[#E5E8EB] dark:border-slate-700 font-bold text-xs transition cursor-pointer whitespace-nowrap"
-          >
-            <Copy className="w-3.5 h-3.5 shrink-0" />
-            <span>{copiedNotice ? '✓ 2안으로 복사 완료' : '1안 내용 → 2안 복사'}</span>
-          </button>
+          {planActionNotice && (
+            <div className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-[#059669] dark:text-emerald-300 text-[11.5px] font-extrabold break-keep">
+              {planActionNotice}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1277,16 +1412,25 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
 
               {bothPlansHavePrice && (
                 <div className="pt-2 border-t border-[#E5E8EB] dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-[11.5px]">
-                  <span className="font-mono text-[#4E5968] dark:text-slate-300">
-                    1안 {plan1Summary.rawNet.toLocaleString()}원 vs 2안{' '}
-                    {plan2Summary.rawNet.toLocaleString()}원
+                  <span className="font-mono text-[#4E5968] dark:text-slate-300 break-keep">
+                    {validGenPlans
+                      .map(
+                        (p) =>
+                          `${p.planNum}안 ${p.genSummary.rawNet.toLocaleString()}원`
+                      )
+                      .join(' vs ')}
                   </span>
-                  <span className="font-mono font-extrabold text-[#1B64DA] dark:text-blue-400">
-                    차액{' '}
-                    {planNetDiff > 0
-                      ? `+${planNetDiff.toLocaleString()}`
-                      : planNetDiff.toLocaleString()}
-                    원
+                  <span className="font-mono font-extrabold text-[#1B64DA] dark:text-blue-400 whitespace-nowrap ml-auto">
+                    {validGenPlans.length === 2 ? '차액 ' : '최대차액 '}
+                    {(() => {
+                      const nets = validGenPlans.map((p) => p.genSummary.rawNet);
+                      const maxDiff = Math.max(...nets) - Math.min(...nets);
+                      return validGenPlans.length === 2
+                        ? planNetDiff > 0
+                          ? `+${planNetDiff.toLocaleString()}원`
+                          : `${planNetDiff.toLocaleString()}원`
+                        : `${maxDiff.toLocaleString()}원`;
+                    })()}
                   </span>
                 </div>
               )}
@@ -1339,6 +1483,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           subTotalNetDiff={subTotalNetDiff}
           totalBaseMonthly={totalBaseMonthly}
           totalPrincipal={totalPrincipal}
+          validSubPlans={validSubPlans}
         />
       </div>
 
