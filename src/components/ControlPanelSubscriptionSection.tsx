@@ -246,20 +246,19 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   </p>
                 )}
 
-                {/* Row 2: Period Toggle (36/60) + Care Service + Monthly Fee */}
+                {/* Row 2: Period Toggle (36/48/60) + Care Service + Monthly Fee */}
                 <div className="grid grid-cols-12 gap-2 items-center pl-0 min-[380px]:pl-7">
-                  <div className="col-span-5 sm:col-span-3 inline-flex bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-[#E5E8EB] dark:border-slate-700">
-                    {([36, 60] as SubscriptionPeriod[]).map((p) => (
+                  <div className="col-span-5 sm:col-span-4 inline-flex bg-white dark:bg-slate-800 p-0.5 rounded-lg border border-[#E5E8EB] dark:border-slate-700">
+                    {([36, 48, 60] as SubscriptionPeriod[]).map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() =>
                           handleUpdateSubItem(item.id, {
                             period: p,
-                            warrantyType: '5년 무상 A/S 기본 포함',
                           })
                         }
-                        className={`flex-1 py-1 rounded-md font-bold text-[11.5px] transition cursor-pointer whitespace-nowrap ${
+                        className={`flex-1 py-1 px-1 rounded-md font-bold text-[11px] transition cursor-pointer whitespace-nowrap ${
                           itemPeriod === p
                             ? 'bg-[#191F28] dark:bg-blue-600 text-white'
                             : 'text-[#8B95A1] dark:text-slate-400 hover:text-[#191F28] dark:hover:text-slate-100'
@@ -307,7 +306,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                     <option value="custom">직접 입력</option>
                   </select>
 
-                  <div className="col-span-12 sm:col-span-5 relative">
+                  <div className="col-span-12 sm:col-span-4 relative">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] font-semibold text-[#8B95A1] dark:text-slate-400">
                       월 요금
                     </span>

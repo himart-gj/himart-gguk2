@@ -539,6 +539,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         ...prev,
         items: nextItems,
         subscriptionPeriod: repPeriod,
+        careService: nextItems[0]?.careService ?? prev.careService,
       };
     });
   };

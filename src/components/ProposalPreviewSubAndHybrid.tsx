@@ -1,13 +1,12 @@
 import React from 'react';
 import {
-  getSubscriptionItemPrincipal,
   getSubscriptionSurplusMeta,
   getValidDisplayModelName,
   normalizeSubscriptionPeriod,
   SubscriptionPeriod,
   SubscriptionPhaseSegment,
 } from '../types/proposal';
-import { Layers, RefreshCw, ShieldCheck, ShoppingBag, Sparkles, User } from 'lucide-react';
+import { Check, Layers, ShieldCheck, ShoppingBag, Sparkles, User } from 'lucide-react';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import {
   PreedSafetyGuideBox,
@@ -18,6 +17,252 @@ import {
 const sanitizeFiveYearText = (text?: string): string => {
   if (!text) return '';
   return text.replace(/3년\s*(무상|A\/?S)/gi, '5년 $1');
+};
+
+const isGenericSubPlaceholderCategory = (raw?: string): boolean => {
+  const t = (raw || '').trim();
+  return !t || /^(맞춤\s*)?구독\s*(가전|품목)(\s*\d+)?$/i.test(t);
+};
+
+const resolveWarrantyExtraText = (raw?: string): string => {
+  const cleaned = sanitizeFiveYearText(raw || '').trim();
+  if (!cleaned || /^5년\s*무상\s*A\/?S(\s*기본\s*포함)?$/i.test(cleaned)) {
+    return '';
+  }
+  return cleaned;
+};
+
+const resolveMastheadCareSummary = (
+  items?: any[],
+  fallbackCare?: string
+): string => {
+  const list = Array.isArray(items) && items.length > 0 ? items : [{}];
+  const cares = list.map((it) =>
+    sanitizeFiveYearText((it?.careService || fallbackCare || '').trim())
+  );
+  if (cares.every((c) => c.includes('케어없음'))) {
+    return '5년 무상 A/S 기본 포함';
+  }
+  if (cares.every((c) => c.includes('셀프케어'))) {
+    return '셀프케어 · 5년 무상 A/S 기본 포함';
+  }
+  if (cares.some((c) => !c || c.includes('방문케어'))) {
+    return '방문케어 · 5년 무상 A/S 기본 포함';
+  }
+  return '맞춤케어 · 5년 무상 A/S 기본 포함';
+};
+
+interface SubscriptionCareServiceCardProps {
+  items: any[];
+  fallbackPeriod: SubscriptionPeriod;
+  fallbackCare?: string;
+  fallbackWarranty?: string;
+  fmtCat?: (raw?: string | null) => string;
+  fmtModel?: (raw?: string | null) => string;
+  compact?: boolean;
+}
+
+const SubscriptionCareServiceCard: React.FC<SubscriptionCareServiceCardProps> = ({
+  items,
+  fallbackPeriod,
+  fallbackCare,
+  fallbackWarranty,
+  fmtCat = (v) => (v || '').trim(),
+  fmtModel = (v) => (v || '').trim(),
+  compact = false,
+}) => {
+  const list = Array.isArray(items) && items.length > 0 ? items : [{}];
+  const isSingle = list.length === 1;
+
+  if (isSingle) {
+    const it = list[0] || {};
+    const itemPeriod = normalizeSubscriptionPeriod(it.period, fallbackPeriod);
+    const formattedCat = fmtCat(it.category);
+    const realCat = isGenericSubPlaceholderCategory(formattedCat)
+      ? ''
+      : formattedCat;
+    const rawValidModel = getValidDisplayModelName(it.modelName, it.monthlyFee);
+    const validModel = rawValidModel ? fmtModel(rawValidModel) : '';
+    const hasProductHeader = Boolean(realCat || validModel);
+    const cleanCare = sanitizeFiveYearText(
+      (it.careService || fallbackCare || '방문케어 (전문가 점검·교체)').trim()
+    );
+    const warrantyExtra = resolveWarrantyExtraText(
+      it.warrantyType || fallbackWarranty
+    );
+
+    return (
+      <section className="rounded-2xl border border-[#E5E8EB] overflow-hidden bg-white">
+        <div
+          className={`${
+            compact ? 'px-4 py-2.5' : 'px-4 sm:px-5 py-3'
+          } bg-[#F8FAFC] border-b border-[#E5E8EB] flex items-center justify-between gap-2`}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <ShieldCheck className="w-4 h-4 text-[#1B64DA] shrink-0" />
+            <span className="text-xs sm:text-[13px] font-extrabold tracking-tight text-[#191F28] break-keep">
+              구독 포함 서비스 · 무상 케어 안내
+            </span>
+          </div>
+          <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10.5px] sm:text-[11px] font-extrabold shrink-0 whitespace-nowrap">
+            {compact ? '기본 포함' : '추가 비용 0원 · 기본 포함'}
+          </span>
+        </div>
+
+        <div className="divide-y divide-[#E5E8EB]">
+          {hasProductHeader && (
+            <div
+              className={`${
+                compact ? 'px-4 py-2.5' : 'px-4 sm:px-5 py-2.5'
+              } bg-[#F8FAFC]/50 flex items-center justify-between gap-2 flex-wrap`}
+            >
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <span className="px-1.5 py-0.5 rounded bg-[#191F28] text-white text-[10.5px] font-extrabold shrink-0">
+                  구독 가전
+                </span>
+                {realCat && (
+                  <span className="text-xs sm:text-sm font-extrabold text-[#191F28] break-keep">
+                    {realCat}
+                  </span>
+                )}
+                {validModel && (
+                  <span className="text-xs font-semibold text-[#4E5968] bg-white border border-[#E5E8EB] px-2 py-0.5 rounded font-mono break-all">
+                    {validModel}
+                  </span>
+                )}
+              </div>
+              <span className="text-[11px] font-extrabold text-[#1B64DA] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded shrink-0 whitespace-nowrap">
+                {itemPeriod}개월 구독 약정
+              </span>
+            </div>
+          )}
+
+          <div
+            className={`${
+              compact ? 'px-4 py-2.5' : 'px-4 sm:px-5 py-3'
+            } flex flex-wrap items-center justify-between gap-2`}
+          >
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-extrabold shrink-0">
+                <Check className="w-3 h-3 stroke-[3]" />
+                무상 보증
+              </span>
+              <span className="text-xs sm:text-sm font-extrabold text-[#191F28] break-keep">
+                5년 무상 A/S 연장보증 기본 포함
+              </span>
+            </div>
+            <span className="text-[11px] sm:text-xs font-bold text-[#4E5968] break-keep">
+              {warrantyExtra || '구독 기간 무상 수리 안심 보증'}
+            </span>
+          </div>
+
+          <div
+            className={`${
+              compact ? 'px-4 py-2.5' : 'px-4 sm:px-5 py-3'
+            } flex flex-wrap items-center justify-between gap-2`}
+          >
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#EFF6FF] border border-[#BFDBFE] text-[#1B64DA] text-[11px] font-extrabold shrink-0">
+                <Check className="w-3 h-3 stroke-[3]" />
+                케어 관리
+              </span>
+              <span className="text-xs sm:text-sm font-extrabold text-[#191F28] break-keep">
+                {cleanCare}
+              </span>
+            </div>
+            {!hasProductHeader && (
+              <span className="text-[11px] font-extrabold text-[#1B64DA] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded shrink-0 whitespace-nowrap">
+                {itemPeriod}개월 구독 약정
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-[#E5E8EB] overflow-hidden bg-white">
+      <div
+        className={`${
+          compact ? 'px-4 py-2.5' : 'px-4 sm:px-5 py-3'
+        } bg-[#F8FAFC] border-b border-[#E5E8EB] flex items-center justify-between gap-2`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <ShieldCheck className="w-4 h-4 text-[#1B64DA] shrink-0" />
+          <span className="text-xs sm:text-[13px] font-extrabold tracking-tight text-[#191F28] break-keep">
+            구독 포함 서비스 · 무상 케어 안내 ({list.length}품목)
+          </span>
+        </div>
+        <span className="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10.5px] sm:text-[11px] font-extrabold shrink-0 whitespace-nowrap">
+          {compact ? '기본 포함' : '추가 비용 0원 · 기본 포함'}
+        </span>
+      </div>
+      <div className="divide-y divide-[#E5E8EB]">
+        {list.map((it: any, idx: number) => {
+          const itemPeriod = normalizeSubscriptionPeriod(
+            it.period,
+            fallbackPeriod
+          );
+          const formattedCat = fmtCat(it.category);
+          const realCat = isGenericSubPlaceholderCategory(formattedCat)
+            ? ''
+            : formattedCat;
+          const rawValidModel = getValidDisplayModelName(
+            it.modelName,
+            it.monthlyFee
+          );
+          const validModel = rawValidModel ? fmtModel(rawValidModel) : '';
+          const displayTitle =
+            realCat || (validModel ? '구독 가전' : `구독 품목 ${idx + 1}`);
+          const cleanCare = sanitizeFiveYearText(
+            (it.careService || fallbackCare || '방문케어 (전문가 점검·교체)').trim()
+          );
+          const warrantyExtra = resolveWarrantyExtraText(
+            it.warrantyType || fallbackWarranty
+          );
+          return (
+            <div
+              key={it.id || idx}
+              className={`${
+                compact ? 'px-4 py-2.5' : 'px-4 sm:px-5 py-3'
+              } space-y-1.5`}
+            >
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className="w-5 h-5 rounded-md bg-[#F2F4F6] text-[#191F28] border border-[#E5E8EB] text-[11px] font-extrabold flex items-center justify-center shrink-0 tabular-nums">
+                    {String(idx + 1).padStart(2, '0')}
+                  </span>
+                  <span className="text-xs sm:text-sm font-extrabold text-[#191F28] break-keep">
+                    {displayTitle}
+                  </span>
+                  {validModel && (
+                    <span className="text-xs font-semibold text-[#4E5968] bg-[#F8FAFC] border border-[#E5E8EB] px-2 py-0.5 rounded font-mono break-all">
+                      {validModel}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] font-extrabold text-[#1B64DA] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded shrink-0 whitespace-nowrap">
+                  {itemPeriod}개월 구독
+                </span>
+              </div>
+              <div className="pl-7 flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold break-keep">
+                  <Check className="w-3 h-3 stroke-[3] shrink-0" />
+                  5년 무상 A/S 기본 포함
+                  {warrantyExtra ? ` · ${warrantyExtra}` : ''}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#EFF6FF] border border-[#BFDBFE] text-[#1B64DA] text-[11px] font-bold break-keep">
+                  <Check className="w-3 h-3 stroke-[3] shrink-0" />
+                  {cleanCare}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 };
 
 interface PreviewSubscriptionReceiptProps {
@@ -123,7 +368,7 @@ const PreviewSubscriptionReceipt: React.FC<PreviewSubscriptionReceiptProps> = ({
             </span>
           ) : (
             <span className="text-[11px] font-semibold text-slate-300 whitespace-nowrap">
-              방문케어 · 5년 무상 A/S 기본 포함
+              {resolveMastheadCareSummary(subSummary.displayItems)}
             </span>
           )}
         </div>
@@ -588,7 +833,10 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
             <div className="flex flex-col items-end gap-1 shrink-0 text-right">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F8FAFC] border border-[#E5E8EB] text-[11.5px] sm:text-xs font-extrabold text-[#191F28] whitespace-nowrap">
                 <ShieldCheck className="w-3.5 h-3.5 text-[#1B64DA]" />
-                방문케어 · 5년 무상 A/S 기본 포함
+                {resolveMastheadCareSummary(
+                  subSummary.displayItems,
+                  state.careService
+                )}
               </span>
               <span className="text-[11px] font-semibold text-[#8B95A1] tabular-nums">
                 설계일 {todayText}
@@ -612,82 +860,21 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
             currentCardTier={currentCardTier}
             subCardBenefitLabel={subCardBenefitLabel}
             subCashbackRows={subCashbackRows}
-            itemCount={state.items.length}
+            itemCount={subSummary.displayItems.length}
           />
 
-          {/* [블록 2] 선택 가전 및 무상 케어 명세 */}
-          <section className="rounded-2xl border border-[#E5E8EB] overflow-hidden bg-white">
-            <div className="px-4 sm:px-5 py-3 bg-[#F8FAFC] border-b border-[#E5E8EB] flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <RefreshCw className="w-4 h-4 text-[#1B64DA] shrink-0" />
-                <span className="text-xs sm:text-[13px] font-extrabold tracking-tight text-[#191F28] break-keep">
-                  선택 가전 · 무상 케어 명세 ({state.items.length}품목)
-                </span>
-              </div>
-              <span className="text-[11px] font-bold text-[#8B95A1] shrink-0 whitespace-nowrap">
-                {subSummary.subLotteBillingDiscount > 0
-                  ? '청구할인 전 개별 약정 기준가'
-                  : '개별 구독료 · 약정 기준가'}
-              </span>
-            </div>
-            <div className="divide-y divide-[#E5E8EB]">
-              {state.items.map((item: any, idx: number) => {
-                const itemPeriod: SubscriptionPeriod = normalizeSubscriptionPeriod(
-                  item.period,
-                  normalizeSubscriptionPeriod(state.subscriptionPeriod, 60)
-                );
-                const cleanCareService = sanitizeFiveYearText(
-                  item.careService || '전문가 방문케어'
-                );
-                const validModel = getValidDisplayModelName(
-                  item.modelName,
-                  item.monthlyFee
-                );
-                const itemPrincipal = getSubscriptionItemPrincipal(
-                  item,
-                  representativePeriod
-                );
-                return (
-                  <div
-                    key={item.id}
-                    className="ledger-row items-start px-4 sm:px-5 py-3 hover:bg-[#F8FAFC]/80 transition-colors"
-                  >
-                    <div className="ledger-row-label space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="w-5 h-5 rounded-md bg-[#F2F4F6] text-[#191F28] border border-[#E5E8EB] text-[11px] font-extrabold flex items-center justify-center shrink-0 tabular-nums">
-                          {String(idx + 1).padStart(2, '0')}
-                        </span>
-                        <span className="text-sm font-extrabold text-[#191F28] break-keep">
-                          {fmtCat(item.category) || `구독 가전 ${idx + 1}`}
-                        </span>
-                        {validModel && (
-                          <span className="text-xs font-semibold text-[#4E5968] bg-[#F8FAFC] border border-[#E5E8EB] px-2 py-0.5 rounded font-mono break-all">
-                            {fmtModel(validModel)}
-                          </span>
-                        )}
-                        <span className="text-[11px] font-extrabold text-[#1B64DA] bg-[#EFF6FF] border border-[#BFDBFE] px-2 py-0.5 rounded shrink-0 whitespace-nowrap">
-                          {itemPeriod}개월 구독
-                        </span>
-                      </div>
-                      <div className="text-[11.5px] font-semibold text-[#8B95A1] pl-7 break-keep">
-                        {cleanCareService} · 5년 무상 A/S 기본 포함
-                      </div>
-                    </div>
-                    <div className="ledger-row-value flex flex-col items-end">
-                      <span className="text-sm sm:text-base font-black text-[#191F28] font-mono tabular-nums whitespace-nowrap">
-                        월 {(Number(item.monthlyFee) || 0).toLocaleString()}원
-                      </span>
-                      {itemPrincipal > 0 && (
-                        <span className="text-[11px] font-semibold text-[#6B7684] font-mono tabular-nums whitespace-nowrap mt-0.5">
-                          기준 금액 {itemPrincipal.toLocaleString()}원
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          {/* [블록 2] 구독 포함 서비스 · 무상 케어 안내 (가격 중복 없이 순수 서비스 정리) */}
+          <SubscriptionCareServiceCard
+            items={subSummary.displayItems}
+            fallbackPeriod={normalizeSubscriptionPeriod(
+              state.subscriptionPeriod,
+              60
+            )}
+            fallbackCare={state.careService}
+            fallbackWarranty={state.warrantyType}
+            fmtCat={fmtCat}
+            fmtModel={fmtModel}
+          />
 
           {/* [블록 3] 안심 검증 2종 카드 — 유일 노출 */}
           {(hasSubPreedActive || hasSubCardActive) && (
@@ -786,7 +973,7 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                 )}
               </div>
               <p className="text-xs font-semibold text-[#4E5968] break-keep">
-                일반구매 {state.generalItems.length}품목 + 구독케어 {state.items.length}품목 통합 기준
+                일반구매 {generalSummary.displayItems.length}품목 + 구독케어 {subSummary.displayItems.length}품목 통합 기준
               </p>
             </div>
             <div className="text-2xl sm:text-3xl font-black text-[#E60012] font-mono tabular-nums whitespace-nowrap">
@@ -801,7 +988,7 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
               <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E5E8EB] flex items-center justify-between gap-2">
                 <span className="text-xs font-extrabold text-[#191F28] flex items-center gap-1.5">
                   <ShoppingBag className="w-3.5 h-3.5 text-[#191F28]" />
-                  일반구매 ({state.generalItems.length}품목)
+                  일반구매 ({generalSummary.displayItems.length}품목)
                 </span>
                 <span className="text-[11.5px] font-bold text-[#8B95A1] font-mono tabular-nums whitespace-nowrap">
                   합계 {generalSummary.sum.toLocaleString()}원
@@ -809,13 +996,14 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
               </div>
 
               <div className="divide-y divide-[#E5E8EB]">
-                {state.generalItems.map((it: any, idx: number) => {
+                {generalSummary.displayItems.map((it: any, idx: number) => {
                   const amt =
                     (Number(it.unitPrice) || 0) * Math.max(1, Number(it.quantity) || 1);
-                  const validModel = getValidDisplayModelName(
-                    fmtModel(it.modelName),
+                  const rawValidModel = getValidDisplayModelName(
+                    it.modelName,
                     it.unitPrice
                   );
+                  const validModel = rawValidModel ? fmtModel(rawValidModel) : '';
                   return (
                     <div key={it.id} className="ledger-row px-4 py-2.5 text-xs">
                       <div className="ledger-row-label flex items-center gap-1.5 flex-wrap">
@@ -918,70 +1106,21 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                 currentCardTier={currentCardTier}
                 subCardBenefitLabel={subCardBenefitLabel}
                 subCashbackRows={subCashbackRows}
-                itemCount={state.items.length}
+                itemCount={subSummary.displayItems.length}
               />
 
-              <div className="rounded-2xl border border-[#E5E8EB] bg-white overflow-hidden">
-                <div className="px-4 py-2.5 bg-[#F8FAFC] border-b border-[#E5E8EB] flex items-center justify-between gap-2">
-                  <span className="text-xs font-extrabold text-[#191F28] flex items-center gap-1.5">
-                    <RefreshCw className="w-3.5 h-3.5 text-[#1B64DA]" />
-                    구독 가전 · 무상 케어 명세 ({state.items.length}품목)
-                  </span>
-                  <span className="text-[11.5px] font-bold text-[#8B95A1] whitespace-nowrap">
-                    {subSummary.subLotteBillingDiscount > 0
-                      ? '할인 전 기준가'
-                      : '개별 구독료'}
-                  </span>
-                </div>
-                <div className="divide-y divide-[#E5E8EB]">
-                  {state.items.map((it: any, idx: number) => {
-                    const itemPeriod: SubscriptionPeriod = normalizeSubscriptionPeriod(
-                      it.period,
-                      normalizeSubscriptionPeriod(state.subscriptionPeriod, 60)
-                    );
-                    const cleanCareService = sanitizeFiveYearText(
-                      it.careService || '전문가 방문케어'
-                    );
-                    const validModel = getValidDisplayModelName(
-                      fmtModel(it.modelName),
-                      it.monthlyFee
-                    );
-                    const itemPrincipal = getSubscriptionItemPrincipal(it, itemPeriod);
-                    return (
-                      <div key={it.id} className="ledger-row px-4 py-2.5 text-xs">
-                        <div className="ledger-row-label space-y-0.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-extrabold text-[#191F28]">
-                              {idx + 1}. {fmtCat(it.category) || `구독가전 ${idx + 1}`}
-                            </span>
-                            {validModel && (
-                              <span className="text-[11.5px] font-semibold text-[#4E5968] bg-[#F8FAFC] border border-[#E5E8EB] px-1.5 py-0.5 rounded font-mono break-all">
-                                {validModel}
-                              </span>
-                            )}
-                            <span className="text-[11.5px] font-extrabold text-[#1B64DA] bg-[#EFF6FF] border border-[#BFDBFE] px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap">
-                              {itemPeriod}개월 구독
-                            </span>
-                          </div>
-                          <div className="text-[11.5px] text-[#8B95A1] break-keep">
-                            {cleanCareService} · 5년 무상 A/S 기본 포함
-                          </div>
-                        </div>
-                        <div className="ledger-row-value flex flex-col items-end gap-0.5">
-                          <span className="font-black text-[#191F28] font-mono tabular-nums whitespace-nowrap">
-                            월 {(Number(it.monthlyFee) || 0).toLocaleString()}원
-                          </span>
-                          {itemPrincipal > 0 && (
-                            <span className="text-[10.5px] font-semibold text-[#6B7684] font-mono tabular-nums whitespace-nowrap">
-                              기준 {itemPrincipal.toLocaleString()}원
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <SubscriptionCareServiceCard
+                compact
+                items={subSummary.displayItems}
+                fallbackPeriod={normalizeSubscriptionPeriod(
+                  state.subscriptionPeriod,
+                  60
+                )}
+                fallbackCare={state.careService}
+                fallbackWarranty={state.warrantyType}
+                fmtCat={fmtCat}
+                fmtModel={fmtModel}
+              />
             </div>
           </div>
 

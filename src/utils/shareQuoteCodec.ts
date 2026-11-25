@@ -340,17 +340,39 @@ function packPlanTuple(plan: GeneralPlanData): any[] {
     plan.subscriptionPeriod,
     60
   );
+  const effectivePlanCare =
+    (
+      validSub[0]?.careService ??
+      plan.items?.[0]?.careService ??
+      plan.careService ??
+      SUB_CARE_OPTIONS[0]
+    ).trim() || SUB_CARE_OPTIONS[0];
+  const effectivePlanWarranty = (plan.warrantyType || DEFAULT_WARRANTY).trim();
+
   const subTuples = validSub.map((it) => {
     const p: SubscriptionPeriod = normalizeSubscriptionPeriod(
       it.period,
       fallbackPeriod
     );
+    const itCare = (it.careService ?? effectivePlanCare).trim() || effectivePlanCare;
+    const optIdx = SUB_CARE_OPTIONS.indexOf(itCare as any);
+    const itCarePacked =
+      itCare === effectivePlanCare
+        ? 0
+        : optIdx >= 0
+        ? optIdx + 1
+        : itCare;
+    const itWarranty = (it.warrantyType || '').trim();
+    const itWarrantyPacked =
+      !itWarranty || itWarranty === effectivePlanWarranty ? 0 : itWarranty;
     return trimTrailingZeros([
       packCat(it.category),
       (it.modelName || '').trim(),
       packMoney(it.monthlyFee),
       p === 60 ? 0 : p,
       it.contractAmount ? packMoney(it.contractAmount) : 0,
+      itCarePacked,
+      itWarrantyPacked,
     ]);
   });
 
@@ -372,10 +394,8 @@ function packPlanTuple(plan: GeneralPlanData): any[] {
       ? [hp.hf75 || 0, hp.hf150 || 0, hp.hf225 || 0, hp.hf300 || 0]
       : 0;
 
-  const careIdx = SUB_CARE_OPTIONS.indexOf(
-    (plan.careService || SUB_CARE_OPTIONS[0]) as any
-  );
-  const carePacked = careIdx >= 0 ? careIdx : plan.careService || '';
+  const careIdx = SUB_CARE_OPTIONS.indexOf(effectivePlanCare as any);
+  const carePacked = careIdx >= 0 ? careIdx : effectivePlanCare;
 
   const subCardIdx = SUB_CARD_IDS.indexOf(plan.selectedCardId || 'none');
   const subCardPacked = subCardIdx >= 0 ? subCardIdx : plan.selectedCardId || 'none';
@@ -387,9 +407,9 @@ function packPlanTuple(plan: GeneralPlanData): any[] {
       : 0;
 
   const warrantyStr =
-    !plan.warrantyType || plan.warrantyType === DEFAULT_WARRANTY
+    !effectivePlanWarranty || effectivePlanWarranty === DEFAULT_WARRANTY
       ? ''
-      : plan.warrantyType;
+      : effectivePlanWarranty;
 
   const hidePreedMask =
     (plan.hideHiPreed ? 1 : 0) | (plan.hideSubPreed ? 2 : 0);
@@ -461,6 +481,8 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
       : typeof arr[12] === 'string' && arr[12]
       ? arr[12]
       : SUB_CARE_OPTIONS[0];
+  const resolvedPlanWarranty =
+    typeof arr[21] === 'string' && arr[21] ? arr[21] : DEFAULT_WARRANTY;
 
   const items =
     rawSub.length > 0
@@ -471,13 +493,22 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
           );
           const monthlyFee = unpackMoney(s?.[2]);
           const contractAmount = s?.[4] ? unpackMoney(s[4]) : undefined;
+          const itemCare =
+            typeof s?.[5] === 'number' && s[5] >= 1 && SUB_CARE_OPTIONS[s[5] - 1]
+              ? SUB_CARE_OPTIONS[s[5] - 1]
+              : typeof s?.[5] === 'string' && s[5]
+              ? s[5]
+              : careService;
+          const itemWarranty =
+            typeof s?.[6] === 'string' && s[6] ? s[6] : resolvedPlanWarranty;
           return {
             id: `${prefix}-s-${idx + 1}`,
             category: unpackCat(s?.[0]),
             modelName: String(s?.[1] || ''),
             monthlyFee,
             period,
-            careService,
+            careService: itemCare,
+            warrantyType: itemWarranty,
             ...(contractAmount ? { contractAmount } : {}),
           };
         })
@@ -489,6 +520,7 @@ function unpackPlanTuple(tuple: any[], prefix: string): GeneralPlanData {
             monthlyFee: 0,
             period: subPeriod,
             careService,
+            warrantyType: resolvedPlanWarranty,
           },
         ];
 

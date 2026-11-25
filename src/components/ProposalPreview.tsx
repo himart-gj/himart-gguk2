@@ -1279,7 +1279,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           STEP 1
                         </span>
                         <span className="text-xs sm:text-[13px] font-extrabold tracking-tight text-[#191F28]">
-                          선택하신 가전 패키지 구성 ({state.generalItems.length}품목)
+                          선택하신 가전 패키지 구성 ({generalSummary.displayItems.length}품목)
                         </span>
                       </div>
                       <span className="text-[11.5px] font-bold text-[#8B95A1]">
@@ -1287,7 +1287,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                       </span>
                     </div>
                     <div className="divide-y divide-[#E5E8EB]">
-                      {state.generalItems.map((item, idx) => {
+                      {generalSummary.displayItems.map((item, idx) => {
                         const lineTotal =
                           (Number(item.unitPrice) || 0) *
                           Math.max(1, Number(item.quantity) || 1);
