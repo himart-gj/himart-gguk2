@@ -27,11 +27,21 @@ import {
 } from '../types/proposal';
 import {
   decodeSharedQuoteFromHash,
+  getEffectiveStaffPin,
   loadCachedCustomerQuotePayload,
   normalizeConsultantRoleTitle,
   SharedQuotePayload,
   unlockStaffDeviceWithPin,
 } from '../utils/shareQuoteCodec';
+import {
+  authenticateDeviceWithCloud,
+  PENDING_INVITE_PROMPT_KEY,
+} from '../utils/friendAccessGuard';
+import {
+  normalizeGasWebAppUrl,
+  readRawSyncConfig,
+  UNCONFIGURED_PIN_SENTINEL,
+} from '../utils/storeCloudSync';
 import { SpringNumberFlow } from './SpringNumberFlow';
 import { CustomerProposalSheet } from './CustomerProposalSheet';
 import { UnifiedComplianceAccordion } from './ProposalComplianceBlocks';
@@ -45,6 +55,7 @@ import {
   CreditCard,
   Gift,
   Layers,
+  Loader2,
   MapPin,
   MessageSquare,
   Phone,
@@ -1389,15 +1400,26 @@ export const PublicZeroTrustGateRoot: React.FC<{
   const [showPinBox, setShowPinBox] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
+      if (
+        typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem(PENDING_INVITE_PROMPT_KEY) === '1'
+      ) {
+        return true;
+      }
       const p = new URLSearchParams(window.location.search);
-      return p.get('staff') === '1' || p.get('admin') === '1';
+      return (
+        p.get('staff') === '1' ||
+        p.get('admin') === '1' ||
+        Boolean((p.get('invite') || '').trim())
+      );
     } catch {
       return false;
     }
   });
   const [tapCount, setTapCount] = useState(0);
   const [pinValue, setPinValue] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [pinErrorMsg, setPinErrorMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSecretShieldTap = () => {
     setTapCount((prev) => {
@@ -1410,14 +1432,48 @@ export const PublicZeroTrustGateRoot: React.FC<{
     });
   };
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (unlockStaffDeviceWithPin(pinValue)) {
-      setPinError(false);
-      onStaffVerified();
-    } else {
-      setPinError(true);
+    if (isSubmitting) return;
+    const trimmed = pinValue.trim();
+    if (!trimmed) {
+      setPinErrorMsg('보안 코드 또는 8자리 초대코드를 입력해 주세요.');
+      return;
     }
+
+    // 1차: 로컬 마스터 PIN이 설정되어 있고 일치하면 즉시 해제
+    const localPin = getEffectiveStaffPin();
+    if (
+      localPin !== UNCONFIGURED_PIN_SENTINEL &&
+      unlockStaffDeviceWithPin(trimmed)
+    ) {
+      setPinErrorMsg(null);
+      onStaffVerified();
+      return;
+    }
+
+    // 2차: 클라우드 GAS URL이 연결되어 있으면 서버 기기 인증(관리자 PIN 및 8자리 1회용 친구 초대코드) 검증
+    const configuredGasUrl = normalizeGasWebAppUrl(readRawSyncConfig().repo);
+    if (configuredGasUrl) {
+      setIsSubmitting(true);
+      setPinErrorMsg(null);
+      try {
+        const authRes = await authenticateDeviceWithCloud(trimmed);
+        if (authRes.ok) {
+          setPinErrorMsg(null);
+          onStaffVerified();
+          return;
+        }
+        setPinErrorMsg(
+          authRes.error || '보안 코드가 일치하지 않습니다.'
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    setPinErrorMsg('보안 코드가 일치하지 않습니다.');
   };
 
   return (
@@ -1457,32 +1513,41 @@ export const PublicZeroTrustGateRoot: React.FC<{
 
         {showPinBox && (
           <div className="pt-3 border-t border-[#E5E8EB] dark:border-white/10">
-            <form onSubmit={handleVerify} className="space-y-2 text-left">
+            <form onSubmit={(e) => void handleVerify(e)} className="space-y-2 text-left">
               <label className="block text-xs font-extrabold text-[#191F28] dark:text-white">
-                담당자 기기 등록 코드 입력 (최초 1회 인증 시 영구 유지)
+                기기 등록 보안 코드 입력 (최초 1회 인증 시 본인 기기 1대에 귀속)
               </label>
               <div className="flex items-center gap-1.5">
                 <input
                   type="password"
-                  inputMode="numeric"
+                  inputMode="tel"
+                  disabled={isSubmitting}
                   value={pinValue}
                   onChange={(e) => {
                     setPinValue(e.target.value);
-                    setPinError(false);
+                    setPinErrorMsg(null);
                   }}
-                  placeholder="보안 코드 입력"
-                  className="flex-1 px-3 py-2 rounded-lg border border-[#D1D6DB] dark:border-white/10 bg-[#F8FAFC] dark:bg-[#0B1120] text-base sm:text-sm font-mono font-bold focus:outline-none focus:border-[#1B64DA]"
+                  placeholder="보안 코드 또는 8자리 초대코드"
+                  className="flex-1 px-3 py-2 rounded-lg border border-[#D1D6DB] dark:border-white/10 bg-[#F8FAFC] dark:bg-[#0B1120] text-base sm:text-sm font-mono font-bold focus:outline-none focus:border-[#1B64DA] disabled:opacity-60"
                 />
                 <button
                   type="submit"
-                  className="min-h-[42px] px-4 py-2 rounded-lg bg-[#1B64DA] text-white text-xs font-extrabold shrink-0 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="min-h-[42px] px-4 py-2 rounded-lg bg-[#1B64DA] hover:bg-[#1552B5] disabled:opacity-60 text-white text-xs font-extrabold shrink-0 cursor-pointer inline-flex items-center justify-center gap-1.5"
                 >
-                  인증
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>확인중</span>
+                    </>
+                  ) : (
+                    <span>인증</span>
+                  )}
                 </button>
               </div>
-              {pinError && (
-                <p className="text-xs font-bold text-[#E60012] dark:text-[#FF3B47]">
-                  보안 코드가 일치하지 않습니다.
+              {pinErrorMsg && (
+                <p className="text-xs font-bold text-[#E60012] dark:text-[#FF3B47] leading-relaxed break-keep">
+                  {pinErrorMsg}
                 </p>
               )}
             </form>

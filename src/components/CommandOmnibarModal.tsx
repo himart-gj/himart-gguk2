@@ -71,6 +71,7 @@ export interface CommandOmnibarModalProps {
   isOpen: boolean;
   onClose: () => void;
   isDark: boolean;
+  isFriendMode?: boolean;
   customers: CustomerItem[];
   careDataset: CareTableDataset | null;
   installmentDataset: InstallmentDataset;
@@ -101,6 +102,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
   isOpen,
   onClose,
   isDark,
+  isFriendMode = false,
   customers,
   careDataset,
   installmentDataset,
@@ -130,7 +132,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
 
   // 오늘 기준 근무/휴무 스냅샷
   const todayStaffSnapshot = useMemo(() => {
-    if (!isOpen) return [];
+    if (!isOpen || isFriendMode) return [];
     const now = new Date();
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const schedules = loadAllSchedules();
@@ -145,15 +147,15 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         isOff: isOffDayCode(code) || code === '교육' || code === '회의',
       };
     });
-  }, [isOpen]);
+  }, [isOpen, isFriendMode]);
 
   // 0.01초 로컬 통합 인덱싱 결과 산출
   const results = useMemo<OmnibarResultItem[]>(() => {
     const q = query.trim();
     const list: OmnibarResultItem[] = [];
 
-    // 0) 스텔스 소유자 전용 코드 감지 (설정된 PIN 암호 입력 시에만 노출, 평소 타 직원에게는 노출 0%)
-    if (q.startsWith('#') && q.length >= 5) {
+    // 0) 스텔스 소유자 전용 코드 감지 (설정된 PIN 암호 입력 시에만 노출, 친구 모드 및 타 직원에게는 노출 0%)
+    if (!isFriendMode && q.startsWith('#') && q.length >= 5) {
       const candidatePin = q.replace(/^#(?:db)?/i, '').trim();
       if (
         candidatePin &&
@@ -175,7 +177,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     }
 
     // 1) 앱 빠른 메뉴 액션
-    const ownerUnlocked = isOwnerMarketingDbUnlocked();
+    const ownerUnlocked = !isFriendMode && isOwnerMarketingDbUnlocked();
     const quickMenus: OmnibarResultItem[] = [
       ...(ownerUnlocked
         ? ([
@@ -269,17 +271,21 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onNavigateStep('lotte-plan');
         },
       },
-      {
-        id: 'menu-sched',
-        group: '메뉴',
-        title: '경기광주점 근무 · 휴무 스튜디오',
-        subtitle: '오늘 근무자 · 내 월간 달력 · 맞교대 비교',
-        badge: '휴무표',
-        onSelect: () => {
-          onClose();
-          onOpenScheduleModal();
-        },
-      },
+      ...(!isFriendMode
+        ? ([
+            {
+              id: 'menu-sched',
+              group: '메뉴',
+              title: '경기광주점 근무 · 휴무 스튜디오',
+              subtitle: '오늘 근무자 · 내 월간 달력 · 맞교대 비교',
+              badge: '휴무표',
+              onSelect: () => {
+                onClose();
+                onOpenScheduleModal();
+              },
+            },
+          ] as OmnibarResultItem[])
+        : []),
       {
         id: 'menu-inst',
         group: '메뉴',
@@ -638,30 +644,32 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     });
 
     // 5. 오늘 근무·휴무 직원
-    todayStaffSnapshot
-      .filter(
-        (st) =>
-          matchSearch(st.name, q) ||
-          matchSearch(st.role, q) ||
-          q.includes('근무') ||
-          q.includes('휴무')
-      )
-      .slice(0, 5)
-      .forEach((st) => {
-        list.push({
-          id: `staff-${st.name}`,
-          group: '근무·휴무',
-          title: `${st.name} (${st.role})`,
-          subtitle: st.isOff
-            ? `오늘 부재/휴무 (${st.code})`
-            : `오늘 매장 정상 근무${st.code ? ` (${st.code})` : ''}`,
-          badge: st.isOff ? `🔴 ${st.code}` : '🟢 근무중',
-          onSelect: () => {
-            onClose();
-            onOpenScheduleModal();
-          },
+    if (!isFriendMode) {
+      todayStaffSnapshot
+        .filter(
+          (st) =>
+            matchSearch(st.name, q) ||
+            matchSearch(st.role, q) ||
+            q.includes('근무') ||
+            q.includes('휴무')
+        )
+        .slice(0, 5)
+        .forEach((st) => {
+          list.push({
+            id: `staff-${st.name}`,
+            group: '근무·휴무',
+            title: `${st.name} (${st.role})`,
+            subtitle: st.isOff
+              ? `오늘 부재/휴무 (${st.code})`
+              : `오늘 매장 정상 근무${st.code ? ` (${st.code})` : ''}`,
+            badge: st.isOff ? `🔴 ${st.code}` : '🟢 근무중',
+            onSelect: () => {
+              onClose();
+              onOpenScheduleModal();
+            },
+          });
         });
-      });
+    }
 
     // 5-2. 상시 고정 기준표 (프리드 운영 상품 요약 & 안마의자 물류 기준)
     FREED_OPERATION_GROUPS.filter(
@@ -722,6 +730,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     return list;
   }, [
     query,
+    isFriendMode,
     customers,
     careDataset,
     installmentDataset,
@@ -832,7 +841,11 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="고객명, 안심케어 단가, 무이자, AS 번호, 직원 초성(ㄱㅅㅇ) 또는 AI 명령 입력..."
+            placeholder={
+              isFriendMode
+                ? '고객명, 안심케어 단가, 무이자, AS 번호 또는 AI 명령 입력...'
+                : '고객명, 안심케어 단가, 무이자, AS 번호, 직원 초성(ㄱㅅㅇ) 또는 AI 명령 입력...'
+            }
             className="flex-1 bg-transparent text-base sm:text-sm font-bold text-[#191F28] dark:text-slate-100 placeholder:text-[#8B95A1] dark:placeholder:text-slate-500 focus:outline-none"
           />
           {query && (
@@ -884,7 +897,9 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
                 일치하는 로컬 항목이 없습니다.
               </p>
               <p className="text-xs text-[#4E5968] dark:text-slate-400">
-                Enter 키를 누르시면 AI 코파일럿이 자연어 명령으로 분석해 견적·고객·휴무표를 처리합니다.
+                {isFriendMode
+                  ? 'Enter 키를 누르시면 AI 코파일럿이 자연어 명령으로 분석해 견적·고객·조견표를 처리합니다.'
+                  : 'Enter 키를 누르시면 AI 코파일럿이 자연어 명령으로 분석해 견적·고객·휴무표를 처리합니다.'}
               </p>
             </div>
           ) : (

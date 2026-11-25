@@ -50,6 +50,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   initialCommand,
   onClearInitialCommand,
   currentProposalState,
+  isFriendMode = false,
 }) => {
   const [commandText, setCommandText] = useState<string>('');
   const [appendToCurrentQuote, setAppendToCurrentQuote] = useState<boolean>(false);
@@ -66,7 +67,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   const [scheduleQueryResult, setScheduleQueryResult] =
     useState<ScheduleQueryResult | null>(null);
   const [myStaffNameInput, setMyStaffNameInput] = useState<string>(() =>
-    loadSavedUserName()
+    isFriendMode ? '' : loadSavedUserName()
   );
 
   // 안심케어 데이터셋 로드 상태
@@ -322,8 +323,11 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
     });
   }, [commandText]);
 
-  // 입력 중일 때 휴무표 조회 프리뷰 (수정은 실행 버튼 클릭 시 실제 반영하거나 즉시 실행)
+  // 입력 중일 때 휴무표 조회 프리뷰 (친구 모드에서는 완전 비활성화)
   const liveSchedulePreview = useMemo(() => {
+    if (isFriendMode) {
+      return { modifyResult: null, queryResult: null };
+    }
     if (scheduleModifyResult || scheduleQueryResult) {
       return {
         modifyResult: scheduleModifyResult,
@@ -331,7 +335,15 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
       };
     }
     return tryExecuteScheduleCommand(commandText, true);
-  }, [commandText, scheduleModifyResult, scheduleQueryResult]);
+  }, [isFriendMode, commandText, scheduleModifyResult, scheduleQueryResult]);
+
+  const visibleQuickExamples = useMemo(
+    () =>
+      isFriendMode
+        ? QUICK_EXAMPLES.filter((ex) => ex.id !== 'ex-schedule-edit')
+        : QUICK_EXAMPLES,
+    [isFriendMode]
+  );
 
   const showToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -436,12 +448,16 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
       setAiReplyText(null);
 
       try {
-        // 1) 휴무표 수정/조회 명령 즉시 실행 (localStorage 'himart_gj_schedules_v4' 반영 + 이벤트 발송)
-        const schedExec = tryExecuteScheduleCommand(targetText, false);
-        setScheduleModifyResult(schedExec.modifyResult);
-        setScheduleQueryResult(schedExec.queryResult);
-        if (schedExec.modifyResult) {
-          showToast(schedExec.modifyResult.message);
+        // 1) 휴무표 수정/조회 명령 즉시 실행 (친구 모드에서는 스킵)
+        const schedExec = isFriendMode
+          ? { modifyResult: null, queryResult: null }
+          : tryExecuteScheduleCommand(targetText, false);
+        if (!isFriendMode) {
+          setScheduleModifyResult(schedExec.modifyResult);
+          setScheduleQueryResult(schedExec.queryResult);
+          if (schedExec.modifyResult) {
+            showToast(schedExec.modifyResult.message);
+          }
         }
 
         // 2) 1차 로컬 한국어 견적 파서 반영
@@ -550,7 +566,11 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         ) {
           setAiReplyText(
             hasActiveApiKey
-              ? `입력하신 "${targetText}" 명령에서 금액이나 품목이 감지되지 않았습니다. 예: "TV 380만 냉장고 320만 롯데카드", "오늘 누구 쉬어?", "에어컨 클리닝 단가", "방충망 주소"처럼 입력해 보세요!`
+              ? isFriendMode
+                ? `입력하신 "${targetText}" 명령에서 금액이나 품목이 감지되지 않았습니다. 예: "TV 380만 냉장고 320만 롯데카드", "에어컨 클리닝 단가", "삼성카드 무이자", "방충망 주소"처럼 입력해 보세요!`
+                : `입력하신 "${targetText}" 명령에서 금액이나 품목이 감지되지 않았습니다. 예: "TV 380만 냉장고 320만 롯데카드", "오늘 누구 쉬어?", "에어컨 클리닝 단가", "방충망 주소"처럼 입력해 보세요!`
+              : isFriendMode
+              ? `정밀 자유 대화 분석을 사용하려면 우측 상단 [🔑 AI 키] 버튼에서 Gemini API 키를 등록해 주세요. (키 없이도 "TV 380만 냉장고 320만 롯데카드", "에어컨 클리닝 단가", "방충망" 등 핵심 명령은 즉시 작동합니다!)`
               : `정밀 자유 대화 분석을 사용하려면 우측 상단 [🔑 AI 키] 버튼에서 Gemini API 키를 등록해 주세요. (키 없이도 "TV 380만 냉장고 320만 롯데카드", "15일 홍길동 휴무", "에어컨 클리닝 단가", "방충망" 등 핵심 명령은 즉시 작동합니다!)`
           );
         }
@@ -560,7 +580,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
         setIsAnalyzing(false);
       }
     },
-    [commandText, onApplyToQuote, onCustomerSaved, showToast]
+    [commandText, isFriendMode, onApplyToQuote, onCustomerSaved, showToast, careDataset, hasActiveApiKey]
   );
 
   // 하단 버튼 3: 수동/즉시 CRM 저장 + 견적 반영
@@ -640,10 +660,12 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
           cls: 'bg-[#1B64DA] text-white border-[#1B64DA]',
         };
 
-  const activeModifyCard =
-    scheduleModifyResult || liveSchedulePreview.modifyResult;
-  const activeQueryCard =
-    scheduleQueryResult || liveSchedulePreview.queryResult;
+  const activeModifyCard = isFriendMode
+    ? null
+    : scheduleModifyResult || liveSchedulePreview.modifyResult;
+  const activeQueryCard = isFriendMode
+    ? null
+    : scheduleQueryResult || liveSchedulePreview.queryResult;
 
   return (
     <div
@@ -672,7 +694,9 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-[#4E5968] dark:text-slate-400 font-medium truncate mt-0.5">
-                견적 계산·제안서 직행·CRM 고객 저장부터 휴무표 말로 수정, 안심케어 단가, 무이자 할부, AS센터까지 한 줄로 해결합니다
+                {isFriendMode
+                  ? '견적 계산·제안서 직행·CRM 고객 저장부터 안심케어 단가, 무이자 할부, AS센터까지 한 줄로 해결합니다'
+                  : '견적 계산·제안서 직행·CRM 고객 저장부터 휴무표 말로 수정, 안심케어 단가, 무이자 할부, AS센터까지 한 줄로 해결합니다'}
               </p>
             </div>
           </div>
@@ -784,18 +808,24 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
             </div>
           )}
 
-          {/* 빠른 예시 칩 4개 */}
+          {/* 빠른 예시 칩 */}
           <div className="space-y-1.5">
             <div className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300 flex items-center justify-between flex-wrap gap-1">
-              <span>💡 빠른 예시 칩 4가지 (터치하면 즉시 입력 및 자동 실행됩니다)</span>
+              <span>
+                💡 빠른 예시 칩 {visibleQuickExamples.length}가지 (터치하면 즉시 입력 및 자동 실행됩니다)
+              </span>
               {engineBadge && (
                 <span className="text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-400">
                   {engineBadge}
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              {QUICK_EXAMPLES.map((ex) => (
+            <div
+              className={`grid grid-cols-1 sm:grid-cols-2 ${
+                isFriendMode ? 'lg:grid-cols-3' : 'lg:grid-cols-4'
+              } gap-2`}
+            >
+              {visibleQuickExamples.map((ex) => (
                 <button
                   key={ex.id}
                   type="button"
@@ -867,7 +897,11 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
                   }
                 }}
                 rows={3}
-                placeholder="예: ① TV 380만 냉장고 320만 롯데카드 하이프리드 300 1개 제안서 바로 보여줘 / ② 15일 홍길동 휴무로 바꿔줘 / ③ 에어컨 클리닝 단가랑 삼성카드 무이자 알려줘"
+                placeholder={
+                  isFriendMode
+                    ? '예: ① TV 380만 냉장고 320만 롯데카드 하이프리드 300 1개 제안서 바로 보여줘 / ② 홍길동 010-1234-5678 고객저장해줘 / ③ 에어컨 클리닝 단가랑 삼성카드 무이자 알려줘'
+                    : '예: ① TV 380만 냉장고 320만 롯데카드 하이프리드 300 1개 제안서 바로 보여줘 / ② 15일 홍길동 휴무로 바꿔줘 / ③ 에어컨 클리닝 단가랑 삼성카드 무이자 알려줘'
+                }
                 className="w-full rounded-2xl border border-[#D1D6DB] dark:border-slate-700 focus:border-[#1B64DA] dark:focus:border-blue-400 focus:outline-none p-3.5 text-base sm:text-sm font-bold text-[#191F28] dark:text-slate-100 placeholder:text-[#8B95A1] dark:placeholder:text-slate-500 bg-[#F8FAFC] dark:bg-slate-900/70 resize-none transition-colors"
               />
             </div>
@@ -1001,6 +1035,7 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
           handleRunAiCommand={handleRunAiCommand}
           installmentResult={installmentResult}
           insuranceResult={insuranceResult}
+          isFriendMode={isFriendMode}
           onClose={onClose}
           onLoadCrmCustomerQuote={onLoadCrmCustomerQuote}
           onOpenAsCenterModal={onOpenAsCenterModal}

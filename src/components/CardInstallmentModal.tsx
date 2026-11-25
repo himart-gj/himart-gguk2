@@ -39,6 +39,7 @@ import {
   isAdminDevice,
   setAdminDeviceUnlocked,
 } from '../utils/careTableParser';
+import { isFriendRestrictedMode } from '../utils/friendAccessGuard';
 
 interface CardInstallmentModalProps {
   isOpen: boolean;
@@ -134,7 +135,7 @@ export const CardInstallmentModal: React.FC<CardInstallmentModalProps> = ({
   }, []);
 
   const handleSecretAdminTap = () => {
-    if (isAdmin) return;
+    if (isAdmin || isFriendRestrictedMode()) return;
     adminTapCountRef.current += 1;
     if (adminTapTimerRef.current) {
       window.clearTimeout(adminTapTimerRef.current);

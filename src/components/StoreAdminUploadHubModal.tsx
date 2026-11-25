@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Ban,
   Calendar,
   Check,
   CheckCircle2,
@@ -18,10 +19,14 @@ import {
   Loader2,
   Lock,
   RefreshCw,
+  RotateCcw,
   Settings,
   Shield,
   ShieldCheck,
+  Trash2,
+  Unlock,
   Upload,
+  UserPlus,
   X,
 } from 'lucide-react';
 import {
@@ -37,6 +42,14 @@ import {
   STORE_CLOUD_UPDATED_EVENT,
   UNCONFIGURED_PIN_SENTINEL,
 } from '../utils/storeCloudSync';
+import {
+  buildFriendInviteUrl,
+  fetchFriendInviteList,
+  formatFriendInviteCode,
+  FriendInviteItem,
+  issueNewFriendInvite,
+  mutateFriendInviteStatus,
+} from '../utils/friendAccessGuard';
 import {
   ADMIN_MODE_CHANGED_EVENT,
   ADMIN_PIN_CODE,
@@ -159,6 +172,15 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
   const [incentiveYm, setIncentiveYm] = useState<string>(() => getCurrentYearMonth());
   const [mergeIncentiveInMonth, setMergeIncentiveInMonth] = useState<boolean>(false);
 
+  // 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 상태
+  const [friendLabelInput, setFriendLabelInput] = useState<string>('친구1');
+  const [friendInvites, setFriendInvites] = useState<FriendInviteItem[]>([]);
+  const [isLoadingInvites, setIsLoadingInvites] = useState<boolean>(false);
+  const [isIssuingInvite, setIsIssuingInvite] = useState<boolean>(false);
+  const [busyInviteCodeId, setBusyInviteCodeId] = useState<string | null>(null);
+  const [copiedInviteCodeId, setCopiedInviteCodeId] = useState<string | null>(null);
+  const [friendPanelError, setFriendPanelError] = useState<string | null>(null);
+
   // 카드별 업로드 상태 배지
   const [cardFeedback, setCardFeedback] = useState<
     Record<StoreCloudKind, CardUploadFeedback>
@@ -203,6 +225,34 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setCloudVerified(normalizeGasWebAppUrl(rawCfg.repo) ? null : false);
     setDataTick((v) => v + 1);
   }, [isOpen]);
+
+  // 관리자 인증 상태에서 시트 URL · PIN이 준비되어 있으면 친구 초대코드 목록 자동 로드
+  useEffect(() => {
+    if (!isOpen || !isAdmin) return;
+    const rawCfg = readRawSyncConfig();
+    const targetUrl = normalizeGasWebAppUrl(gasUrl || rawCfg.repo);
+    const targetPin = (cloudPin || rawCfg.token).trim();
+    if (!targetUrl || targetPin.length < 4) return;
+
+    let cancelled = false;
+    setIsLoadingInvites(true);
+    setFriendPanelError(null);
+    void fetchFriendInviteList(targetUrl, targetPin)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          setFriendInvites(res.items);
+        } else {
+          setFriendPanelError(res.error || null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingInvites(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, isAdmin]);
 
   // 관리자 권한 및 4대 데이터 변경 이벤트 구독
   useEffect(() => {
@@ -483,6 +533,12 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       });
       setCloudVerified(true);
       window.dispatchEvent(new CustomEvent(STORE_CLOUD_UPDATED_EVENT));
+      void fetchFriendInviteList(normalized, cleanPin).then((invRes) => {
+        if (invRes.ok) {
+          setFriendInvites(invRes.items);
+          setFriendPanelError(null);
+        }
+      });
       showToastMessage(
         'success',
         probe !== null
@@ -534,6 +590,181 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       .catch(() => {
         showToastMessage('error', '클립보드 복사에 실패했습니다.');
       });
+  };
+
+  // ==================== 외부 지인(친구) 전용 1기기 잠금 초대코드 핸들러 ====================
+  const resolveActiveCloudAuth = (): { url: string; pin: string } | null => {
+    const rawCfg = readRawSyncConfig();
+    const url = normalizeGasWebAppUrl(gasUrl.trim() || rawCfg.repo);
+    const pin = (cloudPin.trim() || rawCfg.token).trim();
+    if (!url || pin.length < 4) {
+      showToastMessage(
+        'error',
+        '상단 비공개 구글 시트 URL과 관리자 PIN을 먼저 입력하고 [연결 저장·확인]을 눌러주세요.'
+      );
+      return null;
+    }
+    return { url, pin };
+  };
+
+  const handleRefreshFriendInvites = async () => {
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+    setIsLoadingInvites(true);
+    setFriendPanelError(null);
+    try {
+      const res = await fetchFriendInviteList(auth.url, auth.pin);
+      if (res.ok) {
+        setFriendInvites(res.items);
+      } else {
+        setFriendPanelError(res.error || '초대코드 목록 조회에 실패했습니다.');
+      }
+    } finally {
+      setIsLoadingInvites(false);
+    }
+  };
+
+  const handleIssueFriendInvite = async () => {
+    if (isIssuingInvite) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const cleanLabel = friendLabelInput.trim() || '친구1';
+    setIsIssuingInvite(true);
+    setFriendPanelError(null);
+    try {
+      const res = await issueNewFriendInvite(auth.url, auth.pin, cleanLabel, 1);
+      if (!res.ok) {
+        const msg =
+          res.error ||
+          '1회용 8자리 초대코드 발급에 실패했습니다. Apps Script 코드가 최신 버전인지 확인해 주세요.';
+        setFriendPanelError(msg);
+        showToastMessage('error', `⚠️ ${msg}`);
+        return;
+      }
+      if (Array.isArray(res.items)) {
+        setFriendInvites(res.items);
+      } else if (res.item) {
+        setFriendInvites((prev) => [res.item!, ...prev]);
+      }
+      const formatted = res.item
+        ? formatFriendInviteCode(res.item.inviteCode)
+        : '';
+      showToastMessage(
+        'success',
+        `🔐 [${cleanLabel}] 1회용 8자리 코드(${formatted}) 발급 완료! 우측 [초대 안내문 복사]를 눌러 카톡으로 전달하세요.`
+      );
+    } finally {
+      setIsIssuingInvite(false);
+    }
+  };
+
+  const handleCopyFriendInviteGuide = async (item: FriendInviteItem) => {
+    const rawCfg = readRawSyncConfig();
+    const inviteUrl = buildFriendInviteUrl(gasUrl.trim() || rawCfg.repo);
+    if (!inviteUrl) {
+      showToastMessage(
+        'error',
+        '전용 초대 링크를 생성하려면 상단 구글 시트 웹앱 URL을 먼저 입력해 주세요.'
+      );
+      return;
+    }
+    const formattedCode = formatFriendInviteCode(item.inviteCode);
+    const guideText = [
+      `[국지통합앱 전용 초대 안내 — ${item.label}]`,
+      `• 전용 접속 링크:`,
+      inviteUrl,
+      ``,
+      `• 1회용 8자리 등록코드: ${formattedCode}`,
+      ``,
+      `※ 위 전용 링크로 접속하시면 바로 코드 입력창이 열립니다.`,
+      `※ 최초 1회 입력 시 본인 휴대폰 1대에만 귀속되며 타인 공유 시 작동하지 않습니다.`,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(guideText);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = guideText;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+
+    setCopiedInviteCodeId(item.codeId);
+    window.setTimeout(() => {
+      setCopiedInviteCodeId((prev) => (prev === item.codeId ? null : prev));
+    }, 2000);
+    showToastMessage(
+      'success',
+      `📋 [${item.label} · ${formattedCode}] 카톡 전달용 초대 안내문이 복사되었습니다!`
+    );
+  };
+
+  const handleMutateFriendInvite = async (
+    item: FriendInviteItem,
+    mode: 'revoke' | 'reset_device' | 'activate' | 'delete'
+  ) => {
+    if (busyInviteCodeId) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const formattedCode = formatFriendInviteCode(item.inviteCode);
+    if (mode === 'reset_device') {
+      const ok = window.confirm(
+        `[${item.label} (${formattedCode})] 기기 귀속을 초기화할까요?\n기존 휴대폰 귀속이 해제되어 새 휴대폰 1대를 다시 등록할 수 있게 리셋됩니다.`
+      );
+      if (!ok) return;
+    } else if (mode === 'delete') {
+      const ok = window.confirm(
+        `[${item.label} (${formattedCode})] 초대코드를 목록에서 완전히 삭제할까요?\n삭제 즉시 해당 기기의 접근도 차단됩니다.`
+      );
+      if (!ok) return;
+    }
+
+    setBusyInviteCodeId(item.codeId);
+    setFriendPanelError(null);
+    try {
+      const res = await mutateFriendInviteStatus(
+        auth.url,
+        auth.pin,
+        item.codeId,
+        mode
+      );
+      if (!res.ok) {
+        const msg = res.error || '상태 변경에 실패했습니다.';
+        setFriendPanelError(msg);
+        showToastMessage('error', `⚠️ ${msg}`);
+        return;
+      }
+      if (Array.isArray(res.items)) {
+        setFriendInvites(res.items);
+      } else {
+        await handleRefreshFriendInvites();
+      }
+
+      if (mode === 'revoke') {
+        showToastMessage(
+          'success',
+          `🚫 [${item.label}] 접근이 즉시 차단되었습니다! 친구 기기 진입/복귀 시 즉시 잠금 화면으로 전환됩니다.`
+        );
+      } else if (mode === 'activate') {
+        showToastMessage(
+          'success',
+          `🔓 [${item.label}] 차단이 해제되어 정상 복구되었습니다.`
+        );
+      } else if (mode === 'reset_device') {
+        showToastMessage(
+          'success',
+          `🔄 [${item.label}] 기기 귀속이 초기화되었습니다. 새 휴대폰 1대에서 다시 등록할 수 있습니다.`
+        );
+      } else if (mode === 'delete') {
+        showToastMessage('info', `🗑️ [${item.label}] 초대코드가 삭제되었습니다.`);
+      }
+    } finally {
+      setBusyInviteCodeId(null);
+    }
   };
 
   // 공통 클라우드 업로드 헬퍼 (설정창 최신 입력값 우선 반영)
@@ -1272,6 +1503,215 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                     <span>연결 저장·확인</span>
                   </button>
                 </div>
+              </div>
+
+              {/* 1-B) 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 패널 */}
+              <div className={`rounded-2xl border p-3.5 sm:p-4 space-y-3 ${cardBg}`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs sm:text-sm font-extrabold">
+                        🔐 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 (휴무표 제외)
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 text-[10.5px] font-black">
+                        _친구기기_접근관리
+                      </span>
+                    </div>
+                    <p className={`text-[11px] font-medium mt-0.5 ${mutedText}`}>
+                      최초 1회 입력한 본인 휴대폰(1대)에만 영구 귀속되어 URL·코드를 제3자에게 공유해도 100% 차단되며, 경기광주점 휴무표·오너 기능은 완전 분리됩니다.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isLoadingInvites}
+                    onClick={() => void handleRefreshFriendInvites()}
+                    className={`self-start sm:self-auto px-2.5 py-1.5 rounded-xl border text-[11.5px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition shrink-0 ${subBoxBg}`}
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${
+                        isLoadingInvites ? 'animate-spin' : ''
+                      }`}
+                    />
+                    <span>목록 새로고침</span>
+                  </button>
+                </div>
+
+                {/* 별칭 입력 + [+ 1회용 8자리 코드 발급] */}
+                <div className="flex flex-col min-[460px]:flex-row items-stretch min-[460px]:items-center gap-2">
+                  <input
+                    type="text"
+                    value={friendLabelInput}
+                    onChange={(e) => setFriendLabelInput(e.target.value)}
+                    placeholder="별칭 입력 (예: 친구1)"
+                    className={`flex-1 min-[460px]:max-w-[220px] px-3 py-2 rounded-xl border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                  />
+                  <button
+                    type="button"
+                    disabled={isIssuingInvite}
+                    onClick={() => void handleIssueFriendInvite()}
+                    className="py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-slate-800 dark:bg-[#1B64DA] dark:hover:bg-blue-600 disabled:opacity-55 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer transition shrink-0"
+                  >
+                    {isIssuingInvite ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                    ) : (
+                      <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                    <span>+ 1회용 8자리 코드 발급</span>
+                  </button>
+                </div>
+
+                {friendPanelError && (
+                  <div className="px-3 py-2 rounded-xl bg-[#FFF1F2] dark:bg-rose-500/15 border border-[#FECDD3] dark:border-rose-500/35 text-[#E60012] dark:text-rose-300 text-[11.5px] font-bold">
+                    ⚠️ {friendPanelError}
+                  </div>
+                )}
+
+                {/* 발급된 초대코드 목록 */}
+                {friendInvites.length === 0 ? (
+                  <div
+                    className={`px-3.5 py-3 rounded-xl border text-xs font-medium ${subBoxBg} ${mutedText}`}
+                  >
+                    {isLoadingInvites
+                      ? '비공개 구글 시트에서 초대코드 목록을 불러오는 중입니다...'
+                      : '발급된 외부 지인용 초대코드가 없습니다. 위에서 별칭 확인 후 [+ 1회용 8자리 코드 발급]을 눌러주세요.'}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {friendInvites.map((item) => {
+                      const formattedCode = formatFriendInviteCode(item.inviteCode);
+                      const isBusy = busyInviteCodeId === item.codeId;
+                      const isCopied = copiedInviteCodeId === item.codeId;
+                      const isRevoked = item.status === 'REVOKED';
+                      const statusBadge =
+                        item.status === 'BOUND'
+                          ? {
+                              text: '1대 등록잠금 BOUND',
+                              cls: 'bg-emerald-500/15 text-[#059669] dark:text-emerald-300 border-emerald-500/30',
+                            }
+                          : item.status === 'REVOKED'
+                          ? {
+                              text: '차단됨 REVOKED',
+                              cls: 'bg-[#FFF1F2] dark:bg-rose-500/15 text-[#E60012] dark:text-rose-300 border-[#FECDD3] dark:border-rose-500/35',
+                            }
+                          : {
+                              text: '대기중 ACTIVE',
+                              cls: 'bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/35',
+                            };
+
+                      return (
+                        <div
+                          key={item.codeId}
+                          className={`p-3 rounded-xl border flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 ${subBoxBg}`}
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-sm font-black tracking-wider text-[#1B64DA] dark:text-blue-300">
+                                {formattedCode}
+                              </span>
+                              <span className="text-xs font-extrabold">
+                                {item.label}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-md border text-[10.5px] font-black ${statusBadge.cls}`}
+                              >
+                                {statusBadge.text}
+                              </span>
+                            </div>
+                            <div
+                              className={`text-[11px] font-medium flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-mono tabular-nums ${mutedText}`}
+                            >
+                              <span>
+                                최근 접속: {item.lastSeenAt || item.boundAt || '미접속'}
+                              </span>
+                              {item.createdAt && (
+                                <span>· 발급: {item.createdAt}</span>
+                              )}
+                              {item.boundDevicePreview && (
+                                <span>· 기기ID: {item.boundDevicePreview}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void handleCopyFriendInviteGuide(item)}
+                              className="py-1.5 px-2.5 rounded-lg bg-[#1B64DA] hover:bg-[#1552B5] disabled:opacity-50 text-white text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer transition"
+                            >
+                              {isCopied ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 shrink-0" />
+                                  <span>복사됨!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5 shrink-0" />
+                                  <span>초대 안내문 복사</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() =>
+                                void handleMutateFriendInvite(item, 'reset_device')
+                              }
+                              className={`py-1.5 px-2.5 rounded-lg border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${cardBg}`}
+                              title="휴대폰 기기변경 시 기존 귀속을 풀어 새 휴대폰 1대를 다시 등록할 수 있게 초기화"
+                            >
+                              <RotateCcw className="w-3 h-3 shrink-0" />
+                              <span>기기 초기화</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() =>
+                                void handleMutateFriendInvite(
+                                  item,
+                                  isRevoked ? 'activate' : 'revoke'
+                                )
+                              }
+                              className={`py-1.5 px-2.5 rounded-lg text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${
+                                isRevoked
+                                  ? 'bg-[#059669] hover:bg-emerald-700 text-white'
+                                  : 'bg-[#E60012] hover:bg-[#C8000F] text-white'
+                              }`}
+                            >
+                              {isRevoked ? (
+                                <>
+                                  <Unlock className="w-3 h-3 shrink-0" />
+                                  <span>차단 해제</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Ban className="w-3 h-3 shrink-0" />
+                                  <span>즉시 차단</span>
+                                </>
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() =>
+                                void handleMutateFriendInvite(item, 'delete')
+                              }
+                              aria-label="초대코드 삭제"
+                              title="초대코드 영구 삭제"
+                              className={`p-1.5 rounded-lg border cursor-pointer disabled:opacity-50 hover:text-[#E60012] transition ${cardBg} ${mutedText}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* 2) 4대 자료 원스톱 업로드 카드 그리드 (모바일 1열 / 펼친화면·PC 2열) */}

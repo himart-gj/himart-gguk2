@@ -8,6 +8,13 @@
 // 3) ?cloud=... 원클릭 자동연결 파라미터 지원 (직원 단톡방 공유 시 PIN 제외 URL만 전달)
 // ============================================================================
 
+import {
+  bootstrapInviteFromUrl,
+  isFriendRestrictedMode,
+  readFriendSession,
+  revokeLocalFriendAccess,
+} from './friendAccessGuard';
+
 export type StoreCloudKind = 'schedule' | 'incentive' | 'care' | 'installment';
 
 export interface StoreCloudRawConfig {
@@ -204,6 +211,10 @@ export async function fetchStoreCloudDataset<T = unknown>(
   kind: StoreCloudKind,
   options?: { bypassCache?: boolean; gasUrlOverride?: string }
 ): Promise<T | null> {
+  if (isFriendRestrictedMode() && kind === 'schedule') {
+    return ({} as unknown) as T;
+  }
+
   const gasUrl = normalizeGasWebAppUrl(options?.gasUrlOverride ?? readRawSyncConfig().repo);
   if (!gasUrl) return null;
 
@@ -221,13 +232,23 @@ export async function fetchStoreCloudDataset<T = unknown>(
 
   const runner = (async (): Promise<unknown> => {
     try {
+      const friendSession = isFriendRestrictedMode() ? readFriendSession() : null;
+      const friendQuery =
+        friendSession && friendSession.deviceToken
+          ? `&role=friend&dt=${encodeURIComponent(friendSession.deviceToken)}`
+          : '';
       const sep = gasUrl.includes('?') ? '&' : '?';
       const targetUrl = `${gasUrl}${sep}action=getDataset&kind=${encodeURIComponent(
         kind
-      )}&_t=${Date.now()}`;
+      )}${friendQuery}&_t=${Date.now()}`;
       const res = await getNativeFetch()(targetUrl, { cache: 'no-store' });
       if (!res.ok) return null;
       const json = await res.json();
+      if (json?.revoked === true) {
+        revokeLocalFriendAccess();
+        datasetMicroCache.delete(kind);
+        return null;
+      }
       if (!json?.ok || json.data === null || json.data === undefined) {
         datasetMicroCache.set(kind, { fetchedAtMs: Date.now(), data: null });
         return null;
@@ -252,6 +273,14 @@ export async function saveStoreCloudDataset(
   payloadData: unknown,
   configOverride?: Partial<StoreCloudRawConfig>
 ): Promise<{ ok: boolean; configured: boolean; message: string }> {
+  if (isFriendRestrictedMode()) {
+    return {
+      ok: false,
+      configured: false,
+      message: '외부 공유 기기에서는 매장 공용 시트를 덮어쓸 수 없습니다 (내 기기에만 반영됨).',
+    };
+  }
+
   const saved = readRawSyncConfig();
   const rawRepo = (configOverride?.repo ?? saved.repo ?? '').trim();
   const gasUrl = normalizeGasWebAppUrl(rawRepo);
@@ -407,6 +436,12 @@ export function installStoreCloudFetchBridge(): void {
     }
 
     const kind = mapFileSlugToKind(dataMatch[1]);
+
+    // 친구 제한 모드에서는 schedule 관련 네트워크 요청을 원천 차단하고 빈 객체를 즉시 반환
+    if (kind === 'schedule' && isFriendRestrictedMode()) {
+      return jsonHttpResponse({}, 200);
+    }
+
     const isGitHubApi = /api\.github\.com\/repos\//i.test(urlStr);
 
     if (isGitHubApi) {
@@ -484,6 +519,7 @@ export function getStoreCloudAppsScriptCode(): string {
   care: '_매장공유_안심케어',
   installment: '_매장공유_무이자할부'
 };
+const FRIEND_ACCESS_TAB = '_친구기기_접근관리';
 const GUIDE_TAB = '00_연동가이드_및_AppsScript코드';
 const CHUNK_SIZE = 40000;
 
@@ -493,6 +529,10 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function nowKstLabel() {
+  return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+}
+
 function ensureSheet(ss, name) {
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
@@ -500,6 +540,107 @@ function ensureSheet(ss, name) {
     sheet.getRange(1, 1, 1, 5).setValues([['데이터종류', '청크번호', '전체청크수', '최종업데이트', 'JSON데이터조각']]);
   }
   return sheet;
+}
+
+function ensureFriendAccessSheet(ss) {
+  let sheet = ss.getSheetByName(FRIEND_ACCESS_TAB);
+  if (!sheet) {
+    sheet = ss.insertSheet(FRIEND_ACCESS_TAB);
+    sheet.getRange(1, 1, 1, 10).setValues([[
+      '코드ID',
+      '8자리초대코드',
+      '별칭',
+      '상태(ACTIVE/BOUND/REVOKED)',
+      '최대기기수',
+      '귀속기기토큰',
+      '기기정보(UA)',
+      '발급일시',
+      '최초귀속일시',
+      '최근접속일시'
+    ]]);
+  }
+  return sheet;
+}
+
+function readSavedAdminPin(ss) {
+  const guide = ss.getSheetByName(GUIDE_TAB);
+  const props = PropertiesService.getScriptProperties();
+  let savedPin = '';
+  if (guide) {
+    savedPin = String(guide.getRange('B3').getValue() || '').trim();
+    if (savedPin.indexOf('비워둠') !== -1) savedPin = '';
+  }
+  if (!savedPin) {
+    savedPin = String(props.getProperty('ADMIN_PIN') || '').trim();
+  }
+  return savedPin;
+}
+
+function verifyOrInitPin(ss, inputPin) {
+  const cleanInput = String(inputPin || '').trim();
+  if (!cleanInput) return { ok: false, error: '업로드 비밀번호(PIN)를 입력해 주세요.' };
+  const guide = ss.getSheetByName(GUIDE_TAB);
+  const props = PropertiesService.getScriptProperties();
+  const savedPin = readSavedAdminPin(ss);
+  if (!savedPin) {
+    props.setProperty('ADMIN_PIN', cleanInput);
+    if (guide) guide.getRange('B3').setValue(cleanInput);
+    return { ok: true, initialized: true };
+  }
+  if (savedPin !== cleanInput) {
+    return { ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않습니다.' };
+  }
+  return { ok: true, initialized: false };
+}
+
+function maskDeviceToken(token) {
+  const t = String(token || '').trim();
+  if (!t) return '';
+  if (t.length <= 12) return t;
+  return t.slice(0, 6) + '...' + t.slice(-4);
+}
+
+function readAllFriendInviteRows(ss) {
+  const sheet = ensureFriendAccessSheet(ss);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { sheet: sheet, records: [] };
+  const values = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  const records = [];
+  for (let i = 0; i < values.length; i++) {
+    const r = values[i];
+    const codeId = String(r[0] || '').trim();
+    const inviteCode = String(r[1] || '').replace(/\\D+/g, '').trim();
+    if (!codeId && !inviteCode) continue;
+    records.push({
+      rowNumber: i + 2,
+      codeId: codeId,
+      inviteCode: inviteCode,
+      label: String(r[2] || '친구1').trim(),
+      status: String(r[3] || 'ACTIVE').trim().toUpperCase(),
+      maxDevices: Math.max(1, Number(r[4]) || 1),
+      boundDeviceToken: String(r[5] || '').trim(),
+      boundUserAgent: String(r[6] || '').trim(),
+      createdAt: String(r[7] || '').trim(),
+      boundAt: String(r[8] || '').trim(),
+      lastSeenAt: String(r[9] || '').trim()
+    });
+  }
+  return { sheet: sheet, records: records };
+}
+
+function toClientFriendItem(rec) {
+  return {
+    codeId: rec.codeId,
+    inviteCode: rec.inviteCode,
+    label: rec.label,
+    status: rec.status,
+    maxDevices: rec.maxDevices,
+    boundDevicePreview: maskDeviceToken(rec.boundDeviceToken),
+    boundUserAgent: rec.boundUserAgent,
+    createdAt: rec.createdAt,
+    boundAt: rec.boundAt,
+    lastSeenAt: rec.lastSeenAt
+  };
 }
 
 function readKindDataset(ss, kind) {
@@ -520,40 +661,36 @@ function readKindDataset(ss, kind) {
   }
 }
 
-function verifyOrInitPin(ss, inputPin) {
-  const cleanInput = String(inputPin || '').trim();
-  if (!cleanInput) return { ok: false, error: '업로드 비밀번호(PIN)를 입력해 주세요.' };
-  const guide = ss.getSheetByName(GUIDE_TAB);
-  const props = PropertiesService.getScriptProperties();
-  let savedPin = '';
-  if (guide) {
-    savedPin = String(guide.getRange('B3').getValue() || '').trim();
-    if (savedPin.indexOf('비워둠') !== -1) savedPin = '';
-  }
-  if (!savedPin) {
-    savedPin = String(props.getProperty('ADMIN_PIN') || '').trim();
-  }
-  if (!savedPin) {
-    props.setProperty('ADMIN_PIN', cleanInput);
-    if (guide) guide.getRange('B3').setValue(cleanInput);
-    return { ok: true, initialized: true };
-  }
-  if (savedPin !== cleanInput) {
-    return { ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않습니다.' };
-  }
-  return { ok: true, initialized: false };
-}
-
 function doGet(e) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action) : 'ping';
+  const role = (e && e.parameter && e.parameter.role) ? String(e.parameter.role).trim() : '';
+  const dt = (e && e.parameter && e.parameter.dt) ? String(e.parameter.dt).trim() : '';
+
   if (action === 'getDataset') {
     const kind = String((e.parameter && e.parameter.kind) || '').trim();
     if (!TAB_MAP[kind]) return jsonResponse({ ok: false, error: '지원하지 않는 kind입니다: ' + kind });
+
+    if (role === 'friend') {
+      if (kind === 'schedule') {
+        return jsonResponse({ ok: false, forbidden: true, error: '외부 공유 기기에서는 휴무표를 조회할 수 없습니다.', data: {} });
+      }
+      const friendStore = readAllFriendInviteRows(ss);
+      const matched = friendStore.records.find(function(rec) {
+        return dt && rec.boundDeviceToken === dt;
+      });
+      if (!matched || matched.status !== 'BOUND') {
+        return jsonResponse({ ok: false, revoked: true, valid: false, error: '접근 권한이 차단되었거나 만료된 기기입니다.' });
+      }
+    }
+
     const result = readKindDataset(ss, kind);
     return jsonResponse({ ok: true, kind: kind, updatedAt: result.updatedAt, data: result.data });
   }
   if (action === 'getAll') {
+    if (role === 'friend') {
+      return jsonResponse({ ok: false, forbidden: true, error: '허용되지 않는 요청입니다.' });
+    }
     const datasets = {};
     Object.keys(TAB_MAP).forEach(function(k) {
       datasets[k] = readKindDataset(ss, k);
@@ -562,6 +699,7 @@ function doGet(e) {
   }
   const summary = {};
   Object.keys(TAB_MAP).forEach(function(k) {
+    if (role === 'friend' && k === 'schedule') return;
     const s = ss.getSheetByName(TAB_MAP[k]);
     summary[k] = (s && s.getLastRow() >= 2) ? String(s.getRange(2, 4).getValue() || '저장됨') : '비어있음';
   });
@@ -576,6 +714,183 @@ function doPost(e) {
     const raw = (e && e.postData && e.postData.contents) ? e.postData.contents : '{}';
     const body = JSON.parse(raw);
     const action = String(body.action || 'saveDataset');
+
+    if (action === 'authenticateDevice') {
+      const credential = String(body.credential || '').replace(/[\\s-]+/g, '').trim();
+      const deviceToken = String(body.deviceToken || '').trim();
+      const userAgent = String(body.userAgent || '').slice(0, 180);
+      if (!credential) {
+        return jsonResponse({ ok: false, error: '보안 코드 또는 8자리 초대코드를 입력해 주세요.' });
+      }
+      const savedPin = readSavedAdminPin(ss);
+      if (savedPin && credential === savedPin) {
+        return jsonResponse({ ok: true, role: 'staff' });
+      }
+
+      const store = readAllFriendInviteRows(ss);
+      const found = store.records.find(function(r) {
+        return r.inviteCode === credential;
+      });
+      if (!found) {
+        return jsonResponse({ ok: false, error: '보안 코드가 일치하지 않습니다. 전달받은 8자리 코드를 확인해 주세요.' });
+      }
+      if (found.status === 'REVOKED') {
+        return jsonResponse({ ok: false, revoked: true, error: '관리자에 의해 접근이 차단된 초대 코드입니다.' });
+      }
+      if (!deviceToken || deviceToken.length < 16) {
+        return jsonResponse({ ok: false, error: '기기 고유 식별 토큰을 확인할 수 없습니다.' });
+      }
+
+      const nowStr = nowKstLabel();
+      if (found.status === 'ACTIVE' || !found.boundDeviceToken) {
+        store.sheet.getRange(found.rowNumber, 4, 1, 7).setValues([[
+          'BOUND',
+          found.maxDevices,
+          deviceToken,
+          userAgent,
+          found.createdAt || nowStr,
+          nowStr,
+          nowStr
+        ]]);
+        SpreadsheetApp.flush();
+        return jsonResponse({
+          ok: true,
+          role: 'friend',
+          codeId: found.codeId,
+          label: found.label,
+          verifiedAt: new Date().toISOString()
+        });
+      }
+
+      if (found.status === 'BOUND') {
+        if (found.boundDeviceToken === deviceToken) {
+          store.sheet.getRange(found.rowNumber, 10).setValue(nowStr);
+          SpreadsheetApp.flush();
+          return jsonResponse({
+            ok: true,
+            role: 'friend',
+            codeId: found.codeId,
+            label: found.label,
+            verifiedAt: new Date().toISOString()
+          });
+        }
+        return jsonResponse({
+          ok: false,
+          codeAlreadyUsed: true,
+          error: '이미 등록 완료된 1회용 초대 코드입니다. 등록된 본인 기기(1대) 외에는 접속할 수 없습니다.'
+        });
+      }
+
+      return jsonResponse({ ok: false, error: '사용할 수 없는 초대 코드입니다.' });
+    }
+
+    if (action === 'verifyFriendSession') {
+      const deviceToken = String(body.deviceToken || '').trim();
+      const codeId = String(body.codeId || '').trim();
+      if (!deviceToken) {
+        return jsonResponse({ ok: true, valid: false, revoked: true });
+      }
+      const store = readAllFriendInviteRows(ss);
+      const matched = store.records.find(function(r) {
+        if (codeId && r.codeId === codeId) return true;
+        return r.boundDeviceToken === deviceToken;
+      });
+      if (!matched || matched.status !== 'BOUND' || matched.boundDeviceToken !== deviceToken) {
+        return jsonResponse({ ok: true, valid: false, revoked: true });
+      }
+      store.sheet.getRange(matched.rowNumber, 10).setValue(nowKstLabel());
+      SpreadsheetApp.flush();
+      return jsonResponse({
+        ok: true,
+        valid: true,
+        revoked: false,
+        codeId: matched.codeId,
+        label: matched.label
+      });
+    }
+
+    if (action === 'listFriendInvites') {
+      const pinCheck = verifyOrInitPin(ss, body.pin);
+      if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      const store = readAllFriendInviteRows(ss);
+      const items = store.records.slice().reverse().map(toClientFriendItem);
+      return jsonResponse({ ok: true, items: items });
+    }
+
+    if (action === 'issueFriendInvite') {
+      const pinCheck = verifyOrInitPin(ss, body.pin);
+      if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      const label = String(body.label || '').trim() || '친구1';
+      const maxDevices = Math.max(1, Math.floor(Number(body.maxDevices) || 1));
+      const savedPin = readSavedAdminPin(ss);
+      const store = readAllFriendInviteRows(ss);
+      const existingCodes = {};
+      store.records.forEach(function(r) { existingCodes[r.inviteCode] = true; });
+      let inviteCode = '';
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const candidate = String(Math.floor(10000000 + Math.random() * 90000000));
+        if (!existingCodes[candidate] && candidate !== savedPin) {
+          inviteCode = candidate;
+          break;
+        }
+      }
+      if (!inviteCode) {
+        return jsonResponse({ ok: false, error: '초대코드 생성에 실패했습니다. 다시 시도해 주세요.' });
+      }
+      const codeId = 'INV-' + Date.now() + '-' + Math.floor(100 + Math.random() * 900);
+      const nowStr = nowKstLabel();
+      store.sheet.appendRow([codeId, "'" + inviteCode, label, 'ACTIVE', maxDevices, '', '', nowStr, '', '']);
+      SpreadsheetApp.flush();
+      const updated = readAllFriendInviteRows(ss);
+      const createdRec = updated.records.find(function(r) { return r.codeId === codeId; });
+      return jsonResponse({
+        ok: true,
+        item: createdRec ? toClientFriendItem(createdRec) : {
+          codeId: codeId,
+          inviteCode: inviteCode,
+          label: label,
+          status: 'ACTIVE',
+          maxDevices: maxDevices,
+          createdAt: nowStr,
+          boundAt: '',
+          lastSeenAt: ''
+        },
+        items: updated.records.slice().reverse().map(toClientFriendItem)
+      });
+    }
+
+    if (action === 'updateFriendInviteStatus') {
+      const pinCheck = verifyOrInitPin(ss, body.pin);
+      if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      const codeId = String(body.codeId || '').trim();
+      const mode = String(body.mode || '').trim();
+      const store = readAllFriendInviteRows(ss);
+      const target = store.records.find(function(r) { return r.codeId === codeId; });
+      if (!target) {
+        return jsonResponse({ ok: false, error: '대상 초대코드를 찾을 수 없습니다.' });
+      }
+      if (mode === 'delete') {
+        store.sheet.deleteRow(target.rowNumber);
+      } else if (mode === 'revoke') {
+        store.sheet.getRange(target.rowNumber, 4).setValue('REVOKED');
+      } else if (mode === 'reset_device') {
+        store.sheet.getRange(target.rowNumber, 4).setValue('ACTIVE');
+        store.sheet.getRange(target.rowNumber, 6, 1, 2).setValues([['', '']]);
+        store.sheet.getRange(target.rowNumber, 9, 1, 2).setValues([['', '']]);
+      } else if (mode === 'activate') {
+        const nextStatus = target.boundDeviceToken ? 'BOUND' : 'ACTIVE';
+        store.sheet.getRange(target.rowNumber, 4).setValue(nextStatus);
+      } else {
+        return jsonResponse({ ok: false, error: '지원하지 않는 상태 변경 모드입니다: ' + mode });
+      }
+      SpreadsheetApp.flush();
+      const updated = readAllFriendInviteRows(ss);
+      return jsonResponse({
+        ok: true,
+        items: updated.records.slice().reverse().map(toClientFriendItem)
+      });
+    }
+
     if (action !== 'saveDataset') {
       return jsonResponse({ ok: false, error: '지원하지 않는 action입니다: ' + action });
     }
@@ -621,4 +936,5 @@ function doPost(e) {
 
 // 앱 시작 시 자동 부트스트랩 및 fetch 브릿지 즉시 활성화
 bootstrapCloudConfigFromUrl();
+bootstrapInviteFromUrl();
 installStoreCloudFetchBridge();

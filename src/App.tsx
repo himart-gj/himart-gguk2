@@ -29,6 +29,11 @@ import { AppHeaderAndHome } from './components/AppHeaderAndHome';
 import { AppGlobalModals, getStepShortLabel, ScreenErrorBoundary } from './components/AppGlobalModals';
 import { OPEN_ADMIN_UPLOAD_HUB_EVENT } from './components/StoreAdminUploadHubModal';
 import { StoreCloudKind } from './utils/storeCloudSync';
+import {
+  FRIEND_ROLE_CHANGED_EVENT,
+  isFriendRestrictedMode,
+  purgeLocalScheduleAndOwnerState,
+} from './utils/friendAccessGuard';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -106,9 +111,12 @@ export function App() {
   const [isHomePastDeliveryOpen, setIsHomePastDeliveryOpen] = useState<boolean>(false);
   const [isUploadHubOpen, setIsUploadHubOpen] = useState<boolean>(false);
   const [uploadHubFocus, setUploadHubFocus] = useState<StoreCloudKind | null>(null);
+  const [isFriendMode, setIsFriendMode] = useState<boolean>(() =>
+    isFriendRestrictedMode()
+  );
   // ==================== 관리자 전용 비공개 [마케팅 DB관리] 스텔스 상태 ====================
   const [isOwnerDbUnlocked, setIsOwnerDbUnlocked] = useState<boolean>(() =>
-    isOwnerMarketingDbUnlocked()
+    !isFriendRestrictedMode() && isOwnerMarketingDbUnlocked()
   );
   const [ownerDbTick, setOwnerDbTick] = useState<number>(0);
   const [initialCrmCustomerId, setInitialCrmCustomerId] = useState<
@@ -127,6 +135,9 @@ export function App() {
   // 스마트 화면 이동 스택 (어느 화면에서 넘어왔든 1단계씩 직전 화면으로 정확히 복귀)
   const navigateToStep = useCallback(
     (nextStep: AppStep, opts?: { reset?: boolean }) => {
+      if (nextStep === 'marketing-db' && isFriendRestrictedMode()) {
+        return;
+      }
       const cur = currentStepRef.current;
       if (opts?.reset || nextStep === 'home') {
         stepHistoryRef.current = [];
@@ -418,10 +429,35 @@ export function App() {
     pushAppHistoryGuard,
   ]);
 
+  // 친구(외부 지인) 제한 모드 동기화: 휴무표·오너 전용 상태 즉시 정리 및 차단
+  useEffect(() => {
+    const syncFriendRole = () => {
+      const restricted = isFriendRestrictedMode();
+      setIsFriendMode(restricted);
+      if (restricted) {
+        purgeLocalScheduleAndOwnerState();
+        setIsScheduleModalOpen(false);
+        setIsStealthPinOpen(false);
+        setIsUploadHubOpen(false);
+        setIsOwnerDbUnlocked(false);
+        if (currentStepRef.current === 'marketing-db') {
+          navigateToStep('home', { reset: true });
+        }
+      }
+    };
+    syncFriendRole();
+    window.addEventListener(FRIEND_ROLE_CHANGED_EVENT, syncFriendRole);
+    window.addEventListener('storage', syncFriendRole);
+    return () => {
+      window.removeEventListener(FRIEND_ROLE_CHANGED_EVENT, syncFriendRole);
+      window.removeEventListener('storage', syncFriendRole);
+    };
+  }, [navigateToStep]);
+
   // 인증된 관리자 기기에서만 [⚙️ 통합 업로드 센터] 호출 허용 및 4대 자료 즉시 반영 구독
   useEffect(() => {
     const onOpenHub = (ev: Event) => {
-      if (!isOwnerMarketingDbUnlocked()) return;
+      if (isFriendRestrictedMode() || !isOwnerMarketingDbUnlocked()) return;
       const customEv = ev as CustomEvent<{ focus?: StoreCloudKind }>;
       setUploadHubFocus(customEv.detail?.focus ?? null);
       setIsMenuOpen(false);
@@ -680,14 +716,19 @@ export function App() {
           // ignore
         });
 
-      fetchRemoteSchedules().catch(() => {
-        // ignore
-      });
+      if (!isFriendMode && !isFriendRestrictedMode()) {
+        fetchRemoteSchedules().catch(() => {
+          // ignore
+        });
+      } else {
+        purgeLocalScheduleAndOwnerState();
+        setIsScheduleModalOpen(false);
+      }
       fetchRemoteModelIncentiveSheets().catch(() => {
         // ignore
       });
     }
-  }, [step]);
+  }, [step, isFriendMode]);
 
   // 조견표 업데이트 월 표시 배지 텍스트 자동 추출
   const careUpdateMonthBadge = useMemo(() => {
@@ -731,7 +772,7 @@ export function App() {
   // ==================== 관리자 전용 비공개 [마케팅 DB관리] 스텔스 동기화 ====================
   useEffect(() => {
     const syncOwnerDb = () => {
-      setIsOwnerDbUnlocked(isOwnerMarketingDbUnlocked());
+      setIsOwnerDbUnlocked(!isFriendRestrictedMode() && isOwnerMarketingDbUnlocked());
       setOwnerDbTick((t) => t + 1);
     };
     window.addEventListener(MARKETING_DB_UPDATED_EVENT, syncOwnerDb);
@@ -740,7 +781,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!isOwnerDbUnlocked || step === 'marketing-db') return;
+    if (isFriendMode || !isOwnerDbUnlocked || step === 'marketing-db') return;
     const runBgSync = () => {
       void syncLeadsFromGoogleSheet(loadMarketingDbStore());
     };
@@ -754,10 +795,10 @@ export function App() {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [isOwnerDbUnlocked, step]);
+  }, [isFriendMode, isOwnerDbUnlocked, step]);
 
   const ownerDbQuickSummary = useMemo(() => {
-    if (!isOwnerDbUnlocked) {
+    if (isFriendMode || !isOwnerDbUnlocked) {
       return { totalActive: 0, newCount: 0, handoverTabCount: 0, monthRevenue: 0 };
     }
     const dbStore = loadMarketingDbStore();
@@ -778,10 +819,14 @@ export function App() {
       handoverTabCount,
       monthRevenue,
     };
-  }, [isOwnerDbUnlocked, ownerDbTick, step]);
+  }, [isFriendMode, isOwnerDbUnlocked, ownerDbTick, step]);
 
   const handleHomeButtonClick = () => {
     navigateToStep('home', { reset: true });
+    if (isFriendMode || isFriendRestrictedMode()) {
+      homeTapTimestampsRef.current = [];
+      return;
+    }
     const now = Date.now();
     const recent = homeTapTimestampsRef.current.filter((t) => now - t < 2500);
     recent.push(now);
@@ -800,6 +845,10 @@ export function App() {
   };
 
   const handleConfirmStealthPin = () => {
+    if (isFriendMode || isFriendRestrictedMode()) {
+      setIsStealthPinOpen(false);
+      return;
+    }
     if (verifyAndUnlockOwnerDb(stealthPinInput)) {
       setIsOwnerDbUnlocked(true);
       setIsStealthPinOpen(false);
@@ -1564,9 +1613,10 @@ export function App() {
           handleInstallAppClick={handleInstallAppClick}
           handleNavigateBack={handleNavigateBack}
           isDark={isDark}
+          isFriendMode={isFriendMode}
           isMenuOpen={isMenuOpen}
           isOnline={isOnline}
-          isOwnerDbUnlocked={isOwnerDbUnlocked}
+          isOwnerDbUnlocked={!isFriendMode && isOwnerDbUnlocked}
           isStandalone={isStandalone}
           menuContainerRef={menuContainerRef}
           navigateToStep={navigateToStep}
@@ -1582,8 +1632,12 @@ export function App() {
           setIsMenuOpen={setIsMenuOpen}
           setIsOmnibarOpen={setIsOmnibarOpen}
           setIsPartnerLinksOpen={setIsPartnerLinksOpen}
-          setIsScheduleModalOpen={setIsScheduleModalOpen}
+          setIsScheduleModalOpen={(open: boolean) => {
+            if (isFriendRestrictedMode()) return;
+            setIsScheduleModalOpen(open);
+          }}
           setIsUploadHubOpen={(open: boolean) => {
+            if (isFriendRestrictedMode()) return;
             if (open) setUploadHubFocus(null);
             setIsUploadHubOpen(open);
           }}
@@ -1798,7 +1852,7 @@ export function App() {
             initialSelectedCustomerId={initialCrmCustomerId}
           />
         )}
-        {step === 'marketing-db' && (isOwnerDbUnlocked || isOwnerMarketingDbUnlocked()) && (
+        {!isFriendMode && step === 'marketing-db' && (isOwnerDbUnlocked || isOwnerMarketingDbUnlocked()) && (
           <MarketingDbManagerView
             onBackToHome={handleNavigateBack}
             backLabel={backButtonLabel}
@@ -1842,7 +1896,7 @@ export function App() {
             backLabel={backButtonLabel}
           />
         )}
-        {step === 'marketing-db' && !isOwnerDbUnlocked && !isOwnerMarketingDbUnlocked() && (
+        {!isFriendMode && step === 'marketing-db' && !isOwnerDbUnlocked && !isOwnerMarketingDbUnlocked() && (
           <div className="flex-1 flex flex-col items-center justify-center p-6 gap-3">
             <p className="text-sm font-extrabold">개인 보안 코드 인증이 필요합니다.</p>
             <div className="flex items-center gap-2">
@@ -1893,15 +1947,16 @@ export function App() {
           isAsCenterOpen={isAsCenterOpen}
           isCardIssueOpen={isCardIssueOpen}
           isDark={isDark}
+          isFriendMode={isFriendMode}
           isHomePastDeliveryOpen={isHomePastDeliveryOpen}
           isInstallGuideOpen={isInstallGuideOpen}
           isInstallmentModalOpen={isInstallmentModalOpen}
           isOmnibarOpen={isOmnibarOpen}
           isPartnerLinksOpen={isPartnerLinksOpen}
           isSaveToCrmOpen={isSaveToCrmOpen}
-          isScheduleModalOpen={isScheduleModalOpen}
-          isStealthPinOpen={isStealthPinOpen}
-          isUploadHubOpen={isUploadHubOpen}
+          isScheduleModalOpen={!isFriendMode && isScheduleModalOpen}
+          isStealthPinOpen={!isFriendMode && isStealthPinOpen}
+          isUploadHubOpen={!isFriendMode && isUploadHubOpen}
           navigateToStep={navigateToStep}
           pastDueCustomersHome={pastDueCustomersHome}
           setActiveCustomer={setActiveCustomer}
@@ -1921,9 +1976,18 @@ export function App() {
           setIsOmnibarOpen={setIsOmnibarOpen}
           setIsPartnerLinksOpen={setIsPartnerLinksOpen}
           setIsSaveToCrmOpen={setIsSaveToCrmOpen}
-          setIsScheduleModalOpen={setIsScheduleModalOpen}
-          setIsStealthPinOpen={setIsStealthPinOpen}
-          setIsUploadHubOpen={setIsUploadHubOpen}
+          setIsScheduleModalOpen={(open: boolean) => {
+            if (isFriendRestrictedMode()) return;
+            setIsScheduleModalOpen(open);
+          }}
+          setIsStealthPinOpen={(open: boolean) => {
+            if (isFriendRestrictedMode()) return;
+            setIsStealthPinOpen(open);
+          }}
+          setIsUploadHubOpen={(open: boolean) => {
+            if (isFriendRestrictedMode()) return;
+            setIsUploadHubOpen(open);
+          }}
           setParseError={setParseError}
           setParseGeneralError={setParseGeneralError}
           setStealthPinError={setStealthPinError}

@@ -36,6 +36,7 @@ import {
   saveLocalCareDataset,
   setAdminDeviceUnlocked,
 } from '../utils/careTableParser';
+import { isFriendRestrictedMode } from '../utils/friendAccessGuard';
 import {
   getCurrentYearMonth,
   parseModelIncentiveExcelWithMeta,
@@ -384,7 +385,7 @@ export const CareTableView: React.FC<CareTableViewProps> = ({ onBackToHome, back
   const activeFolderObj = CARE_FOLDERS.find((f) => f.key === selectedFolder) || null;
 
   const handleSecretAdminTap = () => {
-    if (isAdmin) return;
+    if (isAdmin || isFriendRestrictedMode()) return;
     adminTapCountRef.current += 1;
     if (adminTapTimerRef.current) {
       window.clearTimeout(adminTapTimerRef.current);

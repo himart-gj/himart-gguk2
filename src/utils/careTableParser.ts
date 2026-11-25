@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { isFriendRestrictedMode } from './friendAccessGuard';
 import {
   UNCONFIGURED_PIN_SENTINEL,
   fetchStoreCloudDataset,
@@ -630,6 +631,7 @@ export function refreshAdminPinBinding(): string {
 }
 
 export function isAdminDevice(): boolean {
+  if (isFriendRestrictedMode()) return false;
   try {
     const flag = localStorage.getItem(ADMIN_UNLOCK_STORAGE_KEY);
     if (flag === 'true') {
@@ -648,6 +650,7 @@ export function isAdminDevice(): boolean {
 }
 
 export function setAdminDeviceUnlocked(unlocked: boolean): void {
+  if (unlocked && isFriendRestrictedMode()) return;
   try {
     localStorage.setItem(ADMIN_UNLOCK_STORAGE_KEY, unlocked ? 'true' : 'false');
     window.dispatchEvent(new CustomEvent(ADMIN_MODE_CHANGED_EVENT));

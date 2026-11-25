@@ -37,6 +37,7 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
   isAsCenterOpen,
   isCardIssueOpen,
   isDark,
+  isFriendMode = false,
   isHomePastDeliveryOpen,
   isInstallGuideOpen,
   isInstallmentModalOpen,
@@ -113,12 +114,14 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
       />
 
       {/* ==================== 매장 자료 통합 업로드 센터 모달 ==================== */}
-      <StoreAdminUploadHubModal
-        isOpen={Boolean(isUploadHubOpen)}
-        onClose={() => setIsUploadHubOpen?.(false)}
-        isDark={isDark}
-        initialFocus={uploadHubFocus ?? null}
-      />
+      {!isFriendMode && (
+        <StoreAdminUploadHubModal
+          isOpen={Boolean(isUploadHubOpen)}
+          onClose={() => setIsUploadHubOpen?.(false)}
+          isDark={isDark}
+          initialFocus={uploadHubFocus ?? null}
+        />
+      )}
 
       {/* ==================== 지연 로딩 모달 묶음 (무이자 / 휴무표) ==================== */}
       <Suspense fallback={null}>
@@ -129,7 +132,7 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
           />
         )}
 
-        {isScheduleModalOpen && (
+        {!isFriendMode && isScheduleModalOpen && (
           <ScheduleModal
             isOpen={isScheduleModalOpen}
             onClose={() => setIsScheduleModalOpen(false)}
@@ -145,6 +148,7 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
             isOpen={isOmnibarOpen}
             onClose={() => setIsOmnibarOpen(false)}
             isDark={isDark}
+            isFriendMode={Boolean(isFriendMode)}
             customers={activeCrmCustomers}
             careDataset={careDataset}
             installmentDataset={installmentDataset}
@@ -159,7 +163,9 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
             onOpenCustomerQuote={(cust) =>
               handleOpenCustomerInQuoteBuilder(cust)
             }
-            onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+            onOpenScheduleModal={() => {
+              if (!isFriendMode) setIsScheduleModalOpen(true);
+            }}
             onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
             onOpenCardIssueModal={() => setIsCardIssueOpen(true)}
             onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
@@ -174,6 +180,7 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
         <AiCommandModal
           isOpen={isAiCommandModalOpen}
           onClose={() => setIsAiCommandModalOpen(false)}
+          isFriendMode={Boolean(isFriendMode)}
           initialCommand={aiInitialCommand}
           onClearInitialCommand={() => setAiInitialCommand('')}
           currentProposalState={currentState}
@@ -206,7 +213,9 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
             }
             setActiveMode(nextState.quoteMode);
           }}
-          onOpenScheduleModal={() => setIsScheduleModalOpen(true)}
+          onOpenScheduleModal={() => {
+            if (!isFriendMode) setIsScheduleModalOpen(true);
+          }}
           onOpenCareTable={() => navigateToStep('care-table')}
           onOpenInstallmentModal={() => setIsInstallmentModalOpen(true)}
           onOpenAsCenterModal={() => setIsAsCenterOpen(true)}
@@ -298,7 +307,7 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
         </div>
       )}
 
-      {isStealthPinOpen && (
+      {!isFriendMode && isStealthPinOpen && (
         <div className="no-print">
           <FlagshipModalShell
             isOpen={isStealthPinOpen}

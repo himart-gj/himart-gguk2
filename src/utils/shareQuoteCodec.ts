@@ -20,6 +20,14 @@ import {
 } from '../types/proposal';
 import { loadSavedUserName } from '../components/ScheduleModal';
 import { ADMIN_PIN_CODE } from './careTableParser';
+import {
+  FRIEND_DEVICE_REVOKED_KEY,
+  FRIEND_ROLE_CHANGED_EVENT,
+  FRIEND_SESSION_STORAGE_KEY,
+  isFriendRestrictedMode,
+  PENDING_INVITE_PROMPT_KEY,
+} from './friendAccessGuard';
+import { UNCONFIGURED_PIN_SENTINEL } from './storeCloudSync';
 
 export interface ConsultantProfile {
   name: string;
@@ -831,12 +839,24 @@ function hasVerifiedStaffFootprint(): boolean {
     if (localStorage.getItem(CUSTOMER_DEVICE_VIEWER_ONLY_KEY) === '1') {
       return false;
     }
+    if (localStorage.getItem(FRIEND_DEVICE_REVOKED_KEY) === '1') {
+      return false;
+    }
+    if (isFriendRestrictedMode()) {
+      return true;
+    }
     if (
       localStorage.getItem(STAFF_VERIFIED_V2_KEY) === '1' ||
       localStorage.getItem(STAFF_TRUSTED_DEVICE_KEY) === '1'
     ) {
       localStorage.setItem(STAFF_VERIFIED_V2_KEY, '1');
       return true;
+    }
+    if (
+      typeof sessionStorage !== 'undefined' &&
+      sessionStorage.getItem(PENDING_INVITE_PROMPT_KEY) === '1'
+    ) {
+      return false;
     }
     const host =
       typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
@@ -903,13 +923,24 @@ export function detectCustomerSandboxMode(): boolean {
 
 export function unlockStaffDeviceWithPin(pin: string): boolean {
   const input = (pin || '').trim();
+  if (!input) return false;
   const effectivePin = getEffectiveStaffPin();
-  if (input !== effectivePin && input !== ADMIN_PIN_CODE) return false;
+  const matchesEffective =
+    effectivePin !== UNCONFIGURED_PIN_SENTINEL && input === effectivePin;
+  const matchesAdmin =
+    ADMIN_PIN_CODE !== UNCONFIGURED_PIN_SENTINEL && input === ADMIN_PIN_CODE;
+  if (!matchesEffective && !matchesAdmin) return false;
   try {
+    localStorage.removeItem(FRIEND_DEVICE_REVOKED_KEY);
+    localStorage.removeItem(FRIEND_SESSION_STORAGE_KEY);
     localStorage.setItem(STAFF_VERIFIED_V2_KEY, '1');
     localStorage.setItem(STAFF_TRUSTED_DEVICE_KEY, '1');
     localStorage.removeItem(CUSTOMER_DEVICE_VIEWER_ONLY_KEY);
     sessionStorage.removeItem(CUSTOMER_TAB_LOCK_KEY);
+    sessionStorage.removeItem(PENDING_INVITE_PROMPT_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(FRIEND_ROLE_CHANGED_EVENT));
+    }
   } catch {
     // ignore
   }

@@ -39,6 +39,8 @@ interface ScheduleCharacterBannerProps {
   customers?: CustomerItem[];
   /** 수당 적립 위젯 클릭 시 고객관리 해당 탭으로 바로 이동 */
   onOpenIncentiveTab?: (tab: SettlementTabId) => void;
+  /** 친구(외부 지인) 모드일 때 경기광주점 근무·휴무 섹션만 숨기고 월간 실적·수당 브리핑만 노출 */
+  hideScheduleSection?: boolean;
 }
 
 type HolidayContext =
@@ -95,9 +97,14 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
   overrideNow,
   customers: customersProp,
   onOpenIncentiveTab,
+  hideScheduleSection = false,
 }) => {
-  const [userName, setUserName] = useState<string>(() => loadSavedUserName());
-  const [schedules, setSchedules] = useState<SchedulesMap>(() => loadAllSchedules());
+  const [userName, setUserName] = useState<string>(() =>
+    hideScheduleSection ? '' : loadSavedUserName()
+  );
+  const [schedules, setSchedules] = useState<SchedulesMap>(() =>
+    hideScheduleSection ? {} : loadAllSchedules()
+  );
   const [now, setNow] = useState<Date>(() => overrideNow || new Date());
   const [isPickerOpen, setIsPickerOpen] = useState<boolean>(false);
   const [domDark, setDomDark] = useState<boolean>(() =>
@@ -723,7 +730,7 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     <div
       className={`scb-root ${isDark ? 'is-dark' : 'is-light'}`}
       role="region"
-      aria-label="근무 스케줄 및 실적 라운지"
+      aria-label={hideScheduleSection ? '이달의 실시간 실적 · 수당 브리핑' : '근무 스케줄 및 실적 라운지'}
     >
       <style>{`
         .scb-root {
@@ -1299,12 +1306,26 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       >
         <div className="scb-header-left">
           <span className="scb-brand-dot" aria-hidden="true" />
-          <span className="scb-header-eyebrow">오늘의 근무 · 실적 브리핑</span>
-          <span className="scb-header-sub">
-            {!isExpanded
-              ? `· ${userName ? `${userName} (${leftSummary.ringValue})` : '담당자 미지정'} · ${leftSummary.headline}`
-              : `· ${currentMonthNum}월 경기광주점 실시간 스케줄`}
+          <span className="scb-header-eyebrow">
+            {hideScheduleSection
+              ? '이달의 실시간 실적 · 수당 브리핑'
+              : '오늘의 근무 · 실적 브리핑'}
           </span>
+          {hideScheduleSection ? (
+            !isExpanded && (
+              <span className="scb-header-sub">
+                {hideAmounts
+                  ? `· ${currentMonthNum}월 실적 요약 접힘`
+                  : `· ${currentMonthNum}월 수당 +${monthlyIncentiveSummary.grandTotalIncentive.toLocaleString()}원 · 구독 ${monthlyIncentiveSummary.grossSubscriptionCount}건`}
+              </span>
+            )
+          ) : (
+            <span className="scb-header-sub">
+              {!isExpanded
+                ? `· ${userName ? `${userName} (${leftSummary.ringValue})` : '담당자 미지정'} · ${leftSummary.headline}`
+                : `· ${currentMonthNum}월 경기광주점 실시간 스케줄`}
+            </span>
+          )}
         </div>
 
         <div className="scb-compact-actions">
@@ -1318,16 +1339,18 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
               {hideAmounts ? '수당 표시' : '수당 가림'}
             </button>
           )}
-          <button
-            type="button"
-            className="scb-ghost-btn is-primary"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenScheduleModal();
-            }}
-          >
-            전체 휴무표
-          </button>
+          {!hideScheduleSection && (
+            <button
+              type="button"
+              className="scb-ghost-btn is-primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenScheduleModal();
+              }}
+            >
+              전체 휴무표
+            </button>
+          )}
           <button
             type="button"
             className="scb-ghost-btn"
@@ -1343,67 +1366,69 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
 
       {isExpanded && (
         <div className="scb-expand-body">
-          <div className="scb-top-split">
-            <div className="scb-left-pane">
-              <div
-                className="scb-ring-outer"
-                style={{
-                  background: `conic-gradient(${leftSummary.ringColor} 0% ${leftSummary.ringPct}%, ${
-                    isDark ? 'rgba(255,255,255,0.09)' : '#E5E8EB'
-                  } ${leftSummary.ringPct}% 100%)`,
-                }}
-              >
-                <div className="scb-ring-inner">
-                  <span className="scb-ring-lbl">{leftSummary.ringLabel}</span>
-                  <span className="scb-ring-val" style={{ color: leftSummary.ringColor }}>
-                    {leftSummary.ringValue}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <button
-                  type="button"
-                  className="scb-user-pill"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsPickerOpen((prev) => !prev);
+          {!hideScheduleSection && (
+            <div className="scb-top-split">
+              <div className="scb-left-pane">
+                <div
+                  className="scb-ring-outer"
+                  style={{
+                    background: `conic-gradient(${leftSummary.ringColor} 0% ${leftSummary.ringPct}%, ${
+                      isDark ? 'rgba(255,255,255,0.09)' : '#E5E8EB'
+                    } ${leftSummary.ringPct}% 100%)`,
                   }}
-                  title="내 이름 빠른 선택·변경"
                 >
-                  <span>
-                    {userName ? `${userName}${userRole ? ` (${userRole})` : ''}` : '내 이름 선택하기'}
-                  </span>
-                  <span>{isPickerOpen ? '▴' : '▾'}</span>
-                </button>
-                <h2 className="scb-headline">{leftSummary.headline}</h2>
-                <p className="scb-subline" onClick={onOpenScheduleModal}>
-                  {leftSummary.subline}
-                </p>
-              </div>
-            </div>
-
-            <div className="scb-mood-pod" onClick={onOpenScheduleModal}>
-              {renderAnimatedMoodFace(liveMood.face)}
-              <div className="scb-mood-body">
-                <span className="scb-mood-pill" style={pillColorStyle}>
-                  {liveMood.pillText}
-                </span>
-                <div className="scb-mood-title">{liveMood.moodTitle}</div>
-                <div className="scb-shift-bar-row">
-                  <div className="scb-shift-track" aria-hidden="true">
-                    <div
-                      className="scb-shift-fill"
-                      style={{ transform: `scaleX(${Math.max(0.04, liveMood.progressPct / 100)})` }}
-                    />
+                  <div className="scb-ring-inner">
+                    <span className="scb-ring-lbl">{leftSummary.ringLabel}</span>
+                    <span className="scb-ring-val" style={{ color: leftSummary.ringColor }}>
+                      {leftSummary.ringValue}
+                    </span>
                   </div>
-                  <span className="scb-shift-caption">{liveMood.progressLabel}</span>
+                </div>
+
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <button
+                    type="button"
+                    className="scb-user-pill"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsPickerOpen((prev) => !prev);
+                    }}
+                    title="내 이름 빠른 선택·변경"
+                  >
+                    <span>
+                      {userName ? `${userName}${userRole ? ` (${userRole})` : ''}` : '내 이름 선택하기'}
+                    </span>
+                    <span>{isPickerOpen ? '▴' : '▾'}</span>
+                  </button>
+                  <h2 className="scb-headline">{leftSummary.headline}</h2>
+                  <p className="scb-subline" onClick={onOpenScheduleModal}>
+                    {leftSummary.subline}
+                  </p>
+                </div>
+              </div>
+
+              <div className="scb-mood-pod" onClick={onOpenScheduleModal}>
+                {renderAnimatedMoodFace(liveMood.face)}
+                <div className="scb-mood-body">
+                  <span className="scb-mood-pill" style={pillColorStyle}>
+                    {liveMood.pillText}
+                  </span>
+                  <div className="scb-mood-title">{liveMood.moodTitle}</div>
+                  <div className="scb-shift-bar-row">
+                    <div className="scb-shift-track" aria-hidden="true">
+                      <div
+                        className="scb-shift-fill"
+                        style={{ transform: `scaleX(${Math.max(0.04, liveMood.progressPct / 100)})` }}
+                      />
+                    </div>
+                    <span className="scb-shift-caption">{liveMood.progressLabel}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {isPickerOpen && (
+          {!hideScheduleSection && isPickerOpen && (
             <div
               className="scb-picker-tray"
               onClick={(e) => e.stopPropagation()}
@@ -1514,27 +1539,29 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
             </div>
           </div>
 
-          <div className="scb-week-grid" onClick={onOpenScheduleModal}>
-            {trackDays.map((item) => {
-              const stateText = !item.isRegistered
-                ? '미등록'
-                : item.code === 'O'
-                ? '휴무'
-                : item.code || '출근';
-              return (
-                <div
-                  key={item.offset}
-                  className={`scb-day-cell ${item.isToday ? 'is-today' : item.isOff ? 'is-off' : ''}`}
-                >
-                  <span className="scb-day-top">
-                    {item.isToday ? '오늘' : `${item.dayNum}(${item.weekday})`}
-                  </span>
-                  <span className="scb-day-dot" aria-hidden="true" />
-                  <span className="scb-day-code">{stateText}</span>
-                </div>
-              );
-            })}
-          </div>
+          {!hideScheduleSection && (
+            <div className="scb-week-grid" onClick={onOpenScheduleModal}>
+              {trackDays.map((item) => {
+                const stateText = !item.isRegistered
+                  ? '미등록'
+                  : item.code === 'O'
+                  ? '휴무'
+                  : item.code || '출근';
+                return (
+                  <div
+                    key={item.offset}
+                    className={`scb-day-cell ${item.isToday ? 'is-today' : item.isOff ? 'is-off' : ''}`}
+                  >
+                    <span className="scb-day-top">
+                      {item.isToday ? '오늘' : `${item.dayNum}(${item.weekday})`}
+                    </span>
+                    <span className="scb-day-dot" aria-hidden="true" />
+                    <span className="scb-day-code">{stateText}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

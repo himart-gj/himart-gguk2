@@ -126,6 +126,7 @@ export interface AiCommandModalProps {
   initialCommand?: string;
   onClearInitialCommand?: () => void;
   currentProposalState?: ProposalState;
+  isFriendMode?: boolean;
 }
 
 // 상단 빠른 예시 칩 4개 (① 견적+제안서 바로보기 / ② 견적+고객저장 / ③ 휴무표 말로 수정 / ④ 안심케어·무이자·AS 검색)

@@ -1,4 +1,5 @@
 import { ADMIN_PIN_CODE, refreshAdminPinBinding } from './careTableParser';
+import { isFriendRestrictedMode } from './friendAccessGuard';
 import { normalizeGasWebAppUrl, readRawSyncConfig } from './storeCloudSync';
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from './ownerBusinessCardAsset';
 import {
@@ -407,7 +408,7 @@ export function setOwnerDbPin(nextPin: string): boolean {
 }
 
 export function isOwnerMarketingDbUnlocked(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined' || isFriendRestrictedMode()) return false;
   try {
     // URL에 ?ownerdb=PIN 파라미터가 전달되면 즉시 기기 인증 후 URL 파라미터 흔적 자동 제거
     const params = new URLSearchParams(window.location.search);
@@ -427,6 +428,7 @@ export function isOwnerMarketingDbUnlocked(): boolean {
 }
 
 export function verifyAndUnlockOwnerDb(pinInput: string): boolean {
+  if (isFriendRestrictedMode()) return false;
   const cleaned = (pinInput || '').trim().replace(/^#(?:db)?/i, '');
   if (!cleaned) return false;
   if (cleaned === getOwnerDbPin() || cleaned === ADMIN_PIN_CODE) {

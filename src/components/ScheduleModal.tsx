@@ -48,6 +48,7 @@ import {
   GitHubSyncConfig,
   loadGitHubSyncConfig,
 } from '../utils/careTableParser';
+import { isFriendRestrictedMode } from '../utils/friendAccessGuard';
 
 export const USER_NAME_STORAGE_KEY = 'himart_gj_user_name';
 export const SCHEDULES_STORAGE_KEY = 'himart_gj_schedules_v4';
@@ -256,6 +257,7 @@ function parseUpdatedAtMs(val: unknown): number {
 }
 
 export function loadAllSchedules(): SchedulesMap {
+  if (isFriendRestrictedMode()) return {};
   try {
     // 구버전 하드코딩 캐시 키 정리
     localStorage.removeItem('himart_gj_schedules_v1');
@@ -320,6 +322,7 @@ export function loadAllSchedules(): SchedulesMap {
 }
 
 export function saveAllSchedules(map: SchedulesMap): void {
+  if (isFriendRestrictedMode()) return;
   try {
     localStorage.setItem(SCHEDULES_STORAGE_KEY, JSON.stringify(map));
     window.dispatchEvent(new CustomEvent(SCHEDULE_UPDATED_EVENT));
@@ -329,6 +332,7 @@ export function saveAllSchedules(map: SchedulesMap): void {
 }
 
 export function syncSchedulesToDevServer(map: SchedulesMap): void {
+  if (isFriendRestrictedMode()) return;
   try {
     fetch('/api/schedule/save', {
       method: 'POST',
@@ -344,6 +348,7 @@ export function syncSchedulesToDevServer(map: SchedulesMap): void {
  * [원격 동기화 1] 서버/GitHub에 배포된 최신 휴무표(/schedule-data.json) 자동 가져오기 및 병합
  */
 export async function fetchRemoteSchedules(): Promise<SchedulesMap | null> {
+  if (isFriendRestrictedMode()) return null;
   try {
     let ghMap: SchedulesMap | null = null;
     let staticMap: SchedulesMap | null = null;

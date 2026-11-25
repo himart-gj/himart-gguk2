@@ -122,6 +122,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
   handleInstallAppClick,
   handleNavigateBack,
   isDark,
+  isFriendMode = false,
   isMenuOpen,
   isOnline,
   isOwnerDbUnlocked,
@@ -344,7 +345,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
           </button>
 
           {/* 서브 화면에서는 모바일에서도 즉시 휴무표 접근 가능한 깔끔한 아이콘 버튼 노출 */}
-          {step !== 'home' && (
+          {step !== 'home' && !isFriendMode && (
             <button
               type="button"
               onClick={() => {
@@ -648,7 +649,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 <span className="text-[11.5px] text-[#1B64DA] dark:text-blue-300">입주 · 중고 · 수당 · 청약</span>
               </button>
 
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className={`grid ${isFriendMode ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5`}>
                 <button
                   type="button"
                   onClick={() => {
@@ -682,17 +683,19 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 >
                   AS센터
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    pushAppHistoryGuard('open-schedule');
-                    setIsScheduleModalOpen(true);
-                  }}
-                  className={`py-2 px-1 rounded-xl text-[11.5px] font-bold text-center border cursor-pointer ${surfaceBtn}`}
-                >
-                  휴무표
-                </button>
+                {!isFriendMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      pushAppHistoryGuard('open-schedule');
+                      setIsScheduleModalOpen(true);
+                    }}
+                    className={`py-2 px-1 rounded-xl text-[11.5px] font-bold text-center border cursor-pointer ${surfaceBtn}`}
+                  >
+                    휴무표
+                  </button>
+                )}
               </div>
 
               {!isStandalone && (
@@ -721,7 +724,9 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
             <ScheduleCharacterBanner
               isDark={isDark}
               customers={activeCrmCustomers}
+              hideScheduleSection={Boolean(isFriendMode)}
               onOpenScheduleModal={() => {
+                if (isFriendMode) return;
                 pushAppHistoryGuard('open-schedule');
                 setIsScheduleModalOpen(true);
               }}

@@ -16,6 +16,7 @@ export const AiCommandResultCards: React.FC<Record<string, any>> = ({
   handleRunAiCommand,
   installmentResult,
   insuranceResult,
+  isFriendMode = false,
   onClose,
   onLoadCrmCustomerQuote,
   onOpenAsCenterModal,
@@ -35,7 +36,7 @@ export const AiCommandResultCards: React.FC<Record<string, any>> = ({
       {/* =====================================================================
           [결과 섹션 1] 📅 휴무표 말로 즉시 수정 / 근무·휴무자 조회 카드
          ===================================================================== */}
-      {activeModifyCard && (
+      {!isFriendMode && activeModifyCard && (
         <div
           className={`rounded-[20px] border p-4 space-y-3 ${
             activeModifyCard.unmatchedStaffName
@@ -143,7 +144,7 @@ export const AiCommandResultCards: React.FC<Record<string, any>> = ({
         </div>
       )}
 
-      {activeQueryCard && (
+      {!isFriendMode && activeQueryCard && (
         <div className="rounded-[20px] border border-[#E5E8EB] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/70 p-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
