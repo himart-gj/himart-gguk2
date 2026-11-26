@@ -435,7 +435,7 @@ export const MorningBriefingModal: React.FC<MorningBriefingModalProps> = ({
             현재 밀린 긴급 배송이나 미발송 건이 없습니다!
           </h4>
           <p className="text-xs text-[#4E5968] dark:text-slate-400">
-            오늘도 국지점 대박 실적을 응원합니다.
+            오늘도 최고 실적을 응원합니다!
           </p>
         </div>
       )}

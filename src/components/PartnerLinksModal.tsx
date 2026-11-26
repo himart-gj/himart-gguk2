@@ -96,6 +96,16 @@ export const DEFAULT_PARTNER_LINKS: PartnerQuickLinkItem[] = [
     isStaffOnly: true,
     isBuiltIn: true,
   },
+  {
+    id: 'lg-sub-calc-portal',
+    title: 'LG전자 구독 계산기',
+    url: 'https://lg-sales.hiqri.ai/user/account/login',
+    category: 'staff',
+    badgeText: '업무 전용',
+    description: 'LG전자 가전 구독 월 요금 · 케어십 · 제휴혜택 실시간 계산 포털',
+    isStaffOnly: true,
+    isBuiltIn: true,
+  },
 ];
 
 const CHOSEONG = [

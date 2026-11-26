@@ -12,6 +12,7 @@ import {
   getActiveCompareModes,
   getGeneralPlan1And2Summaries,
   getHiPlusUnitMonthlySupport,
+  getLottePlanQuoteMeta,
   getSubscriptionSurplusMeta,
   HI_PLUS_PLANS,
   HiPlusCounts,
@@ -482,15 +483,23 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
     }) 보고 연락드립니다.`
   );
 
+  const lottePlanMeta = useMemo(() => getLottePlanQuoteMeta(simState), [simState]);
+  const isLottePlanQuote = lottePlanMeta.isLottePlan;
+
   const validGeneralNames = generalSummary.displayItems
     .map((it) => (it.category || '').trim())
     .filter(Boolean);
-  const generalHeaderTitle =
-    validGeneralNames.length === 0
-      ? '맞춤 가전 패키지 구매 제안서'
+  const generalHeaderTitle = isLottePlanQuote
+    ? validGeneralNames.length === 0
+      ? '롯데 플랜 제휴카드 맞춤 구매 제안서'
       : validGeneralNames.length === 1
-      ? `${validGeneralNames[0]} 맞춤 구매 제안서`
-      : `${validGeneralNames[0]} 외 ${validGeneralNames.length - 1}건 맞춤 구매 제안서`;
+      ? `${validGeneralNames[0]} 롯데 플랜 맞춤 제안서`
+      : `${validGeneralNames[0]} 외 ${validGeneralNames.length - 1}건 롯데 플랜 제안서`
+    : validGeneralNames.length === 0
+    ? '맞춤 가전 패키지 구매 제안서'
+    : validGeneralNames.length === 1
+    ? `${validGeneralNames[0]} 맞춤 구매 제안서`
+    : `${validGeneralNames[0]} 외 ${validGeneralNames.length - 1}건 맞춤 구매 제안서`;
 
   const validSubNames = subSummary.displayItems
     .map((it) => (it.category || '').trim())
@@ -530,7 +539,9 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
   const hybridCombinedNetTotal = generalSummary.rawNet + subSummary.finalTotalFee;
 
   const hasGeneralSim =
-    showGeneral && (Boolean(originGeneralAffiliateCard) || !simState.hideHiPreed);
+    !isLottePlanQuote &&
+    showGeneral &&
+    (Boolean(originGeneralAffiliateCard) || !simState.hideHiPreed);
   const hasSubSim =
     showSub && (Boolean(originSubAffiliateCard) || !simState.hideSubPreed);
   const showSimulatorSection = hasGeneralSim || hasSubSim;
@@ -569,7 +580,7 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
 
   const { cheaperPlanNum, planDiffAmount, planTotalSubDiff } = planCompareMetrics;
   const mapSearchUrl = `https://map.naver.com/p/search/${encodeURIComponent(
-    payload.consultant.storeName || '롯데하이마트 경기광주점'
+    payload.consultant.storeName || '롯데하이마트'
   )}`;
 
   const containerMaxW = 'max-w-2xl min-[700px]:max-w-3xl lg:max-w-4xl';
@@ -1696,20 +1707,24 @@ export const PublicZeroTrustGateRoot: React.FC<{
               LOTTE HIMART
             </span>
             {!isInviteEntry && (
-              <span className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300">경기광주점</span>
+              <span className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300">
+                {isStandaloneNow ? '스마트 상담 시스템' : '공식 맞춤 견적 뷰어'}
+              </span>
             )}
           </div>
           <h1 className="text-base sm:text-lg font-black tracking-tight break-keep">
             {isInviteEntry
-              ? '전용 앱 설치 및 1회용 초대코드 등록'
+              ? '전용 앱 설치 및 초대코드 등록'
+              : isStandaloneNow
+              ? '초대코드 또는 보안코드 등록'
               : '전용 견적 링크로만 열람 가능합니다'}
           </h1>
           <p className="text-xs sm:text-sm text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium break-keep">
-            {isInviteEntry ? (
+            {isInviteEntry || isStandaloneNow ? (
               isStandaloneNow ? (
                 <>
                   바탕화면 앱 실행이 확인되었습니다! 아래에 전달받으신{' '}
-                  <strong>1회용 8자리 등록코드</strong>를 입력하면 바로 시작됩니다.
+                  <strong>8자리 등록코드</strong>를 입력하면 바로 시작됩니다.
                 </>
               ) : (
                 <>
@@ -1726,18 +1741,6 @@ export const PublicZeroTrustGateRoot: React.FC<{
           </p>
         </div>
 
-        {!isInviteEntry && (
-          <a
-            href="https://map.naver.com/p/search/%EB%A1%AF%EB%8D%B0%ED%95%98%EC%9D%B4%EB%A7%88%ED%8A%B8%20%EA%B2%BD%EA%B8%B0%EA%B4%91%EC%A3%BC%EC%A0%90"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="min-h-[42px] w-full py-3 px-4 rounded-xl bg-[#191F28] dark:bg-[#1E293B] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 transition"
-          >
-            <MapPin className="w-4 h-4 text-[#FF6B78] shrink-0" />
-            <span>롯데하이마트 경기광주점 위치 안내</span>
-          </a>
-        )}
-
         {/* ==================== 초대 링크 접속자용 기기별 맞춤 앱 설치 · 브라우저 자동 유도 블록 ==================== */}
         {isInviteEntry && (
           <div className="space-y-3 text-left">
@@ -1748,7 +1751,7 @@ export const PublicZeroTrustGateRoot: React.FC<{
                   🤖 삼성 갤럭시 안내 — 크롬(Chrome)으로 이동해 주세요!
                 </div>
                 <p className="text-[11.5px] sm:text-xs font-semibold text-[#191F28] dark:text-slate-200 leading-relaxed break-keep">
-                  지금 보고 계신 <strong>카카오톡 내부 화면</strong>에서는 바탕화면 앱 설치가 되지 않으며, 여기서 코드를 입력하면 1회용 코드가 소진됩니다.
+                  지금 보고 계신 <strong>카카오톡 내부 화면</strong>에서는 바탕화면 앱 설치가 되지 않으며, 여기서 코드를 입력하면 기기 허용 횟수가 차감됩니다.
                   <br />
                   자동으로 크롬이 열리지 않았다면 아래 파란 버튼을 눌러주세요!
                 </p>
@@ -1859,7 +1862,7 @@ export const PublicZeroTrustGateRoot: React.FC<{
                     </li>
                     <li>
                       <strong>③</strong> 아이폰 바탕화면에 생긴 빨간{' '}
-                      <strong>[국지통합앱]</strong> 아이콘을 눌러 실행한 뒤,{' '}
+                      <strong>[하이마트 상담앱]</strong> 아이콘을 눌러 실행한 뒤,{' '}
                       <strong>그 앱 안에서 8자리 등록코드</strong>를 입력하면 완료!
                     </li>
                   </ol>
@@ -1955,8 +1958,8 @@ export const PublicZeroTrustGateRoot: React.FC<{
             <form onSubmit={(e) => void handleVerify(e)} className="space-y-2 text-left">
               <label className="block text-xs font-extrabold text-[#191F28] dark:text-white break-keep">
                 {isInviteEntry
-                  ? 'STEP 2 · 전달받은 1회용 8자리 등록코드 입력 (본인 휴대폰 1대 전용 귀속)'
-                  : '기기 등록 보안 코드 입력 (최초 1회 인증 시 본인 기기 1대에 귀속)'}
+                  ? 'STEP 2 · 전달받은 8자리 등록코드 입력 (허용된 본인 기기 귀속)'
+                  : '기기 등록 보안 코드 입력 (8자리 초대코드 또는 관리자 코드)'}
               </label>
               <div className="flex items-center gap-1.5">
                 <input

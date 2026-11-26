@@ -5,6 +5,8 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Cloud,
   CloudUpload,
   Copy,
@@ -25,6 +27,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  Smartphone,
   Trash2,
   Unlock,
   Upload,
@@ -178,8 +181,11 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
   const [incentiveYm, setIncentiveYm] = useState<string>(() => getCurrentYearMonth());
   const [mergeIncentiveInMonth, setMergeIncentiveInMonth] = useState<boolean>(false);
 
-  // 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 상태
+  // 외부 지인(친구) 전용 기기 잠금 초대코드 관리 상태
   const [friendLabelInput, setFriendLabelInput] = useState<string>('친구1');
+  const [newFriendMaxDevices, setNewFriendMaxDevices] = useState<number>(1);
+  const [isFriendListCollapsed, setIsFriendListCollapsed] =
+    useState<boolean>(false);
   const [newFriendStoreInput, setNewFriendStoreInput] = useState<string>('');
   const [newFriendNameInput, setNewFriendNameInput] = useState<string>('');
   const [newFriendPhoneInput, setNewFriendPhoneInput] = useState<string>('');
@@ -269,6 +275,9 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         setFriendRemoteProfiles(remoteMap || {});
         if (res.ok) {
           setFriendInvites(res.items);
+          if (res.items.length >= 3) {
+            setIsFriendListCollapsed(true);
+          }
         } else {
           setFriendPanelError(res.error || null);
         }
@@ -668,11 +677,16 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setIsIssuingInvite(true);
     setFriendPanelError(null);
     try {
-      const res = await issueNewFriendInvite(auth.url, auth.pin, cleanLabel, 1);
+      const res = await issueNewFriendInvite(
+        auth.url,
+        auth.pin,
+        cleanLabel,
+        newFriendMaxDevices
+      );
       if (!res.ok) {
         const msg =
           res.error ||
-          '1회용 8자리 초대코드 발급에 실패했습니다. Apps Script 코드가 최신 버전인지 확인해 주세요.';
+          '8자리 초대코드 발급에 실패했습니다. Apps Script 코드가 최신 버전인지 확인해 주세요.';
         setFriendPanelError(msg);
         showToastMessage('error', `⚠️ ${msg}`);
         return;
@@ -682,6 +696,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       } else if (res.item) {
         setFriendInvites((prev) => [res.item!, ...prev]);
       }
+      setIsFriendListCollapsed(false);
 
       if (res.item?.codeId && (initStore || initName || initPhone)) {
         const profRes = await saveFriendRemoteProfile(
@@ -707,7 +722,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         : '';
       showToastMessage(
         'success',
-        `🔐 [${cleanLabel}] 1회용 8자리 코드(${formatted}) 발급 완료! 우측 [초대 안내문 복사]를 눌러 카톡으로 전달하세요.`
+        `🔐 [${cleanLabel}] 8자리 코드(${formatted} · 최대 ${newFriendMaxDevices}대 허용) 발급 완료! 우측 [초대 안내문 복사]를 눌러 카톡으로 전달하세요.`
       );
     } finally {
       setIsIssuingInvite(false);
@@ -776,25 +791,94 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     }
   };
 
+  const handleCycleMaxDevices = async (item: FriendInviteItem) => {
+    if (busyInviteCodeId) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const currentMax = Math.max(1, item.maxDevices || 1);
+    const nextMax = currentMax === 1 ? 2 : currentMax === 2 ? 3 : 1;
+
+    setBusyInviteCodeId(item.codeId);
+    setFriendPanelError(null);
+    try {
+      const res = await mutateFriendInviteStatus(
+        auth.url,
+        auth.pin,
+        item.codeId,
+        'set_max_devices',
+        { maxDevices: nextMax }
+      );
+      if (!res.ok) {
+        const rawErr = res.error || '';
+        const msg = rawErr.includes('set_max_devices')
+          ? '코드 1개로 다중 기기(폰+PC 2대 등) 허용 기능을 쓰시려면 상단 [Apps Script 코드 복사]를 눌러 구글 시트 Code.gs를 최신 코드로 1회 업데이트(새 버전 배포)해 주세요! (또는 PC용 별도 코드를 1개 더 발급하셔도 됩니다.)'
+          : rawErr || '허용 기기수 변경에 실패했습니다.';
+        setFriendPanelError(msg);
+        showToastMessage('error', `⚠️ ${msg}`);
+        return;
+      }
+      if (Array.isArray(res.items)) {
+        setFriendInvites(res.items);
+      } else {
+        await handleRefreshFriendInvites();
+      }
+      showToastMessage(
+        'success',
+        `📱💻 [${item.label}] 허용 기기수가 최대 ${nextMax}대로 변경되었습니다! (${
+          nextMax === 2
+            ? '휴대폰 + PC 동시 등록 가능'
+            : nextMax === 3
+            ? '최대 3대 기기 등록 가능'
+            : '휴대폰 1대 전용'
+        })`
+      );
+    } finally {
+      setBusyInviteCodeId(null);
+    }
+  };
+
   const handleCopyFriendInviteGuide = async (item: FriendInviteItem) => {
     const rawCfg = readRawSyncConfig();
-    const inviteUrl = buildFriendInviteUrl(gasUrl.trim() || rawCfg.repo);
-    if (!inviteUrl) {
+    const rawInviteUrl = buildFriendInviteUrl(gasUrl.trim() || rawCfg.repo);
+    if (!rawInviteUrl) {
       showToastMessage(
         'error',
         '전용 초대 링크를 생성하려면 상단 구글 시트 웹앱 URL을 먼저 입력해 주세요.'
       );
       return;
     }
+
+    // URL 주소창 노출 최소화를 위해 단축 URL 자동 시도 (실패/지연 시 즉시 원본 URL 사용)
+    let displayInviteUrl = rawInviteUrl;
+    try {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 1600);
+      const api = `https://is.gd/create.php?format=json&url=${encodeURIComponent(
+        rawInviteUrl
+      )}`;
+      const res = await fetch(api, { signal: controller.signal });
+      window.clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.shorturl && typeof data.shorturl === 'string') {
+          displayInviteUrl = data.shorturl;
+        }
+      }
+    } catch {
+      // 단축 실패 시 원본 링크 그대로 사용
+    }
+
     const formattedCode = formatFriendInviteCode(item.inviteCode);
-    const guideText = [
-      `[국지통합앱 전용 초대 안내 — ${item.label}]`,
+    const maxDev = Math.max(1, item.maxDevices || 1);
+    const guideLines: string[] = [
+      `[하이마트 스마트 상담앱 초대 안내 — ${item.label}]`,
       `• 전용 접속 링크:`,
-      inviteUrl,
+      displayInviteUrl,
       ``,
-      `• 1회용 8자리 등록코드: ${formattedCode}`,
+      `• 등록코드 (8자리): ${formattedCode} (최대 ${maxDev}대 기기 등록 가능)`,
       ``,
-      `📌 휴대폰별 간편 설치 방법 (꼭 순서대로 진행해 주세요!)`,
+      `📌 기기별 간편 설치 방법 (꼭 순서대로 진행해 주세요!)`,
       `🤖 [갤럭시/삼성폰]`,
       `1) 위 링크를 누르면 자동으로 크롬(Chrome) 화면이 열립니다.`,
       `2) 화면의 [📲 바탕화면에 앱 설치하기] 버튼을 먼저 누른 뒤, 아래에 8자리 코드를 입력하면 완료!`,
@@ -802,10 +886,23 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       `🍎 [아이폰/아이패드]`,
       `1) 카톡 우측 하단 [⋯] 또는 [공유 ↑] → [Safari로 열기]를 선택합니다. (코드 먼저 입력 X)`,
       `2) Safari 맨 아래 [공유 ↑] → [홈 화면에 추가]로 바탕화면에 앱 아이콘을 먼저 만듭니다.`,
-      `3) 바탕화면에 생긴 [국지통합앱]을 열어서 8자리 등록코드를 입력하면 완료!`,
-      ``,
-      `※ 1회용 코드는 최초 등록한 본인 휴대폰 1대에만 귀속됩니다.`,
-    ].join('\n');
+      `3) 바탕화면에 생긴 [하이마트 상담앱]을 열어서 8자리 등록코드를 입력하면 완료!`,
+    ];
+
+    if (maxDev >= 2) {
+      guideLines.push(
+        ``,
+        `💻 [PC / 노트북 함께 쓰기 (${maxDev}대 허용)]`,
+        `• PC 크롬(Chrome) 또는 엣지(Edge)에서 위 링크로 접속 후 동일한 8자리 코드(${formattedCode})를 입력하면 휴대폰과 PC에서 함께 사용할 수 있습니다.`
+      );
+    } else {
+      guideLines.push(
+        ``,
+        `※ 등록코드는 최초 인증한 본인 기기(${maxDev}대)에만 전용 귀속됩니다.`
+      );
+    }
+
+    const guideText = guideLines.join('\n');
 
     try {
       await navigator.clipboard.writeText(guideText);
@@ -839,7 +936,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     const formattedCode = formatFriendInviteCode(item.inviteCode);
     if (mode === 'reset_device') {
       const ok = window.confirm(
-        `[${item.label} (${formattedCode})] 기기 귀속을 초기화할까요?\n기존 휴대폰 귀속이 해제되어 새 휴대폰 1대를 다시 등록할 수 있게 리셋됩니다.`
+        `[${item.label} (${formattedCode})] 기기 귀속을 초기화할까요?\n기존 등록된 기기 귀속이 모두 해제되어 새 기기를 다시 등록할 수 있게 리셋됩니다.`
       );
       if (!ok) return;
     } else if (mode === 'delete') {
@@ -891,7 +988,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       } else if (mode === 'reset_device') {
         showToastMessage(
           'success',
-          `🔄 [${item.label}] 기기 귀속이 초기화되었습니다. 새 휴대폰 1대에서 다시 등록할 수 있습니다.`
+          `🔄 [${item.label}] 기기 귀속이 초기화되었습니다. 새 기기에서 다시 등록할 수 있습니다.`
         );
       } else if (mode === 'delete') {
         showToastMessage('info', `🗑️ [${item.label}] 초대코드가 삭제되었습니다.`);
@@ -1639,39 +1736,65 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                 </div>
               </div>
 
-              {/* 1-B) 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 패널 */}
+              {/* 1-B) 외부 지인(친구) 전용 기기 잠금 초대코드 관리 패널 */}
               <div className={`rounded-2xl border p-3.5 sm:p-4 space-y-3 ${cardBg}`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs sm:text-sm font-extrabold">
-                        🔐 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 (휴무표 제외)
+                        🔐 외부 지인(친구) 전용 초대코드 관리 (휴무표·랜딩 분리)
                       </span>
                       <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 text-[10.5px] font-black">
-                        _친구기기_접근관리
+                        총 {friendInvites.length}명
                       </span>
                     </div>
                     <p className={`text-[11px] font-medium mt-0.5 ${mutedText}`}>
-                      최초 1회 입력한 본인 휴대폰(1대)에만 영구 귀속되어 URL·코드를 제3자에게 공유해도 100% 차단되며, 경기광주점 휴무표·오너 기능은 완전 분리됩니다.
+                      허용된 기기 대수(1대 휴대폰 전용 또는 2대 휴대폰+PC 동시 사용)만큼만 귀속되며, 내 랜딩페이지·휴무표·네이버지도는 완전 분리됩니다.
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={isLoadingInvites}
-                    onClick={() => void handleRefreshFriendInvites()}
-                    className={`self-start sm:self-auto px-2.5 py-1.5 rounded-xl border text-[11.5px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition shrink-0 ${subBoxBg}`}
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 ${
-                        isLoadingInvites ? 'animate-spin' : ''
-                      }`}
-                    />
-                    <span>목록 새로고침</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                    {friendInvites.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setIsFriendListCollapsed((v) => !v)}
+                        className={`px-3 py-1.5 rounded-xl border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer transition ${
+                          isFriendListCollapsed
+                            ? 'bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/35'
+                            : subBoxBg
+                        }`}
+                      >
+                        {isFriendListCollapsed ? (
+                          <>
+                            <ChevronDown className="w-3.5 h-3.5" />
+                            <span>목록 펼치기 ({friendInvites.length}명)</span>
+                          </>
+                        ) : (
+                          <>
+                            <ChevronUp className="w-3.5 h-3.5" />
+                            <span>목록 접기</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      disabled={isLoadingInvites}
+                      onClick={() => void handleRefreshFriendInvites()}
+                      className={`px-2.5 py-1.5 rounded-xl border text-[11.5px] font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${subBoxBg}`}
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${
+                          isLoadingInvites ? 'animate-spin' : ''
+                        }`}
+                      />
+                      <span>새로고침</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* 별칭 + 초기 지점명·담당자(선택) + [+ 1회용 8자리 코드 발급] */}
+                {/* 별칭 + 초기 지점명·담당자(선택) + 허용 기기수(1대/2대 폰+PC/3대) + [+ 8자리 코드 발급] */}
                 <div className="space-y-2">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                     <input
@@ -1705,9 +1828,33 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                     />
                   </div>
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className={`text-[11px] font-semibold break-keep ${mutedText}`}>
-                      💡 이미 다운받은 친구도 아래 목록의 <strong>[지점·이름 원격수정]</strong>을 누르면 친구 앱에 원격 자동 반영됩니다. (추천코드 사용자 견적서에는 네이버 지도 버튼이 자동 제외됩니다.)
-                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`text-[11px] font-extrabold ${mutedText}`}>
+                        허용 기기수:
+                      </span>
+                      {[
+                        { val: 1, label: '📱 1대 (폰 전용)' },
+                        { val: 2, label: '📱+💻 2대 (폰+PC)' },
+                        { val: 3, label: '3대' },
+                      ].map((opt) => {
+                        const active = newFriendMaxDevices === opt.val;
+                        return (
+                          <button
+                            key={opt.val}
+                            type="button"
+                            onClick={() => setNewFriendMaxDevices(opt.val)}
+                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-extrabold cursor-pointer transition ${
+                              active
+                                ? 'bg-[#1B64DA] text-white border-[#1B64DA]'
+                                : `${subBoxBg} hover:border-[#1B64DA]`
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <button
                       type="button"
                       disabled={isIssuingInvite}
@@ -1719,9 +1866,12 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                       ) : (
                         <UserPlus className="w-3.5 h-3.5 shrink-0" />
                       )}
-                      <span>+ 1회용 8자리 코드 발급</span>
+                      <span>+ 8자리 초대코드 발급 ({newFriendMaxDevices}대)</span>
                     </button>
                   </div>
+                  <p className={`text-[11px] font-semibold break-keep ${mutedText}`}>
+                    💡 한 친구가 <strong>휴대폰 + 컴퓨터(PC)</strong>를 같이 쓰길 원하면 <strong>[📱+💻 2대 (폰+PC)]</strong>로 설정하세요! 코드 1개로 폰과 PC 2대까지 등록됩니다. (※ 기존 구글 시트를 쓰시는 경우 상단 [Apps Script 코드 복사]로 Code.gs를 1회 업데이트하시면 코드 1개 다중기기 기능이 바로 활성화됩니다.)
+                  </p>
                 </div>
 
                 {friendPanelError && (
@@ -1730,15 +1880,29 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                   </div>
                 )}
 
-                {/* 발급된 초대코드 목록 */}
+                {/* 발급된 초대코드 목록 (접기/펼치기 지원) */}
                 {friendInvites.length === 0 ? (
                   <div
                     className={`px-3.5 py-3 rounded-xl border text-xs font-medium ${subBoxBg} ${mutedText}`}
                   >
                     {isLoadingInvites
                       ? '비공개 구글 시트에서 초대코드 목록을 불러오는 중입니다...'
-                      : '발급된 외부 지인용 초대코드가 없습니다. 위에서 별칭 확인 후 [+ 1회용 8자리 코드 발급]을 눌러주세요.'}
+                      : '발급된 외부 지인용 초대코드가 없습니다. 위에서 별칭과 허용 기기수를 선택한 뒤 [+ 8자리 초대코드 발급]을 눌러주세요.'}
                   </div>
+                ) : isFriendListCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsFriendListCollapsed(false)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-extrabold flex items-center justify-between gap-2 cursor-pointer transition hover:border-[#1B64DA] ${subBoxBg}`}
+                  >
+                    <span className="truncate">
+                      👥 발급된 초대코드 총 <strong>{friendInvites.length}명</strong> 목록이 접혀 있습니다 ({friendInvites.map((f) => f.label).slice(0, 4).join(', ')}{friendInvites.length > 4 ? ' 외' : ''})
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[#1B64DA] dark:text-blue-300 shrink-0">
+                      <span>펼치기</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </span>
+                  </button>
                 ) : (
                   <div className="space-y-2">
                     {friendInvites.map((item) => {
@@ -1754,10 +1918,20 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                             assignedProf.phone)
                       );
                       const isEditingThis = editingProfileCodeId === item.codeId;
+                      const maxDev = Math.max(1, item.maxDevices || 1);
+                      const boundCnt =
+                        typeof item.boundDeviceCount === 'number'
+                          ? item.boundDeviceCount
+                          : item.status === 'BOUND'
+                          ? 1
+                          : 0;
                       const statusBadge =
                         item.status === 'BOUND'
                           ? {
-                              text: '1대 등록잠금 BOUND',
+                              text:
+                                boundCnt < maxDev
+                                  ? `${boundCnt}/${maxDev}대 등록 (추가등록 가능)`
+                                  : `${boundCnt}/${maxDev}대 등록잠금`,
                               cls: 'bg-emerald-500/15 text-[#059669] dark:text-emerald-300 border-emerald-500/30',
                             }
                           : item.status === 'REVOKED'
@@ -1766,7 +1940,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                               cls: 'bg-[#FFF1F2] dark:bg-rose-500/15 text-[#E60012] dark:text-rose-300 border-[#FECDD3] dark:border-rose-500/35',
                             }
                           : {
-                              text: '대기중 ACTIVE',
+                              text: `대기중 (0/${maxDev}대)`,
                               cls: 'bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/35',
                             };
 
@@ -1823,6 +1997,17 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                             </div>
 
                             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => void handleCycleMaxDevices(item)}
+                                className={`py-1.5 px-2.5 rounded-lg border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${cardBg}`}
+                                title="클릭할 때마다 허용 기기수를 1대(휴대폰) → 2대(폰+PC) → 3대로 변경합니다"
+                              >
+                                <Smartphone className="w-3 h-3 shrink-0 text-[#1B64DA] dark:text-blue-300" />
+                                <span>허용 {maxDev}대 변경</span>
+                              </button>
+
                               <button
                                 type="button"
                                 disabled={isBusy}

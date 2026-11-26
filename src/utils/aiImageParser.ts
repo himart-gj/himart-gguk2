@@ -668,7 +668,8 @@ export async function parseSubscriptionImageWithFallback(
    - 활성화된 케어 버튼 텍스트(예: '안심케어_1', '방문케어', '셀프케어' 등)와 그 아래 설명 박스 텍스트(예: '완전 분해 클리닝... 서비스 횟수: 1회, 30개월')를 함께 읽어 하나의 읽기 좋은 문자열로 조합하세요. (예: "안심케어_1 (완전 분해 클리닝 / 1회, 30개월)")
    - 롯데하이마트 가전 구독의 무상 A/S 기간은 구독 개월수(36개월/60개월)와 상관없이 무조건 5년(5년 무상 A/S)입니다. 화면에서 36개월 버튼이 선택되어 있더라도 절대 '3년 무상 A/S'로 해석하거나 작성하지 마세요.
 3. 보장서비스 (warrantyType):
-   - 우측 상단 '보장서비스' 박스에 적힌 텍스트(예: "AS연장보험 + 가전수리올케어")를 원문 그대로 추출하세요.
+   - 우측 상단 '보장서비스' 박스에 실제로 적힌 텍스트(예: "AS연장보험", 또는 화면에 실제로 적혀 있는 모델에 한해 "AS연장보험 + 가전수리올케어")를 원문 그대로 추출하세요.
+   - 주의: 모든 모델에 '가전수리올케어'가 기본 포함되는 것이 아닙니다! 화면에 "가전수리올케어" 문구가 명확히 적혀 있지 않다면 절대 임의로 추가하지 말고 "AS연장보험"으로만 설정하며 allCare도 false로 설정하세요.
 4. 결제카드 (cardName):
    - '결제카드' 드롭다운에 선택되어 있는 카드명(예: "우리제휴카드(독자)", "롯데제휴카드", "삼성제휴카드", "신한제휴카드" 등)을 그대로 추출하세요.
 5. 금액 정보 (contractAmount & monthlyFee):
@@ -768,9 +769,8 @@ export async function parseSubscriptionImageWithFallback(
 
   const warrantyYears = 5;
   const hasAllCare =
-    Boolean(parsed.allCare) ||
-    combinedCareText.includes('올케어') ||
-    combinedCareText.includes('가전수리올케어');
+    combinedCareText.includes('가전수리올케어') ||
+    /수리\s*올케어/.test(combinedCareText);
 
   const topUrlModelCode = normalizeModelCode(parsed.urlModelCode || '');
   const topWarrantyType = sanitizeFiveYearWarrantyText(

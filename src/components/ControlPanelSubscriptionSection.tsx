@@ -172,8 +172,7 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
         60
       );
       const defaultCare = prev.careService || SUB_CARE_OPTIONS[0];
-      const defaultWarranty =
-        prev.warrantyType || 'AS연장보험 + 가전수리올케어';
+      const defaultWarranty = 'AS연장보험';
       const newItem = {
         id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         category: categoryName,
@@ -589,21 +588,53 @@ export const ControlPanelSubscriptionSection: React.FC<Record<string, any>> = ({
                   </div>
                 )}
 
-                {itemPrincipal > 0 ? (
-                  <div className="flex flex-wrap items-center justify-between gap-1 text-[11.5px] font-medium text-[#4E5968] dark:text-slate-300 pl-0 min-[380px]:pl-7">
-                    <span>
-                      제품 기준 금액(약정 원금):{' '}
-                      <strong className="text-[#191F28] dark:text-slate-100 font-mono tabular-nums whitespace-nowrap">
-                        {itemPrincipal.toLocaleString()}원
-                      </strong>
-                    </span>
-                    {item.cardName && (
-                      <span className="text-[#1B64DA] dark:text-blue-300 font-bold">
-                        인식 카드: {item.cardName}
+                <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11.5px] font-medium text-[#4E5968] dark:text-slate-300 pl-0 min-[380px]:pl-7">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(() => {
+                      const hasItemAllCare = (item.warrantyType || '').includes('가전수리올케어');
+                      return (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleUpdateSubItem(item.id, {
+                              warrantyType: hasItemAllCare
+                                ? 'AS연장보험'
+                                : 'AS연장보험 + 가전수리올케어',
+                            })
+                          }
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border transition-colors ${
+                            hasItemAllCare
+                              ? 'bg-[#EFF6FF] dark:bg-blue-500/20 text-[#1B64DA] dark:text-blue-300 border-[#93C5FD] dark:border-blue-500/40'
+                              : 'bg-white dark:bg-slate-800 text-[#6B7684] dark:text-slate-400 border-[#E5E8EB] dark:border-slate-700 hover:border-[#B0B8C1]'
+                          }`}
+                          title="전산 보장서비스에 'AS연장보험 + 가전수리올케어'가 명시된 대상 모델에만 선택하세요"
+                        >
+                          {hasItemAllCare ? (
+                            <>
+                              <Check className="w-3 h-3 text-[#1B64DA] dark:text-blue-300" />
+                              가전수리올케어 포함됨
+                            </>
+                          ) : (
+                            '+ 가전수리올케어 대상 모델'
+                          )}
+                        </button>
+                      );
+                    })()}
+                    {itemPrincipal > 0 ? (
+                      <span>
+                        제품 기준 금액(약정 원금):{' '}
+                        <strong className="text-[#191F28] dark:text-slate-100 font-mono tabular-nums whitespace-nowrap">
+                          {itemPrincipal.toLocaleString()}원
+                        </strong>
                       </span>
-                    )}
+                    ) : null}
                   </div>
-                ) : null}
+                  {item.cardName && (
+                    <span className="text-[#1B64DA] dark:text-blue-300 font-bold">
+                      인식 카드: {item.cardName}
+                    </span>
+                  )}
+                </div>
               </div>
             );
           })}

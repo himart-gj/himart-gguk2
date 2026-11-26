@@ -793,11 +793,22 @@ function verifyOrInitPin(ss, inputPin) {
   return { ok: true, initialized: false };
 }
 
+function parseTokenList(raw) {
+  return String(raw || '')
+    .split(',')
+    .map(function(s) { return s.trim(); })
+    .filter(function(s) { return s.length > 0; });
+}
+
 function maskDeviceToken(token) {
-  const t = String(token || '').trim();
-  if (!t) return '';
-  if (t.length <= 12) return t;
-  return t.slice(0, 6) + '...' + t.slice(-4);
+  const list = parseTokenList(token);
+  if (!list.length) return '';
+  return list
+    .map(function(t) {
+      if (t.length <= 12) return t;
+      return t.slice(0, 6) + '...' + t.slice(-4);
+    })
+    .join(' / ');
 }
 
 function readAllFriendInviteRows(ss) {
@@ -829,12 +840,14 @@ function readAllFriendInviteRows(ss) {
 }
 
 function toClientFriendItem(rec) {
+  const tokens = parseTokenList(rec.boundDeviceToken);
   return {
     codeId: rec.codeId,
     inviteCode: rec.inviteCode,
     label: rec.label,
     status: rec.status,
     maxDevices: rec.maxDevices,
+    boundDeviceCount: tokens.length,
     boundDevicePreview: maskDeviceToken(rec.boundDeviceToken),
     boundUserAgent: rec.boundUserAgent,
     createdAt: rec.createdAt,
@@ -877,7 +890,8 @@ function doGet(e) {
       }
       const friendStore = readAllFriendInviteRows(ss);
       const matched = friendStore.records.find(function(rec) {
-        return dt && rec.boundDeviceToken === dt;
+        const tokens = parseTokenList(rec.boundDeviceToken);
+        return dt && tokens.indexOf(dt) !== -1;
       });
       if (!matched || matched.status !== 'BOUND') {
         return jsonResponse({ ok: false, revoked: true, valid: false, error: '접근 권한이 차단되었거나 만료된 기기입니다.' });
@@ -903,7 +917,7 @@ function doGet(e) {
     const s = ss.getSheetByName(TAB_MAP[k]);
     summary[k] = (s && s.getLastRow() >= 2) ? String(s.getRange(2, 4).getValue() || '저장됨') : '비어있음';
   });
-  return jsonResponse({ ok: true, status: 'connected', store: '롯데하이마트 경기광주점', summary: summary });
+  return jsonResponse({ ok: true, status: 'connected', store: '롯데하이마트', summary: summary });
 }
 
 function doPost(e) {
@@ -942,14 +956,34 @@ function doPost(e) {
       }
 
       const nowStr = nowKstLabel();
-      if (found.status === 'ACTIVE' || !found.boundDeviceToken) {
+      const boundTokens = parseTokenList(found.boundDeviceToken);
+
+      if (boundTokens.indexOf(deviceToken) !== -1) {
+        store.sheet.getRange(found.rowNumber, 4).setValue('BOUND');
+        store.sheet.getRange(found.rowNumber, 10).setValue(nowStr);
+        SpreadsheetApp.flush();
+        return jsonResponse({
+          ok: true,
+          role: 'friend',
+          codeId: found.codeId,
+          label: found.label,
+          verifiedAt: new Date().toISOString()
+        });
+      }
+
+      if (boundTokens.length < found.maxDevices) {
+        const nextTokens = boundTokens.concat([deviceToken]).join(',');
+        const nextUa = [found.boundUserAgent, userAgent]
+          .filter(function(s) { return Boolean(String(s || '').trim()); })
+          .join(' | ')
+          .slice(0, 380);
         store.sheet.getRange(found.rowNumber, 4, 1, 7).setValues([[
           'BOUND',
           found.maxDevices,
-          deviceToken,
-          userAgent,
+          nextTokens,
+          nextUa,
           found.createdAt || nowStr,
-          nowStr,
+          found.boundAt || nowStr,
           nowStr
         ]]);
         SpreadsheetApp.flush();
@@ -962,26 +996,11 @@ function doPost(e) {
         });
       }
 
-      if (found.status === 'BOUND') {
-        if (found.boundDeviceToken === deviceToken) {
-          store.sheet.getRange(found.rowNumber, 10).setValue(nowStr);
-          SpreadsheetApp.flush();
-          return jsonResponse({
-            ok: true,
-            role: 'friend',
-            codeId: found.codeId,
-            label: found.label,
-            verifiedAt: new Date().toISOString()
-          });
-        }
-        return jsonResponse({
-          ok: false,
-          codeAlreadyUsed: true,
-          error: '이미 등록 완료된 1회용 초대 코드입니다. 등록된 본인 기기(1대) 외에는 접속할 수 없습니다.'
-        });
-      }
-
-      return jsonResponse({ ok: false, error: '사용할 수 없는 초대 코드입니다.' });
+      return jsonResponse({
+        ok: false,
+        codeAlreadyUsed: true,
+        error: '허용된 기기 대수(' + found.maxDevices + '대)가 모두 등록된 코드입니다. PC 등 추가 기기 등록이 필요하면 관리자에게 허용 기기수 변경을 요청해 주세요.'
+      });
     }
 
     if (action === 'verifyFriendSession') {
@@ -993,9 +1012,9 @@ function doPost(e) {
       const store = readAllFriendInviteRows(ss);
       const matched = store.records.find(function(r) {
         if (codeId && r.codeId === codeId) return true;
-        return r.boundDeviceToken === deviceToken;
+        return parseTokenList(r.boundDeviceToken).indexOf(deviceToken) !== -1;
       });
-      if (!matched || matched.status !== 'BOUND' || matched.boundDeviceToken !== deviceToken) {
+      if (!matched || matched.status !== 'BOUND' || parseTokenList(matched.boundDeviceToken).indexOf(deviceToken) === -1) {
         return jsonResponse({ ok: true, valid: false, revoked: true });
       }
       store.sheet.getRange(matched.rowNumber, 10).setValue(nowKstLabel());
@@ -1021,7 +1040,7 @@ function doPost(e) {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
       const label = String(body.label || '').trim() || '친구1';
-      const maxDevices = Math.max(1, Math.floor(Number(body.maxDevices) || 1));
+      const maxDevices = Math.max(1, Math.min(5, Math.floor(Number(body.maxDevices) || 1)));
       const savedPin = readSavedAdminPin(ss);
       const store = readAllFriendInviteRows(ss);
       const existingCodes = {};
@@ -1051,6 +1070,7 @@ function doPost(e) {
           label: label,
           status: 'ACTIVE',
           maxDevices: maxDevices,
+          boundDeviceCount: 0,
           createdAt: nowStr,
           boundAt: '',
           lastSeenAt: ''
@@ -1078,8 +1098,11 @@ function doPost(e) {
         store.sheet.getRange(target.rowNumber, 6, 1, 2).setValues([['', '']]);
         store.sheet.getRange(target.rowNumber, 9, 1, 2).setValues([['', '']]);
       } else if (mode === 'activate') {
-        const nextStatus = target.boundDeviceToken ? 'BOUND' : 'ACTIVE';
+        const nextStatus = parseTokenList(target.boundDeviceToken).length > 0 ? 'BOUND' : 'ACTIVE';
         store.sheet.getRange(target.rowNumber, 4).setValue(nextStatus);
+      } else if (mode === 'set_max_devices') {
+        const nextMax = Math.max(1, Math.min(5, Math.floor(Number(body.maxDevices) || 1)));
+        store.sheet.getRange(target.rowNumber, 5).setValue(nextMax);
       } else {
         return jsonResponse({ ok: false, error: '지원하지 않는 상태 변경 모드입니다: ' + mode });
       }

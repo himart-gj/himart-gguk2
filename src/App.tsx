@@ -1366,9 +1366,7 @@ export function App() {
         const mappedCard = mapSubscriptionAffiliateCard(rawCardName);
 
         const resolvedWarrantyType = sanitizeFiveYearWarrantyText(
-          data.warrantyType ||
-            firstItem.warrantyType ||
-            'AS연장보험 + 가전수리올케어'
+          data.warrantyType || firstItem.warrantyType || 'AS연장보험'
         );
 
         setCurrentState((prev) => {

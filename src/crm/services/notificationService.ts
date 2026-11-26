@@ -171,7 +171,7 @@ export async function triggerDailyMorningNotification(
       : '오늘 예정된 긴급 배송/미발송 건이 없습니다. 좋은 하루 되세요!';
 
   const sent = await sendSystemNotification(
-    `🔔 국지점 오늘의 할 일 브리핑 (${todayStr})`,
+    `🔔 오늘의 할 일 브리핑 (${todayStr})`,
     body
   );
 

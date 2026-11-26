@@ -317,7 +317,7 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
               <p className="text-xs text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium break-keep">
                 1) 크롬 화면 오른쪽 맨 위 <strong className="text-[#191F28] dark:text-slate-100">점 3개 [⋮]</strong> 버튼을 누릅니다.
                 <br />
-                2) 메뉴에서 <strong className="text-[#191F28] dark:text-slate-100">[앱 설치]</strong> 또는 <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가]</strong>를 누르면 바탕화면에 <strong className="text-[#1B64DA] dark:text-blue-300">국지통합앱</strong> 아이콘이 생성됩니다.
+                2) 메뉴에서 <strong className="text-[#191F28] dark:text-slate-100">[앱 설치]</strong> 또는 <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가]</strong>를 누르면 바탕화면에 <strong className="text-[#1B64DA] dark:text-blue-300">하이마트 상담앱</strong> 아이콘이 생성됩니다.
                 <br />
                 <span className="text-[11px] opacity-85">
                   ※ 삼성 인터넷 사용 시: 오른쪽 아래 <strong>[≡]</strong> ➔ <strong>[+ 현재 페이지 추가]</strong> ➔ <strong>[홈 화면]</strong>

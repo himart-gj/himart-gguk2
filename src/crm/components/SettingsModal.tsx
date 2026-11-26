@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const a = document.createElement('a');
     const dateStr = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `국지점_고객관리_및_수당단가표_전체백업_${dateStr}.json`;
+    a.download = `하이마트_고객관리_및_수당단가표_전체백업_${dateStr}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setBackupNotice(

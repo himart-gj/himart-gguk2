@@ -11,6 +11,7 @@ import {
   Download,
   Eye,
   EyeOff,
+  Link2,
   Lock,
   Info,
   Plus,
@@ -21,16 +22,19 @@ import {
   X,
 } from 'lucide-react';
 import { toPng } from 'html-to-image';
+import { buildProposalStateFromLottePlan } from '../types/proposal';
 import { scrollToTopInstant } from '../utils/mobileQaRuntime';
 import {
   maskEmbeddedModelInCategory,
   maskModelCodeAfter3,
 } from '../utils/modelMasker';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 import { AppSubViewHeader } from './ui/AppSubViewHeader';
 import { SurfaceCard } from './ui/SurfaceCard';
 import { LedgerRow } from './ui/LedgerRow';
 import { ViewportSafePopover } from './ui/ViewportSafePopover';
 import { FormattedMoneyInput } from './FormattedMoneyInput';
+import { ShareQuoteLinkModal } from './ShareQuoteLinkModal';
 
 interface LottePlanCalcViewProps {
   onBackToHome: () => void;
@@ -143,16 +147,27 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
   const [selectedSpend, setSelectedSpend] = useState<PlanSpendTarget>(120);
   const [selectedMonths, setSelectedMonths] = useState<PlanMonths>(24);
 
-  // 내보내기 / 복사 피드백 상태
+  // 내보내기 / 복사 / 고객 견적 링크 공유 상태
   const proposalRef = useRef<HTMLDivElement>(null);
   const savePrintBtnRef = useRef<HTMLButtonElement>(null);
+  const shareLinkBtnRef = useRef<HTMLButtonElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportingMode, setExportingMode] = useState<'full' | 'masked' | null>(null);
   const [isModelMasked, setIsModelMasked] = useState(false);
   const [tempMaskOverride, setTempMaskOverride] = useState<boolean | null>(null);
   const [isSavePrintOpen, setIsSavePrintOpen] = useState(false);
+  const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareInitialMasked, setShareInitialMasked] = useState(false);
+  const storeDisplayName = getEffectiveStoreDisplayName();
   const effectiveMaskModels =
     tempMaskOverride !== null ? tempMaskOverride : isModelMasked;
+
+  const openShareModal = (masked: boolean) => {
+    setIsShareMenuOpen(false);
+    setShareInitialMasked(masked);
+    setIsShareModalOpen(true);
+  };
 
   const fmtModel = (raw?: string | null) =>
     effectiveMaskModels ? maskModelCodeAfter3(raw) : (raw || '').trim();
@@ -310,6 +325,38 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
     selectedMonths,
   ]);
 
+  const lotteProposalState = useMemo(
+    () =>
+      buildProposalStateFromLottePlan({
+        items,
+        instantDiscount,
+        lpointUsed,
+        extraCashback,
+        baseCashback40k: calc.baseCashback40k,
+        planExtraCashback20k: calc.planExtraCashback20k,
+        billingDiscount5p: calc.billingDiscount5p,
+        lolaMoney3p: calc.lolaMoney3p,
+        planPreDiscount: calc.planPreDiscount,
+        isPlanServiceApplied,
+        selectedSpend,
+        selectedMonths,
+      }),
+    [
+      items,
+      instantDiscount,
+      lpointUsed,
+      extraCashback,
+      calc.baseCashback40k,
+      calc.planExtraCashback20k,
+      calc.billingDiscount5p,
+      calc.lolaMoney3p,
+      calc.planPreDiscount,
+      isPlanServiceApplied,
+      selectedSpend,
+      selectedMonths,
+    ]
+  );
+
   // 제안서 제목
   const validItemNames = items
     .map((it) => fmtCat(it.category))
@@ -341,7 +388,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
 
     const lines: string[] = [
       '==============================',
-      '[롯데하이마트 경기광주점]',
+      `[${storeDisplayName}]`,
       '💳 롯데 플랜 제휴카드 맞춤 제안서',
       '==============================',
       '',
@@ -618,6 +665,67 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                     <span className="px-2 py-0.5 rounded-full text-[11.5px] font-black bg-slate-700">
                       {isModelMasked ? 'ON' : 'OFF'}
                     </span>
+                  </button>
+                </ViewportSafePopover>
+              </div>
+
+              <div className="relative">
+                <button
+                  ref={shareLinkBtnRef}
+                  type="button"
+                  onClick={() => setIsShareMenuOpen((v) => !v)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs font-black shadow-xs transition cursor-pointer"
+                >
+                  <Link2 className="w-3.5 h-3.5" />
+                  <span>🔗 고객 견적 링크</span>
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+
+                <ViewportSafePopover
+                  isOpen={isShareMenuOpen}
+                  onClose={() => setIsShareMenuOpen(false)}
+                  anchorRef={shareLinkBtnRef}
+                  preferredWidth={288}
+                  align="end"
+                  mobileFullWidth
+                  className="rounded-2xl bg-[#131C2E] text-white border border-slate-700 shadow-2xl p-2.5 space-y-1.5"
+                >
+                  <div className="px-2 py-1 flex items-center justify-between border-b border-slate-800">
+                    <span className="text-[11.5px] font-black text-slate-300">
+                      🔗 롯데 플랜 고객 견적 URL 전달
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsShareMenuOpen(false)}
+                      className="text-slate-400 hover:text-white text-xs font-bold px-1 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => openShareModal(true)}
+                    className="w-full text-left px-3 py-2.5 rounded-xl bg-[#1B64DA] hover:bg-[#1554B8] text-white transition flex items-start gap-2.5 cursor-pointer"
+                  >
+                    <Lock className="w-4 h-4 text-white shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-xs font-black">
+                        모델가림 견적 링크 전달 (추천)
+                      </div>
+                      <div className="text-[11px] text-blue-100 font-medium mt-0.5">
+                        모델명 앞 3글자만 표시 · 타점 비교견적 방지
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openShareModal(false)}
+                    className="w-full text-left px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-extrabold flex items-center gap-2 cursor-pointer"
+                  >
+                    <Link2 className="w-3.5 h-3.5 text-blue-400" />
+                    <span>원본 견적 링크 전달 (전체 모델명)</span>
                   </button>
                 </ViewportSafePopover>
               </div>
@@ -1062,17 +1170,28 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                   </div>
                 </SurfaceCard>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('preview');
-                    scrollToTopInstant();
-                  }}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-[#E60012] hover:bg-[#C8000F] text-white font-black text-base shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <span>맞춤 제안서 보기</span>
-                  <ArrowRight className="w-5 h-5" />
-                </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => openShareModal(isModelMasked)}
+                    className="w-full py-3.5 px-5 rounded-2xl bg-[#1B64DA] hover:bg-[#1554B8] text-white font-black text-sm sm:text-base shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <Link2 className="w-4 h-4 shrink-0" />
+                    <span>고객 견적 URL 전달</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStep('preview');
+                      scrollToTopInstant();
+                    }}
+                    className="w-full py-3.5 px-5 rounded-2xl bg-[#E60012] hover:bg-[#C8000F] text-white font-black text-sm sm:text-base shadow-sm flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <span>맞춤 제안서 보기</span>
+                    <ArrowRight className="w-5 h-5 shrink-0" />
+                  </button>
+                </div>
               </div>
             </SurfaceCard>
           </div>
@@ -1092,7 +1211,7 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
                   <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#E60012] text-white text-[11.5px] font-extrabold">
                       <CreditCard className="w-3.5 h-3.5" />
-                      롯데하이마트 경기광주점
+                      {storeDisplayName}
                     </span>
                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-200 border border-blue-400/30 text-[11.5px] font-extrabold">
                       롯데 플랜 제휴카드 맞춤 혜택안
@@ -1378,6 +1497,17 @@ export const LottePlanCalcView: React.FC<LottePlanCalcViewProps> = ({
           </div>
         )}
       </div>
+
+      <ShareQuoteLinkModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        state={lotteProposalState}
+        initialMaskModels={shareInitialMasked}
+        isDark={
+          typeof document !== 'undefined' &&
+          document.documentElement.classList.contains('dark')
+        }
+      />
     </div>
   );
 };

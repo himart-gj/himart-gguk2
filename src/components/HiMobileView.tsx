@@ -9,6 +9,7 @@ import {
   Smartphone,
   Sparkles,
 } from 'lucide-react';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 import { AppSubViewHeader } from './ui/AppSubViewHeader';
 import { SurfaceCard } from './ui/SurfaceCard';
 
@@ -174,7 +175,7 @@ export const HiMobileView: React.FC<HiMobileViewProps> = ({ onBackToHome, backLa
 
       <AppSubViewHeader
         title="하이모바일 핵심 요금제 안내 & 즉시 개통"
-        subtitle="롯데하이마트 경기광주점 × KT망 고품질 5G·LTE 알뜰 요금제 비교 및 즉시 개통"
+        subtitle={`${getEffectiveStoreDisplayName()} × KT망 고품질 5G·LTE 알뜰 요금제 비교 및 즉시 개통`}
         badge="KT망 알뜰폰"
         icon={<Smartphone className="w-4 h-4 text-[#1B64DA] dark:text-blue-400" />}
         onBack={onBackToHome}

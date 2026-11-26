@@ -38,6 +38,7 @@ export interface FriendInviteItem {
   label: string;
   status: FriendInviteStatus;
   maxDevices: number;
+  boundDeviceCount?: number;
   boundDevicePreview?: string;
   boundUserAgent?: string;
   createdAt: string;
@@ -690,15 +691,25 @@ function normalizeInviteItem(raw: any): FriendInviteItem {
       : statusStr === 'REVOKED'
       ? 'REVOKED'
       : 'ACTIVE';
+  const previewStr = raw?.boundDevicePreview
+    ? String(raw.boundDevicePreview)
+    : undefined;
+  const inferredCount =
+    typeof raw?.boundDeviceCount === 'number'
+      ? Math.max(0, raw.boundDeviceCount)
+      : previewStr
+      ? previewStr.split('/').map((s) => s.trim()).filter(Boolean).length
+      : status === 'BOUND'
+      ? 1
+      : 0;
   return {
     codeId: String(raw?.codeId || '').trim(),
     inviteCode: String(raw?.inviteCode || '').trim(),
     label: String(raw?.label || '친구1').trim(),
     status,
     maxDevices: Math.max(1, Number(raw?.maxDevices) || 1),
-    boundDevicePreview: raw?.boundDevicePreview
-      ? String(raw.boundDevicePreview)
-      : undefined,
+    boundDeviceCount: inferredCount,
+    boundDevicePreview: previewStr,
     boundUserAgent: raw?.boundUserAgent ? String(raw.boundUserAgent) : undefined,
     createdAt: String(raw?.createdAt || '').trim(),
     boundAt: String(raw?.boundAt || '').trim(),
@@ -763,7 +774,7 @@ export async function fetchFriendInviteList(
 }
 
 /**
- * [오너 전용] 신규 1회용 8자리 초대코드 발급
+ * [오너 전용] 신규 8자리 초대코드 발급 (maxDevices 지정 가능: 1대 / 2대(폰+PC) / 3대)
  */
 export async function issueNewFriendInvite(
   rawGasUrl: string,
@@ -792,7 +803,7 @@ export async function issueNewFriendInvite(
         action: 'issueFriendInvite',
         pin: cleanPin,
         label: String(label || '').trim() || '친구1',
-        maxDevices: Math.max(1, Math.floor(Number(maxDevices) || 1)),
+        maxDevices: Math.max(1, Math.min(5, Math.floor(Number(maxDevices) || 1))),
       }),
     });
     if (!res.ok) {
@@ -827,13 +838,14 @@ export async function issueNewFriendInvite(
 }
 
 /**
- * [오너 전용] 초대코드 상태 변경 (즉시 차단 / 기기 초기화 / 차단 해제 / 삭제)
+ * [오너 전용] 초대코드 상태 변경 (즉시 차단 / 기기 초기화 / 차단 해제 / 허용기기수 변경 / 삭제)
  */
 export async function mutateFriendInviteStatus(
   rawGasUrl: string,
   pin: string,
   codeId: string,
-  mode: 'revoke' | 'reset_device' | 'activate' | 'delete'
+  mode: 'revoke' | 'reset_device' | 'activate' | 'delete' | 'set_max_devices',
+  options?: { maxDevices?: number }
 ): Promise<{
   ok: boolean;
   items?: FriendInviteItem[];
@@ -857,6 +869,9 @@ export async function mutateFriendInviteStatus(
         pin: cleanPin,
         codeId,
         mode,
+        ...(typeof options?.maxDevices === 'number'
+          ? { maxDevices: options.maxDevices }
+          : {}),
       }),
     });
     if (!res.ok) {

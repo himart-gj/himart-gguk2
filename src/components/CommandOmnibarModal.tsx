@@ -366,7 +366,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onNavigateStep('himobile');
         },
       },
-      ...(!isFriendMode
+      ...(ownerUnlocked
         ? ([
             {
               id: 'menu-sub-landing-link',
@@ -567,10 +567,11 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     loadPartnerLinks()
       .filter(
         (pl) =>
-          !q ||
-          matchSearch(pl.title, q) ||
-          matchSearch(pl.badgeText, q) ||
-          matchSearch(pl.description, q)
+          pl.id !== 'lg-sub-calc-portal' &&
+          (!q ||
+            matchSearch(pl.title, q) ||
+            matchSearch(pl.badgeText, q) ||
+            matchSearch(pl.description, q))
       )
       .slice(0, q ? 6 : 2)
       .forEach((pl) => {

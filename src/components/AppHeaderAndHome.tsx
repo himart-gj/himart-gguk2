@@ -632,26 +632,28 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 isDark ? 'border-white/10' : 'border-[#E5E8EB]'
               }`}
             >
-              <button
-                type="button"
-                onClick={() => {
-                  setIsMenuOpen(false);
-                  setActiveQuickGroup('landing-links');
-                }}
-                className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
-                  isDark
-                    ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-[#60A5FA]/35'
-                    : 'bg-[#FFF1F2] hover:bg-[#FFE4E6] text-[#191F28] border-[#FECDD3]'
-                }`}
-              >
-                <span className="flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-[#E60012] dark:text-rose-300 shrink-0" />
-                  <span>내 랜딩페이지 바로가기</span>
-                </span>
-                <span className="text-[11.5px] font-bold text-[#E60012] dark:text-rose-300">
-                  구독 · 매장 · 관리자
-                </span>
-              </button>
+              {Boolean(isOwnerDbUnlocked && !isFriendMode) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setActiveQuickGroup('landing-links');
+                  }}
+                  className={`w-full py-2.5 px-3 rounded-xl font-extrabold text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${
+                    isDark
+                      ? 'bg-[#1E293B] hover:bg-[#273549] text-white border-[#60A5FA]/35'
+                      : 'bg-[#FFF1F2] hover:bg-[#FFE4E6] text-[#191F28] border-[#FECDD3]'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-[#E60012] dark:text-rose-300 shrink-0" />
+                    <span>내 랜딩페이지 바로가기</span>
+                  </span>
+                  <span className="text-[11.5px] font-bold text-[#E60012] dark:text-rose-300">
+                    구독 · 매장 · 관리자
+                  </span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -1197,7 +1199,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                       icon: Percent,
                       tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
                     },
-                    ...(!isFriendMode
+                    ...(Boolean(isOwnerDbUnlocked && !isFriendMode)
                       ? [
                           {
                             key: 'landing-links' as QuickConsultationGroupKey,

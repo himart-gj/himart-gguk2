@@ -8,6 +8,7 @@ import { buildGeminiFastConfig, GEMINI_FAST_TEXT_MODELS, getEffectiveGeminiApiKe
 import { CareTableDataset, CareTableItem } from '../utils/careTableParser';
 import { INSTALLMENT_ROW_LABELS, loadLocalInstallmentDataset } from '../utils/installmentParser';
 import { MAJOR_AS_CENTERS, PLUX_AS_GROUPS } from './QuickCenterModal';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 import { AiCustomerStatus, ParsedAiCommand, InstallmentSearchResult, AsSearchResultItem, CrmSearchResult, InsuranceBriefResult, FALLBACK_CARE_ITEMS, parseKoreanAmount, APPLIANCE_KEYWORDS, RESERVED_NON_NAME_WORDS, InstallmentRowLabel } from './aiCommandScheduleEngine';
 
 // ============================================================================
@@ -281,7 +282,7 @@ export function searchAsCenterFromCommand(rawText: string): AsSearchResultItem[]
       description:
         '패널 3년 / 일반부품 2년 무상보증 · IPTV 통합리모컨 CEC/페어링 설정 지원 (영업담당 문의는 매장 안내 참조)',
       copyMessage:
-        '[롯데하이마트 경기광주점] 📺 TCL TV A/S 및 고객센터 안내\n• TCL 공식 고객센터: 1660-1870 (패널 3년 / 일반부품 2년 무상보증)',
+        `[${getEffectiveStoreDisplayName()}] 📺 TCL TV A/S 및 고객센터 안내\n• TCL 공식 고객센터: 1660-1870 (패널 3년 / 일반부품 2년 무상보증)`,
     });
   }
 
@@ -315,7 +316,7 @@ export function searchAsCenterFromCommand(rawText: string): AsSearchResultItem[]
           title: entry.partnerName,
           phones: entry.phones,
           description: entry.modelsDesc,
-          copyMessage: `[롯데하이마트 경기광주점] ⚡ 플럭스(PLUX) A/S 센터 안내\n• 품목/위탁사: ${entry.partnerName}\n• 전화번호: ${phoneSummary}\n• 대상모델: ${entry.modelsDesc}`,
+          copyMessage: `[${getEffectiveStoreDisplayName()}] ⚡ 플럭스(PLUX) A/S 센터 안내\n• 품목/위탁사: ${entry.partnerName}\n• 전화번호: ${phoneSummary}\n• 대상모델: ${entry.modelsDesc}`,
         });
       }
     }
@@ -335,7 +336,7 @@ export function searchAsCenterFromCommand(rawText: string): AsSearchResultItem[]
           title: firstEntry.partnerName,
           phones: firstEntry.phones,
           description: firstEntry.modelsDesc,
-          copyMessage: `[롯데하이마트 경기광주점] ⚡ 플럭스(PLUX) A/S 안내\n• ${firstEntry.partnerName}: ${phoneSummary}`,
+          copyMessage: `[${getEffectiveStoreDisplayName()}] ⚡ 플럭스(PLUX) A/S 안내\n• ${firstEntry.partnerName}: ${phoneSummary}`,
         });
       }
     }
@@ -357,7 +358,7 @@ export function searchAsCenterFromCommand(rawText: string): AsSearchResultItem[]
         title: major.brand,
         phones: major.phones,
         description: `취급 품목: ${major.keywords}`,
-        copyMessage: `[롯데하이마트 경기광주점] 🛠️ ${major.brand} 고객센터 안내\n• 대표번호: ${phoneSummary}`,
+        copyMessage: `[${getEffectiveStoreDisplayName()}] 🛠️ ${major.brand} 고객센터 안내\n• 대표번호: ${phoneSummary}`,
       });
     }
   }
@@ -374,7 +375,7 @@ export function searchAsCenterFromCommand(rawText: string): AsSearchResultItem[]
         title: major.brand,
         phones: major.phones,
         description: `취급 품목: ${major.keywords}`,
-        copyMessage: `[롯데하이마트 경기광주점] 🛠️ ${major.brand} 고객센터 안내\n• 대표번호: ${phoneSummary}`,
+        copyMessage: `[${getEffectiveStoreDisplayName()}] 🛠️ ${major.brand} 고객센터 안내\n• 대표번호: ${phoneSummary}`,
       };
     });
   }
@@ -492,7 +493,7 @@ export function searchInsuranceFromCommand(
       '• 접수 절차: 공식 제조사(삼성/LG 등) A/S 기사 방문 수리 및 결제 후 서류 발급 ➔ 전용 URL 또는 콜센터 접수',
     ],
     copyText:
-      '[롯데하이마트 경기광주점] 🛡️ 가전 보험 청구 안내\n• 전담 콜센터: 1566-4982 (롯데손해보험)\n• 준비서류: 수리비 영수증, 수리내역서(고장원인/수리부품 명시), 본인 통장사본',
+      `[${getEffectiveStoreDisplayName()}] 🛡️ 가전 보험 청구 안내\n• 전담 콜센터: 1566-4982 (롯데손해보험)\n• 준비서류: 수리비 영수증, 수리내역서(고장원인/수리부품 명시), 본인 통장사본`,
   };
 }
 
@@ -845,7 +846,7 @@ export async function parseCommandWithHybridAi(
   const tomorrowStr = getOffsetDateStr(1);
   const fridayStr = getFridayDateStr(false);
 
-  const systemPrompt = `당신은 롯데하이마트 경기광주점 통합 총괄 AI 비서입니다.
+  const systemPrompt = `당신은 ${getEffectiveStoreDisplayName()} 통합 총괄 AI 비서입니다.
 사용자의 한 줄 자연어 명령을 분석하여 아래 JSON 구조로만 정확히 응답하세요.
 오늘 날짜: ${todayStr}, 내일 날짜: ${tomorrowStr}, 이번주 금요일: ${fridayStr}
 
@@ -1110,7 +1111,7 @@ export function buildProposalStateFromAiCommand(cmd: ParsedAiCommand): ProposalS
           monthlyFee: Math.max(0, Number(it.monthlyFee) || 0),
           period: normalizeSubscriptionPeriod(it.period, cmd.subscriptionPeriod),
           careService: SUB_CARE_OPTIONS[0],
-          warrantyType: 'AS연장보험 + 가전수리올케어',
+          warrantyType: 'AS연장보험',
         }))
       : [
           {
@@ -1145,9 +1146,9 @@ export function buildProposalStateFromAiCommand(cmd: ParsedAiCommand): ProposalS
     items: mappedSubItems,
     subscriptionPeriod: cmd.subscriptionPeriod,
     careService: SUB_CARE_OPTIONS[0],
-    warrantyType: 'AS연장보험 + 가전수리올케어',
+    warrantyType: 'AS연장보험',
     warrantyYears: 5,
-    allCare: true,
+    allCare: false,
     selectedCardId: cmd.selectedCardId || 'none',
     selectedCardTierId: cmd.selectedCardTierId || '',
     hiPlusCounts: {
@@ -1194,9 +1195,9 @@ export function buildProposalStateFromAiCommand(cmd: ParsedAiCommand): ProposalS
     ],
     subscriptionPeriod: 60,
     careService: SUB_CARE_OPTIONS[0],
-    warrantyType: 'AS연장보험 + 가전수리올케어',
+    warrantyType: 'AS연장보험',
     warrantyYears: 5,
-    allCare: true,
+    allCare: false,
     selectedCardId: 'none',
     selectedCardTierId: '',
     hiPlusCounts: { hi72: 0, hi90: 0, hi108: 0 },

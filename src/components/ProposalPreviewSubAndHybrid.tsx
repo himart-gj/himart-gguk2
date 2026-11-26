@@ -30,7 +30,11 @@ const isGenericSubPlaceholderCategory = (raw?: string): boolean => {
 
 const resolveWarrantyExtraText = (raw?: string): string => {
   const cleaned = sanitizeFiveYearText(raw || '').trim();
-  if (!cleaned || /^5년\s*무상\s*A\/?S(\s*기본\s*포함)?$/i.test(cleaned)) {
+  if (
+    !cleaned ||
+    /^5년\s*무상\s*A\/?S(\s*(연장보증\s*)?(기본\s*)?포함)?$/i.test(cleaned) ||
+    /^A\/?S\s*연장\s*(보험|보증)$/i.test(cleaned)
+  ) {
     return '';
   }
   return cleaned;
