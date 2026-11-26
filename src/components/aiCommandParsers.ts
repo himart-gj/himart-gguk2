@@ -4,7 +4,12 @@ import { AffiliateCardId, extractGeneralPlanData, GeneralCardType, GeneralHiPree
 import { getCachedCustomers } from '../crm/services/gasApi';
 import { CustomerStatus } from '../crm/types/crm';
 import { formatPhoneNumber, getFridayDateStr, getOffsetDateStr, getTodayStr, isUrgentCustomer } from '../crm/utils/date';
-import { buildGeminiFastConfig, GEMINI_FAST_TEXT_MODELS, getEffectiveGeminiApiKey } from '../utils/aiImageParser';
+import {
+  ensureEffectiveGeminiApiKey,
+  GEMINI_FAST_TEXT_MODELS,
+  generateContentWithTier1Retry,
+  shouldTryLocalBackendApi,
+} from '../utils/aiImageParser';
 import { CareTableDataset, CareTableItem } from '../utils/careTableParser';
 import { INSTALLMENT_ROW_LABELS, loadLocalInstallmentDataset } from '../utils/installmentParser';
 import { MAJOR_AS_CENTERS, PLUX_AS_GROUPS } from './QuickCenterModal';
@@ -841,7 +846,7 @@ export async function parseCommandWithHybridAi(
   rawText: string
 ): Promise<{ parsed: ParsedAiCommand; engineLabel: string; aiReply?: string }> {
   const localResult = parseKoreanCommandLocal(rawText);
-  const apiKey = getEffectiveGeminiApiKey();
+  const apiKey = await ensureEffectiveGeminiApiKey();
   const todayStr = getOffsetDateStr(0);
   const tomorrowStr = getOffsetDateStr(1);
   const fridayStr = getFridayDateStr(false);
@@ -869,50 +874,48 @@ export async function parseCommandWithHybridAi(
   let resolvedRawJson = '';
   let resolvedModelName = '';
 
-  // 1차: 서버 프록시(/api/ai/parse-command) 시도 (AI 스튜디오 / 로컬 서버 환경에서 브라우저 키 없이도 즉시 작동)
-  try {
-    const srvRes = await fetch('/api/ai/parse-command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ promptText: fullPrompt, apiKey }),
-    });
-    if (srvRes.ok) {
-      const srvData = await srvRes.json();
-      if (srvData?.rawJson) {
-        resolvedRawJson = String(srvData.rawJson).trim();
-        resolvedModelName = String(srvData.model || 'server-gemini');
+  // 1차: 로컬 서버 환경일 때만 /api/ai/parse-command 시도 (GitHub Pages에서는 즉시 클라이언트 SDK로 직행)
+  if (shouldTryLocalBackendApi()) {
+    try {
+      const srvRes = await fetch('/api/ai/parse-command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptText: fullPrompt, apiKey }),
+      });
+      if (srvRes.ok) {
+        const srvData = await srvRes.json();
+        if (srvData?.rawJson) {
+          resolvedRawJson = String(srvData.rawJson).trim();
+          resolvedModelName = String(srvData.model || 'server-gemini');
+        }
       }
+    } catch {
+      // 정적 호스팅(GitHub Pages)에서는 아래 클라이언트 SDK로 즉시 진행
     }
-  } catch {
-    // 정적 호스팅(GitHub Pages)에서는 아래 클라이언트 SDK로 즉시 진행
   }
 
-  // 2차: 클라이언트 Gemini SDK 직접 호출
+  // 2차: 클라이언트 Gemini SDK 직접 호출 (Tier 1 초고속 텍스트 체인 + 429 지터 재시도)
   if (!resolvedRawJson && apiKey) {
-    const ai = new GoogleGenAI({ apiKey });
-    for (const modelName of GEMINI_FAST_TEXT_MODELS) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: fullPrompt }],
-            },
-          ],
-          config: buildGeminiFastConfig(modelName, {
-            responseMimeType: 'application/json',
-          }),
-        });
-        const txt = (response.text || '').trim();
-        if (txt) {
-          resolvedRawJson = txt;
-          resolvedModelName = modelName;
-          break;
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const res = await generateContentWithTier1Retry(
+        ai,
+        GEMINI_FAST_TEXT_MODELS,
+        [
+          {
+            role: 'user',
+            parts: [{ text: fullPrompt }],
+          },
+        ],
+        {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 2048,
         }
-      } catch {
-        // 다음 폴백 모델 재시도
-      }
+      );
+      resolvedRawJson = res.text;
+      resolvedModelName = res.modelName;
+    } catch {
+      // AI 오류 시 로컬 규칙 엔진으로 무장애 폴백
     }
   }
 

@@ -10,8 +10,10 @@ export const FRIEND_DEVICE_TOKEN_KEY = 'himart_friend_device_token_v1';
 export const FRIEND_DEVICE_REVOKED_KEY = 'himart_friend_revoked_v1';
 export const PENDING_INVITE_PROMPT_KEY = 'himart_pending_invite_prompt_v1';
 export const FRIEND_ROLE_CHANGED_EVENT = 'himart_friend_role_changed';
+export const FRIEND_SHARED_AI_SYNC_EVENT = 'himart_friend_shared_ai_sync';
 
 const INTERNAL_CLOUD_CONFIG_KEY = 'himart_care_gh_sync_config_v1';
+const INTERNAL_TARGET_SHEET_ID_KEY = 'himart_gj_target_sheet_id_v1';
 const INTERNAL_CLOUD_UPDATED_EVENT = 'himart_gj_store_cloud_updated';
 const INTERNAL_STAFF_VERIFIED_V2_KEY = 'himart_staff_verified_gate_v2';
 const INTERNAL_STAFF_TRUSTED_DEVICE_KEY = 'himart_staff_trusted_device_v1';
@@ -41,9 +43,17 @@ export interface FriendInviteItem {
   boundDeviceCount?: number;
   boundDevicePreview?: string;
   boundUserAgent?: string;
+  aiAllowed?: boolean;
   createdAt: string;
   boundAt: string;
   lastSeenAt: string;
+}
+
+export interface FriendSharedAiMeta {
+  hasSharedKey: boolean;
+  maskedSharedKey: string;
+  globalEnabled: boolean;
+  friendAiMap: Record<string, boolean>;
 }
 
 export interface AuthenticateDeviceResult {
@@ -475,6 +485,43 @@ export function purgeLocalScheduleAndOwnerState(): void {
   }
 }
 
+function readSavedSheetId(): string {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    const s = String(localStorage.getItem(INTERNAL_TARGET_SHEET_ID_KEY) || '').trim();
+    if (!s) return '';
+    const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})/);
+    if (m?.[1]) return m[1];
+    if (/^[a-zA-Z0-9-_]{20,}$/.test(s)) return s;
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+let ramOnlyFriendSharedApiKey = '';
+
+export function getRamOnlyFriendSharedApiKey(): string {
+  return isFriendRestrictedMode() ? ramOnlyFriendSharedApiKey : '';
+}
+
+export function dispatchFriendSharedAiSync(
+  aiEnabled: boolean,
+  sharedApiKey: string
+): void {
+  const active = Boolean(aiEnabled && sharedApiKey && isFriendRestrictedMode());
+  ramOnlyFriendSharedApiKey = active ? String(sharedApiKey).trim() : '';
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent(FRIEND_SHARED_AI_SYNC_EVENT, {
+      detail: {
+        aiEnabled: active,
+        sharedApiKey: ramOnlyFriendSharedApiKey,
+      },
+    })
+  );
+}
+
 /**
  * 서버 측 차단(revoked) 감지 시 로컬 친구 세션 즉시 회수 및 게이트 강제 복귀
  */
@@ -489,13 +536,14 @@ export function revokeLocalFriendAccess(): void {
   } catch {
     // ignore
   }
+  dispatchFriendSharedAiSync(false, '');
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(FRIEND_ROLE_CHANGED_EVENT));
   }
 }
 
 /**
- * 클라우드 서버로 기기 인증 요청 (관리자 PIN -> 'staff', 8자리 초대코드 -> 'friend' 1기기 귀속)
+ * 클라우드 서버로 기기 인증 요청 (관리자 PIN -> 'staff', 8자리 초대코드 -> 'friend' 기기 귀속)
  */
 export async function authenticateDeviceWithCloud(
   rawCredential: string
@@ -555,6 +603,7 @@ export async function authenticateDeviceWithCloud(
       } catch {
         // ignore
       }
+      dispatchFriendSharedAiSync(false, '');
       cleanInviteQueryFromAddressBar();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(FRIEND_ROLE_CHANGED_EVENT));
@@ -582,6 +631,12 @@ export async function authenticateDeviceWithCloud(
         }
       } catch {
         // ignore
+      }
+      if (typeof json.aiEnabled === 'boolean') {
+        dispatchFriendSharedAiSync(
+          Boolean(json.aiEnabled),
+          String(json.sharedApiKey || '')
+        );
       }
       cleanInviteQueryFromAddressBar();
       purgeLocalScheduleAndOwnerState();
@@ -644,6 +699,13 @@ export async function verifyFriendSessionHeartbeat(): Promise<
     if (json && (json.valid === false || json.revoked === true)) {
       revokeLocalFriendAccess();
       return 'revoked';
+    }
+
+    if (json && typeof json.aiEnabled === 'boolean') {
+      dispatchFriendSharedAiSync(
+        Boolean(json.aiEnabled),
+        String(json.sharedApiKey || '')
+      );
     }
 
     if (json && typeof json.codeId === 'string' && json.codeId.trim()) {
@@ -711,10 +773,52 @@ function normalizeInviteItem(raw: any): FriendInviteItem {
     boundDeviceCount: inferredCount,
     boundDevicePreview: previewStr,
     boundUserAgent: raw?.boundUserAgent ? String(raw.boundUserAgent) : undefined,
+    aiAllowed: raw?.aiAllowed !== false,
     createdAt: String(raw?.createdAt || '').trim(),
     boundAt: String(raw?.boundAt || '').trim(),
     lastSeenAt: String(raw?.lastSeenAt || '').trim(),
   };
+}
+
+function parseSharedAiMeta(raw: any): FriendSharedAiMeta | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const rawMap =
+    raw.friendAiMap && typeof raw.friendAiMap === 'object' ? raw.friendAiMap : {};
+  const cleanMap: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(rawMap)) {
+    if (k) cleanMap[k] = v !== false;
+  }
+  return {
+    hasSharedKey: Boolean(raw.hasSharedKey),
+    maskedSharedKey: String(raw.maskedSharedKey || '').trim(),
+    globalEnabled: Boolean(raw.globalEnabled),
+    friendAiMap: cleanMap,
+  };
+}
+
+function formatFriendlyGasError(rawError: unknown, fallback: string): {
+  needsSpreadsheetId: boolean;
+  message: string;
+} {
+  const s = String(rawError || '').trim();
+  if (!s) return { needsSpreadsheetId: false, message: fallback };
+  if (s.includes('getSheetByName')) {
+    return {
+      needsSpreadsheetId: true,
+      message:
+        '현재 독립형 Apps Script에 시트가 연결되지 않았습니다! 상단 [연동할 구글 시트 주소(URL)] 칸에 기존 구글 시트 주소를 붙여넣고 [Apps Script 코드 복사] → Code.gs 붙여넣기·새 버전 배포를 해주세요. (기존 시트의 초대 목록과 4대 자료는 단 1건도 삭제되지 않고 그대로 살아있습니다!)',
+    };
+  }
+  return { needsSpreadsheetId: false, message: s };
+}
+
+function normalizeSheetIdCandidate(raw?: string | null): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})/);
+  if (m?.[1]) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(s)) return s;
+  return '';
 }
 
 /**
@@ -722,10 +826,19 @@ function normalizeInviteItem(raw: any): FriendInviteItem {
  */
 export async function fetchFriendInviteList(
   rawGasUrl: string,
-  pin: string
-): Promise<{ ok: boolean; items: FriendInviteItem[]; error?: string }> {
+  pin: string,
+  spreadsheetIdOverride?: string
+): Promise<{
+  ok: boolean;
+  items: FriendInviteItem[];
+  sharedAi?: FriendSharedAiMeta;
+  needsSpreadsheetId?: boolean;
+  error?: string;
+}> {
   const gasUrl = isValidGasUrl(rawGasUrl);
   const cleanPin = String(pin || '').trim();
+  const spreadsheetId =
+    normalizeSheetIdCandidate(spreadsheetIdOverride) || readSavedSheetId();
   if (!gasUrl || !cleanPin) {
     return {
       ok: false,
@@ -740,6 +853,7 @@ export async function fetchFriendInviteList(
       body: JSON.stringify({
         action: 'listFriendInvites',
         pin: cleanPin,
+        ...(spreadsheetId ? { spreadsheetId } : {}),
       }),
     });
     if (!res.ok) {
@@ -751,19 +865,26 @@ export async function fetchFriendInviteList(
     }
     const json = await res.json();
     if (!json?.ok) {
+      const formatted = formatFriendlyGasError(
+        json?.error,
+        '초대코드 목록을 불러오지 못했습니다. 최신 Apps Script 코드로 업데이트되었는지 확인해 주세요.'
+      );
       return {
         ok: false,
         items: [],
-        error: String(
-          json?.error ||
-            '초대코드 목록을 불러오지 못했습니다. 최신 Apps Script 코드로 업데이트되었는지 확인해 주세요.'
-        ),
+        needsSpreadsheetId:
+          Boolean(json?.needsSpreadsheetId) || formatted.needsSpreadsheetId,
+        error: formatted.message,
       };
     }
     const items = Array.isArray(json.items)
       ? json.items.map(normalizeInviteItem)
       : [];
-    return { ok: true, items };
+    return {
+      ok: true,
+      items,
+      sharedAi: parseSharedAiMeta(json.sharedAi),
+    };
   } catch (err: any) {
     return {
       ok: false,
@@ -780,15 +901,20 @@ export async function issueNewFriendInvite(
   rawGasUrl: string,
   pin: string,
   label: string,
-  maxDevices = 1
+  maxDevices = 1,
+  spreadsheetIdOverride?: string
 ): Promise<{
   ok: boolean;
   item?: FriendInviteItem;
   items?: FriendInviteItem[];
+  sharedAi?: FriendSharedAiMeta;
+  needsSpreadsheetId?: boolean;
   error?: string;
 }> {
   const gasUrl = isValidGasUrl(rawGasUrl);
   const cleanPin = String(pin || '').trim();
+  const spreadsheetId =
+    normalizeSheetIdCandidate(spreadsheetIdOverride) || readSavedSheetId();
   if (!gasUrl || !cleanPin) {
     return {
       ok: false,
@@ -804,6 +930,7 @@ export async function issueNewFriendInvite(
         pin: cleanPin,
         label: String(label || '').trim() || '친구1',
         maxDevices: Math.max(1, Math.min(5, Math.floor(Number(maxDevices) || 1))),
+        ...(spreadsheetId ? { spreadsheetId } : {}),
       }),
     });
     if (!res.ok) {
@@ -814,12 +941,15 @@ export async function issueNewFriendInvite(
     }
     const json = await res.json();
     if (!json?.ok) {
+      const formatted = formatFriendlyGasError(
+        json?.error,
+        '초대코드 발급에 실패했습니다. 구글 시트의 Apps Script 코드를 최신 버전으로 배포해 주세요.'
+      );
       return {
         ok: false,
-        error: String(
-          json?.error ||
-            '초대코드 발급에 실패했습니다. 구글 시트의 Apps Script 코드를 최신 버전으로 배포해 주세요.'
-        ),
+        needsSpreadsheetId:
+          Boolean(json?.needsSpreadsheetId) || formatted.needsSpreadsheetId,
+        error: formatted.message,
       };
     }
     return {
@@ -828,6 +958,7 @@ export async function issueNewFriendInvite(
       items: Array.isArray(json.items)
         ? json.items.map(normalizeInviteItem)
         : undefined,
+      sharedAi: parseSharedAiMeta(json.sharedAi),
     };
   } catch (err: any) {
     return {
@@ -845,15 +976,19 @@ export async function mutateFriendInviteStatus(
   pin: string,
   codeId: string,
   mode: 'revoke' | 'reset_device' | 'activate' | 'delete' | 'set_max_devices',
-  options?: { maxDevices?: number }
+  options?: { maxDevices?: number; spreadsheetId?: string }
 ): Promise<{
   ok: boolean;
   items?: FriendInviteItem[];
+  sharedAi?: FriendSharedAiMeta;
+  needsSpreadsheetId?: boolean;
   message?: string;
   error?: string;
 }> {
   const gasUrl = isValidGasUrl(rawGasUrl);
   const cleanPin = String(pin || '').trim();
+  const spreadsheetId =
+    normalizeSheetIdCandidate(options?.spreadsheetId) || readSavedSheetId();
   if (!gasUrl || !cleanPin || !codeId) {
     return {
       ok: false,
@@ -872,6 +1007,7 @@ export async function mutateFriendInviteStatus(
         ...(typeof options?.maxDevices === 'number'
           ? { maxDevices: options.maxDevices }
           : {}),
+        ...(spreadsheetId ? { spreadsheetId } : {}),
       }),
     });
     if (!res.ok) {
@@ -882,9 +1018,15 @@ export async function mutateFriendInviteStatus(
     }
     const json = await res.json();
     if (!json?.ok) {
+      const formatted = formatFriendlyGasError(
+        json?.error,
+        '상태 변경에 실패했습니다.'
+      );
       return {
         ok: false,
-        error: String(json?.error || '상태 변경에 실패했습니다.'),
+        needsSpreadsheetId:
+          Boolean(json?.needsSpreadsheetId) || formatted.needsSpreadsheetId,
+        error: formatted.message,
       };
     }
     return {
@@ -893,6 +1035,7 @@ export async function mutateFriendInviteStatus(
       items: Array.isArray(json.items)
         ? json.items.map(normalizeInviteItem)
         : undefined,
+      sharedAi: parseSharedAiMeta(json.sharedAi),
     };
   } catch (err: any) {
     return {

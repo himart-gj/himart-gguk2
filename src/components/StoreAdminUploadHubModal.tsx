@@ -33,8 +33,17 @@ import {
   Upload,
   UserPlus,
   X,
+  Bot,
+  Sparkles,
 } from 'lucide-react';
 import {
+  CloudDiagnosticsReport,
+  diagnoseStoreCloudConnection,
+  extractGoogleSheetId,
+  loadSavedSpreadsheetId,
+  saveCloudSharedGeminiConfig,
+  saveSpreadsheetId,
+  SharedGeminiAdminState,
   StoreCloudKind,
   buildStaffAutoConnectUrl,
   clearStoreCloudMicroCache,
@@ -63,6 +72,7 @@ import {
   ADMIN_MODE_CHANGED_EVENT,
   ADMIN_PIN_CODE,
   CARE_TABLE_UPDATED_EVENT,
+  fetchRemoteCareDataset,
   isAdminDevice,
   loadLocalCareDataset,
   parseCareExcelBuffer,
@@ -88,14 +98,17 @@ import {
   saveAllModelIncentiveSheets,
   stripPersonalLocalFromIncentiveMap,
 } from '../crm/utils/settlementEngine';
+import { fetchRemoteModelIncentiveSheets } from '../crm/utils/settlementSheetParser';
 import { ModelIncentiveRule, ModelIncentivesMap } from '../crm/types/crm';
 import {
   DEFAULT_INSTALLMENT_DATASET,
+  fetchRemoteInstallmentDataset,
   INSTALLMENT_UPDATED_EVENT,
   loadLocalInstallmentDataset,
   parseInstallmentFile,
   saveLocalInstallmentDataset,
 } from '../utils/installmentParser';
+import { getStoredGeminiApiKey } from '../utils/aiImageParser';
 import { isOwnerMarketingDbUnlocked } from '../utils/marketingDbEngine';
 
 export const OPEN_ADMIN_UPLOAD_HUB_EVENT = 'himart_gj_open_admin_upload_hub';
@@ -161,12 +174,28 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
   const [pinError, setPinError] = useState<string | null>(null);
   const [isVerifyingPin, setIsVerifyingPin] = useState<boolean>(false);
 
-  // 클라우드 연결 설정 상태
+  // 클라우드 연결 설정 + 독립형 스크립트용 시트 주소(ID) + 실시간 진단 상태
   const [gasUrl, setGasUrl] = useState<string>(() => readRawSyncConfig().repo);
   const [cloudPin, setCloudPin] = useState<string>(() => readRawSyncConfig().token);
+  const [spreadsheetIdInput, setSpreadsheetIdInput] = useState<string>(() =>
+    loadSavedSpreadsheetId()
+  );
   const [showCloudPin, setShowCloudPin] = useState<boolean>(false);
   const [isCheckingCloud, setIsCheckingCloud] = useState<boolean>(false);
+  const [isPullingFromCloud, setIsPullingFromCloud] = useState<boolean>(false);
   const [cloudVerified, setCloudVerified] = useState<boolean | null>(null);
+  const [needsSheetBinding, setNeedsSheetBinding] = useState<boolean>(false);
+  const [cloudDiag, setCloudDiag] = useState<CloudDiagnosticsReport | null>(null);
+
+  // 초대 친구 Gemini API 키 함께 쓰기 (전체 ON/OFF + 개별 ON/OFF) 상태
+  const [sharedAiState, setSharedAiState] = useState<SharedGeminiAdminState>({
+    hasSharedKey: false,
+    maskedSharedKey: '',
+    globalEnabled: false,
+    friendAiMap: {},
+  });
+  const [sharedKeyDraft, setSharedKeyDraft] = useState<string>('');
+  const [isSavingSharedAi, setIsSavingSharedAi] = useState<boolean>(false);
 
   // 상단 글로벌 토스트
   const [toast, setToast] = useState<{
@@ -236,7 +265,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(null), 5000);
+    const timer = window.setTimeout(() => setToast(null), 5500);
     return () => window.clearTimeout(timer);
   }, [toast]);
 
@@ -246,39 +275,63 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     const rawCfg = readRawSyncConfig();
     setGasUrl(rawCfg.repo);
     setCloudPin(rawCfg.token);
+    setSpreadsheetIdInput(loadSavedSpreadsheetId());
     setIsAdmin(isOwnerMarketingDbUnlocked() && isAdminDevice());
     setPinInput('');
     setPinError(null);
     setIsVerifyingPin(false);
     setEditingProfileCodeId(null);
+    setNeedsSheetBinding(false);
     setCloudVerified(normalizeGasWebAppUrl(rawCfg.repo) ? null : false);
     setDataTick((v) => v + 1);
   }, [isOpen]);
 
-  // 관리자 인증 상태에서 시트 URL · PIN이 준비되어 있으면 친구 초대코드 목록 + 원격 프로필 자동 로드
+  // 관리자 인증 상태에서 시트 URL · PIN이 준비되어 있으면 시트 진단 + 초대코드 목록 + AI공유 상태 + 원격 프로필 자동 로드
   useEffect(() => {
     if (!isOpen || !isAdmin) return;
     const rawCfg = readRawSyncConfig();
     const targetUrl = normalizeGasWebAppUrl(gasUrl || rawCfg.repo);
     const targetPin = (cloudPin || rawCfg.token).trim();
+    const savedSid = spreadsheetIdInput || loadSavedSpreadsheetId();
     if (!targetUrl || targetPin.length < 4) return;
 
     let cancelled = false;
     setIsLoadingInvites(true);
     setFriendPanelError(null);
     void Promise.all([
-      fetchFriendInviteList(targetUrl, targetPin),
+      fetchFriendInviteList(targetUrl, targetPin, savedSid),
       fetchAllFriendRemoteProfiles(targetUrl),
+      diagnoseStoreCloudConnection(targetUrl, targetPin, savedSid),
     ])
-      .then(([res, remoteMap]) => {
+      .then(([res, remoteMap, diag]) => {
         if (cancelled) return;
         setFriendRemoteProfiles(remoteMap || {});
+        setCloudDiag(diag);
+        if (diag.ok) {
+          setCloudVerified(true);
+          setNeedsSheetBinding(false);
+          if (diag.spreadsheetId && !spreadsheetIdInput) {
+            setSpreadsheetIdInput(diag.spreadsheetId);
+          }
+          if (diag.sharedAi) {
+            setSharedAiState(diag.sharedAi);
+          }
+        } else if (diag.needsSpreadsheetId) {
+          setNeedsSheetBinding(true);
+          setCloudVerified(false);
+        }
         if (res.ok) {
           setFriendInvites(res.items);
-          if (res.items.length >= 3) {
+          if (res.sharedAi) {
+            setSharedAiState(res.sharedAi);
+          }
+          if (res.items.length >= 4) {
             setIsFriendListCollapsed(true);
           }
         } else {
+          if (res.needsSpreadsheetId) {
+            setNeedsSheetBinding(true);
+          }
           setFriendPanelError(res.error || null);
         }
       })
@@ -529,11 +582,15 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     }
   };
 
-  // ==================== 2) 상단 클라우드 연결 저장 & 검증 ====================
+  // ==================== 2) 상단 클라우드 연결 저장 · 시트 바인딩 · 4대 자료 연동 검수 ====================
   const handleSaveAndCheckCloud = async () => {
     const cleanUrl = gasUrl.trim();
     const cleanPin = cloudPin.trim();
     const normalized = normalizeGasWebAppUrl(cleanUrl);
+    const extractedSid = saveSpreadsheetId(spreadsheetIdInput);
+    if (extractedSid) {
+      setSpreadsheetIdInput(extractedSid);
+    }
 
     if (!normalized) {
       showToastMessage(
@@ -563,32 +620,110 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
 
     setIsCheckingCloud(true);
     try {
-      const probe = await fetchStoreCloudDataset('schedule', {
-        bypassCache: true,
-        gasUrlOverride: normalized,
-      });
-      setCloudVerified(true);
-      window.dispatchEvent(new CustomEvent(STORE_CLOUD_UPDATED_EVENT));
-      void fetchFriendInviteList(normalized, cleanPin).then((invRes) => {
-        if (invRes.ok) {
-          setFriendInvites(invRes.items);
-          setFriendPanelError(null);
+      const [diag, invRes, remoteMap] = await Promise.all([
+        diagnoseStoreCloudConnection(normalized, cleanPin, extractedSid),
+        fetchFriendInviteList(normalized, cleanPin, extractedSid),
+        fetchAllFriendRemoteProfiles(normalized),
+      ]);
+      setCloudDiag(diag);
+      setFriendRemoteProfiles(remoteMap || {});
+
+      if (invRes.ok) {
+        setFriendInvites(invRes.items);
+        if (invRes.sharedAi) setSharedAiState(invRes.sharedAi);
+        setFriendPanelError(null);
+      } else if (invRes.error) {
+        setFriendPanelError(invRes.error);
+      }
+
+      if (diag.ok) {
+        setCloudVerified(true);
+        setNeedsSheetBinding(false);
+        if (diag.spreadsheetId) {
+          setSpreadsheetIdInput(diag.spreadsheetId);
         }
-      });
-      showToastMessage(
-        'success',
-        probe !== null
-          ? '✅ 비공개 구글 시트 연결 저장 및 응답 확인 완료! (전 직원 공유 준비됨)'
-          : '✅ 연결 설정 저장 완료! 이제 아래 4개 카드에서 자료를 업로드하면 시트에 자동 적재됩니다.'
-      );
+        if (diag.sharedAi) {
+          setSharedAiState(diag.sharedAi);
+        }
+        window.dispatchEvent(new CustomEvent(STORE_CLOUD_UPDATED_EVENT));
+        const dsCount = diag.datasets
+          ? Object.values(diag.datasets).filter((d) => d?.exists).length
+          : 0;
+        showToastMessage(
+          'success',
+          `✅ 시트 연동 검수 완료! [${diag.spreadsheetTitle || '비공개 시트'}] · 4대 자료 ${dsCount}/4종 적재 · 초대목록 ${diag.inviteCount ?? invRes.items.length}명 복구 확인!`
+        );
+      } else {
+        setCloudVerified(false);
+        if (diag.needsSpreadsheetId || invRes.needsSpreadsheetId) {
+          setNeedsSheetBinding(true);
+        }
+        showToastMessage(
+          'error',
+          `⚠️ ${diag.error || '시트 연동 확인에 실패했습니다.'}`
+        );
+      }
     } catch {
       setCloudVerified(false);
       showToastMessage(
         'error',
-        '연결 설정은 저장되었으나 시트 응답 확인에 실패했습니다. Apps Script 웹앱 배포 권한을 확인해 주세요.'
+        '연결 설정은 저장되었으나 시트 응답 확인에 실패했습니다. Apps Script 웹앱 배포 권한([모든 사용자])을 확인해 주세요.'
       );
     } finally {
       setIsCheckingCloud(false);
+    }
+  };
+
+  const handlePullAllDatasetsFromCloud = async () => {
+    const auth = resolveActiveCloudAuth();
+    if (!auth || isPullingFromCloud) return;
+
+    setIsPullingFromCloud(true);
+    clearStoreCloudMicroCache();
+    try {
+      const [schedCloud, incCloud, careCloud, instCloud] = await Promise.all([
+        fetchStoreCloudDataset<StoredSchedulesMap>('schedule', {
+          bypassCache: true,
+          gasUrlOverride: auth.url,
+        }),
+        fetchRemoteModelIncentiveSheets(),
+        fetchRemoteCareDataset(),
+        fetchRemoteInstallmentDataset(),
+      ]);
+
+      let pulledKinds: string[] = [];
+      if (schedCloud && typeof schedCloud === 'object' && Object.keys(schedCloud).length > 0) {
+        saveAllSchedules(pruneSchedulesToRecent12Months(schedCloud));
+        pulledKinds.push(`휴무표(${Object.keys(schedCloud).length}개월)`);
+      }
+      if (incCloud && Object.keys(incCloud).length > 0) {
+        pulledKinds.push(`모델수당(${Object.keys(incCloud).length}개월)`);
+      }
+      if (careCloud && Array.isArray(careCloud.items) && careCloud.items.length > 0) {
+        saveLocalCareDataset(careCloud);
+        pulledKinds.push(`안심케어(${careCloud.items.length.toLocaleString()}개)`);
+      }
+      if (instCloud && Array.isArray(instCloud.columns) && instCloud.columns.length > 0) {
+        saveLocalInstallmentDataset(instCloud);
+        pulledKinds.push(`무이자할부(${instCloud.columns.length}카드)`);
+      }
+
+      setDataTick((v) => v + 1);
+      if (pulledKinds.length > 0) {
+        showToastMessage(
+          'success',
+          `📥 구글 시트에서 최신 자료 불러오기 완료: ${pulledKinds.join(' · ')}`
+        );
+      } else {
+        showToastMessage(
+          'info',
+          '연결된 구글 시트에 아직 적재된 4대 자료가 없거나 비어 있습니다.'
+        );
+      }
+    } catch {
+      showToastMessage('error', '구글 시트 자료 불러오기 중 오류가 발생했습니다.');
+    } finally {
+      setIsPullingFromCloud(false);
     }
   };
 
@@ -597,7 +732,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     if (!staffLink) {
       showToastMessage(
         'error',
-        '먼저 구글 Apps Script 웹앱 URL을 입력하고 [연결 저장·확인]을 눌러주세요.'
+        '먼저 구글 Apps Script 웹앱 URL을 입력하고 [연결 저장·검수]를 눌러주세요.'
       );
       return;
     }
@@ -615,12 +750,19 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
   };
 
   const handleCopyAppsScriptCode = () => {
+    const cleanSid = saveSpreadsheetId(spreadsheetIdInput);
+    if (cleanSid) {
+      setSpreadsheetIdInput(cleanSid);
+    }
+    const scriptText = getStoreCloudAppsScriptCode(cleanSid);
     void navigator.clipboard
-      ?.writeText(getStoreCloudAppsScriptCode())
+      ?.writeText(scriptText)
       .then(() => {
         showToastMessage(
-          'info',
-          'Apps Script(Code.gs) 코드가 복사되었습니다. 구글 시트 [확장 프로그램 → Apps Script]에 붙여넣고 웹 앱으로 배포하세요.'
+          'success',
+          cleanSid
+            ? `✅ 시트 ID(${cleanSid.slice(0, 8)}...)가 자동 내장된 최신 Apps Script(Code.gs) 코드가 복사되었습니다! Code.gs에 덮어쓰기 후 [배포 → 배포 관리 → 수정(연필) → 새 버전 → 배포] 해주세요.`
+            : '📋 최신 Apps Script(Code.gs) 코드가 복사되었습니다! 독립형 스크립트(script.google.com)라면 시트 주소(URL)도 함께 입력해 주세요.'
         );
       })
       .catch(() => {
@@ -628,19 +770,191 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       });
   };
 
-  // ==================== 외부 지인(친구) 전용 1기기 잠금 초대코드 핸들러 ====================
-  const resolveActiveCloudAuth = (): { url: string; pin: string } | null => {
+  // ==================== 외부 지인(친구) 전용 초대코드 & 내 API 키 공유 ON/OFF 핸들러 ====================
+  const resolveActiveCloudAuth = (): {
+    url: string;
+    pin: string;
+    sid: string;
+  } | null => {
     const rawCfg = readRawSyncConfig();
     const url = normalizeGasWebAppUrl(gasUrl.trim() || rawCfg.repo);
     const pin = (cloudPin.trim() || rawCfg.token).trim();
+    const sid = extractGoogleSheetId(spreadsheetIdInput) || loadSavedSpreadsheetId();
     if (!url || pin.length < 4) {
       showToastMessage(
         'error',
-        '상단 비공개 구글 시트 URL과 관리자 PIN을 먼저 입력하고 [연결 저장·확인]을 눌러주세요.'
+        '상단 비공개 구글 시트 URL과 관리자 PIN을 먼저 입력하고 [연결 저장·검수]를 눌러주세요.'
       );
       return null;
     }
-    return { url, pin };
+    return { url, pin, sid };
+  };
+
+  const handleSaveSharedAiKey = async (useLocalStoredKey = false) => {
+    if (isSavingSharedAi) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const candidate = useLocalStoredKey
+      ? getStoredGeminiApiKey()
+      : sharedKeyDraft.trim();
+    if (!candidate || candidate.length < 15) {
+      showToastMessage(
+        'error',
+        useLocalStoredKey
+          ? '현재 기기에 저장된 Gemini API 키가 없습니다. 우측 입력칸에 AIzaSy... 키를 직접 붙여넣어 주세요.'
+          : '올바른 Gemini API 키(AIzaSy... 형태)를 입력해 주세요.'
+      );
+      return;
+    }
+
+    setIsSavingSharedAi(true);
+    setFriendPanelError(null);
+    try {
+      const res = await saveCloudSharedGeminiConfig(auth.url, auth.pin, {
+        apiKey: candidate,
+        globalEnabled: true,
+        spreadsheetId: auth.sid,
+      });
+      if (!res.ok) {
+        const msg = res.error || '공유 API 키 저장에 실패했습니다.';
+        setFriendPanelError(msg);
+        showToastMessage('error', `⚠️ ${msg}`);
+        return;
+      }
+      if (res.sharedAi) {
+        setSharedAiState(res.sharedAi);
+      }
+      setSharedKeyDraft('');
+      showToastMessage(
+        'success',
+        '🤖 내 Gemini API 키 공유 등록 및 [전체 공유 ON] 활성화 완료! 허용된 초대 친구 기기에서 키 노출 없이 AI 기능을 함께 사용할 수 있습니다.'
+      );
+    } finally {
+      setIsSavingSharedAi(false);
+    }
+  };
+
+  const handleToggleGlobalSharedAi = async () => {
+    if (isSavingSharedAi) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    if (!sharedAiState.hasSharedKey && !sharedAiState.globalEnabled) {
+      const localKey = getStoredGeminiApiKey();
+      if (localKey && localKey.length >= 15) {
+        await handleSaveSharedAiKey(true);
+        return;
+      }
+      showToastMessage(
+        'error',
+        '먼저 아래에서 공유할 Gemini API 키를 등록하거나 [내 기기 API 키 바로 연동]을 눌러주세요.'
+      );
+      return;
+    }
+
+    const nextEnabled = !sharedAiState.globalEnabled;
+    setIsSavingSharedAi(true);
+    setFriendPanelError(null);
+    try {
+      const res = await saveCloudSharedGeminiConfig(auth.url, auth.pin, {
+        globalEnabled: nextEnabled,
+        spreadsheetId: auth.sid,
+      });
+      if (!res.ok) {
+        const msg = res.error || '공유 상태 변경에 실패했습니다.';
+        setFriendPanelError(msg);
+        showToastMessage('error', `⚠️ ${msg}`);
+        return;
+      }
+      if (res.sharedAi) {
+        setSharedAiState(res.sharedAi);
+      }
+      showToastMessage(
+        nextEnabled ? 'success' : 'info',
+        nextEnabled
+          ? '🟢 초대 친구 API 키 [전체 공유 ON] 활성화! 허용된 친구 기기에서 즉시 AI 기능을 사용할 수 있습니다.'
+          : '⚪ 초대 친구 API 키 [전체 공유 OFF] 전환됨! 모든 초대 친구 기기에서 내 API 키 사용이 즉시 중지됩니다.'
+      );
+    } finally {
+      setIsSavingSharedAi(false);
+    }
+  };
+
+  const handleClearSharedAiKey = async () => {
+    if (isSavingSharedAi || !sharedAiState.hasSharedKey) return;
+    if (
+      !window.confirm(
+        '서버에 등록된 공유용 Gemini API 키를 완전히 삭제하고 공유를 OFF 할까요?\n(본인 기기에 저장된 개인 API 키는 유지됩니다.)'
+      )
+    ) {
+      return;
+    }
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    setIsSavingSharedAi(true);
+    try {
+      const res = await saveCloudSharedGeminiConfig(auth.url, auth.pin, {
+        clearKey: true,
+        spreadsheetId: auth.sid,
+      });
+      if (res.ok && res.sharedAi) {
+        setSharedAiState(res.sharedAi);
+        showToastMessage(
+          'info',
+          '🗑️ 공유용 API 키가 서버에서 완전히 삭제되었으며 친구 공유가 OFF 되었습니다.'
+        );
+      } else if (res.error) {
+        showToastMessage('error', `⚠️ ${res.error}`);
+      }
+    } finally {
+      setIsSavingSharedAi(false);
+    }
+  };
+
+  const handleToggleFriendAiAllowed = async (item: FriendInviteItem) => {
+    if (busyInviteCodeId || isSavingSharedAi) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const currentAllowed =
+      sharedAiState.friendAiMap[item.codeId] !== undefined
+        ? sharedAiState.friendAiMap[item.codeId] !== false
+        : item.aiAllowed !== false;
+    const nextAllowed = !currentAllowed;
+
+    setBusyInviteCodeId(item.codeId);
+    setFriendPanelError(null);
+    try {
+      const res = await saveCloudSharedGeminiConfig(auth.url, auth.pin, {
+        friendCodeId: item.codeId,
+        friendAiAllowed: nextAllowed,
+        spreadsheetId: auth.sid,
+      });
+      if (!res.ok) {
+        const msg = res.error || '개별 친구 AI 공유 설정 변경에 실패했습니다.';
+        setFriendPanelError(msg);
+        showToastMessage('error', `⚠️ ${msg}`);
+        return;
+      }
+      if (res.sharedAi) {
+        setSharedAiState(res.sharedAi);
+      }
+      setFriendInvites((prev) =>
+        prev.map((f) =>
+          f.codeId === item.codeId ? { ...f, aiAllowed: nextAllowed } : f
+        )
+      );
+      showToastMessage(
+        nextAllowed ? 'success' : 'info',
+        nextAllowed
+          ? `🤖 [${item.label}] 내 API 키 함께 쓰기 [ON] 허용됨`
+          : `🔒 [${item.label}] 내 API 키 함께 쓰기 [OFF] 차단됨 (해당 친구는 본인 API 키만 사용 가능)`
+      );
+    } finally {
+      setBusyInviteCodeId(null);
+    }
   };
 
   const handleRefreshFriendInvites = async () => {
@@ -649,14 +963,24 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setIsLoadingInvites(true);
     setFriendPanelError(null);
     try {
-      const [res, remoteMap] = await Promise.all([
-        fetchFriendInviteList(auth.url, auth.pin),
+      const [res, remoteMap, diag] = await Promise.all([
+        fetchFriendInviteList(auth.url, auth.pin, auth.sid),
         fetchAllFriendRemoteProfiles(auth.url),
+        diagnoseStoreCloudConnection(auth.url, auth.pin, auth.sid),
       ]);
       setFriendRemoteProfiles(remoteMap || {});
+      setCloudDiag(diag);
+      if (diag.ok) {
+        setNeedsSheetBinding(false);
+        if (diag.sharedAi) setSharedAiState(diag.sharedAi);
+      } else if (diag.needsSpreadsheetId) {
+        setNeedsSheetBinding(true);
+      }
       if (res.ok) {
         setFriendInvites(res.items);
+        if (res.sharedAi) setSharedAiState(res.sharedAi);
       } else {
+        if (res.needsSpreadsheetId) setNeedsSheetBinding(true);
         setFriendPanelError(res.error || '초대코드 목록 조회에 실패했습니다.');
       }
     } finally {
@@ -681,9 +1005,11 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         auth.url,
         auth.pin,
         cleanLabel,
-        newFriendMaxDevices
+        newFriendMaxDevices,
+        auth.sid
       );
       if (!res.ok) {
+        if (res.needsSpreadsheetId) setNeedsSheetBinding(true);
         const msg =
           res.error ||
           '8자리 초대코드 발급에 실패했습니다. Apps Script 코드가 최신 버전인지 확인해 주세요.';
@@ -691,6 +1017,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         showToastMessage('error', `⚠️ ${msg}`);
         return;
       }
+      if (res.sharedAi) setSharedAiState(res.sharedAi);
       if (Array.isArray(res.items)) {
         setFriendInvites(res.items);
       } else if (res.item) {
@@ -807,9 +1134,10 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         auth.pin,
         item.codeId,
         'set_max_devices',
-        { maxDevices: nextMax }
+        { maxDevices: nextMax, spreadsheetId: auth.sid }
       );
       if (!res.ok) {
+        if (res.needsSpreadsheetId) setNeedsSheetBinding(true);
         const rawErr = res.error || '';
         const msg = rawErr.includes('set_max_devices')
           ? '코드 1개로 다중 기기(폰+PC 2대 등) 허용 기능을 쓰시려면 상단 [Apps Script 코드 복사]를 눌러 구글 시트 Code.gs를 최신 코드로 1회 업데이트(새 버전 배포)해 주세요! (또는 PC용 별도 코드를 1개 더 발급하셔도 됩니다.)'
@@ -818,6 +1146,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         showToastMessage('error', `⚠️ ${msg}`);
         return;
       }
+      if (res.sharedAi) setSharedAiState(res.sharedAi);
       if (Array.isArray(res.items)) {
         setFriendInvites(res.items);
       } else {
@@ -953,9 +1282,11 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         auth.url,
         auth.pin,
         item.codeId,
-        mode
+        mode,
+        { spreadsheetId: auth.sid }
       );
       if (!res.ok) {
+        if (res.needsSpreadsheetId) setNeedsSheetBinding(true);
         const msg = res.error || '상태 변경에 실패했습니다.';
         setFriendPanelError(msg);
         showToastMessage('error', `⚠️ ${msg}`);
@@ -969,6 +1300,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
           return next;
         });
       }
+      if (res.sharedAi) setSharedAiState(res.sharedAi);
       if (Array.isArray(res.items)) {
         setFriendInvites(res.items);
       } else {
@@ -998,15 +1330,20 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     }
   };
 
-  // 공통 클라우드 업로드 헬퍼 (설정창 최신 입력값 우선 반영)
+  // 공통 클라우드 업로드 헬퍼 (설정창 최신 입력값 및 시트ID 우선 반영 + 진단 즉시 갱신)
   const pushDatasetToCloud = async (
     kind: StoreCloudKind,
     payload: unknown,
     localSummaryText: string
   ) => {
+    const activeUrl = gasUrl.trim() || readRawSyncConfig().repo;
+    const activePin = cloudPin.trim() || readRawSyncConfig().token;
+    const activeSid =
+      extractGoogleSheetId(spreadsheetIdInput) || loadSavedSpreadsheetId();
     const res = await saveStoreCloudDataset(kind, payload, {
-      repo: gasUrl.trim() || readRawSyncConfig().repo,
-      token: cloudPin.trim() || readRawSyncConfig().token,
+      repo: activeUrl,
+      token: activePin,
+      spreadsheetId: activeSid,
     });
     const hhmm = formatHHMM();
     if (res.ok) {
@@ -1016,6 +1353,12 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         timeLabel: hhmm,
       });
       setCloudVerified(true);
+      setNeedsSheetBinding(false);
+      void diagnoseStoreCloudConnection(activeUrl, activePin, activeSid).then(
+        (diag) => {
+          if (diag.ok) setCloudDiag(diag);
+        }
+      );
       showToastMessage(
         'success',
         `✓ 구글 시트 적재 완료 (${hhmm}) — ${localSummaryText}`
@@ -1031,6 +1374,9 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         `내 기기에 저장되었습니다. 전 직원 반영을 위해 상단 구글 시트 URL·PIN을 저장해 주세요.`
       );
     } else {
+      if (res.needsSpreadsheetId) {
+        setNeedsSheetBinding(true);
+      }
       setKindFeedback(kind, {
         status: 'error',
         message: res.message,
@@ -1637,10 +1983,10 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
           ) : (
             /* ==================== 인증 완료: 통합 업로드 센터 본문 ==================== */
             <>
-              {/* 1) 상단 클라우드 연결 요약 바 + 대형 직원 자동연결 링크 복사 버튼 */}
+              {/* 1) 상단 클라우드 연결 요약 바 + 독립형 시트 주소 연결 + 4대 자료 연동 실시간 검수 */}
               <div className={`rounded-2xl border p-3.5 sm:p-4 space-y-3 ${cardBg}`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
                     <Cloud className="w-4 h-4 text-[#1B64DA] dark:text-blue-400 shrink-0" />
                     <span className="text-xs sm:text-sm font-extrabold truncate">
                       비공개 구글 시트 (Apps Script) 클라우드 브릿지
@@ -1648,29 +1994,67 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                     <span
                       className={`px-2 py-0.5 rounded-full text-[11px] font-black shrink-0 ${
                         hasValidCloudUrl
-                          ? cloudVerified === false
+                          ? cloudVerified === false || needsSheetBinding
                             ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
                             : 'bg-emerald-500/15 text-[#059669] dark:text-emerald-300'
                           : 'bg-[#F2F4F6] dark:bg-slate-800 text-[#8B95A1]'
                       }`}
                     >
                       {hasValidCloudUrl
-                        ? cloudVerified === true
-                          ? '● 연결 확인됨'
+                        ? needsSheetBinding
+                          ? '● 시트 주소 연결 필요'
+                          : cloudVerified === true
+                          ? '● 시트 연동 확인됨'
                           : '● URL 설정됨'
                         : '미설정'}
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleCopyAppsScriptCode}
-                    className={`self-start sm:self-auto px-2.5 py-1.5 rounded-xl border text-[11.5px] font-bold inline-flex items-center gap-1 cursor-pointer transition ${subBoxBg}`}
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Apps Script 코드 복사</span>
-                  </button>
+                  <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      disabled={isPullingFromCloud || !hasValidCloudUrl}
+                      onClick={() => void handlePullAllDatasetsFromCloud()}
+                      className={`px-2.5 py-1.5 rounded-xl border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${subBoxBg}`}
+                      title="비공개 구글 시트에 저장된 최신 4대 자료를 내 기기로 즉시 동기화합니다"
+                    >
+                      {isPullingFromCloud ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1B64DA]" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-300" />
+                      )}
+                      <span>시트 자료 내 기기로 불러오기</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleCopyAppsScriptCode}
+                      className="px-2.5 py-1.5 rounded-xl border border-[#1B64DA]/40 bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer transition hover:opacity-90"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Apps Script 코드 복사</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* 독립형 스크립트 시트 미연결 복구 안내 배너 */}
+                {needsSheetBinding && (
+                  <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-500/15 border-2 border-amber-400 dark:border-amber-500/50 text-amber-950 dark:text-amber-100 text-xs space-y-1.5">
+                    <div className="font-extrabold text-[12.5px] flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-300 shrink-0" />
+                      <span>
+                        안심하세요! 기존에 초대한 친구 목록과 4대 자료는 구글 시트에 100% 그대로 살아있습니다!
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] leading-relaxed font-semibold opacity-95">
+                      현재 웹앱이 <strong>독립형 Apps Script</strong>여서 어떤 구글 시트를 읽을지 시트 주소만 알려주면 즉시 복구됩니다:
+                      <br />
+                      ① 아래 <strong>[연동할 비공개 구글 시트 주소(URL)]</strong> 칸에 기존 구글 시트 주소(<code>https://docs.google.com/spreadsheets/d/...</code>)를 붙여넣으세요. (시트가 기억 안 나면 Apps Script 좌측 시계 아이콘 <strong>[프로젝트 기록]</strong>에서 이전 코드의 시트 ID를 확인할 수 있습니다.)
+                      <br />
+                      ② 우측 상단 <strong>[Apps Script 코드 복사]</strong> 클릭 → <code>Code.gs</code>에 붙여넣기 → <strong>[배포 → 배포 관리 → 수정(연필) → 버전: 새 버전 → 배포]</strong> 후 <strong>[연결 저장·검수]</strong>를 누르면 기존 초대 목록이 즉시 복구됩니다!
+                    </p>
+                  </div>
+                )}
 
                 {/* 대형 CTA: 전 직원 원클릭 자동연결 링크 복사 */}
                 <button
@@ -1687,7 +2071,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                   </span>
                 </button>
 
-                {/* URL + PIN 입력 및 [연결 저장·확인] */}
+                {/* URL + PIN 입력 및 [연결 저장·검수] */}
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
                   <div className="sm:col-span-6">
                     <input
@@ -1731,25 +2115,121 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                     ) : (
                       <Check className="w-3.5 h-3.5" />
                     )}
-                    <span>연결 저장·확인</span>
+                    <span>연결 저장·검수</span>
                   </button>
                 </div>
+
+                {/* 독립형 Apps Script 호환: 연동할 비공개 구글 시트 주소(URL) 또는 시트 ID */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className={`text-[11px] font-extrabold ${mutedText}`}>
+                      📊 연동할 비공개 구글 시트 주소(URL) 또는 시트 ID{' '}
+                      <span className="opacity-80 font-semibold">
+                        (독립형 Apps Script 사용 시 필수 · 시트 내부 확장프로그램 스크립트는 비워둬도 자동 인식)
+                      </span>
+                    </label>
+                    {extractGoogleSheetId(spreadsheetIdInput) && (
+                      <span className="text-[10.5px] font-mono font-bold text-[#059669] dark:text-emerald-300">
+                        ✓ 시트ID 인식됨: {extractGoogleSheetId(spreadsheetIdInput).slice(0, 12)}...
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={spreadsheetIdInput}
+                    onChange={(e) => setSpreadsheetIdInput(e.target.value)}
+                    placeholder="예: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz.../edit"
+                    className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-mono focus:outline-none ${
+                      needsSheetBinding
+                        ? 'border-2 border-amber-500 ring-2 ring-amber-400/30'
+                        : 'focus:border-[#1B64DA]'
+                    } ${inputCls}`}
+                  />
+                </div>
+
+                {/* 실시간 시트 & 4대 자료 연동 검수 리포트 */}
+                {cloudDiag && cloudDiag.ok && (
+                  <div className={`p-2.5 sm:p-3 rounded-xl border space-y-2 ${subBoxBg}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-1.5 text-[11.5px]">
+                      <div className="flex items-center gap-1.5 flex-wrap font-extrabold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#059669] dark:text-emerald-400 shrink-0" />
+                        <span>
+                          시트 연동 검수 정상: <strong>{cloudDiag.spreadsheetTitle || '비공개 구글 시트'}</strong>
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-[#059669] dark:text-emerald-300 text-[10.5px] font-black">
+                          {cloudDiag.bindingMode === 'standalone_id'
+                            ? '독립형 시트ID 연결됨'
+                            : '시트 내장 스크립트'}
+                        </span>
+                      </div>
+                      <span className={`text-[11px] font-mono font-bold ${mutedText}`}>
+                        초대코드 {cloudDiag.inviteCount ?? friendInvites.length}명 (등록 {cloudDiag.boundInviteCount ?? 0}명)
+                      </span>
+                    </div>
+
+                    {cloudDiag.datasets && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px]">
+                        {(
+                          [
+                            { key: 'schedule', label: '① 휴무표', unit: '개월' },
+                            { key: 'incentive', label: '② 모델수당', unit: '개월' },
+                            { key: 'care', label: '③ 안심케어', unit: '개 코드' },
+                            { key: 'installment', label: '④ 무이자할부', unit: '개 카드' },
+                          ] as const
+                        ).map(({ key, label, unit }) => {
+                          const d = cloudDiag.datasets?.[key];
+                          const ok = Boolean(d?.exists && d?.validJson);
+                          return (
+                            <div
+                              key={key}
+                              className={`px-2.5 py-1.5 rounded-lg border flex flex-col justify-between ${
+                                ok
+                                  ? 'bg-emerald-50/70 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/30'
+                                  : cardBg
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-1 font-extrabold">
+                                <span>{label}</span>
+                                <span
+                                  className={
+                                    ok
+                                      ? 'text-[#059669] dark:text-emerald-300'
+                                      : mutedText
+                                  }
+                                >
+                                  {ok ? '✓ 연동됨' : '비어있음'}
+                                </span>
+                              </div>
+                              <div className={`text-[10.5px] font-mono truncate ${mutedText}`}>
+                                {ok
+                                  ? `${d?.itemCount?.toLocaleString() || 0}${unit} (${d?.chunks || 1}청크)`
+                                  : d?.exists && !d?.validJson
+                                  ? '⚠️ JSON 점검 필요'
+                                  : '미업로드'}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* 1-B) 외부 지인(친구) 전용 기기 잠금 초대코드 관리 패널 */}
-              <div className={`rounded-2xl border p-3.5 sm:p-4 space-y-3 ${cardBg}`}>
+              {/* 1-B) 외부 지인(친구) 전용 기기 잠금 초대코드 & 내 API 키 공유 관리 패널 */}
+              <div className={`rounded-2xl border p-3.5 sm:p-4 space-y-3.5 ${cardBg}`}>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs sm:text-sm font-extrabold">
-                        🔐 외부 지인(친구) 전용 초대코드 관리 (휴무표·랜딩 분리)
+                        🔐 외부 지인(친구) 전용 초대코드 & 내 API 키 함께 쓰기 관리
                       </span>
                       <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 text-[10.5px] font-black">
                         총 {friendInvites.length}명
                       </span>
                     </div>
                     <p className={`text-[11px] font-medium mt-0.5 ${mutedText}`}>
-                      허용된 기기 대수(1대 휴대폰 전용 또는 2대 휴대폰+PC 동시 사용)만큼만 귀속되며, 내 랜딩페이지·휴무표·네이버지도는 완전 분리됩니다.
+                      허용된 기기 대수(1대 폰 전용 / 2대 폰+PC)만큼만 귀속되며, 내 랜딩페이지·휴무표·네이버지도는 완전 분리됩니다.
                     </p>
                   </div>
 
@@ -1791,6 +2271,114 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                       />
                       <span>새로고침</span>
                     </button>
+                  </div>
+                </div>
+
+                {/* ==================== 🤖 초대한 친구 내 Gemini API 키 공유 ON / OFF 컨트롤 박스 ==================== */}
+                <div
+                  className={`p-3 rounded-xl border space-y-2.5 ${
+                    sharedAiState.hasSharedKey && sharedAiState.globalEnabled
+                      ? 'bg-emerald-50/60 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/35'
+                      : subBoxBg
+                  }`}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Bot className="w-4 h-4 text-[#1B64DA] dark:text-blue-300 shrink-0" />
+                        <span className="text-xs font-extrabold">
+                          초대한 친구들 내 Gemini API 키 함께 쓰기
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10.5px] font-black border ${
+                            sharedAiState.hasSharedKey && sharedAiState.globalEnabled
+                              ? 'bg-[#059669] text-white border-[#059669]'
+                              : 'bg-slate-500/15 text-[#4E5968] dark:text-slate-300 border-slate-400/30'
+                          }`}
+                        >
+                          {sharedAiState.hasSharedKey && sharedAiState.globalEnabled
+                            ? '● 전체 공유 ON'
+                            : '○ 공유 OFF'}
+                        </span>
+                        {sharedAiState.hasSharedKey && (
+                          <span className="px-2 py-0.5 rounded-md bg-white/80 dark:bg-slate-900/70 border border-[#D1D6DB] dark:border-slate-700 font-mono text-[10.5px] font-bold">
+                            공유키: {sharedAiState.maskedSharedKey}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] font-medium leading-snug ${mutedText}`}>
+                        ON 시 허용된 친구 기기 메모리에만 임시 연결되며(친구 화면·저장소 키 노출 0%), OFF 전환 즉시 모든 친구 기기에서 차단됩니다. (AI Ultra 월 $40 무료 크레딧 보호 저비용 모델 <code>gemini-3.8-flash</code> · <code>3.5-flash-lite</code> · <code>4-hydrogen</code> 자동 작동)
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isSavingSharedAi}
+                      onClick={() => void handleToggleGlobalSharedAi()}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 transition shrink-0 ${
+                        sharedAiState.hasSharedKey && sharedAiState.globalEnabled
+                          ? 'bg-[#E60012] hover:bg-[#C8000F] text-white'
+                          : 'bg-[#059669] hover:bg-emerald-700 text-white'
+                      }`}
+                    >
+                      {isSavingSharedAi ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5" />
+                      )}
+                      <span>
+                        {sharedAiState.hasSharedKey && sharedAiState.globalEnabled
+                          ? '전체 API 키 공유 OFF 하기'
+                          : '전체 API 키 공유 ON 켜기'}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    {Boolean(getStoredGeminiApiKey()) && (
+                      <button
+                        type="button"
+                        disabled={isSavingSharedAi}
+                        onClick={() => void handleSaveSharedAiKey(true)}
+                        className="py-2 px-3 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] disabled:opacity-50 text-white text-[11.5px] font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer transition shrink-0"
+                      >
+                        <KeyRound className="w-3.5 h-3.5 shrink-0" />
+                        <span>⚡ 내 기기 저장 API 키 바로 연동</span>
+                      </button>
+                    )}
+
+                    <input
+                      type="password"
+                      value={sharedKeyDraft}
+                      onChange={(e) => setSharedKeyDraft(e.target.value)}
+                      placeholder={
+                        sharedAiState.hasSharedKey
+                          ? '다른 Gemini API 키로 변경하려면 입력 (AIzaSy...)'
+                          : '공유할 Gemini API 키 직접 입력 (AIzaSy...)'
+                      }
+                      className={`flex-1 px-3 py-1.5 rounded-xl border text-base sm:text-xs font-mono focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                    />
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        disabled={isSavingSharedAi || !sharedKeyDraft.trim()}
+                        onClick={() => void handleSaveSharedAiKey(false)}
+                        className={`py-1.5 px-3 rounded-xl border text-[11.5px] font-extrabold cursor-pointer disabled:opacity-45 transition ${cardBg}`}
+                      >
+                        키 저장
+                      </button>
+                      {sharedAiState.hasSharedKey && (
+                        <button
+                          type="button"
+                          disabled={isSavingSharedAi}
+                          onClick={() => void handleClearSharedAiKey()}
+                          className={`py-1.5 px-2.5 rounded-xl border text-[11.5px] font-bold hover:text-[#E60012] cursor-pointer disabled:opacity-45 transition ${cardBg} ${mutedText}`}
+                        >
+                          공유키 삭제
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1870,7 +2458,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                     </button>
                   </div>
                   <p className={`text-[11px] font-semibold break-keep ${mutedText}`}>
-                    💡 한 친구가 <strong>휴대폰 + 컴퓨터(PC)</strong>를 같이 쓰길 원하면 <strong>[📱+💻 2대 (폰+PC)]</strong>로 설정하세요! 코드 1개로 폰과 PC 2대까지 등록됩니다. (※ 기존 구글 시트를 쓰시는 경우 상단 [Apps Script 코드 복사]로 Code.gs를 1회 업데이트하시면 코드 1개 다중기기 기능이 바로 활성화됩니다.)
+                    💡 한 친구가 <strong>휴대폰 + 컴퓨터(PC)</strong>를 같이 쓰길 원하면 <strong>[📱+💻 2대 (폰+PC)]</strong>로 설정하세요! 코드 1개로 폰과 PC 2대까지 등록되며, 친구별로 <strong>[🤖 AI공유 ON/OFF]</strong>도 개별 제어할 수 있습니다.
                   </p>
                 </div>
 
@@ -1925,6 +2513,15 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                           : item.status === 'BOUND'
                           ? 1
                           : 0;
+                      const friendAiAllowed =
+                        sharedAiState.friendAiMap[item.codeId] !== undefined
+                          ? sharedAiState.friendAiMap[item.codeId] !== false
+                          : item.aiAllowed !== false;
+                      const friendAiEffectivelyActive =
+                        sharedAiState.hasSharedKey &&
+                        sharedAiState.globalEnabled &&
+                        friendAiAllowed &&
+                        !isRevoked;
                       const statusBadge =
                         item.status === 'BOUND'
                           ? {
@@ -1997,6 +2594,25 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                             </div>
 
                             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusy || isSavingSharedAi}
+                                onClick={() => void handleToggleFriendAiAllowed(item)}
+                                className={`py-1.5 px-2.5 rounded-lg border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${
+                                  friendAiAllowed
+                                    ? friendAiEffectivelyActive
+                                      ? 'bg-emerald-500/15 text-[#059669] dark:text-emerald-300 border-emerald-500/40'
+                                      : 'bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/40'
+                                    : `${cardBg} ${mutedText}`
+                                }`}
+                                title="이 친구에게만 내 Gemini API 키 공유를 개별 허용(ON)하거나 차단(OFF)합니다"
+                              >
+                                <Bot className="w-3 h-3 shrink-0" />
+                                <span>
+                                  {friendAiAllowed ? 'AI공유 ON' : 'AI공유 OFF'}
+                                </span>
+                              </button>
+
                               <button
                                 type="button"
                                 disabled={isBusy}

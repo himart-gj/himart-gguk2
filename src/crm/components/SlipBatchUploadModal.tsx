@@ -32,6 +32,8 @@ import {
   parseHisisSlipImageWithFallback,
   rebuildParsedHisisSlipFromEdits,
   setStoredGeminiApiKey,
+  SHARED_GEMINI_KEY_UPDATED_EVENT,
+  syncEphemeralSharedGeminiKey,
 } from '../../utils/aiImageParser';
 import { CustomerItem } from '../types/crm';
 import {
@@ -122,6 +124,7 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
     getStoredGeminiApiKey()
   );
   const [showApiKeyBox, setShowApiKeyBox] = useState<boolean>(false);
+  const [, setSharedKeyTick] = useState<number>(0);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const parsingIdsRef = useRef<Set<string>>(new Set());
@@ -130,6 +133,13 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
     if (!isOpen) return [];
     return getCachedCustomers().filter((c) => !c.deletedAt);
   }, [isOpen, queue.length]);
+
+  useEffect(() => {
+    const onShared = () => setSharedKeyTick((v) => v + 1);
+    window.addEventListener(SHARED_GEMINI_KEY_UPDATED_EVENT, onShared);
+    return () =>
+      window.removeEventListener(SHARED_GEMINI_KEY_UPDATED_EVENT, onShared);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -149,6 +159,7 @@ export const SlipBatchUploadModal: React.FC<SlipBatchUploadModalProps> = ({
       setShowApiKeyBox(false);
     } else {
       setApiKeyInput(getStoredGeminiApiKey());
+      void syncEphemeralSharedGeminiKey(false);
     }
   }, [isOpen]);
 

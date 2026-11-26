@@ -3,7 +3,13 @@ import { GitHubSyncConfig, loadGitHubSyncConfig, saveGitHubSyncConfig } from '..
 import { fetchStoreCloudDataset, saveStoreCloudDataset } from '../../utils/storeCloudSync';
 import { DEFAULT_MODEL_INCENTIVE_SHEETS } from '../data/defaultModelIncentiveData';
 import { idbMirrorGet, idbMirrorSet } from '../../utils/offlineDbQueue';
-import { buildGeminiFastConfig, compressImageFile, GEMINI_MODELS, getEffectiveGeminiApiKey } from '../../utils/aiImageParser';
+import {
+  compressImageFile,
+  ensureEffectiveGeminiApiKey,
+  GEMINI_MODELS,
+  generateContentWithTier1Retry,
+  shouldTryLocalBackendApi,
+} from '../../utils/aiImageParser';
 import {
   ModelIncentiveRule,
   ModelIncentivesMap,
@@ -1011,49 +1017,51 @@ export async function parseModelIncentiveImage(
   file: File
 ): Promise<ModelIncentiveRule[]> {
   const compressed = await compressImageFile(file, 1920, 0.86);
-  const apiKey = getEffectiveGeminiApiKey();
+  const apiKey = await ensureEffectiveGeminiApiKey();
 
-  // 1차: 백엔드 서버 엔드포인트(/api/ai/parse-model-incentive-image) 호출
-  try {
-    const resp = await fetch('/api/ai/parse-model-incentive-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64: compressed.dataUrl,
-        mimeType: compressed.mimeType,
-        apiKey,
-      }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (Array.isArray(data?.rules) && data.rules.length > 0) {
-        const mapped: ModelIncentiveRule[] = data.rules
-          .map((item: any, idx: number) => {
-            const rawAmt = Number(item.incentiveAmount) || 0;
-            const amt = rawAmt > 0 && rawAmt < 300 ? rawAmt * 10_000 : rawAmt;
-            return {
-              id: `IMG-${Date.now()}-${idx}`,
-              category: String(item.category || '가전').trim(),
-              modelCode: cleanUploadedModelCode(item.modelCode || ''),
-              productName: item.productName ? String(item.productName).trim() : undefined,
-              incentiveAmount: amt,
-              saleTypeFilter: parseSaleTypeFilterCell(item.saleTypeFilter),
-              note: item.note ? String(item.note).trim() : undefined,
-            };
-          })
-          .filter((r: ModelIncentiveRule) => r.modelCode && r.incentiveAmount > 0);
-        const deduped = mergeModelIncentiveRules([], mapped);
-        if (deduped.length > 0) return deduped;
+  // 1차: 로컬 서버 환경일 때만 /api/ai/parse-model-incentive-image 호출
+  if (shouldTryLocalBackendApi()) {
+    try {
+      const resp = await fetch('/api/ai/parse-model-incentive-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: compressed.dataUrl,
+          mimeType: compressed.mimeType,
+          apiKey,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (Array.isArray(data?.rules) && data.rules.length > 0) {
+          const mapped: ModelIncentiveRule[] = data.rules
+            .map((item: any, idx: number) => {
+              const rawAmt = Number(item.incentiveAmount) || 0;
+              const amt = rawAmt > 0 && rawAmt < 300 ? rawAmt * 10_000 : rawAmt;
+              return {
+                id: `IMG-${Date.now()}-${idx}`,
+                category: String(item.category || '가전').trim(),
+                modelCode: cleanUploadedModelCode(item.modelCode || ''),
+                productName: item.productName ? String(item.productName).trim() : undefined,
+                incentiveAmount: amt,
+                saleTypeFilter: parseSaleTypeFilterCell(item.saleTypeFilter),
+                note: item.note ? String(item.note).trim() : undefined,
+              };
+            })
+            .filter((r: ModelIncentiveRule) => r.modelCode && r.incentiveAmount > 0);
+          const deduped = mergeModelIncentiveRules([], mapped);
+          if (deduped.length > 0) return deduped;
+        }
       }
+    } catch {
+      // 서버 미구동(정적 배포) 환경일 경우 아래 클라이언트 직접 호출로 자동 폴백
     }
-  } catch {
-    // 서버 미구동(정적 배포) 환경일 경우 아래 클라이언트 직접 호출로 자동 폴백
   }
 
   // 2차: 클라이언트 직접 Gemini Vision 호출 폴백
   if (!apiKey) {
     throw new Error(
-      'AI 사진 인식을 위해 상단 설정(열쇠 아이콘)에서 Gemini API 키를 먼저 등록해 주세요.'
+      'AI 사진 인식을 위해 상단 설정(열쇠 아이콘)에서 Gemini API 키를 등록하거나 관리자에게 AI 키 공유를 요청해 주세요.'
     );
   }
 
@@ -1067,78 +1075,76 @@ export async function parseModelIncentiveImage(
 - incentiveAmount: 원 단위 수당 정수 (예: 표에 '5만', '50,000', 또는 단위:만원 열에 '5'로 적혀 있으면 반드시 50000으로 변환. 제품 판매가가 아닌 판매사원 수당/시상금을 추출할 것).
 - saleTypeFilter: 전체 공통이면 'all', 구독 전용이면 'subscription', 일반 전용이면 'general'.`;
 
-  let lastErr: any = null;
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: compressed.mimeType,
-                  data: compressed.base64Data,
-                },
-              },
-              { text: promptText },
-            ],
-          },
-        ],
-        config: buildGeminiFastConfig(modelName, {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              rules: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    category: { type: Type.STRING },
-                    modelCode: { type: Type.STRING },
-                    productName: { type: Type.STRING },
-                    incentiveAmount: { type: Type.INTEGER },
-                    saleTypeFilter: { type: Type.STRING },
-                    note: { type: Type.STRING },
-                  },
-                  required: ['modelCode', 'incentiveAmount'],
-                },
+  try {
+    const { text: responseText } = await generateContentWithTier1Retry(
+      ai,
+      GEMINI_MODELS,
+      [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: compressed.mimeType,
+                data: compressed.base64Data,
               },
             },
-            required: ['rules'],
+            { text: promptText },
+          ],
+        },
+      ],
+      {
+        responseMimeType: 'application/json',
+        maxOutputTokens: 8192,
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            rules: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  category: { type: Type.STRING },
+                  modelCode: { type: Type.STRING },
+                  productName: { type: Type.STRING },
+                  incentiveAmount: { type: Type.INTEGER },
+                  saleTypeFilter: { type: Type.STRING },
+                  note: { type: Type.STRING },
+                },
+                required: ['modelCode', 'incentiveAmount'],
+              },
+            },
           },
-        }),
-      });
-      if (response && response.text) {
-        const parsed = JSON.parse(response.text.trim());
-        const rules: ModelIncentiveRule[] = (parsed?.rules || [])
-          .map((item: any, idx: number) => {
-            const rawAmt = Number(item.incentiveAmount) || 0;
-            const amt = rawAmt > 0 && rawAmt < 300 ? rawAmt * 10_000 : rawAmt;
-            return {
-              id: `IMGC-${Date.now()}-${idx}`,
-              category: String(item.category || '가전').trim(),
-              modelCode: cleanUploadedModelCode(item.modelCode || ''),
-              productName: item.productName ? String(item.productName).trim() : undefined,
-              incentiveAmount: amt,
-              saleTypeFilter: parseSaleTypeFilterCell(item.saleTypeFilter),
-              note: item.note ? String(item.note).trim() : undefined,
-            };
-          })
-          .filter((r: ModelIncentiveRule) => r.modelCode && r.incentiveAmount > 0);
-        const deduped = mergeModelIncentiveRules([], rules);
-        if (deduped.length > 0) return deduped;
+          required: ['rules'],
+        },
       }
-    } catch (err) {
-      lastErr = err;
-    }
+    );
+
+    const parsed = JSON.parse(responseText);
+    const rules: ModelIncentiveRule[] = (parsed?.rules || [])
+      .map((item: any, idx: number) => {
+        const rawAmt = Number(item.incentiveAmount) || 0;
+        const amt = rawAmt > 0 && rawAmt < 300 ? rawAmt * 10_000 : rawAmt;
+        return {
+          id: `IMGC-${Date.now()}-${idx}`,
+          category: String(item.category || '가전').trim(),
+          modelCode: cleanUploadedModelCode(item.modelCode || ''),
+          productName: item.productName ? String(item.productName).trim() : undefined,
+          incentiveAmount: amt,
+          saleTypeFilter: parseSaleTypeFilterCell(item.saleTypeFilter),
+          note: item.note ? String(item.note).trim() : undefined,
+        };
+      })
+      .filter((r: ModelIncentiveRule) => r.modelCode && r.incentiveAmount > 0);
+    const deduped = mergeModelIncentiveRules([], rules);
+    if (deduped.length > 0) return deduped;
+  } catch (err: any) {
+    throw new Error(
+      err?.message || '이미지에서 모델별 수당 정보를 추출하지 못했습니다. 선명한 표 사진으로 다시 시도해 주세요.'
+    );
   }
 
-  throw new Error(
-    lastErr?.message || '이미지에서 모델별 수당 정보를 추출하지 못했습니다. 선명한 표 사진으로 다시 시도해 주세요.'
-  );
+  throw new Error('이미지에서 모델별 수당 정보를 추출하지 못했습니다. 선명한 표 사진으로 다시 시도해 주세요.');
 }
 
 export function parseModelIncentiveFreeText(text: string): ModelIncentiveRule[] {

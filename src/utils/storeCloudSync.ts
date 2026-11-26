@@ -30,11 +30,79 @@ export interface FriendRemoteProfile {
   updatedAt: string;
 }
 
+export interface SharedGeminiAdminState {
+  hasSharedKey: boolean;
+  maskedSharedKey: string;
+  globalEnabled: boolean;
+  friendAiMap: Record<string, boolean>;
+}
+
+export interface CloudKindDiagnostic {
+  exists: boolean;
+  updatedAt: string;
+  chunks: number;
+  bytes: number;
+  validJson: boolean;
+  itemCount: number;
+}
+
+export interface CloudDiagnosticsReport {
+  ok: boolean;
+  needsSpreadsheetId?: boolean;
+  bindingMode?: 'container' | 'standalone_id';
+  spreadsheetId?: string;
+  spreadsheetTitle?: string;
+  inviteCount?: number;
+  boundInviteCount?: number;
+  sharedAi?: SharedGeminiAdminState;
+  datasets?: Record<StoreCloudKind, CloudKindDiagnostic>;
+  error?: string;
+}
+
 export const FRIEND_REMOTE_PROFILES_FIELD = '__friendProfiles' as const;
 export const STORE_CLOUD_CONFIG_KEY = 'himart_care_gh_sync_config_v1';
+export const TARGET_SPREADSHEET_ID_STORAGE_KEY = 'himart_gj_target_sheet_id_v1';
 export const OWNER_CUSTOM_PIN_STORAGE_KEY = 'himart_gj_owner_db_pin_v1';
 export const STORE_CLOUD_UPDATED_EVENT = 'himart_gj_store_cloud_updated';
 export const UNCONFIGURED_PIN_SENTINEL = '__HIMART_CLOUD_PIN_REQUIRED__';
+
+export function extractGoogleSheetId(raw?: string | null): string {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const urlMatch = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]{20,})/);
+  if (urlMatch?.[1]) return urlMatch[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(s) && !s.includes('http') && !s.includes('/')) {
+    return s;
+  }
+  return '';
+}
+
+export function loadSavedSpreadsheetId(): string {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    return extractGoogleSheetId(
+      localStorage.getItem(TARGET_SPREADSHEET_ID_STORAGE_KEY)
+    );
+  } catch {
+    return '';
+  }
+}
+
+export function saveSpreadsheetId(raw?: string | null): string {
+  const clean = extractGoogleSheetId(raw);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      if (clean) {
+        localStorage.setItem(TARGET_SPREADSHEET_ID_STORAGE_KEY, clean);
+      } else {
+        localStorage.removeItem(TARGET_SPREADSHEET_ID_STORAGE_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return clean;
+}
 
 const DATA_FILE_RE =
   /(?:^|[/.])(schedule|model-incentive|care-table|card-installment)-data\.json(?:$|[?#])/i;
@@ -254,10 +322,12 @@ export async function fetchStoreCloudDataset<T = unknown>(
         friendSession && friendSession.deviceToken
           ? `&role=friend&dt=${encodeURIComponent(friendSession.deviceToken)}`
           : '';
+      const savedSid = !friendSession ? loadSavedSpreadsheetId() : '';
+      const sidQuery = savedSid ? `&sid=${encodeURIComponent(savedSid)}` : '';
       const sep = gasUrl.includes('?') ? '&' : '?';
       const targetUrl = `${gasUrl}${sep}action=getDataset&kind=${encodeURIComponent(
         kind
-      )}${friendQuery}&_t=${Date.now()}`;
+      )}${friendQuery}${sidQuery}&_t=${Date.now()}`;
       const res = await getNativeFetch()(targetUrl, { cache: 'no-store' });
       if (!res.ok) return null;
       const json = await res.json();
@@ -288,8 +358,13 @@ export async function fetchStoreCloudDataset<T = unknown>(
 export async function saveStoreCloudDataset(
   kind: StoreCloudKind,
   payloadData: unknown,
-  configOverride?: Partial<StoreCloudRawConfig>
-): Promise<{ ok: boolean; configured: boolean; message: string }> {
+  configOverride?: Partial<StoreCloudRawConfig> & { spreadsheetId?: string }
+): Promise<{
+  ok: boolean;
+  configured: boolean;
+  needsSpreadsheetId?: boolean;
+  message: string;
+}> {
   if (isFriendRestrictedMode()) {
     return {
       ok: false,
@@ -302,6 +377,9 @@ export async function saveStoreCloudDataset(
   const rawRepo = (configOverride?.repo ?? saved.repo ?? '').trim();
   const gasUrl = normalizeGasWebAppUrl(rawRepo);
   const pin = (configOverride?.token ?? saved.token ?? '').trim();
+  const spreadsheetId = extractGoogleSheetId(
+    configOverride?.spreadsheetId ?? loadSavedSpreadsheetId()
+  );
 
   if (!gasUrl) {
     if (rawRepo) {
@@ -381,6 +459,7 @@ export async function saveStoreCloudDataset(
         kind,
         pin,
         payload: serialized,
+        ...(spreadsheetId ? { spreadsheetId } : {}),
       }),
     });
 
@@ -394,10 +473,16 @@ export async function saveStoreCloudDataset(
 
     const json = await res.json();
     if (!json?.ok) {
+      const rawErr = String(json?.error || '');
+      const isNullSheetErr =
+        Boolean(json?.needsSpreadsheetId) || rawErr.includes('getSheetByName');
       return {
         ok: false,
         configured: true,
-        message: String(json?.error || '구글 시트 저장 실패: 업로드 비밀번호(PIN)를 확인해 주세요.'),
+        needsSpreadsheetId: isNullSheetErr,
+        message: isNullSheetErr
+          ? '독립형 Apps Script가 감지되었습니다! 상단 [연동할 구글 시트 주소(URL)] 칸에 기존 구글 시트 주소를 붙여넣고 최신 Apps Script 코드로 배포 후 [연결 저장·확인]을 눌러주세요.'
+          : rawErr || '구글 시트 저장 실패: 업로드 비밀번호(PIN)를 확인해 주세요.',
       };
     }
 
@@ -425,6 +510,266 @@ export async function saveStoreCloudDataset(
       configured: true,
       message: `구글 시트 통신 오류 (${err?.message || '연결 확인'})`,
     };
+  }
+}
+
+export function normalizeSharedGeminiAdminState(
+  raw: any
+): SharedGeminiAdminState {
+  const rawMap =
+    raw?.friendAiMap && typeof raw.friendAiMap === 'object'
+      ? raw.friendAiMap
+      : {};
+  const cleanMap: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(rawMap)) {
+    if (k) cleanMap[k] = v !== false;
+  }
+  return {
+    hasSharedKey: Boolean(raw?.hasSharedKey),
+    maskedSharedKey: String(raw?.maskedSharedKey || '').trim(),
+    globalEnabled: Boolean(raw?.globalEnabled),
+    friendAiMap: cleanMap,
+  };
+}
+
+export async function diagnoseStoreCloudConnection(
+  rawGasUrl: string,
+  pin: string,
+  sheetIdOverride?: string
+): Promise<CloudDiagnosticsReport> {
+  const gasUrl = normalizeGasWebAppUrl(rawGasUrl);
+  const cleanPin = String(pin || '').trim();
+  const spreadsheetId = extractGoogleSheetId(
+    sheetIdOverride ?? loadSavedSpreadsheetId()
+  );
+  if (!gasUrl || cleanPin.length < 4) {
+    return {
+      ok: false,
+      error: '구글 Apps Script 웹앱 URL과 관리자 PIN(4자리 이상)을 먼저 입력해 주세요.',
+    };
+  }
+
+  try {
+    const res = await getNativeFetch()(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'diagnoseCloudSync',
+        pin: cleanPin,
+        ...(spreadsheetId ? { spreadsheetId } : {}),
+      }),
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: `구글 시트 웹앱 응답 오류 (${res.status}): 배포 권한이 [모든 사용자]인지 확인해 주세요.`,
+      };
+    }
+    const json = await res.json();
+    if (json?.ok) {
+      if (json.spreadsheetId) {
+        saveSpreadsheetId(String(json.spreadsheetId));
+      }
+      return {
+        ok: true,
+        bindingMode: json.bindingMode === 'standalone_id' ? 'standalone_id' : 'container',
+        spreadsheetId: String(json.spreadsheetId || ''),
+        spreadsheetTitle: String(json.spreadsheetTitle || '비공개 구글 시트'),
+        inviteCount: Math.max(0, Number(json.inviteCount) || 0),
+        boundInviteCount: Math.max(0, Number(json.boundInviteCount) || 0),
+        sharedAi: normalizeSharedGeminiAdminState(json.sharedAi),
+        datasets: json.datasets || undefined,
+      };
+    }
+
+    const rawErr = String(json?.error || '');
+    if (json?.needsSpreadsheetId || rawErr.includes('getSheetByName')) {
+      return {
+        ok: false,
+        needsSpreadsheetId: true,
+        error: rawErr.includes('getSheetByName')
+          ? '현재 Apps Script에 구버전 단독 코드가 배포되어 시트를 찾지 못했습니다! [연결할 구글 시트 주소(URL)] 칸에 기존 시트 주소를 입력한 뒤 [Apps Script 코드 복사] → Code.gs 붙여넣기·배포를 1회 진행해 주세요. (기존 초대 목록과 4대 자료는 시트에 100% 보존되어 있습니다!)'
+          : rawErr,
+      };
+    }
+
+    // 만약 구버전 Code.gs라 diagnoseCloudSync 액션이 아직 없는 경우 GET ?action=getAll 로 폴백 점검
+    if (rawErr.includes('diagnoseCloudSync')) {
+      const sep = gasUrl.includes('?') ? '&' : '?';
+      const sidParam = spreadsheetId ? `&sid=${encodeURIComponent(spreadsheetId)}` : '';
+      const getRes = await getNativeFetch()(`${gasUrl}${sep}action=getAll${sidParam}&_t=${Date.now()}`, {
+        cache: 'no-store',
+      });
+      if (getRes.ok) {
+        const getJson = await getRes.json();
+        if (getJson?.ok && getJson.datasets) {
+          const ds: Record<StoreCloudKind, CloudKindDiagnostic> = {
+            schedule: { exists: false, updatedAt: '', chunks: 0, bytes: 0, validJson: true, itemCount: 0 },
+            incentive: { exists: false, updatedAt: '', chunks: 0, bytes: 0, validJson: true, itemCount: 0 },
+            care: { exists: false, updatedAt: '', chunks: 0, bytes: 0, validJson: true, itemCount: 0 },
+            installment: { exists: false, updatedAt: '', chunks: 0, bytes: 0, validJson: true, itemCount: 0 },
+          };
+          (['schedule', 'incentive', 'care', 'installment'] as StoreCloudKind[]).forEach((k) => {
+            const entry = getJson.datasets?.[k];
+            const d = entry?.data;
+            const exists = d !== null && d !== undefined;
+            let count = 0;
+            if (exists && typeof d === 'object') {
+              if (k === 'care' && Array.isArray((d as any).items)) count = (d as any).items.length;
+              else if (k === 'installment' && Array.isArray((d as any).columns)) count = (d as any).columns.length;
+              else count = Object.keys(d as object).length;
+            }
+            ds[k] = {
+              exists,
+              updatedAt: String(entry?.updatedAt || ''),
+              chunks: exists ? 1 : 0,
+              bytes: exists ? JSON.stringify(d).length : 0,
+              validJson: !entry?.parseError,
+              itemCount: count,
+            };
+          });
+          return {
+            ok: true,
+            spreadsheetTitle: '비공개 구글 시트 (구버전 스크립트 — AI공유 기능을 쓰려면 코드 업데이트 권장)',
+            datasets: ds,
+          };
+        }
+      }
+    }
+
+    return {
+      ok: false,
+      error: rawErr || '시트 연동 진단에 실패했습니다.',
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: `구글 시트 통신 오류 (${err?.message || '인터넷 또는 배포 권한 확인'})`,
+    };
+  }
+}
+
+export async function saveCloudSharedGeminiConfig(
+  rawGasUrl: string,
+  pin: string,
+  patch: {
+    apiKey?: string;
+    clearKey?: boolean;
+    globalEnabled?: boolean;
+    friendCodeId?: string;
+    friendAiAllowed?: boolean;
+    spreadsheetId?: string;
+  }
+): Promise<{
+  ok: boolean;
+  sharedAi?: SharedGeminiAdminState;
+  error?: string;
+}> {
+  const gasUrl = normalizeGasWebAppUrl(rawGasUrl);
+  const cleanPin = String(pin || '').trim();
+  const spreadsheetId = extractGoogleSheetId(
+    patch.spreadsheetId ?? loadSavedSpreadsheetId()
+  );
+  if (!gasUrl || cleanPin.length < 4) {
+    return {
+      ok: false,
+      error: '구글 Apps Script 웹앱 URL과 관리자 PIN을 먼저 저장해 주세요.',
+    };
+  }
+  try {
+    const res = await getNativeFetch()(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'saveSharedGeminiConfig',
+        pin: cleanPin,
+        ...(typeof patch.apiKey === 'string' ? { apiKey: patch.apiKey.trim() } : {}),
+        ...(patch.clearKey ? { clearKey: true } : {}),
+        ...(typeof patch.globalEnabled === 'boolean'
+          ? { globalEnabled: patch.globalEnabled }
+          : {}),
+        ...(patch.friendCodeId ? { friendCodeId: patch.friendCodeId } : {}),
+        ...(typeof patch.friendAiAllowed === 'boolean'
+          ? { friendAiAllowed: patch.friendAiAllowed }
+          : {}),
+        ...(spreadsheetId ? { spreadsheetId } : {}),
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, error: `구글 시트 응답 오류 (${res.status})` };
+    }
+    const json = await res.json();
+    if (!json?.ok) {
+      const rawErr = String(json?.error || '');
+      return {
+        ok: false,
+        error: rawErr.includes('saveSharedGeminiConfig')
+          ? '초대 친구 API 키 공유 ON/OFF 기능을 활성화하려면 상단 [Apps Script 코드 복사]를 눌러 Code.gs를 최신 코드로 1회 업데이트(새 버전 배포)해 주세요!'
+          : rawErr || '공유 API 키 설정 저장에 실패했습니다.',
+      };
+    }
+    return {
+      ok: true,
+      sharedAi: normalizeSharedGeminiAdminState(json.sharedAi),
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: `구글 시트 통신 오류 (${err?.message || '연결 확인'})`,
+    };
+  }
+}
+
+export async function fetchFriendSharedGeminiKeyFromCloud(
+  rawGasUrlOverride?: string
+): Promise<{
+  ok: boolean;
+  aiEnabled: boolean;
+  sharedApiKey: string;
+  revoked?: boolean;
+}> {
+  if (!isFriendRestrictedMode()) {
+    return { ok: true, aiEnabled: false, sharedApiKey: '' };
+  }
+  const session = readFriendSession();
+  if (!session || !session.deviceToken) {
+    return { ok: false, aiEnabled: false, sharedApiKey: '' };
+  }
+  const gasUrl = normalizeGasWebAppUrl(
+    rawGasUrlOverride ?? readRawSyncConfig().repo
+  );
+  if (!gasUrl) {
+    return { ok: false, aiEnabled: false, sharedApiKey: '' };
+  }
+  try {
+    const res = await getNativeFetch()(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'getFriendSharedGeminiKey',
+        deviceToken: session.deviceToken,
+        codeId: session.codeId || '',
+      }),
+    });
+    if (!res.ok) {
+      return { ok: false, aiEnabled: false, sharedApiKey: '' };
+    }
+    const json = await res.json();
+    if (json?.revoked === true) {
+      revokeLocalFriendAccess();
+      return { ok: true, aiEnabled: false, sharedApiKey: '', revoked: true };
+    }
+    if (!json?.ok) {
+      return { ok: false, aiEnabled: false, sharedApiKey: '' };
+    }
+    const enabled = Boolean(json.aiEnabled && json.sharedApiKey);
+    return {
+      ok: true,
+      aiEnabled: enabled,
+      sharedApiKey: enabled ? String(json.sharedApiKey).trim() : '',
+    };
+  } catch {
+    return { ok: false, aiEnabled: false, sharedApiKey: '' };
   }
 }
 
@@ -712,8 +1057,21 @@ export function installStoreCloudFetchBridge(): void {
   };
 }
 
-export function getStoreCloudAppsScriptCode(): string {
-  return `const TAB_MAP = {
+export function getStoreCloudAppsScriptCode(
+  defaultSpreadsheetId?: string
+): string {
+  const bakedSheetId = extractGoogleSheetId(
+    defaultSpreadsheetId ?? loadSavedSpreadsheetId()
+  );
+  return `// ============================================================================
+// [하이마트 스마트 상담앱 — 비공개 구글 시트 1-STOP 클라우드 & 초대/AI공유 브릿지]
+// - 시트 내부 [확장 프로그램 -> Apps Script] 및 독립형(script.google.com) 모두 100% 호환!
+// - 독립형 스크립트 사용 시 아래 DEFAULT_SPREADSHEET_ID 에 시트 ID가 자동 입력되거나,
+//   앱의 [연동할 구글 시트 주소(URL)] 칸에서 [연결 저장·확인]을 누르면 서버에 영구 기억됩니다.
+// ============================================================================
+const DEFAULT_SPREADSHEET_ID = '${bakedSheetId}';
+
+const TAB_MAP = {
   schedule: '_매장공유_휴무표',
   incentive: '_매장공유_수당단가표',
   care: '_매장공유_안심케어',
@@ -731,6 +1089,67 @@ function jsonResponse(obj) {
 
 function nowKstLabel() {
   return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+}
+
+function extractSheetId(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const m = s.match(/\\/spreadsheets\\/d\\/([a-zA-Z0-9-_]{20,})/);
+  if (m && m[1]) return m[1];
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(s) && s.indexOf('http') === -1 && s.indexOf('/') === -1) {
+    return s;
+  }
+  return '';
+}
+
+function resolveSpreadsheetContext(reqSheetId) {
+  const props = PropertiesService.getScriptProperties();
+  const incomingId = extractSheetId(reqSheetId);
+  if (incomingId) {
+    try {
+      const opened = SpreadsheetApp.openById(incomingId);
+      if (opened) {
+        props.setProperty('TARGET_SPREADSHEET_ID', incomingId);
+        return { ss: opened, mode: 'standalone_id' };
+      }
+    } catch (err) {
+      return {
+        ss: null,
+        mode: 'error',
+        error: '입력하신 구글 시트 주소(ID)에 접근할 수 없습니다. 본인 계정의 시트인지 확인해 주세요: ' + String(err)
+      };
+    }
+  }
+
+  try {
+    const active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) {
+      return { ss: active, mode: 'container' };
+    }
+  } catch (e) {}
+
+  const savedId = extractSheetId(props.getProperty('TARGET_SPREADSHEET_ID')) || extractSheetId(DEFAULT_SPREADSHEET_ID);
+  if (savedId) {
+    try {
+      const openedSaved = SpreadsheetApp.openById(savedId);
+      if (openedSaved) {
+        props.setProperty('TARGET_SPREADSHEET_ID', savedId);
+        return { ss: openedSaved, mode: 'standalone_id' };
+      }
+    } catch (err) {
+      return {
+        ss: null,
+        mode: 'error',
+        error: '저장된 구글 시트 ID(' + savedId + ')를 열 수 없습니다: ' + String(err)
+      };
+    }
+  }
+
+  return {
+    ss: null,
+    mode: 'missing',
+    error: '독립형 Apps Script가 감지되었습니다! 앱 업로드 센터 상단의 [연동할 구글 시트 주소(URL)] 칸에 기존 구글 시트 주소를 붙여넣고 [연결 저장·확인]을 누르면 기존 초대 목록과 4대 자료가 즉시 100% 복구됩니다!'
+  };
 }
 
 function ensureSheet(ss, name) {
@@ -763,12 +1182,14 @@ function ensureFriendAccessSheet(ss) {
 }
 
 function readSavedAdminPin(ss) {
-  const guide = ss.getSheetByName(GUIDE_TAB);
   const props = PropertiesService.getScriptProperties();
   let savedPin = '';
-  if (guide) {
-    savedPin = String(guide.getRange('B3').getValue() || '').trim();
-    if (savedPin.indexOf('비워둠') !== -1) savedPin = '';
+  if (ss) {
+    const guide = ss.getSheetByName(GUIDE_TAB);
+    if (guide) {
+      savedPin = String(guide.getRange('B3').getValue() || '').trim();
+      if (savedPin.indexOf('비워둠') !== -1) savedPin = '';
+    }
   }
   if (!savedPin) {
     savedPin = String(props.getProperty('ADMIN_PIN') || '').trim();
@@ -779,18 +1200,72 @@ function readSavedAdminPin(ss) {
 function verifyOrInitPin(ss, inputPin) {
   const cleanInput = String(inputPin || '').trim();
   if (!cleanInput) return { ok: false, error: '업로드 비밀번호(PIN)를 입력해 주세요.' };
-  const guide = ss.getSheetByName(GUIDE_TAB);
   const props = PropertiesService.getScriptProperties();
   const savedPin = readSavedAdminPin(ss);
   if (!savedPin) {
     props.setProperty('ADMIN_PIN', cleanInput);
-    if (guide) guide.getRange('B3').setValue(cleanInput);
+    if (ss) {
+      const guide = ss.getSheetByName(GUIDE_TAB);
+      if (guide) guide.getRange('B3').setValue(cleanInput);
+    }
     return { ok: true, initialized: true };
   }
   if (savedPin !== cleanInput) {
     return { ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않습니다.' };
   }
   return { ok: true, initialized: false };
+}
+
+function maskApiKey(rawKey) {
+  const k = String(rawKey || '').trim();
+  if (!k) return '';
+  if (k.length <= 10) return '****';
+  return k.slice(0, 6) + '••••' + k.slice(-4);
+}
+
+function readSharedGeminiConfig() {
+  const props = PropertiesService.getScriptProperties();
+  const apiKey = String(props.getProperty('SHARED_GEMINI_API_KEY') || '').trim();
+  const globalRaw = String(props.getProperty('SHARED_GEMINI_ENABLED') || '').trim();
+  const globalEnabled = globalRaw === 'true';
+  let friendAiMap = {};
+  try {
+    const rawMap = props.getProperty('SHARED_GEMINI_FRIEND_MAP');
+    if (rawMap) {
+      const parsed = JSON.parse(rawMap);
+      if (parsed && typeof parsed === 'object') {
+        friendAiMap = parsed;
+      }
+    }
+  } catch (e) {
+    friendAiMap = {};
+  }
+  return {
+    apiKey: apiKey,
+    hasSharedKey: Boolean(apiKey),
+    maskedSharedKey: maskApiKey(apiKey),
+    globalEnabled: globalEnabled,
+    friendAiMap: friendAiMap
+  };
+}
+
+function toPublicSharedAiMeta(cfg) {
+  return {
+    hasSharedKey: cfg.hasSharedKey,
+    maskedSharedKey: cfg.maskedSharedKey,
+    globalEnabled: cfg.globalEnabled,
+    friendAiMap: cfg.friendAiMap
+  };
+}
+
+function resolveFriendSharedKeyPayload(codeId, status) {
+  const cfg = readSharedGeminiConfig();
+  const friendAllowed = cfg.friendAiMap[codeId] !== false;
+  const active = status === 'BOUND' && cfg.hasSharedKey && cfg.globalEnabled && friendAllowed;
+  return {
+    aiEnabled: active,
+    sharedApiKey: active ? cfg.apiKey : ''
+  };
 }
 
 function parseTokenList(raw) {
@@ -839,8 +1314,9 @@ function readAllFriendInviteRows(ss) {
   return { sheet: sheet, records: records };
 }
 
-function toClientFriendItem(rec) {
+function toClientFriendItem(rec, friendAiMap) {
   const tokens = parseTokenList(rec.boundDeviceToken);
+  const mapObj = friendAiMap || {};
   return {
     codeId: rec.codeId,
     inviteCode: rec.inviteCode,
@@ -850,6 +1326,7 @@ function toClientFriendItem(rec) {
     boundDeviceCount: tokens.length,
     boundDevicePreview: maskDeviceToken(rec.boundDeviceToken),
     boundUserAgent: rec.boundUserAgent,
+    aiAllowed: mapObj[rec.codeId] !== false,
     createdAt: rec.createdAt,
     boundAt: rec.boundAt,
     lastSeenAt: rec.lastSeenAt
@@ -858,24 +1335,47 @@ function toClientFriendItem(rec) {
 
 function readKindDataset(ss, kind) {
   const tabName = TAB_MAP[kind];
-  if (!tabName) return { updatedAt: '', data: null };
+  if (!tabName) return { updatedAt: '', chunks: 0, bytes: 0, data: null };
   const sheet = ss.getSheetByName(tabName);
-  if (!sheet || sheet.getLastRow() < 2) return { updatedAt: '', data: null };
+  if (!sheet || sheet.getLastRow() < 2) return { updatedAt: '', chunks: 0, bytes: 0, data: null };
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
-  const validRows = rows.filter(r => String(r[0]) === kind && r[4] !== '');
-  if (!validRows.length) return { updatedAt: '', data: null };
-  validRows.sort((a, b) => Number(a[1]) - Number(b[1]));
+  const validRows = rows.filter(function(r) { return String(r[0]) === kind && r[4] !== ''; });
+  if (!validRows.length) return { updatedAt: '', chunks: 0, bytes: 0, data: null };
+  validRows.sort(function(a, b) { return Number(a[1]) - Number(b[1]); });
   const updatedAt = String(validRows[0][3] || '');
-  const joined = validRows.map(r => String(r[4])).join('');
+  const joined = validRows.map(function(r) { return String(r[4]); }).join('');
   try {
-    return { updatedAt: updatedAt, data: JSON.parse(joined) };
+    return {
+      updatedAt: updatedAt,
+      chunks: validRows.length,
+      bytes: joined.length,
+      data: JSON.parse(joined)
+    };
   } catch (err) {
-    return { updatedAt: updatedAt, data: null, parseError: String(err) };
+    return {
+      updatedAt: updatedAt,
+      chunks: validRows.length,
+      bytes: joined.length,
+      data: null,
+      parseError: String(err)
+    };
   }
 }
 
+function countDatasetItems(kind, data) {
+  if (!data || typeof data !== 'object') return 0;
+  if (kind === 'care' && Array.isArray(data.items)) return data.items.length;
+  if (kind === 'installment' && Array.isArray(data.columns)) return data.columns.length;
+  return Object.keys(data).length;
+}
+
 function doGet(e) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sidParam = (e && e.parameter && e.parameter.sid) ? String(e.parameter.sid).trim() : '';
+  const ctx = resolveSpreadsheetContext(sidParam);
+  if (!ctx.ss) {
+    return jsonResponse({ ok: false, needsSpreadsheetId: true, error: ctx.error });
+  }
+  const ss = ctx.ss;
   const action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action) : 'ping';
   const role = (e && e.parameter && e.parameter.role) ? String(e.parameter.role).trim() : '';
   const dt = (e && e.parameter && e.parameter.dt) ? String(e.parameter.dt).trim() : '';
@@ -917,17 +1417,127 @@ function doGet(e) {
     const s = ss.getSheetByName(TAB_MAP[k]);
     summary[k] = (s && s.getLastRow() >= 2) ? String(s.getRange(2, 4).getValue() || '저장됨') : '비어있음';
   });
-  return jsonResponse({ ok: true, status: 'connected', store: '롯데하이마트', summary: summary });
+  return jsonResponse({
+    ok: true,
+    status: 'connected',
+    store: '롯데하이마트',
+    bindingMode: ctx.mode,
+    spreadsheetTitle: ss.getName(),
+    summary: summary
+  });
 }
 
 function doPost(e) {
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const raw = (e && e.postData && e.postData.contents) ? e.postData.contents : '{}';
     const body = JSON.parse(raw);
     const action = String(body.action || 'saveDataset');
+    const reqSid = body.spreadsheetId ? String(body.spreadsheetId).trim() : '';
+
+    // 시트 ID를 새로 바인딩할 때는 먼저 PIN 검증(기존 저장된 PIN이 있다면 일치해야만 변경 가능)
+    if (reqSid) {
+      const existingPropsPin = String(PropertiesService.getScriptProperties().getProperty('ADMIN_PIN') || '').trim();
+      const inputPin = String(body.pin || '').trim();
+      if (existingPropsPin && inputPin !== existingPropsPin) {
+        return jsonResponse({ ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않아 시트를 변경할 수 없습니다.' });
+      }
+    }
+
+    const ctx = resolveSpreadsheetContext(reqSid);
+    if (!ctx.ss) {
+      return jsonResponse({ ok: false, needsSpreadsheetId: true, error: ctx.error });
+    }
+    const ss = ctx.ss;
+
+    if (action === 'diagnoseCloudSync') {
+      const pinCheck = verifyOrInitPin(ss, body.pin);
+      if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      const friendStore = readAllFriendInviteRows(ss);
+      const boundCount = friendStore.records.filter(function(r) { return r.status === 'BOUND'; }).length;
+      const sharedCfg = readSharedGeminiConfig();
+      const datasets = {};
+      Object.keys(TAB_MAP).forEach(function(k) {
+        const res = readKindDataset(ss, k);
+        const exists = res.data !== null && res.data !== undefined;
+        datasets[k] = {
+          exists: exists,
+          updatedAt: res.updatedAt || '',
+          chunks: res.chunks || 0,
+          bytes: res.bytes || 0,
+          validJson: !res.parseError,
+          itemCount: exists ? countDatasetItems(k, res.data) : 0
+        };
+      });
+      return jsonResponse({
+        ok: true,
+        bindingMode: ctx.mode,
+        spreadsheetId: ss.getId(),
+        spreadsheetTitle: ss.getName(),
+        inviteCount: friendStore.records.length,
+        boundInviteCount: boundCount,
+        sharedAi: toPublicSharedAiMeta(sharedCfg),
+        datasets: datasets
+      });
+    }
+
+    if (action === 'saveSharedGeminiConfig') {
+      const pinCheck = verifyOrInitPin(ss, body.pin);
+      if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      const props = PropertiesService.getScriptProperties();
+      const current = readSharedGeminiConfig();
+
+      if (body.clearKey === true) {
+        props.deleteProperty('SHARED_GEMINI_API_KEY');
+        props.setProperty('SHARED_GEMINI_ENABLED', 'false');
+      } else if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
+        props.setProperty('SHARED_GEMINI_API_KEY', body.apiKey.trim());
+      }
+
+      if (typeof body.globalEnabled === 'boolean' && body.clearKey !== true) {
+        props.setProperty('SHARED_GEMINI_ENABLED', body.globalEnabled ? 'true' : 'false');
+      }
+
+      if (body.friendCodeId && typeof body.friendAiAllowed === 'boolean') {
+        const nextMap = current.friendAiMap || {};
+        nextMap[String(body.friendCodeId).trim()] = body.friendAiAllowed;
+        props.setProperty('SHARED_GEMINI_FRIEND_MAP', JSON.stringify(nextMap));
+      }
+
+      const updatedCfg = readSharedGeminiConfig();
+      const store = readAllFriendInviteRows(ss);
+      return jsonResponse({
+        ok: true,
+        sharedAi: toPublicSharedAiMeta(updatedCfg),
+        items: store.records.slice().reverse().map(function(r) {
+          return toClientFriendItem(r, updatedCfg.friendAiMap);
+        })
+      });
+    }
+
+    if (action === 'getFriendSharedGeminiKey') {
+      const deviceToken = String(body.deviceToken || '').trim();
+      const codeId = String(body.codeId || '').trim();
+      if (!deviceToken) {
+        return jsonResponse({ ok: true, aiEnabled: false, sharedApiKey: '', revoked: true });
+      }
+      const store = readAllFriendInviteRows(ss);
+      const matched = store.records.find(function(r) {
+        if (codeId && r.codeId === codeId) return true;
+        return parseTokenList(r.boundDeviceToken).indexOf(deviceToken) !== -1;
+      });
+      if (!matched || matched.status !== 'BOUND' || parseTokenList(matched.boundDeviceToken).indexOf(deviceToken) === -1) {
+        return jsonResponse({ ok: true, aiEnabled: false, sharedApiKey: '', revoked: true });
+      }
+      const resolved = resolveFriendSharedKeyPayload(matched.codeId, matched.status);
+      return jsonResponse({
+        ok: true,
+        aiEnabled: resolved.aiEnabled,
+        sharedApiKey: resolved.sharedApiKey,
+        revoked: false
+      });
+    }
 
     if (action === 'authenticateDevice') {
       const credential = String(body.credential || '').replace(/[\\s-]+/g, '').trim();
@@ -962,12 +1572,15 @@ function doPost(e) {
         store.sheet.getRange(found.rowNumber, 4).setValue('BOUND');
         store.sheet.getRange(found.rowNumber, 10).setValue(nowStr);
         SpreadsheetApp.flush();
+        const aiPayload = resolveFriendSharedKeyPayload(found.codeId, 'BOUND');
         return jsonResponse({
           ok: true,
           role: 'friend',
           codeId: found.codeId,
           label: found.label,
-          verifiedAt: new Date().toISOString()
+          verifiedAt: new Date().toISOString(),
+          aiEnabled: aiPayload.aiEnabled,
+          sharedApiKey: aiPayload.sharedApiKey
         });
       }
 
@@ -987,12 +1600,15 @@ function doPost(e) {
           nowStr
         ]]);
         SpreadsheetApp.flush();
+        const aiPayload = resolveFriendSharedKeyPayload(found.codeId, 'BOUND');
         return jsonResponse({
           ok: true,
           role: 'friend',
           codeId: found.codeId,
           label: found.label,
-          verifiedAt: new Date().toISOString()
+          verifiedAt: new Date().toISOString(),
+          aiEnabled: aiPayload.aiEnabled,
+          sharedApiKey: aiPayload.sharedApiKey
         });
       }
 
@@ -1019,21 +1635,31 @@ function doPost(e) {
       }
       store.sheet.getRange(matched.rowNumber, 10).setValue(nowKstLabel());
       SpreadsheetApp.flush();
+      const aiPayload = resolveFriendSharedKeyPayload(matched.codeId, matched.status);
       return jsonResponse({
         ok: true,
         valid: true,
         revoked: false,
         codeId: matched.codeId,
-        label: matched.label
+        label: matched.label,
+        aiEnabled: aiPayload.aiEnabled,
+        sharedApiKey: aiPayload.sharedApiKey
       });
     }
 
     if (action === 'listFriendInvites') {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      const sharedCfg = readSharedGeminiConfig();
       const store = readAllFriendInviteRows(ss);
-      const items = store.records.slice().reverse().map(toClientFriendItem);
-      return jsonResponse({ ok: true, items: items });
+      const items = store.records.slice().reverse().map(function(r) {
+        return toClientFriendItem(r, sharedCfg.friendAiMap);
+      });
+      return jsonResponse({
+        ok: true,
+        items: items,
+        sharedAi: toPublicSharedAiMeta(sharedCfg)
+      });
     }
 
     if (action === 'issueFriendInvite') {
@@ -1042,6 +1668,7 @@ function doPost(e) {
       const label = String(body.label || '').trim() || '친구1';
       const maxDevices = Math.max(1, Math.min(5, Math.floor(Number(body.maxDevices) || 1)));
       const savedPin = readSavedAdminPin(ss);
+      const sharedCfg = readSharedGeminiConfig();
       const store = readAllFriendInviteRows(ss);
       const existingCodes = {};
       store.records.forEach(function(r) { existingCodes[r.inviteCode] = true; });
@@ -1064,18 +1691,22 @@ function doPost(e) {
       const createdRec = updated.records.find(function(r) { return r.codeId === codeId; });
       return jsonResponse({
         ok: true,
-        item: createdRec ? toClientFriendItem(createdRec) : {
+        item: createdRec ? toClientFriendItem(createdRec, sharedCfg.friendAiMap) : {
           codeId: codeId,
           inviteCode: inviteCode,
           label: label,
           status: 'ACTIVE',
           maxDevices: maxDevices,
           boundDeviceCount: 0,
+          aiAllowed: true,
           createdAt: nowStr,
           boundAt: '',
           lastSeenAt: ''
         },
-        items: updated.records.slice().reverse().map(toClientFriendItem)
+        items: updated.records.slice().reverse().map(function(r) {
+          return toClientFriendItem(r, sharedCfg.friendAiMap);
+        }),
+        sharedAi: toPublicSharedAiMeta(sharedCfg)
       });
     }
 
@@ -1107,10 +1738,14 @@ function doPost(e) {
         return jsonResponse({ ok: false, error: '지원하지 않는 상태 변경 모드입니다: ' + mode });
       }
       SpreadsheetApp.flush();
+      const sharedCfg = readSharedGeminiConfig();
       const updated = readAllFriendInviteRows(ss);
       return jsonResponse({
         ok: true,
-        items: updated.records.slice().reverse().map(toClientFriendItem)
+        items: updated.records.slice().reverse().map(function(r) {
+          return toClientFriendItem(r, sharedCfg.friendAiMap);
+        }),
+        sharedAi: toPublicSharedAiMeta(sharedCfg)
       });
     }
 

@@ -120,53 +120,58 @@ export default function ImageScannerModal({
     try {
       const {
         compressImageFile,
-        getEffectiveGeminiApiKey,
+        ensureEffectiveGeminiApiKey,
+        GEMINI_MODELS,
+        generateContentWithTier1Retry,
         getStoredGeminiApiKey,
         inferCategoryFromModelCode,
         normalizeModelCode,
+        shouldTryLocalBackendApi,
       } = await import('../utils/aiImageParser');
       const compressed = await compressImageFile(base64Data, 1920, 0.85);
       const effectiveKey = apiKey || getStoredGeminiApiKey();
 
-      try {
-        const res = await fetch('/api/ai/parse-pop-image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            image: compressed.dataUrl,
-            mimeType: compressed.mimeType,
-            apiKey: effectiveKey || undefined,
-            model: model || undefined,
-          }),
-        });
+      if (shouldTryLocalBackendApi()) {
+        try {
+          const res = await fetch('/api/ai/parse-pop-image', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              image: compressed.dataUrl,
+              mimeType: compressed.mimeType,
+              apiKey: effectiveKey || undefined,
+              model: model || undefined,
+            }),
+          });
 
-        const json = await res.json();
-        if (res.ok && json.success && json.data) {
-          const sanitized = {
-            ...json.data,
-            careServiceText: (json.data.careServiceText || '').replace(
-              /3년\s*(무상|A\/?S)/gi,
-              '5년 $1'
-            ),
-            careServiceDetail: (json.data.careServiceDetail || '').replace(
-              /3년\s*(무상|A\/?S)/gi,
-              '5년 $1'
-            ),
-          };
-          setExtractedData(sanitized);
-          return;
+          const json = await res.json();
+          if (res.ok && json.success && json.data) {
+            const sanitized = {
+              ...json.data,
+              careServiceText: (json.data.careServiceText || '').replace(
+                /3년\s*(무상|A\/?S)/gi,
+                '5년 $1'
+              ),
+              careServiceDetail: (json.data.careServiceDetail || '').replace(
+                /3년\s*(무상|A\/?S)/gi,
+                '5년 $1'
+              ),
+            };
+            setExtractedData(sanitized);
+            return;
+          }
+        } catch (serverErr) {
+          console.warn('서버 POP 이미지 분석 실패, 프론트엔드 직접 호출로 전환:', serverErr);
         }
-      } catch (serverErr) {
-        console.warn('서버 POP 이미지 분석 실패, 프론트엔드 직접 호출로 전환:', serverErr);
       }
 
-      // 프론트엔드 직접 호출 Fallback
+      // 프론트엔드 직접 호출 Fallback (초대 친구 공유 API 키 자동 지원)
       const { GoogleGenAI, Type } = await import('@google/genai');
-      const finalKey = getEffectiveGeminiApiKey(effectiveKey);
+      const finalKey = await ensureEffectiveGeminiApiKey(effectiveKey);
       if (!finalKey) {
-        throw new Error('Gemini API 키가 설정되지 않았습니다. 상단 설정에서 API 키를 입력해주세요.');
+        throw new Error('Gemini API 키가 설정되지 않았습니다. 상단 설정에서 API 키를 입력하거나 관리자에게 AI 키 공유를 요청해 주세요.');
       }
 
       const ai = new GoogleGenAI({ apiKey: finalKey });
@@ -176,64 +181,49 @@ export default function ImageScannerModal({
 - 본문에 모델명이 안 보이면 화면 최상단 브라우저 주소창 URL 파라미터(예: productId=FG24GN.AKOR2)에서 모델코드를 반드시 추출할 것!
 - 하단 노란색 글씨 '월 납부요금'(예: 약 58,653원 -> 58653)을 monthlyFee로 추출할 것!`;
 
-      const preferred = (model || '').trim();
-      const GEMINI_MODELS = Array.from(
+      const rawPreferred = (model || '').trim();
+      const safePreferred =
+        rawPreferred === 'gemini-4-argon' || rawPreferred === 'gemini-4-carbon'
+          ? 'gemini-4-hydrogen'
+          : rawPreferred;
+      const modelChain = Array.from(
         new Set([
-          ...(preferred ? [preferred] : []),
-          'gemini-3.8-flash',
-          'gemini-4-argon',
-          'gemini-3.6-flash',
-          'gemini-3.5-flash-lite',
+          ...(safePreferred ? [safePreferred] : []),
+          ...GEMINI_MODELS,
         ])
       );
-      let responseText = '';
-      let lastError: any = null;
 
-      for (const modelName of GEMINI_MODELS) {
-        try {
-          const isGen3Or4 = modelName.startsWith('gemini-3') || modelName.startsWith('gemini-4');
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: {
-              parts: [
-                { inlineData: { mimeType: compressed.mimeType, data: compressed.base64 } },
-                { text: prompt },
-              ],
+      const { text: responseText } = await generateContentWithTier1Retry(
+        ai,
+        modelChain,
+        {
+          parts: [
+            { inlineData: { mimeType: compressed.mimeType, data: compressed.base64 } },
+            { text: prompt },
+          ],
+        },
+        {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 4096,
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              category: { type: Type.STRING },
+              modelName: { type: Type.STRING },
+              productName: { type: Type.STRING },
+              monthlyFee: { type: Type.INTEGER },
+              period: { type: Type.INTEGER },
+              downPayment: { type: Type.INTEGER },
+              careServiceText: { type: Type.STRING },
+              careServiceCycle: { type: Type.STRING },
+              careServiceCount: { type: Type.STRING },
+              careServiceDetail: { type: Type.STRING },
+              isAllCare: { type: Type.BOOLEAN },
             },
-            config: {
-              responseMimeType: 'application/json',
-              ...(isGen3Or4 ? { thinkingConfig: { thinkingLevel: 'LOW' as any } } : {}),
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  category: { type: Type.STRING },
-                  modelName: { type: Type.STRING },
-                  productName: { type: Type.STRING },
-                  monthlyFee: { type: Type.INTEGER },
-                  period: { type: Type.INTEGER },
-                  downPayment: { type: Type.INTEGER },
-                  careServiceText: { type: Type.STRING },
-                  careServiceCycle: { type: Type.STRING },
-                  careServiceCount: { type: Type.STRING },
-                  careServiceDetail: { type: Type.STRING },
-                  isAllCare: { type: Type.BOOLEAN },
-                },
-                required: ['category', 'modelName', 'monthlyFee', 'period'],
-              },
-            },
-          });
-          if (response.text) {
-            responseText = response.text;
-            break;
-          }
-        } catch (err) {
-          lastError = err;
+            required: ['category', 'modelName', 'monthlyFee', 'period'],
+          },
         }
-      }
-
-      if (!responseText) {
-        throw lastError || new Error('견적서 사진을 분석하지 못했습니다.');
-      }
+      );
       const parsedData = JSON.parse(responseText);
       const cleanModel = normalizeModelCode(parsedData.modelName || '');
       parsedData.modelName = cleanModel || parsedData.modelName || '';

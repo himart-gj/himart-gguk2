@@ -234,9 +234,9 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
     const storedModel = localStorage.getItem('geminiAiModel');
     const validModels = [
       'gemini-3.8-flash',
-      'gemini-4-argon',
-      'gemini-3.6-flash',
+      'gemini-4-hydrogen',
       'gemini-3.5-flash-lite',
+      'gemini-3.6-flash',
     ];
     if (storedModel && validModels.includes(storedModel)) {
       setAiModel(storedModel);
@@ -1432,14 +1432,14 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 <option value="gemini-3.8-flash">
                   gemini-3.8-flash (초고속·고정밀 1순위 권장)
                 </option>
-                <option value="gemini-4-argon">
-                  gemini-4-argon (유료전용 최고성능 Gemini 4)
+                <option value="gemini-4-hydrogen">
+                  gemini-4-hydrogen (Gemini 4 경량 프론티어 · 비용절감)
+                </option>
+                <option value="gemini-3.5-flash-lite">
+                  gemini-3.5-flash-lite (초경량 최고속 · 다중인원 최적)
                 </option>
                 <option value="gemini-3.6-flash">
                   gemini-3.6-flash (안정형 초고속 Flash)
-                </option>
-                <option value="gemini-3.5-flash-lite">
-                  gemini-3.5-flash-lite (초경량 최고속 추출)
                 </option>
               </select>
             </div>

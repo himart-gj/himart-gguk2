@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { addEmptyGeneralPlanInState, AFFILIATE_CARDS, AffiliateCardId, AFFILIATE_GENERAL_CARD_OPTIONS, applyAllGeneralPlansPatch, calculateGeneralHiPreedSummary, calculateGeneralPurchaseSummary, calculateHiPlusSummary, calculateSubscriptionSummary, confirmActiveGeneralPlanInState, copyPlan1ToPlan2InState, deleteGeneralPlanInState, duplicateActiveGeneralPlanInState, GENERAL_CATEGORY_PRESETS, GENERAL_HIPREED_PLANS, GeneralExtraBenefitItem, GeneralExtraBenefitType, GeneralHiPreedKey, GeneralPurchaseItem, getGeneralPlan1And2Summaries, getSubscriptionPeriodSummary, getSubscriptionSurplusMeta, HiPlusKey, isAffiliateGeneralCardType, MAX_FREED_ACCOUNTS, MAX_QUOTE_PLANS, normalizeSubscriptionPeriod, ProposalState, QuoteMode, SUB_CARE_OPTIONS, SubscriptionItem, SubscriptionPeriod, switchGeneralPlanInState } from '../types/proposal';
 import { SpringNumberFlow } from './SpringNumberFlow';
-import { getStoredGeminiApiKey, inferCategoryFromModelCode, setStoredGeminiApiKey } from '../utils/aiImageParser';
+import {
+  getStoredGeminiApiKey,
+  hasSharedFriendGeminiKey,
+  inferCategoryFromModelCode,
+  setStoredGeminiApiKey,
+  SHARED_GEMINI_KEY_UPDATED_EVENT,
+  syncEphemeralSharedGeminiKey,
+} from '../utils/aiImageParser';
 import { ArrowLeft, Camera, Check, Copy, CreditCard, Eye, EyeOff, KeyRound, Loader2, Minus, Plus, RotateCcw, Save, ShieldCheck, ShoppingBag, User, X } from 'lucide-react';
 import { ControlPanelSubscriptionSection } from './ControlPanelSubscriptionSection';
 import { QuoteModeComparisonControlBar } from './MultiModeComparisonSection';
@@ -62,6 +69,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => getStoredGeminiApiKey());
   const [apiKeySavedToast, setApiKeySavedToast] = useState(false);
+  const [sharedAiActive, setSharedAiActive] = useState(() =>
+    hasSharedFriendGeminiKey()
+  );
+
+  useEffect(() => {
+    void syncEphemeralSharedGeminiKey(false);
+    const onSharedChange = () => setSharedAiActive(hasSharedFriendGeminiKey());
+    window.addEventListener(SHARED_GEMINI_KEY_UPDATED_EVENT, onSharedChange);
+    return () =>
+      window.removeEventListener(SHARED_GEMINI_KEY_UPDATED_EVENT, onSharedChange);
+  }, []);
 
   // AI 키 설정 팝업 열림 시 뒤로가기로 팝업만 먼저 닫기
   useEffect(() => {
@@ -602,7 +620,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const hiPlusMonthly = liveSubSummary.hiPlusMonthly;
   const rawFinalMonthly = liveSubSummary.finalMonthlyFee;
 
-  const hasCustomApiKey = Boolean(getStoredGeminiApiKey());
+  const hasCustomApiKey = Boolean(getStoredGeminiApiKey()) || sharedAiActive;
 
   const maxContainerCls =
     state.quoteMode === 'hybrid'
@@ -659,7 +677,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               title="Gemini AI API Key 설정"
             >
               <KeyRound className="w-3.5 h-3.5" />
-              <span>AI 키</span>
+              <span>{sharedAiActive && !getStoredGeminiApiKey() ? '공유 AI ON' : 'AI 키'}</span>
             </button>
 
             {onOpenSaveToCrm && (

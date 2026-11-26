@@ -10,9 +10,103 @@ import {
   ProposalState,
   SubscriptionPeriod,
 } from '../types/proposal';
+import {
+  dispatchFriendSharedAiSync,
+  FRIEND_ROLE_CHANGED_EVENT,
+  FRIEND_SHARED_AI_SYNC_EVENT,
+  getRamOnlyFriendSharedApiKey,
+  isFriendRestrictedMode,
+} from './friendAccessGuard';
+import { fetchFriendSharedGeminiKeyFromCloud } from './storeCloudSync';
 
 export const GEMINI_API_KEY_STORAGE_KEY = 'gemini_api_key';
 export const LEGACY_GEMINI_API_KEY_STORAGE_KEY = 'geminiApiKey';
+export const SHARED_GEMINI_KEY_UPDATED_EVENT = 'himart_shared_gemini_key_updated';
+
+// ============================================================================
+// [초대 친구 기기 전용 — 휘발성 메모리(RAM) 공유 API 키 브릿지]
+// - 관리자가 [내 API 키 함께 쓰기 ON] 한 경우에만 친구 기기 JS 메모리에 임시 유지
+// - localStorage / sessionStorage / IndexedDB 저장 0%, <input> 노출 0%
+// - 관리자가 전체 OFF 또는 개별 친구 OFF / 기기 차단 시 즉시 메모리에서 소거됨
+// ============================================================================
+let ephemeralSharedGeminiKey = getRamOnlyFriendSharedApiKey();
+let lastSharedKeySyncedAtMs = 0;
+let inFlightSharedKeySync: Promise<string> | null = null;
+const SHARED_KEY_SYNC_TTL_MS = 15_000;
+
+function setEphemeralSharedGeminiKey(nextKey: string, updateGuard = false): void {
+  const clean = isFriendRestrictedMode() ? String(nextKey || '').trim() : '';
+  const changed = ephemeralSharedGeminiKey !== clean;
+  ephemeralSharedGeminiKey = clean;
+  lastSharedKeySyncedAtMs = Date.now();
+  if (updateGuard) {
+    dispatchFriendSharedAiSync(Boolean(clean), clean);
+  }
+  if (changed && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(SHARED_GEMINI_KEY_UPDATED_EVENT));
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(FRIEND_SHARED_AI_SYNC_EVENT, (ev: Event) => {
+    const detail = (ev as CustomEvent<{ aiEnabled?: boolean; sharedApiKey?: string }>)
+      ?.detail;
+    if (detail && detail.aiEnabled && detail.sharedApiKey) {
+      setEphemeralSharedGeminiKey(String(detail.sharedApiKey), false);
+    } else {
+      setEphemeralSharedGeminiKey('', false);
+    }
+  });
+  window.addEventListener(FRIEND_ROLE_CHANGED_EVENT, () => {
+    if (!isFriendRestrictedMode()) {
+      setEphemeralSharedGeminiKey('', false);
+    }
+  });
+}
+
+export function hasSharedFriendGeminiKey(): boolean {
+  const activeKey = ephemeralSharedGeminiKey || getRamOnlyFriendSharedApiKey();
+  return isFriendRestrictedMode() && Boolean(activeKey);
+}
+
+export async function syncEphemeralSharedGeminiKey(
+  force = false
+): Promise<string> {
+  if (!isFriendRestrictedMode()) {
+    if (ephemeralSharedGeminiKey || getRamOnlyFriendSharedApiKey()) {
+      setEphemeralSharedGeminiKey('', true);
+    }
+    return '';
+  }
+  const now = Date.now();
+  if (
+    !force &&
+    lastSharedKeySyncedAtMs > 0 &&
+    now - lastSharedKeySyncedAtMs < SHARED_KEY_SYNC_TTL_MS
+  ) {
+    return ephemeralSharedGeminiKey || getRamOnlyFriendSharedApiKey();
+  }
+  if (inFlightSharedKeySync) {
+    return inFlightSharedKeySync;
+  }
+  const task = (async () => {
+    try {
+      const res = await fetchFriendSharedGeminiKeyFromCloud();
+      if (res.ok) {
+        setEphemeralSharedGeminiKey(res.aiEnabled ? res.sharedApiKey : '', true);
+      } else if (res.revoked) {
+        setEphemeralSharedGeminiKey('', true);
+      }
+      return ephemeralSharedGeminiKey || getRamOnlyFriendSharedApiKey();
+    } catch {
+      return ephemeralSharedGeminiKey || getRamOnlyFriendSharedApiKey();
+    } finally {
+      inFlightSharedKeySync = null;
+    }
+  })();
+  inFlightSharedKeySync = task;
+  return task;
+}
 
 export function getStoredGeminiApiKey(): string {
   try {
@@ -31,6 +125,9 @@ export function setStoredGeminiApiKey(key: string): void {
     const trimmed = key.trim();
     localStorage.setItem(GEMINI_API_KEY_STORAGE_KEY, trimmed);
     localStorage.setItem(LEGACY_GEMINI_API_KEY_STORAGE_KEY, trimmed);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(SHARED_GEMINI_KEY_UPDATED_EVENT));
+    }
   } catch {
     // Ignore storage errors
   }
@@ -40,6 +137,10 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
   if (explicitKey && explicitKey.trim()) return explicitKey.trim();
   const stored = getStoredGeminiApiKey();
   if (stored) return stored;
+  if (isFriendRestrictedMode()) {
+    const sharedRam = ephemeralSharedGeminiKey || getRamOnlyFriendSharedApiKey();
+    if (sharedRam) return sharedRam;
+  }
   const viteKey =
     typeof import.meta !== 'undefined' &&
     (import.meta as any).env &&
@@ -54,38 +155,134 @@ export function getEffectiveGeminiApiKey(explicitKey?: string): string {
   return envKey.trim();
 }
 
-// 유료(Paid Tier) API 최적화 최신 모델 체인 (Gemini 3.8 Flash · Gemini 4 Argon · Gemini 3.6 Flash · Gemini 3.5 Flash-Lite)
+/**
+ * 실제 AI 호출 직전 유효 API 키를 확정합니다.
+ * 초대 친구 기기이며 개인 저장 키가 없는 경우 서버의 실시간 공유 ON/OFF 상태를 확인해 반영합니다.
+ */
+export async function ensureEffectiveGeminiApiKey(
+  explicitKey?: string
+): Promise<string> {
+  if (explicitKey && explicitKey.trim()) return explicitKey.trim();
+  const stored = getStoredGeminiApiKey();
+  if (stored) return stored;
+  if (isFriendRestrictedMode()) {
+    await syncEphemeralSharedGeminiKey(false);
+  }
+  return getEffectiveGeminiApiKey();
+}
+
+/**
+ * GitHub Pages 등 정적 호스팅에서는 /api/* 백엔드가 존재하지 않으므로
+ * 불필요한 대용량 이미지 POST -> 404 왕복 지연을 건너뛰고 즉시 브라우저 SDK로 직행합니다.
+ */
+export function shouldTryLocalBackendApi(): boolean {
+  if (typeof window === 'undefined' || !window.location) return false;
+  const host = String(window.location.hostname || '').toLowerCase();
+  const proto = String(window.location.protocol || '').toLowerCase();
+  if (!host || proto === 'file:') return false;
+  if (host.endsWith('.github.io') || host === 'github.io') return false;
+  return true;
+}
+
+// ============================================================================
+// [Google AI Ultra 월 $40 무료 크레딧 보호 · Paid Tier 1 다중 인원(15~20명) 최적화 라우팅]
+// - 고단가 모델(gemini-4-argon, gemini-4-carbon) 자동 체인 원천 배제 -> 선결제 잔액 차감 방지
+// - Vision / 정밀 표 OCR 체인:
+//   1순위 gemini-3.8-flash (한국어 전표·표 OCR 주력, 저비용·초고속)
+//   2순위 gemini-4-hydrogen (Gemini 4 경량·고속 프론티어 폴백)
+//   3순위 gemini-3.5-flash-lite (Tier 1 1,000만 토큰 큐 · 다중 동시호출 무장애 백업)
+//   4순위 gemini-3.6-flash (안정형 보조 백업)
+// - 자연어 명령어 초고속 텍스트 체인:
+//   1순위 gemini-3.5-flash-lite (최저비용·초고속 응답) -> gemini-3.8-flash -> gemini-4-hydrogen -> gemini-3.6-flash
+// ============================================================================
 export const GEMINI_MODELS = [
   'gemini-3.8-flash',
-  'gemini-4-argon',
-  'gemini-3.6-flash',
+  'gemini-4-hydrogen',
   'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
 ] as const;
 
 export const GEMINI_FAST_TEXT_MODELS = [
-  'gemini-3.8-flash',
-  'gemini-3.6-flash',
   'gemini-3.5-flash-lite',
-  'gemini-4-argon',
+  'gemini-3.8-flash',
+  'gemini-4-hydrogen',
+  'gemini-3.6-flash',
 ] as const;
 
 export function buildGeminiFastConfig(
   modelName: string,
   baseConfig: Record<string, any> = {}
 ): Record<string, any> {
+  const maxOutputTokens = baseConfig.maxOutputTokens ?? 4096;
   const isGen3Or4 =
     modelName.startsWith('gemini-3') || modelName.startsWith('gemini-4');
   if (isGen3Or4) {
     const { temperature: _omitTemp, ...rest } = baseConfig;
     return {
       ...rest,
+      maxOutputTokens,
       thinkingConfig: { thinkingLevel: 'LOW' },
     };
   }
   return {
     temperature: 0.1,
     ...baseConfig,
+    maxOutputTokens,
   };
+}
+
+function isTransientRateOrServerError(err: unknown): boolean {
+  const msg = String((err as any)?.message || err || '').toUpperCase();
+  const status = Number((err as any)?.status || (err as any)?.code || 0);
+  return (
+    status === 429 ||
+    status === 503 ||
+    msg.includes('429') ||
+    msg.includes('503') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('UNAVAILABLE') ||
+    msg.includes('TOO MANY REQUESTS')
+  );
+}
+
+/**
+ * 15~20명 동시 사용 시 순간적인 Tier 1 RPM/TPM 스파이크(429/503)를
+ * 지수 지터 백오프(Exponential Jitter Backoff) 후 순차 모델 전환으로 무중단 방어합니다.
+ */
+export async function generateContentWithTier1Retry(
+  ai: GoogleGenAI,
+  models: readonly string[],
+  contents: any,
+  baseConfig: Record<string, any> = {}
+): Promise<{ text: string; modelName: string }> {
+  let lastError: unknown = null;
+
+  for (const modelName of models) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents,
+          config: buildGeminiFastConfig(modelName, baseConfig),
+        });
+        const txt = String(response.text || '').trim();
+        if (txt) {
+          return { text: txt, modelName };
+        }
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt === 0 && isTransientRateOrServerError(err)) {
+          const jitterMs = 450 + Math.floor(Math.random() * 300);
+          await new Promise((r) => setTimeout(r, jitterMs));
+          continue;
+        }
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error('AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
 }
 
 /**
@@ -421,33 +618,37 @@ export async function parseGeneralImageWithFallback(
   const compressed = await compressImageFile(file, 1920, 0.85);
   const storedKey = getStoredGeminiApiKey();
 
-  // 1차 시도: 백엔드 /api/ai/parse-general-image 호출
-  try {
-    const response = await fetch('/api/ai/parse-general-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64: compressed.base64,
-        mimeType: compressed.mimeType,
-        apiKey: storedKey || undefined,
-      }),
-    });
+  // 1차 시도: 로컬 백엔드 환경일 때만 /api/ai/parse-general-image 호출 (GitHub Pages 정적 배포 시 즉시 SDK 직행)
+  if (shouldTryLocalBackendApi()) {
+    try {
+      const response = await fetch('/api/ai/parse-general-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: compressed.base64,
+          mimeType: compressed.mimeType,
+          apiKey: storedKey || undefined,
+        }),
+      });
 
-    if (response.ok) {
-      const json = await response.json();
-      if (json && Array.isArray(json.items) && json.items.length > 0) {
-        return json as ParsedGeneralQuoteResult;
+      if (response.ok) {
+        const json = await response.json();
+        if (json && Array.isArray(json.items) && json.items.length > 0) {
+          return json as ParsedGeneralQuoteResult;
+        }
       }
+    } catch (serverErr) {
+      console.warn('서버 일반전산 판독 실패, 프론트엔드 직접 호출로 전환합니다:', serverErr);
     }
-  } catch (serverErr) {
-    console.warn('서버 일반전산 판독 실패, 프론트엔드 직접 호출로 전환합니다:', serverErr);
   }
 
-  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출
-  const apiKey = getEffectiveGeminiApiKey(storedKey);
+  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출 (초대 친구 공유 API 키 자동 확인)
+  const apiKey = await ensureEffectiveGeminiApiKey(storedKey);
   if (!apiKey) {
     throw new Error(
-      'AI 키가 설정되어 있지 않습니다. 우측 상단 [🔑 AI 키 설정] 버튼을 눌러 Gemini API 키를 입력해 주세요.'
+      isFriendRestrictedMode()
+        ? 'AI 키가 설정되어 있지 않습니다. 우측 상단 [🔑 AI 키]에서 본인 키를 등록하거나, 초대해 준 관리자에게 [AI 키 공유 ON]을 요청해 주세요.'
+        : 'AI 키가 설정되어 있지 않습니다. 우측 상단 [🔑 AI 키 설정] 버튼을 눌러 Gemini API 키를 입력해 주세요.'
     );
   }
 
@@ -512,41 +713,26 @@ export async function parseGeneralImageWithFallback(
     ],
   };
 
-  let responseText = '';
-  let lastError: any = null;
-
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: compressed.mimeType,
-                data: compressed.base64,
-              },
-            },
-            { text: promptText },
-          ],
+  const { text: responseText } = await generateContentWithTier1Retry(
+    ai,
+    GEMINI_MODELS,
+    {
+      parts: [
+        {
+          inlineData: {
+            mimeType: compressed.mimeType,
+            data: compressed.base64,
+          },
         },
-        config: buildGeminiFastConfig(modelName, {
-          responseMimeType: 'application/json',
-          responseSchema,
-        }),
-      });
-      if (response.text) {
-        responseText = response.text;
-        break;
-      }
-    } catch (err) {
-      lastError = err;
+        { text: promptText },
+      ],
+    },
+    {
+      responseMimeType: 'application/json',
+      responseSchema,
+      maxOutputTokens: 4096,
     }
-  }
-
-  if (!responseText) {
-    throw lastError || new Error('일반전산 이미지 AI 판독에 실패했습니다.');
-  }
+  );
 
   const parsed = JSON.parse(responseText);
   const rawItems = Array.isArray(parsed.items) ? parsed.items : [];
@@ -613,45 +799,49 @@ export async function parseSubscriptionImageWithFallback(
   const compressed = await compressImageFile(file, 1920, 0.85);
   const storedKey = getStoredGeminiApiKey();
 
-  // 1차 시도: 백엔드 /api/ai/parse-image 호출
-  try {
-    const response = await fetch('/api/ai/parse-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64: compressed.base64,
-        mimeType: compressed.mimeType,
-        apiKey: storedKey || undefined,
-      }),
-    });
+  // 1차 시도: 로컬 백엔드 환경일 때만 /api/ai/parse-image 호출 (GitHub Pages 정적 배포 시 즉시 SDK 직행)
+  if (shouldTryLocalBackendApi()) {
+    try {
+      const response = await fetch('/api/ai/parse-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: compressed.base64,
+          mimeType: compressed.mimeType,
+          apiKey: storedKey || undefined,
+        }),
+      });
 
-    if (response.ok) {
-      const json = await response.json();
-      const data = json.data || json;
-      if (data && Array.isArray(data.items) && data.items.length > 0) {
-        data.warrantyYears = 5;
-        data.hasThreeYearKeyword = false;
-        data.warrantyType = sanitizeFiveYearWarrantyText(data.warrantyType);
-        data.items = data.items.map((it: any) => ({
-          ...it,
-          careService: sanitizeFiveYearWarrantyText(it.careService),
-          careType: sanitizeFiveYearWarrantyText(
-            it.careType || it.careService
-          ),
-          warrantyType: sanitizeFiveYearWarrantyText(it.warrantyType),
-        }));
-        return data as ParsedSubscriptionQuoteResult;
+      if (response.ok) {
+        const json = await response.json();
+        const data = json.data || json;
+        if (data && Array.isArray(data.items) && data.items.length > 0) {
+          data.warrantyYears = 5;
+          data.hasThreeYearKeyword = false;
+          data.warrantyType = sanitizeFiveYearWarrantyText(data.warrantyType);
+          data.items = data.items.map((it: any) => ({
+            ...it,
+            careService: sanitizeFiveYearWarrantyText(it.careService),
+            careType: sanitizeFiveYearWarrantyText(
+              it.careType || it.careService
+            ),
+            warrantyType: sanitizeFiveYearWarrantyText(it.warrantyType),
+          }));
+          return data as ParsedSubscriptionQuoteResult;
+        }
       }
+    } catch (serverErr) {
+      console.warn('서버 구독전산 판독 실패, 프론트엔드 직접 호출로 전환합니다:', serverErr);
     }
-  } catch (serverErr) {
-    console.warn('서버 구독전산 판독 실패, 프론트엔드 직접 호출로 전환합니다:', serverErr);
   }
 
-  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출
-  const apiKey = getEffectiveGeminiApiKey(storedKey);
+  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출 (초대 친구 공유 API 키 자동 확인)
+  const apiKey = await ensureEffectiveGeminiApiKey(storedKey);
   if (!apiKey) {
     throw new Error(
-      'AI 키가 설정되어 있지 않습니다. 우측 상단 [🔑 AI 키 설정] 버튼을 눌러 Gemini API 키를 입력해 주세요.'
+      isFriendRestrictedMode()
+        ? 'AI 키가 설정되어 있지 않습니다. 우측 상단 [🔑 AI 키]에서 본인 키를 등록하거나, 초대해 준 관리자에게 [AI 키 공유 ON]을 요청해 주세요.'
+        : 'AI 키가 설정되어 있지 않습니다. 우측 상단 [🔑 AI 키 설정] 버튼을 눌러 Gemini API 키를 입력해 주세요.'
     );
   }
 
@@ -719,41 +909,26 @@ export async function parseSubscriptionImageWithFallback(
     ],
   };
 
-  let responseText = '';
-  let lastError: any = null;
-
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: compressed.mimeType,
-                data: compressed.base64,
-              },
-            },
-            { text: promptText },
-          ],
+  const { text: responseText } = await generateContentWithTier1Retry(
+    ai,
+    GEMINI_MODELS,
+    {
+      parts: [
+        {
+          inlineData: {
+            mimeType: compressed.mimeType,
+            data: compressed.base64,
+          },
         },
-        config: buildGeminiFastConfig(modelName, {
-          responseMimeType: 'application/json',
-          responseSchema,
-        }),
-      });
-      if (response.text) {
-        responseText = response.text;
-        break;
-      }
-    } catch (err) {
-      lastError = err;
+        { text: promptText },
+      ],
+    },
+    {
+      responseMimeType: 'application/json',
+      responseSchema,
+      maxOutputTokens: 4096,
     }
-  }
-
-  if (!responseText) {
-    throw lastError || new Error('구독전산 이미지 AI 판독에 실패했습니다.');
-  }
+  );
 
   const parsed = JSON.parse(responseText);
   const combinedCareText = [
@@ -1757,79 +1932,65 @@ export async function parseHisisSlipImageWithFallback(
   const compressed = await compressImageFile(file, 1920, 0.88);
   const storedKey = explicitApiKey?.trim() || getStoredGeminiApiKey();
 
-  // 1차 시도: 백엔드 /api/ai/parse-hisis-slip 호출
-  try {
-    const response = await fetch('/api/ai/parse-hisis-slip', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        imageBase64: compressed.base64,
-        mimeType: compressed.mimeType,
-        apiKey: storedKey || undefined,
-      }),
-    });
+  // 1차 시도: 로컬 백엔드 환경일 때만 /api/ai/parse-hisis-slip 호출
+  if (shouldTryLocalBackendApi()) {
+    try {
+      const response = await fetch('/api/ai/parse-hisis-slip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: compressed.base64,
+          mimeType: compressed.mimeType,
+          apiKey: storedKey || undefined,
+        }),
+      });
 
-    if (response.ok) {
-      const json = await response.json();
-      const rawPayload = (json && (json.raw || json.data || json)) as RawHisisSlipAiPayload;
-      if (rawPayload && Array.isArray(rawPayload.rows)) {
-        return normalizeHisisSlipPayload(rawPayload);
+      if (response.ok) {
+        const json = await response.json();
+        const rawPayload = (json && (json.raw || json.data || json)) as RawHisisSlipAiPayload;
+        if (rawPayload && Array.isArray(rawPayload.rows)) {
+          return normalizeHisisSlipPayload(rawPayload);
+        }
       }
+    } catch (serverErr) {
+      console.warn(
+        '서버 HISIS 전표 판독 실패, 프론트엔드 직접 호출로 전환합니다:',
+        serverErr
+      );
     }
-  } catch (serverErr) {
-    console.warn(
-      '서버 HISIS 전표 판독 실패, 프론트엔드 직접 호출로 전환합니다:',
-      serverErr
-    );
   }
 
-  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출 (GitHub Pages 완벽 지원)
-  const apiKey = getEffectiveGeminiApiKey(storedKey);
+  // 2차 시도(Fallback): 프론트엔드에서 직접 @google/genai SDK 호출 (GitHub Pages + 초대 친구 공유 키 완벽 지원)
+  const apiKey = await ensureEffectiveGeminiApiKey(storedKey);
   if (!apiKey) {
     throw new Error(
-      'Gemini API 키가 설정되어 있지 않습니다. 모달 상단 키 입력칸 또는 [🔑 AI 키 설정]에서 API 키를 입력해 주세요.'
+      isFriendRestrictedMode()
+        ? 'Gemini API 키가 설정되어 있지 않습니다. 상단 키 입력칸에 본인 키를 넣거나 초대해 준 관리자에게 [AI 키 공유 ON]을 요청해 주세요.'
+        : 'Gemini API 키가 설정되어 있지 않습니다. 모달 상단 키 입력칸 또는 [🔑 AI 키 설정]에서 API 키를 입력해 주세요.'
     );
   }
 
   const ai = new GoogleGenAI({ apiKey });
-  let responseText = '';
-  let lastError: unknown = null;
-
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: compressed.mimeType,
-                data: compressed.base64,
-              },
-            },
-            { text: HISIS_SLIP_PROMPT_TEXT },
-          ],
+  const { text: responseText } = await generateContentWithTier1Retry(
+    ai,
+    GEMINI_MODELS,
+    {
+      parts: [
+        {
+          inlineData: {
+            mimeType: compressed.mimeType,
+            data: compressed.base64,
+          },
         },
-        config: buildGeminiFastConfig(modelName, {
-          responseMimeType: 'application/json',
-          responseSchema: HISIS_SLIP_RESPONSE_SCHEMA,
-        }),
-      });
-      if (response.text) {
-        responseText = response.text;
-        break;
-      }
-    } catch (err) {
-      lastError = err;
+        { text: HISIS_SLIP_PROMPT_TEXT },
+      ],
+    },
+    {
+      responseMimeType: 'application/json',
+      responseSchema: HISIS_SLIP_RESPONSE_SCHEMA,
+      maxOutputTokens: 4096,
     }
-  }
-
-  if (!responseText) {
-    throw (
-      lastError ||
-      new Error('HISIS 전표 이미지 AI 판독 응답을 가져오지 못했습니다.')
-    );
-  }
+  );
 
   const parsedRaw = JSON.parse(responseText) as RawHisisSlipAiPayload;
   return normalizeHisisSlipPayload(parsedRaw);
@@ -1844,7 +2005,7 @@ export interface HisisBatchQueueProgress {
 }
 
 /**
- * 여러 장의 HISIS 전표 사진을 동시 최대 concurrency(기본 3장) 병렬 워커 큐로 고속 판독합니다.
+ * 여러 장의 HISIS 전표 사진을 동시 최대 concurrency(기본 3장, 다중 인원 Tier 1 보호 상한 3장) 병렬 워커 큐로 고속 판독합니다.
  */
 export async function parseHisisSlipBatchWithConcurrency(
   files: File[],
@@ -1863,7 +2024,7 @@ export async function parseHisisSlipBatchWithConcurrency(
 > {
   const totalCount = files.length;
   if (totalCount === 0) return [];
-  const concurrency = Math.max(1, Math.min(options.concurrency ?? 3, 5));
+  const concurrency = Math.max(1, Math.min(options.concurrency ?? 3, 3));
 
   const outputs: {
     index: number;

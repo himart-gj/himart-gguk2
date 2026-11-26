@@ -7,7 +7,9 @@ import {
 } from './careTableParser';
 import {
   compressImageFile,
-  getEffectiveGeminiApiKey,
+  ensureEffectiveGeminiApiKey,
+  GEMINI_MODELS,
+  generateContentWithTier1Retry,
 } from './aiImageParser';
 import { fetchStoreCloudDataset } from './storeCloudSync';
 
@@ -624,7 +626,7 @@ export async function parseInstallmentFile(
   }
 
   // 3) 이미지(JPG/PNG 등) 파일인 경우 — Gemini Vision AI 자동 파싱
-  const apiKey = getEffectiveGeminiApiKey();
+  const apiKey = await ensureEffectiveGeminiApiKey();
   if (!apiKey) {
     throw new Error(
       'Gemini API 키가 설정되어 있지 않아 사진 인식을 사용할 수 없습니다.'
@@ -682,45 +684,27 @@ export async function parseInstallmentFile(
   ]
 }`;
 
-  const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
-
-  let rawText = '';
-  let lastError: any = null;
-
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [
+  const { text: rawText } = await generateContentWithTier1Retry(
+    ai,
+    GEMINI_MODELS,
+    [
+      {
+        role: 'user',
+        parts: [
+          { text: prompt },
           {
-            role: 'user',
-            parts: [
-              { text: prompt },
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64Data,
-                },
-              },
-            ],
+            inlineData: {
+              mimeType,
+              data: base64Data,
+            },
           },
         ],
-        config: {
-          thinkingConfig: { thinkingLevel: 'LOW' as any },
-        },
-      });
-      if (response.text) {
-        rawText = response.text.trim();
-        break;
-      }
-    } catch (err) {
-      lastError = err;
+      },
+    ],
+    {
+      maxOutputTokens: 8192,
     }
-  }
-
-  if (!rawText) {
-    throw lastError || new Error('무이자 할부 행사표 AI 이미지 인식에 실패했습니다.');
-  }
+  );
 
   const cleanedJson = rawText
     .replace(/^```json\s*/i, '')

@@ -4,7 +4,14 @@ import { ProposalState } from '../types/proposal';
 import { extractQuotePayloadFromProposalState } from '../crm/components/SaveToCrmModal';
 import { saveCustomerQuote } from '../crm/services/gasApi';
 import { formatCurrency, formatPhoneNumber } from '../crm/utils/date';
-import { getEffectiveGeminiApiKey, getStoredGeminiApiKey, setStoredGeminiApiKey } from '../utils/aiImageParser';
+import {
+  getEffectiveGeminiApiKey,
+  getStoredGeminiApiKey,
+  hasSharedFriendGeminiKey,
+  setStoredGeminiApiKey,
+  SHARED_GEMINI_KEY_UPDATED_EVENT,
+  syncEphemeralSharedGeminiKey,
+} from '../utils/aiImageParser';
 import { CareTableDataset, fetchRemoteCareDataset, loadLocalCareDataset } from '../utils/careTableParser';
 import { loadPartnerLinks, PartnerQuickLinkItem } from './PartnerLinksModal';
 import { loadSavedUserName } from './ScheduleModal';
@@ -92,11 +99,25 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
   const [hasActiveApiKey, setHasActiveApiKey] = useState<boolean>(() =>
     Boolean(getEffectiveGeminiApiKey())
   );
+  const [usingSharedAiKey, setUsingSharedAiKey] = useState<boolean>(() =>
+    hasSharedFriendGeminiKey()
+  );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [copiedCodeKey, setCopiedCodeKey] = useState<string | null>(null);
 
   const customerNameInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const syncKeyFlags = () => {
+      setHasActiveApiKey(Boolean(getEffectiveGeminiApiKey()));
+      setUsingSharedAiKey(!getStoredGeminiApiKey() && hasSharedFriendGeminiKey());
+    };
+    window.addEventListener(SHARED_GEMINI_KEY_UPDATED_EVENT, syncKeyFlags);
+    return () => {
+      window.removeEventListener(SHARED_GEMINI_KEY_UPDATED_EVENT, syncKeyFlags);
+    };
+  }, []);
 
   // 모달 열릴 때 최신 안심케어 데이터셋 및 내 이름 동기화
   useEffect(() => {
@@ -112,6 +133,11 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
       return;
     }
 
+    if (isFriendMode) {
+      void syncEphemeralSharedGeminiKey(false);
+    }
+    setHasActiveApiKey(Boolean(getEffectiveGeminiApiKey()));
+    setUsingSharedAiKey(!getStoredGeminiApiKey() && hasSharedFriendGeminiKey());
     setMyStaffNameInput(loadSavedUserName());
     if (initialCommand && initialCommand.trim()) {
       const cmd = initialCommand.trim();
@@ -712,7 +738,9 @@ export const AiCommandModal: React.FC<AiCommandModalProps> = ({
               }`}
               title="Gemini API 키 등록 및 변경"
             >
-              🔑 {hasActiveApiKey ? 'AI 키 연결됨' : 'AI 키 설정'}
+              {usingSharedAiKey
+                ? '🤖 공유 AI 연결됨'
+                : `🔑 ${hasActiveApiKey ? 'AI 키 연결됨' : 'AI 키 설정'}`}
             </button>
             <button
               type="button"

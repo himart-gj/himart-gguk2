@@ -42,7 +42,9 @@ import {
 } from 'lucide-react';
 import {
   compressImageFile,
-  getEffectiveGeminiApiKey,
+  ensureEffectiveGeminiApiKey,
+  GEMINI_MODELS,
+  generateContentWithTier1Retry,
 } from '../utils/aiImageParser';
 import {
   GitHubSyncConfig,
@@ -1292,7 +1294,7 @@ async function parseUniversalExcelSchedule(
   // =========================================================================
   // [3단계] 초강력 Gemini AI 엑셀 폴백 (어떤 기상천외한 엑셀 양식도 100% 해결)
   // =========================================================================
-  const apiKey = getEffectiveGeminiApiKey();
+  const apiKey = await ensureEffectiveGeminiApiKey();
   if (!apiKey || sheetCsvTexts.length === 0) {
     throw new Error(
       '엑셀 파일에서 직원 성명 및 휴무 데이터를 찾지 못했습니다.'
@@ -1351,37 +1353,16 @@ ${combinedCsv}`;
     required: ['month', 'employees'],
   };
 
-  const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
-
-  let rawJsonText = '';
-  let lastErr: any = null;
-
-  for (const modelName of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: [{ role: 'user', parts: [{ text: aiPrompt }] }],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema,
-          thinkingConfig: { thinkingLevel: 'LOW' as any },
-        },
-      });
-      if (response.text) {
-        rawJsonText = response.text.trim();
-        break;
-      }
-    } catch (err) {
-      lastErr = err;
+  const { text: rawJsonText } = await generateContentWithTier1Retry(
+    ai,
+    GEMINI_MODELS,
+    [{ role: 'user', parts: [{ text: aiPrompt }] }],
+    {
+      responseMimeType: 'application/json',
+      responseSchema,
+      maxOutputTokens: 16384,
     }
-  }
-
-  if (!rawJsonText) {
-    throw (
-      lastErr ||
-      new Error('엑셀 양식 자동 분석 및 AI 폴백 분석에 실패했습니다.')
-    );
-  }
+  );
 
   const cleanedJson = rawJsonText
     .replace(/^```json\s*/i, '')
@@ -1493,7 +1474,7 @@ export async function parseScheduleFileForHub(
     excelPrevYearMonth = parsedResult.prevYearMonth;
     excelPrevMonthPatch = parsedResult.prevMonthPatch;
   } else {
-    const apiKey = getEffectiveGeminiApiKey();
+    const apiKey = await ensureEffectiveGeminiApiKey();
     if (!apiKey) {
       throw new Error(
         'Gemini API 키가 설정되지 않아 사진 인식을 사용할 수 없습니다.'
@@ -1566,46 +1547,24 @@ export async function parseScheduleFileForHub(
       required: ['month', 'employees'],
     };
 
-    const GEMINI_MODELS = [
-      'gemini-3.8-flash',
-      'gemini-4-argon',
-      'gemini-3.6-flash',
-      'gemini-3.5-flash-lite',
-    ];
-
-    let rawText = '';
-    let lastError: any = null;
-    for (const modelName of GEMINI_MODELS) {
-      try {
-        const response = await ai.models.generateContent({
-          model: modelName,
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                { inlineData: { mimeType, data: base64Data } },
-                { text: prompt },
-              ],
-            },
+    const { text: rawText } = await generateContentWithTier1Retry(
+      ai,
+      GEMINI_MODELS,
+      [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType, data: base64Data } },
+            { text: prompt },
           ],
-          config: {
-            responseMimeType: 'application/json',
-            responseSchema,
-            thinkingConfig: { thinkingLevel: 'LOW' as any },
-          },
-        });
-        if (response.text) {
-          rawText = response.text.trim();
-          break;
-        }
-      } catch (err) {
-        lastError = err;
+        },
+      ],
+      {
+        responseMimeType: 'application/json',
+        responseSchema,
+        maxOutputTokens: 16384,
       }
-    }
-
-    if (!rawText) {
-      throw lastError || new Error('휴무표 이미지 AI 분석에 실패했습니다.');
-    }
+    );
 
     const cleanedJson = rawText
       .replace(/^```json\s*/i, '')
@@ -2565,7 +2524,7 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
         excelPrevYearMonth = parsedResult.prevYearMonth;
         excelPrevMonthPatch = parsedResult.prevMonthPatch;
       } else {
-        const apiKey = getEffectiveGeminiApiKey();
+        const apiKey = await ensureEffectiveGeminiApiKey();
         if (!apiKey) {
           throw new Error(
             'Gemini API 키가 설정되지 않아 사진 인식을 사용할 수 없습니다.'
@@ -2644,47 +2603,29 @@ export const ScheduleModal: React.FC<ScheduleModalProps> = ({
           required: ['month', 'employees'],
         };
 
-        const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-4-argon', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
-
-        let rawText = '';
-        let lastError: any = null;
-
-        for (const modelName of GEMINI_MODELS) {
-          try {
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: [
+        const { text: rawText } = await generateContentWithTier1Retry(
+          ai,
+          GEMINI_MODELS,
+          [
+            {
+              role: 'user',
+              parts: [
                 {
-                  role: 'user',
-                  parts: [
-                    {
-                      inlineData: {
-                        mimeType,
-                        data: base64Data,
-                      },
-                    },
-                    { text: prompt },
-                  ],
+                  inlineData: {
+                    mimeType,
+                    data: base64Data,
+                  },
                 },
+                { text: prompt },
               ],
-              config: {
-                responseMimeType: 'application/json',
-                responseSchema,
-                thinkingConfig: { thinkingLevel: 'LOW' as any },
-              },
-            });
-            if (response.text) {
-              rawText = response.text.trim();
-              break;
-            }
-          } catch (err) {
-            lastError = err;
+            },
+          ],
+          {
+            responseMimeType: 'application/json',
+            responseSchema,
+            maxOutputTokens: 16384,
           }
-        }
-
-        if (!rawText) {
-          throw lastError || new Error('휴무표 이미지 AI 분석에 실패했습니다.');
-        }
+        );
 
         const cleanedJson = rawText
           .replace(/^```json\s*/i, '')
