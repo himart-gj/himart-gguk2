@@ -30,7 +30,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const { request } = request ? { request: event.request } : { request: event.request };
+  const { request } = event;
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
