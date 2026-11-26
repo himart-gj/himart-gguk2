@@ -1465,7 +1465,7 @@ export function App() {
             ),
             warrantyType: resolvedWarrantyType,
             warrantyYears: 5,
-            allCare: data.allCare ?? true,
+            allCare: data.allCare ?? resolvedWarrantyType.includes('가전수리올케어'),
             subAutoTierCashback: mappedCard ? true : (prev.subAutoTierCashback ?? true),
             selectedCardId:
               mappedCard.cardId !== 'none'

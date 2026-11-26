@@ -1,5 +1,5 @@
-const CACHE_NAME = 'himart-shell-v56';
-const DATA_CACHE_NAME = 'himart-data-v56';
+const CACHE_NAME = 'himart-shell-v57';
+const DATA_CACHE_NAME = 'himart-data-v57';
 const APP_SHELL = ['./', './index.html', './app-manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -30,7 +30,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
+  const { request } = request ? { request: event.request } : { request: event.request };
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);
