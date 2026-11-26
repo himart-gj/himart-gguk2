@@ -395,8 +395,10 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
             <button
               type="button"
               onClick={handleInstallAppClick}
-              title="홈 화면에 앱 설치"
-              className={`hidden lg:flex h-9 px-2.5 rounded-xl text-xs font-bold items-center gap-1 border transition cursor-pointer schedule-tactile ${surfaceBtn}`}
+              title="바탕화면에 전용 앱 설치하기"
+              className={`${
+                step === 'home' ? 'flex' : 'hidden lg:flex'
+              } h-8 min-[380px]:h-9 px-2 sm:px-2.5 rounded-xl text-[11.5px] sm:text-xs font-extrabold items-center gap-1 border transition cursor-pointer schedule-tactile bg-[#EFF6FF] hover:bg-[#DBEAFE] text-[#1B64DA] border-[#BFDBFE] dark:bg-blue-500/20 dark:hover:bg-blue-500/30 dark:text-blue-200 dark:border-blue-400/35`}
             >
               <Download className="w-3.5 h-3.5 shrink-0" />
               <span>앱 설치</span>

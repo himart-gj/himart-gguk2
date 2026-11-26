@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { installGlobalPwaInstallListeners } from './utils/pwaInstallManager';
 import {
   BootEntryMode,
   resolveBootEntryMode,
@@ -19,6 +20,8 @@ import {
   PublicZeroTrustGateRoot,
 } from './components/CustomerShareQuoteView';
 import './index.css';
+
+installGlobalPwaInstallListeners();
 
 // 엔트리 최상단에서 동기 판별:
 // 1) 'customer-quote': 고객 견적 링크(?s=, ?q=, /q/) -> 오직 고객 견적서만 렌더링
@@ -103,9 +106,13 @@ const RootDispatcher: React.FC = () => {
     };
   }, [mode]);
 
-  // 인증된 직원 기기('staff-app') 및 프로덕션 빌드에서만 PWA 서비스워커를 등록하고, 새 버전 활성화 시 자동 새로고침
+  // 직원 앱('staff-app') 및 친구 초대 인증 화면('public-gate') 프로덕션 빌드에서 PWA 서비스워커 등록 (고객 전용 뷰어 제외)
   useEffect(() => {
-    if (mode === 'staff-app' && 'serviceWorker' in navigator && import.meta.env.PROD) {
+    if (
+      mode !== 'customer-quote' &&
+      'serviceWorker' in navigator &&
+      import.meta.env.PROD
+    ) {
       let refreshing = false;
       const hadController = Boolean(navigator.serviceWorker.controller);
       const onControllerChange = () => {

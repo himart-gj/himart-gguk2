@@ -34,11 +34,13 @@ import {
   isFriendRestrictedMode,
   purgeLocalScheduleAndOwnerState,
 } from './utils/friendAccessGuard';
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-}
+import {
+  BeforeInstallPromptEvent,
+  getGlobalDeferredInstallPrompt,
+  getGlobalStandaloneState,
+  subscribePwaInstallState,
+  triggerNativePwaInstallPrompt,
+} from './utils/pwaInstallManager';
 
 export function App() {
   const [activeMode, setActiveMode] = useState<QuoteMode>('subscription');
@@ -621,47 +623,22 @@ export function App() {
   }, [pushAppHistoryGuard, handleNavigateBack]);
 
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-    };
-
-    const handleAppInstalled = () => {
-      setDeferredPrompt(null);
-      setIsStandalone(true);
-      setIsInstallGuideOpen(false);
-    };
-
-    const mediaQuery = window.matchMedia('(display-mode: standalone)');
-    const handleDisplayModeChange = (e: MediaQueryListEvent) => {
-      if (e.matches) {
-        setIsStandalone(true);
+    setIsStandalone(getGlobalStandaloneState());
+    setDeferredPrompt(getGlobalDeferredInstallPrompt());
+    return subscribePwaInstallState(() => {
+      const standaloneNow = getGlobalStandaloneState();
+      setIsStandalone(standaloneNow);
+      setDeferredPrompt(getGlobalDeferredInstallPrompt());
+      if (standaloneNow) {
+        setIsInstallGuideOpen(false);
       }
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-    mediaQuery.addEventListener?.('change', handleDisplayModeChange);
-
-    return () => {
-      window.removeEventListener(
-        'beforeinstallprompt',
-        handleBeforeInstallPrompt
-      );
-      window.removeEventListener('appinstalled', handleAppInstalled);
-      mediaQuery.removeEventListener?.('change', handleDisplayModeChange);
-    };
+    });
   }, []);
 
   const handleInstallAppClick = useCallback(async () => {
-    if (deferredPrompt) {
-      try {
-        await deferredPrompt.prompt();
-        const choiceResult = await deferredPrompt.userChoice;
-        if (choiceResult.outcome === 'accepted') {
-          setDeferredPrompt(null);
-        }
-      } catch {
+    if (deferredPrompt || getGlobalDeferredInstallPrompt()) {
+      const outcome = await triggerNativePwaInstallPrompt();
+      if (outcome === 'unavailable') {
         setIsInstallGuideOpen(true);
       }
     } else {

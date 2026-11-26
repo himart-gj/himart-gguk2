@@ -324,9 +324,51 @@ export function buildFriendInviteUrl(rawGasUrl?: string): string {
   return `${base}?invite=${encoded}`;
 }
 
+export function cleanInviteQueryFromAddressBar(): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has('invite')) return;
+    params.delete('invite');
+    const rest = params.toString();
+    const cleanUrl = `${window.location.pathname}${rest ? `?${rest}` : ''}${
+      window.location.hash || ''
+    }`;
+    if (window.history && typeof window.history.replaceState === 'function') {
+      window.history.replaceState({}, '', cleanUrl);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function shouldKeepInviteQueryInAddressBar(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+  const ua = navigator.userAgent || '';
+  const isInApp =
+    /KAKAOTALK|Instagram|NAVER\(inapp|Line\/|FBAN|FBAV|DaumApps|EverytimeApp/i.test(
+      ua
+    );
+  if (isInApp) return true;
+
+  const isIosTouchMac =
+    navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  const isIos = /iPhone|iPad|iPod/i.test(ua) || isIosTouchMac;
+  const isStandalone =
+    Boolean(window.matchMedia?.('(display-mode: standalone)').matches) ||
+    (window.navigator as any)?.standalone === true;
+
+  // 아이폰(iOS) 브라우저(미설치 상태)에서는 [Safari로 열기] 및 [홈 화면에 추가] 시 ?invite 파라미터가 함께 북마크되도록 보존
+  if (isIos && !isStandalone) return true;
+
+  return false;
+}
+
 /**
- * URL 쿼리 ?invite=<base64url(gasUrl)> 감지 시 repo 설정만 저장하고
- * 입력창 즉시 오픈 플래그 기록 후 주소창에서 ?invite 파라미터를 즉시 소거
+ * URL 쿼리 ?invite=<base64url(gasUrl)> 감지 시 repo 설정을 저장하고
+ * 입력창 즉시 오픈 플래그 기록 (카톡 인앱브라우저 및 아이폰 설치 전 Safari에서는 외부열기/홈화면추가를 위해 쿼리 유지)
  */
 export function bootstrapInviteFromUrl(): boolean {
   if (typeof window === 'undefined' || !window.location) return false;
@@ -350,15 +392,14 @@ export function bootstrapInviteFromUrl(): boolean {
       }
     }
 
-    // 유효하지 않은 값이라도 주소창의 invite 쿼리는 깔끔히 소거
-    params.delete('invite');
-    const rest = params.toString();
-    const cleanUrl = `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash || ''}`;
-    if (window.history && typeof window.history.replaceState === 'function') {
-      window.history.replaceState({}, '', cleanUrl);
+    if (!candidateUrl) {
+      cleanInviteQueryFromAddressBar();
+      return false;
     }
 
-    if (!candidateUrl) return false;
+    if (!shouldKeepInviteQueryInAddressBar()) {
+      cleanInviteQueryFromAddressBar();
+    }
 
     const prev = readStoredCloudRepo();
     const nextCfg = {
@@ -513,6 +554,7 @@ export async function authenticateDeviceWithCloud(
       } catch {
         // ignore
       }
+      cleanInviteQueryFromAddressBar();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(FRIEND_ROLE_CHANGED_EVENT));
       }
@@ -540,6 +582,7 @@ export async function authenticateDeviceWithCloud(
       } catch {
         // ignore
       }
+      cleanInviteQueryFromAddressBar();
       purgeLocalScheduleAndOwnerState();
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent(FRIEND_ROLE_CHANGED_EVENT));

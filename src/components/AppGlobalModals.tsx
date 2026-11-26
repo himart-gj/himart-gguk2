@@ -12,9 +12,13 @@ import { OPEN_STORE_POLICY_MODAL_EVENT, PolicyGuideTab, StorePolicyQuickModal } 
 import { getCachedCustomers } from '../crm/services/gasApi';
 import { PastDeliveryCheckModal } from '../crm/components/PastDeliveryCheckModal';
 import { PAST_DELIVERY_POPUP_DISMISSED_KEY } from '../crm/CrmApp';
-import { Smartphone, Lock } from 'lucide-react';
+import { ExternalLink, Smartphone, Lock } from 'lucide-react';
 import { FlagshipModalShell } from './ui/FlagshipModalShell';
 import { SurfaceCard } from './ui/SurfaceCard';
+import {
+  detectInstallEnvironment,
+  launchUrlInAndroidChrome,
+} from '../utils/pwaInstallManager';
 
 export interface AppGlobalModalsProps extends Record<string, any> {
   setInitialCrmFilterTab?: (tab: 'urgent' | 'delivery' | 'gifts' | undefined) => void;
@@ -258,9 +262,9 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
           <FlagshipModalShell
             isOpen={isInstallGuideOpen}
             onClose={() => setIsInstallGuideOpen(false)}
-            title="주소창 없는 전용 앱(PWA) 설치 안내"
-            subtitle="홈 화면에 추가하면 주소창 없이 100% 전체화면으로 실행됩니다"
-            badge="PWA 전체화면"
+            title="바탕화면 전용 앱 설치 안내"
+            subtitle="한 번만 추가해 두면 일반 앱처럼 주소창 없이 바로 실행됩니다"
+            badge="간편 설치"
             icon={<Smartphone className="w-4 h-4 text-[#1B64DA] dark:text-blue-400" />}
             maxWidthClass="max-w-md"
             bodyClassName="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1"
@@ -276,31 +280,61 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
               </div>
             }
           >
+            {(() => {
+              const modalEnv = detectInstallEnvironment();
+              if (
+                modalEnv.isAndroid &&
+                (modalEnv.isInAppBrowser || modalEnv.isSamsungBrowser)
+              ) {
+                return (
+                  <SurfaceCard tone="benefit" padded className="space-y-2">
+                    <div className="text-xs sm:text-[13px] font-extrabold text-[#1B64DA] dark:text-blue-300">
+                      🌐 삼성 갤럭시 간편 설치 (크롬 자동 전환)
+                    </div>
+                    <p className="text-xs text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium break-keep">
+                      아래 버튼을 누르면 <strong>구글 크롬(Chrome)</strong>으로 바로 열리며 상단 <strong>[앱 설치]</strong> 버튼으로 한 번에 바탕화면 설치가 됩니다.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        launchUrlInAndroidChrome(window.location.href)
+                      }
+                      className="min-h-[42px] w-full py-2.5 px-4 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer transition"
+                    >
+                      <ExternalLink className="w-4 h-4 shrink-0" />
+                      <span>크롬(Chrome)으로 열어서 설치하기</span>
+                    </button>
+                  </SurfaceCard>
+                );
+              }
+              return null;
+            })()}
+
             <SurfaceCard tone="benefit" padded className="space-y-1.5">
               <div className="text-xs sm:text-[13px] font-extrabold text-[#191F28] dark:text-slate-100 flex items-center gap-1.5">
-                <span>🤖 안드로이드 스마트폰 / 갤럭시탭 / 매장 PC (크롬·엣지)</span>
+                <span>🤖 삼성 갤럭시 · 안드로이드 · PC (크롬 권장)</span>
               </div>
-              <p className="text-xs text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium">
-                1) 브라우저 우측 상단 메뉴 <strong className="text-[#191F28] dark:text-slate-100">[⋮]</strong> 또는 주소창 우측의{' '}
-                <strong className="text-[#191F28] dark:text-slate-100">[앱 설치 / 모니터 아이콘]</strong>을 누릅니다.
+              <p className="text-xs text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium break-keep">
+                1) 크롬 화면 오른쪽 맨 위 <strong className="text-[#191F28] dark:text-slate-100">점 3개 [⋮]</strong> 버튼을 누릅니다.
                 <br />
-                2) <strong className="text-[#191F28] dark:text-slate-100">[앱 설치]</strong> 또는 <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가]</strong>를
-                선택하면 바탕화면에 <strong className="text-[#1B64DA] dark:text-blue-300">국지통합앱</strong> 아이콘이 생성됩니다.
+                2) 메뉴에서 <strong className="text-[#191F28] dark:text-slate-100">[앱 설치]</strong> 또는 <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가]</strong>를 누르면 바탕화면에 <strong className="text-[#1B64DA] dark:text-blue-300">국지통합앱</strong> 아이콘이 생성됩니다.
+                <br />
+                <span className="text-[11px] opacity-85">
+                  ※ 삼성 인터넷 사용 시: 오른쪽 아래 <strong>[≡]</strong> ➔ <strong>[+ 현재 페이지 추가]</strong> ➔ <strong>[홈 화면]</strong>
+                </span>
               </p>
             </SurfaceCard>
 
             <SurfaceCard tone="sub" padded className="space-y-1.5">
               <div className="text-xs sm:text-[13px] font-extrabold text-[#191F28] dark:text-slate-100 flex items-center gap-1.5">
-                <span>🍎 아이폰 / 아이패드 (Safari 브라우저)</span>
+                <span>🍎 아이폰 · 아이패드 (Safari 브라우저 필수)</span>
               </div>
-              <p className="text-xs text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium">
-                1) Safari 하단(아이패드는 상단)의{' '}
-                <strong className="text-[#191F28] dark:text-slate-100">[공유 버튼 (네모 위 화살표 ↑)]</strong>을 터치합니다.
+              <p className="text-xs text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium break-keep">
+                1) 반드시 기본 <strong>Safari(나침반 모양 앱)</strong>로 주소를 엽니다.
                 <br />
-                2) 메뉴를 내려 <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가 (+)]</strong>를 누르고 우측 상단{' '}
-                <strong className="text-[#191F28] dark:text-slate-100">[추가]</strong>를 터치합니다.
+                2) 화면 맨 아래 가운데 <strong className="text-[#191F28] dark:text-slate-100">[공유 버튼 (네모 위 화살표 ↑)]</strong>을 터치합니다.
                 <br />
-                3) 홈 화면에 생성된 아이콘으로 실행하면 상·하단 주소창이 100% 사라집니다!
+                3) 메뉴를 살짝 올려 <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가 (+)]</strong> ➔ 우측 상단 <strong className="text-[#191F28] dark:text-slate-100">[추가]</strong>를 누르면 바탕화면에 아이콘이 생깁니다!
               </p>
             </SurfaceCard>
           </FlagshipModalShell>

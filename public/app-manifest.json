@@ -1,10 +1,9 @@
 {
-  "name": "롯데하이마트 경기광주점 통합견적 & CRM",
+  "name": "롯데하이마트 스마트 통합견적 & CRM",
   "short_name": "국지통합앱",
-  "description": "국지CRM - 고객 관리 및 통합 가전 견적 시스템 (경기광주점)",
+  "description": "고객 맞춤 통합 가전 견적 및 상담 관리 시스템",
   "display": "standalone",
   "display_override": ["fullscreen", "standalone", "minimal-ui"],
-  "start_url": "./?source=pwa",
   "scope": "./",
   "theme_color": "#FFFFFF",
   "background_color": "#F2F4F6",
