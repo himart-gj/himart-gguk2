@@ -62,6 +62,7 @@ export interface CloudDiagnosticsReport {
 export const FRIEND_REMOTE_PROFILES_FIELD = '__friendProfiles' as const;
 export const STORE_CLOUD_CONFIG_KEY = 'himart_care_gh_sync_config_v1';
 export const TARGET_SPREADSHEET_ID_STORAGE_KEY = 'himart_gj_target_sheet_id_v1';
+export const INSTA_SPREADSHEET_ID_STORAGE_KEY = 'himart_gj_insta_sheet_id_v1';
 export const OWNER_CUSTOM_PIN_STORAGE_KEY = 'himart_gj_owner_db_pin_v1';
 export const STORE_CLOUD_UPDATED_EVENT = 'himart_gj_store_cloud_updated';
 export const UNCONFIGURED_PIN_SENTINEL = '__HIMART_CLOUD_PIN_REQUIRED__';
@@ -96,6 +97,33 @@ export function saveSpreadsheetId(raw?: string | null): string {
         localStorage.setItem(TARGET_SPREADSHEET_ID_STORAGE_KEY, clean);
       } else {
         localStorage.removeItem(TARGET_SPREADSHEET_ID_STORAGE_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return clean;
+}
+
+export function loadSavedInstaSpreadsheetId(): string {
+  if (typeof localStorage === 'undefined') return '';
+  try {
+    return extractGoogleSheetId(
+      localStorage.getItem(INSTA_SPREADSHEET_ID_STORAGE_KEY)
+    );
+  } catch {
+    return '';
+  }
+}
+
+export function saveInstaSpreadsheetId(raw?: string | null): string {
+  const clean = extractGoogleSheetId(raw);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      if (clean) {
+        localStorage.setItem(INSTA_SPREADSHEET_ID_STORAGE_KEY, clean);
+      } else {
+        localStorage.removeItem(INSTA_SPREADSHEET_ID_STORAGE_KEY);
       }
     } catch {
       // ignore storage errors
@@ -542,6 +570,9 @@ export async function diagnoseStoreCloudConnection(
   const spreadsheetId = extractGoogleSheetId(
     sheetIdOverride ?? loadSavedSpreadsheetId()
   );
+  if (spreadsheetId) {
+    saveSpreadsheetId(spreadsheetId);
+  }
   if (!gasUrl || cleanPin.length < 4) {
     return {
       ok: false,
@@ -1058,18 +1089,22 @@ export function installStoreCloudFetchBridge(): void {
 }
 
 export function getStoreCloudAppsScriptCode(
-  defaultSpreadsheetId?: string
+  defaultSpreadsheetId?: string,
+  defaultInstaSpreadsheetId?: string
 ): string {
   const bakedSheetId = extractGoogleSheetId(
     defaultSpreadsheetId ?? loadSavedSpreadsheetId()
   );
+  const bakedInstaSheetId = extractGoogleSheetId(
+    defaultInstaSpreadsheetId ?? loadSavedInstaSpreadsheetId()
+  );
   return `// ============================================================================
-// [하이마트 스마트 상담앱 — 비공개 구글 시트 1-STOP 클라우드 & 초대/AI공유 브릿지]
-// - 시트 내부 [확장 프로그램 -> Apps Script] 및 독립형(script.google.com) 모두 100% 호환!
-// - 독립형 스크립트 사용 시 아래 DEFAULT_SPREADSHEET_ID 에 시트 ID가 자동 입력되거나,
-//   앱의 [연동할 구글 시트 주소(URL)] 칸에서 [연결 저장·확인]을 누르면 서버에 영구 기억됩니다.
+// [하이마트 스마트 상담앱 — 비공개 구글 시트 1-STOP 클라우드 · 초대 · AI공유 · 마케팅DB 통합 브릿지]
+// - 시트 내부 [확장 프로그램 -> Apps Script] 및 독립형(script.google.com) 모두 100% 호환
+// - 4대 매장 공유 자료 + 친구 다중기기 잠금 + 공유 Gemini API 키 ON/OFF + 인스타 DB(syncLeads/saveBackupState) 통합 지원
 // ============================================================================
 const DEFAULT_SPREADSHEET_ID = '${bakedSheetId}';
+const DEFAULT_INSTA_SPREADSHEET_ID = '${bakedInstaSheetId}';
 
 const TAB_MAP = {
   schedule: '_매장공유_휴무표',
@@ -1079,6 +1114,7 @@ const TAB_MAP = {
 };
 const FRIEND_ACCESS_TAB = '_친구기기_접근관리';
 const GUIDE_TAB = '00_연동가이드_및_AppsScript코드';
+const BACKUP_SHEET_NAME = '_앱DB관리백업';
 const CHUNK_SIZE = 40000;
 
 function jsonResponse(obj) {
@@ -1088,7 +1124,33 @@ function jsonResponse(obj) {
 }
 
 function nowKstLabel() {
-  return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  return Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+}
+
+function formatCellDate(val) {
+  if (!val) return '';
+  if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())) {
+    return Utilities.formatDate(val, 'Asia/Seoul', 'yyyy-MM-dd HH:mm:ss');
+  }
+  return String(val).trim();
+}
+
+function normalizePinValue(raw) {
+  if (raw === null || raw === undefined) return '';
+  if (typeof raw === 'number' && isFinite(raw)) {
+    return String(Math.trunc(raw));
+  }
+  return String(raw).replace(/\\.0+$/, '').trim();
+}
+
+function normalizeInviteDigits(raw) {
+  if (raw === null || raw === undefined) return '';
+  if (typeof raw === 'number' && isFinite(raw)) {
+    const intStr = String(Math.trunc(Math.abs(raw)));
+    return intStr.length < 8 ? ('00000000' + intStr).slice(-8) : intStr;
+  }
+  const digits = String(raw).replace(/\\D+/g, '').trim();
+  return digits;
 }
 
 function extractSheetId(raw) {
@@ -1102,14 +1164,16 @@ function extractSheetId(raw) {
   return '';
 }
 
-function resolveSpreadsheetContext(reqSheetId) {
+function resolveSpreadsheetContext(reqSheetId, allowPersist) {
   const props = PropertiesService.getScriptProperties();
   const incomingId = extractSheetId(reqSheetId);
   if (incomingId) {
     try {
       const opened = SpreadsheetApp.openById(incomingId);
       if (opened) {
-        props.setProperty('TARGET_SPREADSHEET_ID', incomingId);
+        if (allowPersist === true) {
+          props.setProperty('TARGET_SPREADSHEET_ID', incomingId);
+        }
         return { ss: opened, mode: 'standalone_id' };
       }
     } catch (err) {
@@ -1133,7 +1197,9 @@ function resolveSpreadsheetContext(reqSheetId) {
     try {
       const openedSaved = SpreadsheetApp.openById(savedId);
       if (openedSaved) {
-        props.setProperty('TARGET_SPREADSHEET_ID', savedId);
+        if (allowPersist === true) {
+          props.setProperty('TARGET_SPREADSHEET_ID', savedId);
+        }
         return { ss: openedSaved, mode: 'standalone_id' };
       }
     } catch (err) {
@@ -1148,8 +1214,69 @@ function resolveSpreadsheetContext(reqSheetId) {
   return {
     ss: null,
     mode: 'missing',
-    error: '독립형 Apps Script가 감지되었습니다! 앱 업로드 센터 상단의 [연동할 구글 시트 주소(URL)] 칸에 기존 구글 시트 주소를 붙여넣고 [연결 저장·확인]을 누르면 기존 초대 목록과 4대 자료가 즉시 100% 복구됩니다!'
+    error: '독립형 Apps Script가 감지되었습니다! 앱 업로드 센터 상단의 [연동할 비공개 구글 시트 주소(URL)] 칸에 기존 구글 시트 주소를 붙여넣고 [연결 저장·검수]를 누르면 기존 초대 목록과 4대 자료가 즉시 100% 복구됩니다!'
   };
+}
+
+function resolveInstaSpreadsheet(reqInstaSheetId, allowPersist) {
+  const props = PropertiesService.getScriptProperties();
+  const incomingId = extractSheetId(reqInstaSheetId);
+  if (incomingId) {
+    try {
+      const opened = SpreadsheetApp.openById(incomingId);
+      if (opened) {
+        if (allowPersist === true) {
+          props.setProperty('INSTA_SPREADSHEET_ID', incomingId);
+        }
+        return opened;
+      }
+    } catch (e) {}
+  }
+  const savedInstaId = extractSheetId(props.getProperty('INSTA_SPREADSHEET_ID')) || extractSheetId(DEFAULT_INSTA_SPREADSHEET_ID);
+  if (savedInstaId) {
+    try {
+      const openedSaved = SpreadsheetApp.openById(savedInstaId);
+      if (openedSaved) return openedSaved;
+    } catch (e) {}
+  }
+  try {
+    const active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (e) {}
+  return null;
+}
+
+function writeInstaBackup(instaSs, backupState) {
+  let sh = instaSs.getSheetByName(BACKUP_SHEET_NAME);
+  if (!sh) {
+    sh = instaSs.insertSheet(BACKUP_SHEET_NAME);
+    sh.hideSheet();
+  }
+  sh.clearContents();
+  const raw = JSON.stringify(backupState);
+  const rows = [];
+  for (let i = 0; i < raw.length; i += CHUNK_SIZE) {
+    rows.push(['CHUNK', Math.floor(i / CHUNK_SIZE) + 1, raw.slice(i, i + CHUNK_SIZE)]);
+  }
+  if (rows.length > 0) {
+    sh.getRange(1, 1, rows.length, 3).setValues(rows);
+  }
+}
+
+function readInstaBackup(instaSs) {
+  const bSh = instaSs.getSheetByName(BACKUP_SHEET_NAME);
+  if (!bSh || bSh.getLastRow() < 1) return null;
+  try {
+    const vals = bSh.getRange(1, 1, bSh.getLastRow(), Math.min(3, bSh.getLastColumn())).getValues();
+    if (vals[0][0] === 'CHUNK') {
+      const joined = vals.map(function(r) { return String(r[2] || ''); }).join('');
+      return joined ? JSON.parse(joined) : null;
+    }
+    if (vals[0][0]) {
+      return JSON.parse(String(vals[0][0]));
+    }
+  } catch (err) {}
+  return null;
 }
 
 function ensureSheet(ss, name) {
@@ -1187,22 +1314,27 @@ function readSavedAdminPin(ss) {
   if (ss) {
     const guide = ss.getSheetByName(GUIDE_TAB);
     if (guide) {
-      savedPin = String(guide.getRange('B3').getValue() || '').trim();
+      savedPin = normalizePinValue(guide.getRange('B3').getValue());
       if (savedPin.indexOf('비워둠') !== -1) savedPin = '';
     }
   }
   if (!savedPin) {
-    savedPin = String(props.getProperty('ADMIN_PIN') || '').trim();
+    savedPin = normalizePinValue(props.getProperty('ADMIN_PIN'));
   }
   return savedPin;
 }
 
 function verifyOrInitPin(ss, inputPin) {
-  const cleanInput = String(inputPin || '').trim();
+  const cleanInput = normalizePinValue(inputPin);
   if (!cleanInput) return { ok: false, error: '업로드 비밀번호(PIN)를 입력해 주세요.' };
   const props = PropertiesService.getScriptProperties();
-  const savedPin = readSavedAdminPin(ss);
-  if (!savedPin) {
+  const sheetPin = ss && ss.getSheetByName(GUIDE_TAB)
+    ? normalizePinValue(ss.getSheetByName(GUIDE_TAB).getRange('B3').getValue())
+    : '';
+  const validSheetPin = sheetPin && sheetPin.indexOf('비워둠') === -1 ? sheetPin : '';
+  const propsPin = normalizePinValue(props.getProperty('ADMIN_PIN'));
+
+  if (!validSheetPin && !propsPin) {
     props.setProperty('ADMIN_PIN', cleanInput);
     if (ss) {
       const guide = ss.getSheetByName(GUIDE_TAB);
@@ -1210,10 +1342,13 @@ function verifyOrInitPin(ss, inputPin) {
     }
     return { ok: true, initialized: true };
   }
-  if (savedPin !== cleanInput) {
-    return { ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않습니다.' };
+  if ((validSheetPin && cleanInput === validSheetPin) || (!validSheetPin && propsPin && cleanInput === propsPin)) {
+    if (propsPin !== cleanInput) {
+      props.setProperty('ADMIN_PIN', cleanInput);
+    }
+    return { ok: true, initialized: false };
   }
-  return { ok: true, initialized: false };
+  return { ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않습니다.' };
 }
 
 function maskApiKey(rawKey) {
@@ -1290,13 +1425,15 @@ function readAllFriendInviteRows(ss) {
   const sheet = ensureFriendAccessSheet(ss);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return { sheet: sheet, records: [] };
-  const values = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  const colCount = Math.max(9, Math.min(10, sheet.getLastColumn() || 10));
+  const values = sheet.getRange(2, 1, lastRow - 1, colCount).getValues();
   const records = [];
   for (let i = 0; i < values.length; i++) {
     const r = values[i];
     const codeId = String(r[0] || '').trim();
-    const inviteCode = String(r[1] || '').replace(/\\D+/g, '').trim();
+    const inviteCode = normalizeInviteDigits(r[1]);
     if (!codeId && !inviteCode) continue;
+    const isLegacyNineCol = colCount === 9 && (!r[9] && String(r[8] || '').indexOf('Mozilla') !== -1);
     records.push({
       rowNumber: i + 2,
       codeId: codeId,
@@ -1305,10 +1442,10 @@ function readAllFriendInviteRows(ss) {
       status: String(r[3] || 'ACTIVE').trim().toUpperCase(),
       maxDevices: Math.max(1, Number(r[4]) || 1),
       boundDeviceToken: String(r[5] || '').trim(),
-      boundUserAgent: String(r[6] || '').trim(),
-      createdAt: String(r[7] || '').trim(),
-      boundAt: String(r[8] || '').trim(),
-      lastSeenAt: String(r[9] || '').trim()
+      boundUserAgent: isLegacyNineCol ? String(r[8] || '').trim() : String(r[6] || '').trim(),
+      createdAt: isLegacyNineCol ? formatCellDate(r[6]) : formatCellDate(r[7]),
+      boundAt: isLegacyNineCol ? formatCellDate(r[6]) : formatCellDate(r[8]),
+      lastSeenAt: isLegacyNineCol ? formatCellDate(r[7]) : formatCellDate(r[9])
     });
   }
   return { sheet: sheet, records: records };
@@ -1342,7 +1479,7 @@ function readKindDataset(ss, kind) {
   const validRows = rows.filter(function(r) { return String(r[0]) === kind && r[4] !== ''; });
   if (!validRows.length) return { updatedAt: '', chunks: 0, bytes: 0, data: null };
   validRows.sort(function(a, b) { return Number(a[1]) - Number(b[1]); });
-  const updatedAt = String(validRows[0][3] || '');
+  const updatedAt = formatCellDate(validRows[0][3]);
   const joined = validRows.map(function(r) { return String(r[4]); }).join('');
   try {
     return {
@@ -1370,13 +1507,17 @@ function countDatasetItems(kind, data) {
 }
 
 function doGet(e) {
+  const action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action) : 'ping';
+  if (action === 'syncLeads') {
+    return jsonResponse({ ok: false, error: '보안 정책상 고객 DB는 관리자 PIN이 포함된 POST 요청으로만 조회할 수 있습니다.' });
+  }
   const sidParam = (e && e.parameter && e.parameter.sid) ? String(e.parameter.sid).trim() : '';
-  const ctx = resolveSpreadsheetContext(sidParam);
+  // 무인증 GET 요청에서는 ScriptProperties의 시트 ID를 절대 덮어쓰지 않음(allowPersist = false)
+  const ctx = resolveSpreadsheetContext(sidParam, false);
   if (!ctx.ss) {
     return jsonResponse({ ok: false, needsSpreadsheetId: true, error: ctx.error });
   }
   const ss = ctx.ss;
-  const action = (e && e.parameter && e.parameter.action) ? String(e.parameter.action) : 'ping';
   const role = (e && e.parameter && e.parameter.role) ? String(e.parameter.role).trim() : '';
   const dt = (e && e.parameter && e.parameter.dt) ? String(e.parameter.dt).trim() : '';
 
@@ -1415,14 +1556,14 @@ function doGet(e) {
   Object.keys(TAB_MAP).forEach(function(k) {
     if (role === 'friend' && k === 'schedule') return;
     const s = ss.getSheetByName(TAB_MAP[k]);
-    summary[k] = (s && s.getLastRow() >= 2) ? String(s.getRange(2, 4).getValue() || '저장됨') : '비어있음';
+    summary[k] = (s && s.getLastRow() >= 2) ? formatCellDate(s.getRange(2, 4).getValue()) || '저장됨' : '비어있음';
   });
   return jsonResponse({
     ok: true,
     status: 'connected',
     store: '롯데하이마트',
     bindingMode: ctx.mode,
-    spreadsheetTitle: ss.getName(),
+    spreadsheetTitle: role === 'friend' ? '스마트상담 클라우드 연동됨' : ss.getName(),
     summary: summary
   });
 }
@@ -1436,16 +1577,44 @@ function doPost(e) {
     const action = String(body.action || 'saveDataset');
     const reqSid = body.spreadsheetId ? String(body.spreadsheetId).trim() : '';
 
-    // 시트 ID를 새로 바인딩할 때는 먼저 PIN 검증(기존 저장된 PIN이 있다면 일치해야만 변경 가능)
-    if (reqSid) {
-      const existingPropsPin = String(PropertiesService.getScriptProperties().getProperty('ADMIN_PIN') || '').trim();
-      const inputPin = String(body.pin || '').trim();
-      if (existingPropsPin && inputPin !== existingPropsPin) {
-        return jsonResponse({ ok: false, error: '관리자 업로드 비밀번호(PIN)가 일치하지 않아 시트를 변경할 수 없습니다.' });
+    // 1차로 영속 저장 없이 대상 시트를 열어 PIN을 먼저 검증한 뒤에만 시트 ID를 영속 저장
+    const ctx = resolveSpreadsheetContext(reqSid, false);
+
+    // 인스타 광고 고객 DB 연동 (syncLeads / saveBackupState) — 기존 기능 100% 보존
+    if (action === 'syncLeads' || action === 'saveBackupState') {
+      const instaSs = resolveInstaSpreadsheet(body.instaSpreadsheetId || '', false);
+      const pinCheckTarget = ctx.ss || instaSs;
+      const pinCheck = verifyOrInitPin(pinCheckTarget, body.pin);
+      if (!pinCheck.ok) {
+        Utilities.sleep(300);
+        return jsonResponse({ ok: false, error: pinCheck.error });
       }
+      if (body.instaSpreadsheetId) {
+        resolveInstaSpreadsheet(body.instaSpreadsheetId, true);
+      }
+      const finalInstaSs = instaSs || ctx.ss;
+      if (!finalInstaSs) {
+        return jsonResponse({ ok: false, error: '연결된 인스타 고객 DB 구글 시트를 찾을 수 없습니다. 인스타 DB 설정에서 시트 주소를 확인해 주세요.' });
+      }
+      if (action === 'saveBackupState') {
+        if (body.backupState) {
+          writeInstaBackup(finalInstaSs, body.backupState);
+        }
+        return jsonResponse({ ok: true });
+      }
+      const sheets = finalInstaSs.getSheets();
+      const outSheets = [];
+      for (let i = 0; i < sheets.length; i++) {
+        const sh = sheets[i];
+        const name = sh.getName();
+        if (name === BACKUP_SHEET_NAME || name === FRIEND_ACCESS_TAB || name === GUIDE_TAB || name.indexOf('_') === 0) continue;
+        if (sh.getLastRow() < 2 || sh.getLastColumn() < 2) continue;
+        outSheets.push({ name: name, rows: sh.getDisplayValues() });
+      }
+      const backupState = readInstaBackup(finalInstaSs);
+      return jsonResponse({ ok: true, sheets: outSheets, backupState: backupState });
     }
 
-    const ctx = resolveSpreadsheetContext(reqSid);
     if (!ctx.ss) {
       return jsonResponse({ ok: false, needsSpreadsheetId: true, error: ctx.error });
     }
@@ -1454,6 +1623,7 @@ function doPost(e) {
     if (action === 'diagnoseCloudSync') {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      if (reqSid) resolveSpreadsheetContext(reqSid, true);
       const friendStore = readAllFriendInviteRows(ss);
       const boundCount = friendStore.records.filter(function(r) { return r.status === 'BOUND'; }).length;
       const sharedCfg = readSharedGeminiConfig();
@@ -1485,6 +1655,7 @@ function doPost(e) {
     if (action === 'saveSharedGeminiConfig') {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      if (reqSid) resolveSpreadsheetContext(reqSid, true);
       const props = PropertiesService.getScriptProperties();
       const current = readSharedGeminiConfig();
 
@@ -1570,7 +1741,7 @@ function doPost(e) {
 
       if (boundTokens.indexOf(deviceToken) !== -1) {
         store.sheet.getRange(found.rowNumber, 4).setValue('BOUND');
-        store.sheet.getRange(found.rowNumber, 10).setValue(nowStr);
+        store.sheet.getRange(found.rowNumber, 10).setValue("'" + nowStr);
         SpreadsheetApp.flush();
         const aiPayload = resolveFriendSharedKeyPayload(found.codeId, 'BOUND');
         return jsonResponse({
@@ -1595,9 +1766,9 @@ function doPost(e) {
           found.maxDevices,
           nextTokens,
           nextUa,
-          found.createdAt || nowStr,
-          found.boundAt || nowStr,
-          nowStr
+          "'" + (found.createdAt || nowStr),
+          "'" + (found.boundAt || nowStr),
+          "'" + nowStr
         ]]);
         SpreadsheetApp.flush();
         const aiPayload = resolveFriendSharedKeyPayload(found.codeId, 'BOUND');
@@ -1633,8 +1804,11 @@ function doPost(e) {
       if (!matched || matched.status !== 'BOUND' || parseTokenList(matched.boundDeviceToken).indexOf(deviceToken) === -1) {
         return jsonResponse({ ok: true, valid: false, revoked: true });
       }
-      store.sheet.getRange(matched.rowNumber, 10).setValue(nowKstLabel());
-      SpreadsheetApp.flush();
+      const nowStr = nowKstLabel();
+      if (!matched.lastSeenAt || matched.lastSeenAt.slice(0, 15) !== nowStr.slice(0, 15)) {
+        store.sheet.getRange(matched.rowNumber, 10).setValue("'" + nowStr);
+        SpreadsheetApp.flush();
+      }
       const aiPayload = resolveFriendSharedKeyPayload(matched.codeId, matched.status);
       return jsonResponse({
         ok: true,
@@ -1650,6 +1824,7 @@ function doPost(e) {
     if (action === 'listFriendInvites') {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      if (reqSid) resolveSpreadsheetContext(reqSid, true);
       const sharedCfg = readSharedGeminiConfig();
       const store = readAllFriendInviteRows(ss);
       const items = store.records.slice().reverse().map(function(r) {
@@ -1665,6 +1840,7 @@ function doPost(e) {
     if (action === 'issueFriendInvite') {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      if (reqSid) resolveSpreadsheetContext(reqSid, true);
       const label = String(body.label || '').trim() || '친구1';
       const maxDevices = Math.max(1, Math.min(5, Math.floor(Number(body.maxDevices) || 1)));
       const savedPin = readSavedAdminPin(ss);
@@ -1683,9 +1859,9 @@ function doPost(e) {
       if (!inviteCode) {
         return jsonResponse({ ok: false, error: '초대코드 생성에 실패했습니다. 다시 시도해 주세요.' });
       }
-      const codeId = 'INV-' + Date.now() + '-' + Math.floor(100 + Math.random() * 900);
+      const codeId = 'INV-' + Utilities.getUuid().slice(0, 8).toUpperCase();
       const nowStr = nowKstLabel();
-      store.sheet.appendRow([codeId, "'" + inviteCode, label, 'ACTIVE', maxDevices, '', '', nowStr, '', '']);
+      store.sheet.appendRow([codeId, "'" + inviteCode, label, 'ACTIVE', maxDevices, '', '', "'" + nowStr, '', '']);
       SpreadsheetApp.flush();
       const updated = readAllFriendInviteRows(ss);
       const createdRec = updated.records.find(function(r) { return r.codeId === codeId; });
@@ -1713,6 +1889,7 @@ function doPost(e) {
     if (action === 'updateFriendInviteStatus') {
       const pinCheck = verifyOrInitPin(ss, body.pin);
       if (!pinCheck.ok) return jsonResponse({ ok: false, error: pinCheck.error });
+      if (reqSid) resolveSpreadsheetContext(reqSid, true);
       const codeId = String(body.codeId || '').trim();
       const mode = String(body.mode || '').trim();
       const store = readAllFriendInviteRows(ss);
@@ -1760,6 +1937,7 @@ function doPost(e) {
     if (!pinCheck.ok) {
       return jsonResponse({ ok: false, error: pinCheck.error });
     }
+    if (reqSid) resolveSpreadsheetContext(reqSid, true);
     const serialized = typeof body.payload === 'string' ? body.payload : JSON.stringify(body.data || {});
     const chunks = [];
     for (let i = 0; i < serialized.length; i += CHUNK_SIZE) {

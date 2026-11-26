@@ -653,6 +653,10 @@ export function setAdminDeviceUnlocked(unlocked: boolean): void {
   if (unlocked && isFriendRestrictedMode()) return;
   try {
     localStorage.setItem(ADMIN_UNLOCK_STORAGE_KEY, unlocked ? 'true' : 'false');
+    if (unlocked) {
+      localStorage.setItem('himart_gj_owner_db_unlocked_v1', '1');
+      window.dispatchEvent(new CustomEvent('himart_gj_marketing_db_updated'));
+    }
     window.dispatchEvent(new CustomEvent(ADMIN_MODE_CHANGED_EVENT));
   } catch {
     // ignore
