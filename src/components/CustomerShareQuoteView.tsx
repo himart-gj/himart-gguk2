@@ -31,6 +31,7 @@ import {
   loadCachedCustomerQuotePayload,
   normalizeConsultantRoleTitle,
   SharedQuotePayload,
+  syncFriendRemoteProfileFromCloud,
   unlockStaffDeviceWithPin,
 } from '../utils/shareQuoteCodec';
 import {
@@ -1326,15 +1327,17 @@ export const CustomerShareQuoteView: React.FC<CustomerShareQuoteViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 w-full min-[480px]:w-auto shrink-0">
-            <a
-              href={mapSearchUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="min-h-[42px] min-w-[42px] p-2 rounded-xl bg-[#F8FAFC] dark:bg-[#1E293B] hover:bg-[#F2F4F6] text-[#191F28] dark:text-slate-100 border border-[#D1D6DB] dark:border-white/10 inline-flex items-center justify-center shrink-0"
-              title="매장 위치 지도 보기"
-            >
-              <MapPin className="w-4 h-4 text-[#4E5968] dark:text-slate-300" />
-            </a>
+            {!payload.consultant.hideStoreMap && (
+              <a
+                href={mapSearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[42px] min-w-[42px] p-2 rounded-xl bg-[#F8FAFC] dark:bg-[#1E293B] hover:bg-[#F2F4F6] text-[#191F28] dark:text-slate-100 border border-[#D1D6DB] dark:border-white/10 inline-flex items-center justify-center shrink-0"
+                title="매장 위치 지도 보기"
+              >
+                <MapPin className="w-4 h-4 text-[#4E5968] dark:text-slate-300" />
+              </a>
+            )}
 
             <button
               type="button"
@@ -1441,7 +1444,7 @@ export const CustomerShareStandaloneRoot: React.FC = () => {
         </div>
         <div className="text-sm sm:text-base font-black">맞춤 견적서를 불러오는 중입니다...</div>
         <p className="text-xs text-[#8B95A1] dark:text-slate-400 font-medium mt-1">
-          롯데하이마트 경기광주점 고객 전용 뷰어
+          롯데하이마트 고객 전용 맞춤 견적 뷰어
         </p>
       </div>
     );
@@ -1463,6 +1466,22 @@ export const CustomerShareStandaloneRoot: React.FC = () => {
 export const PublicZeroTrustGateRoot: React.FC<{
   onStaffVerified: () => void;
 }> = ({ onStaffVerified }) => {
+  const isInviteEntry = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      if (
+        typeof sessionStorage !== 'undefined' &&
+        sessionStorage.getItem(PENDING_INVITE_PROMPT_KEY) === '1'
+      ) {
+        return true;
+      }
+      const p = new URLSearchParams(window.location.search);
+      return Boolean((p.get('invite') || '').trim());
+    } catch {
+      return false;
+    }
+  }, []);
+
   const [showPinBox, setShowPinBox] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -1526,6 +1545,9 @@ export const PublicZeroTrustGateRoot: React.FC<{
       try {
         const authRes = await authenticateDeviceWithCloud(trimmed);
         if (authRes.ok) {
+          if (authRes.role === 'friend') {
+            await syncFriendRemoteProfileFromCloud(authRes.codeId);
+          }
           setPinErrorMsg(null);
           onStaffVerified();
           return;
@@ -1557,25 +1579,39 @@ export const PublicZeroTrustGateRoot: React.FC<{
             <span className="px-2 py-0.5 rounded bg-[#E60012] text-white text-[11.5px] font-black tracking-wider">
               LOTTE HIMART
             </span>
-            <span className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300">경기광주점</span>
+            {!isInviteEntry && (
+              <span className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300">경기광주점</span>
+            )}
           </div>
           <h1 className="text-base sm:text-lg font-black tracking-tight break-keep">
-            전용 견적 링크로만 열람 가능합니다
+            {isInviteEntry
+              ? '전용 초대코드 기기 인증'
+              : '전용 견적 링크로만 열람 가능합니다'}
           </h1>
           <p className="text-xs sm:text-sm text-[#4E5968] dark:text-slate-300 leading-relaxed font-medium break-keep">
-            문자(SMS) 또는 카카오톡으로 전달받으신 <strong>맞춤 견적 링크</strong>를 눌러 접속해 주세요.
+            {isInviteEntry ? (
+              <>
+                전달받으신 <strong>1회용 8자리 등록코드</strong>를 입력하면 본인 휴대폰 1대에 전용 귀속됩니다.
+              </>
+            ) : (
+              <>
+                문자(SMS) 또는 카카오톡으로 전달받으신 <strong>맞춤 견적 링크</strong>를 눌러 접속해 주세요.
+              </>
+            )}
           </p>
         </div>
 
-        <a
-          href="https://map.naver.com/p/search/%EB%A1%AF%EB%8D%B0%ED%95%98%EC%9D%B4%EB%A7%88%ED%8A%B8%20%EA%B2%BD%EA%B8%B0%EA%B4%91%EC%A3%BC%EC%A0%90"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="min-h-[42px] w-full py-3 px-4 rounded-xl bg-[#191F28] dark:bg-[#1E293B] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 transition"
-        >
-          <MapPin className="w-4 h-4 text-[#FF6B78] shrink-0" />
-          <span>롯데하이마트 경기광주점 위치 안내</span>
-        </a>
+        {!isInviteEntry && (
+          <a
+            href="https://map.naver.com/p/search/%EB%A1%AF%EB%8D%B0%ED%95%98%EC%9D%B4%EB%A7%88%ED%8A%B8%20%EA%B2%BD%EA%B8%B0%EA%B4%91%EC%A3%BC%EC%A0%90"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-h-[42px] w-full py-3 px-4 rounded-xl bg-[#191F28] dark:bg-[#1E293B] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black inline-flex items-center justify-center gap-1.5 transition"
+          >
+            <MapPin className="w-4 h-4 text-[#FF6B78] shrink-0" />
+            <span>롯데하이마트 경기광주점 위치 안내</span>
+          </a>
+        )}
 
         {showPinBox && (
           <div className="pt-3 border-t border-[#E5E8EB] dark:border-white/10">

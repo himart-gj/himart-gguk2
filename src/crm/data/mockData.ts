@@ -1,10 +1,9 @@
 import { CustomerItem, SMSTemplate } from '../types/crm';
 import { formatCurrency } from '../utils/date';
-import { loadConsultantProfile } from '../../utils/shareQuoteCodec';
+import { getEffectiveStoreDisplayName } from '../../utils/shareQuoteCodec';
 
 function getOfficialStoreName(): string {
-  const configured = (loadConsultantProfile().storeName || '').trim();
-  return configured || '롯데하이마트 경기광주점';
+  return getEffectiveStoreDisplayName();
 }
 
 // 초기 실행 시 가짜 샘플 고객이 보이지 않도록 빈 배열로 시작합니다.

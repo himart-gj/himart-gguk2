@@ -42,6 +42,11 @@ import { ProposalPreviewFreedGuide } from './ProposalPreviewFreedGuide';
 import { PreedSafetyGuideBox } from './ProposalComplianceBlocks';
 import { ViewportSafePopover } from './ui/ViewportSafePopover';
 import { scrollToTopInstant } from '../utils/mobileQaRuntime';
+import {
+  CONSULTANT_PROFILE_UPDATED_EVENT,
+  getEffectiveStoreDisplayName,
+  getShortBranchLabel,
+} from '../utils/shareQuoteCodec';
 
 interface ProposalPreviewProps {
   state: ProposalState;
@@ -69,11 +74,21 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
   const [isShareLinkOpen, setIsShareLinkOpen] = useState(false);
   const [isShareMenuOpen, setIsShareMenuOpen] = useState(false);
   const [shareInitialMasked, setShareInitialMasked] = useState(false);
+  const [, setStoreProfileTick] = useState(0);
   const viewportRef = useRef<HTMLDivElement>(null);
   const proposalSheetRef = useRef<HTMLDivElement>(null);
   const guideSheetRef = useRef<HTMLDivElement>(null);
   const shareMenuBtnRef = useRef<HTMLButtonElement>(null);
   const savePrintBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const onProf = () => setStoreProfileTick((v) => v + 1);
+    window.addEventListener(CONSULTANT_PROFILE_UPDATED_EVENT, onProf);
+    return () =>
+      window.removeEventListener(CONSULTANT_PROFILE_UPDATED_EVENT, onProf);
+  }, []);
+  const previewFullStoreName = getEffectiveStoreDisplayName();
+  const previewShortBranch = getShortBranchLabel(previewFullStoreName);
 
   const [scale, setScale] = useState(1);
   const [sheetH, setSheetH] = useState(860);
@@ -1143,7 +1158,9 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                           LOTTE HIMART
                         </span>
                         <span className="text-xs font-extrabold text-[#4E5968]">
-                          경기광주점 공식 맞춤 제안서
+                          {previewShortBranch
+                            ? `${previewShortBranch} 공식 맞춤 제안서`
+                            : '공식 맞춤 제안서'}
                         </span>
                         {hasBothPlans && (
                           <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#191F28] text-white text-[11.5px] font-extrabold">
@@ -1193,7 +1210,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
                         </>
                       ) : (
                         <>
-                          선택하신 <strong className="font-extrabold text-[#191F28]">{state.generalItems.length}품목</strong> 패키지에 대한 롯데하이마트 경기광주점 공식 견적 안내입니다.
+                          선택하신 <strong className="font-extrabold text-[#191F28]">{state.generalItems.length}품목</strong> 패키지에 대한 {previewFullStoreName} 공식 견적 안내입니다.
                         </>
                       )}
                     </p>
@@ -1488,7 +1505,7 @@ export const ProposalPreview: React.FC<ProposalPreviewProps> = ({
 
                   {/* 하단 공식 푸터 */}
                   <div className="pt-2 border-t border-[#E5E8EB] flex flex-wrap items-center justify-between gap-2 text-[11.5px] font-medium text-[#8B95A1]">
-                    <span>롯데하이마트 경기광주점 · 고객 맞춤 가전 컨설팅 공식 견적서</span>
+                    <span>{previewFullStoreName} · 고객 맞춤 가전 컨설팅 공식 견적서</span>
                     <span>본 제안서는 상담일 기준 프로모션 및 카드사 정책 기준이며 변동될 수 있습니다.</span>
                   </div>
                 </div>

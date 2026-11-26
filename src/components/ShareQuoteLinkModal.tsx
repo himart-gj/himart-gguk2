@@ -14,9 +14,11 @@ import {
   switchQuoteModeInState,
 } from '../types/proposal';
 import {
+  CONSULTANT_PROFILE_UPDATED_EVENT,
   ConsultantProfile,
   createShortenedQuoteLinks,
   EncodedQuoteLinks,
+  FRIEND_NEUTRAL_STORE_NAME,
   getEffectiveStaffPin,
   loadConsultantProfile,
   loadCustomViewerBaseUrl,
@@ -25,8 +27,10 @@ import {
   saveCustomStaffPin,
   saveCustomViewerBaseUrl,
   SharedQuotePayload,
+  syncFriendRemoteProfileFromCloud,
   syncViewerBaseUrlFromServer,
 } from '../utils/shareQuoteCodec';
+import { isFriendRestrictedMode } from '../utils/friendAccessGuard';
 import { maskModelCodeAfter3, maskProposalStateModels } from '../utils/modelMasker';
 import { safeCopyText } from '../utils/mobileQaRuntime';
 import {
@@ -263,6 +267,8 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     () => getActiveCompareModes(state)
   );
 
+  const isFriendMode = isFriendRestrictedMode();
+
   useEffect(() => {
     if (!isOpen) return;
     setProfile(loadConsultantProfile());
@@ -271,6 +277,25 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     setMaskSharedModels(Boolean(initialMaskModels));
     setSelectedCompareModes(getActiveCompareModes(state));
     setCopiedType(null);
+
+    if (isFriendRestrictedMode()) {
+      void syncFriendRemoteProfileFromCloud().then((updated) => {
+        if (updated) {
+          setProfile(loadConsultantProfile());
+        }
+      });
+    }
+
+    const onProfileUpdated = () => {
+      setProfile(loadConsultantProfile());
+    };
+    window.addEventListener(CONSULTANT_PROFILE_UPDATED_EVENT, onProfileUpdated);
+    return () => {
+      window.removeEventListener(
+        CONSULTANT_PROFILE_UPDATED_EVENT,
+        onProfileUpdated
+      );
+    };
   }, [isOpen, customerName, customerPhone, initialMaskModels]);
 
   const isModeDataValid = (targetState: ProposalState, m: QuoteMode): boolean => {
@@ -896,71 +921,99 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             )}
           </div>
 
-          {/* STEP 3: 고객 · 담당 컨설턴트 정보 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <div>
-              <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
-                고객 성함 (선택)
-              </label>
-              <input
-                type="text"
-                value={custInput}
-                onChange={(e) => setCustInput(e.target.value)}
-                placeholder="예: 김민수"
-                className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none ${inputCls}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
-                고객 연락처 (문자앱 수신번호)
-              </label>
-              <input
-                type="tel"
-                inputMode="numeric"
-                value={custPhoneInput}
-                onChange={(e) => setCustPhoneInput(e.target.value)}
-                placeholder="010-0000-0000"
-                className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold font-mono focus:outline-none ${inputCls}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
-                담당 컨설턴트 (자동저장)
-              </label>
-              <input
-                type="text"
-                value={profile.name}
-                onChange={(e) =>
-                  setProfile((p) => ({ ...p, name: e.target.value }))
-                }
-                placeholder="예: 홍길동"
-                className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none ${inputCls}`}
-              />
-            </div>
-            <div>
-              <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
-                담당자 직통 번호 (통화·문자 연동)
-              </label>
-              <input
-                type="tel"
-                inputMode="numeric"
-                value={profile.phone}
-                onChange={(e) =>
-                  setProfile((p) => ({ ...p, phone: e.target.value }))
-                }
-                placeholder="010-0000-0000"
-                className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold font-mono focus:outline-none ${inputCls}`}
-              />
+          {/* STEP 3: 고객 · 소속 지점 · 담당 컨설턴트 정보 */}
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
+                  고객 성함 (선택)
+                </label>
+                <input
+                  type="text"
+                  value={custInput}
+                  onChange={(e) => setCustInput(e.target.value)}
+                  placeholder="예: 김민수"
+                  className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none ${inputCls}`}
+                />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
+                  고객 연락처 (문자앱 수신번호)
+                </label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={custPhoneInput}
+                  onChange={(e) => setCustPhoneInput(e.target.value)}
+                  placeholder="010-0000-0000"
+                  className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold font-mono focus:outline-none ${inputCls}`}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
+                  소속 지점명 (자동저장 · 고객 견적서 및 문자·카톡 상단 표기)
+                </label>
+                <input
+                  type="text"
+                  value={profile.storeName}
+                  onChange={(e) =>
+                    setProfile((p) => ({
+                      ...p,
+                      storeName: e.target.value,
+                      storeCustomized: true,
+                    }))
+                  }
+                  placeholder="예: 롯데하이마트 수원점"
+                  className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none ${inputCls}`}
+                />
+                {isFriendMode &&
+                  profile.storeName.trim() === FRIEND_NEUTRAL_STORE_NAME && (
+                    <p className="mt-1 text-[11px] font-bold text-[#1B64DA] dark:text-blue-300 break-keep">
+                      💡 본인 소속 지점명(예: 롯데하이마트 OO점)을 한 번 입력해 두면 다음부터 자동 저장됩니다.
+                    </p>
+                  )}
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
+                  담당 컨설턴트 (자동저장)
+                </label>
+                <input
+                  type="text"
+                  value={profile.name}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, name: e.target.value }))
+                  }
+                  placeholder="예: 홍길동"
+                  className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none ${inputCls}`}
+                />
+              </div>
+              <div>
+                <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
+                  담당자 직통 번호 (통화·문자 연동)
+                </label>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={profile.phone}
+                  onChange={(e) =>
+                    setProfile((p) => ({ ...p, phone: e.target.value }))
+                  }
+                  placeholder="010-0000-0000"
+                  className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold font-mono focus:outline-none ${inputCls}`}
+                />
+              </div>
             </div>
           </div>
 
-          {/* 미니 뷰어 도메인 연결 설정 */}
-          <SecurityDomainConfigBox
-            isDark={isDark}
-            onDomainChanged={() => {
-              setProfile((p) => ({ ...p }));
-            }}
-          />
+          {/* 미니 뷰어 도메인 연결 설정 (오너/내부 직원 기기 전용) */}
+          {!isFriendMode && (
+            <SecurityDomainConfigBox
+              isDark={isDark}
+              onDomainChanged={() => {
+                setProfile((p) => ({ ...p }));
+              }}
+            />
+          )}
 
           {/* 생성된 단축 URL 바 */}
           <div

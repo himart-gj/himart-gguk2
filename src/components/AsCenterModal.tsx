@@ -17,6 +17,7 @@ import {
   PLUX_CATEGORY_BUTTON_LABELS,
 } from './asCenterData';
 import { FlagshipModalShell } from './ui/FlagshipModalShell';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 
 export interface AsCenterModalProps {
   isOpen: boolean;
@@ -137,7 +138,7 @@ export const AsCenterModal: React.FC<AsCenterModalProps> = ({
   if (!isOpen) return null;
 
   const tclRemoteGuideText = [
-    '[롯데하이마트 경기광주점] 📺 TCL TV 통합리모컨(IPTV) 호환 설정 안내',
+    `[${getEffectiveStoreDisplayName()}] 📺 TCL TV 통합리모컨(IPTV) 호환 설정 안내`,
     '• TCL 고객센터: 1660-1870 (패널 3년 / 일반부품 2년 무상보증)',
     '',
     '① 사전 준비: 셋탑박스를 TV HDMI 1번 포트(권장)에 연결해 주세요.',

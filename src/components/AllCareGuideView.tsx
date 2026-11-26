@@ -17,6 +17,7 @@ import {
 import { AppSubViewHeader } from './ui/AppSubViewHeader';
 import { SurfaceCard } from './ui/SurfaceCard';
 import { KpiMetricStrip } from './ui/KpiMetricStrip';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 
 interface AllCareGuideViewProps {
   onBackToHome: () => void;
@@ -33,7 +34,7 @@ export const AllCareGuideView: React.FC<AllCareGuideViewProps> = ({
   const [copiedKakao, setCopiedKakao] = useState(false);
 
   const kakaoGuideMessage = [
-    '[롯데하이마트 경기광주점] 🛡️ 가전올케어 보유가전 등록 안내',
+    `[${getEffectiveStoreDisplayName()}] 🛡️ 가전올케어 보유가전 등록 안내`,
     '',
     '▶ 보유가전 등록 사이트',
     REGISTRATION_URL,

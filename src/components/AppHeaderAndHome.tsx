@@ -41,6 +41,10 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
+import {
+  CONSULTANT_PROFILE_UPDATED_EVENT,
+  getShortBranchLabel,
+} from '../utils/shareQuoteCodec';
 
 export type QuickConsultationGroupKey =
   | 'care-insurance'
@@ -153,6 +157,15 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const [activeQuickGroup, setActiveQuickGroup] = useState<QuickConsultationGroupKey | null>(null);
   const [copiedLandingId, setCopiedLandingId] = useState<string | null>(null);
+  const [, setHeaderProfileTick] = useState(0);
+
+  useEffect(() => {
+    const onProf = () => setHeaderProfileTick((v) => v + 1);
+    window.addEventListener(CONSULTANT_PROFILE_UPDATED_EVENT, onProf);
+    return () =>
+      window.removeEventListener(CONSULTANT_PROFILE_UPDATED_EVENT, onProf);
+  }, []);
+  const headerBranchLabel = getShortBranchLabel();
 
   useEffect(() => {
     if (!activeQuickGroup) return;
@@ -257,13 +270,15 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 step !== 'home' ? 'min-[460px]:hidden text-[#E60012]' : 'sm:hidden'
               }`}
             />
-            <span
-              className={`${
-                step !== 'home' ? 'hidden lg:inline' : 'hidden sm:inline'
-              } tracking-tight font-extrabold whitespace-nowrap`}
-            >
-              경기광주점
-            </span>
+            {headerBranchLabel && (
+              <span
+                className={`${
+                  step !== 'home' ? 'hidden lg:inline' : 'hidden sm:inline'
+                } tracking-tight font-extrabold whitespace-nowrap`}
+              >
+                {headerBranchLabel}
+              </span>
+            )}
           </button>
 
           {step !== 'home' && (
@@ -1180,14 +1195,18 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                       icon: Percent,
                       tone: 'text-[#E60012] bg-[#FFF1F2] dark:bg-rose-500/20 dark:text-rose-300',
                     },
-                    {
-                      key: 'landing-links' as QuickConsultationGroupKey,
-                      title: '내 랜딩페이지',
-                      sub: '구독 랜딩 · 매장 랜딩 · 구독 관리자',
-                      pill: '3개 링크',
-                      icon: Globe,
-                      tone: 'text-[#191F28] bg-[#F2F4F6] dark:bg-white/15 dark:text-slate-100',
-                    },
+                    ...(!isFriendMode
+                      ? [
+                          {
+                            key: 'landing-links' as QuickConsultationGroupKey,
+                            title: '내 랜딩페이지',
+                            sub: '구독 랜딩 · 매장 랜딩 · 구독 관리자',
+                            pill: '3개 링크',
+                            icon: Globe,
+                            tone: 'text-[#191F28] bg-[#F2F4F6] dark:bg-white/15 dark:text-slate-100',
+                          },
+                        ]
+                      : []),
                   ].map((tile) => {
                     const IconComp = tile.icon;
                     return (

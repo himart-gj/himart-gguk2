@@ -432,8 +432,7 @@ export const CustomerCard: React.FC<CustomerCardProps> = ({
 
     let text = '';
     const storeDisplayName =
-      (loadConsultantProfile().storeName || '').trim() ||
-      '롯데하이마트 경기광주점';
+      (loadConsultantProfile().storeName || '').trim() || '롯데하이마트';
     const fmtSubNetMonthly = (amt: number) =>
       amt <= 0
         ? amt < 0

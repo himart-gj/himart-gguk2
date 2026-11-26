@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BootEntryMode, resolveBootEntryMode } from './utils/shareQuoteCodec';
+import {
+  BootEntryMode,
+  resolveBootEntryMode,
+  syncFriendRemoteProfileFromCloud,
+} from './utils/shareQuoteCodec';
 import {
   FRIEND_DEVICE_REVOKED_KEY,
   FRIEND_ROLE_CHANGED_EVENT,
@@ -70,13 +74,19 @@ const RootDispatcher: React.FC = () => {
     };
   }, []);
 
-  // 친구 세션일 때 마운트 직후 1회 및 포그라운드 복귀 시(60초 쿨다운) 원격 차단 여부 서버 검증
+  // 친구 세션일 때 마운트 직후 1회 및 포그라운드 복귀 시(60초 쿨다운) 원격 차단 여부 검증 + 오너 원격 지정 프로필(지점명·이름·연락처) 동기화
   useEffect(() => {
     if (mode !== 'staff-app' || !isFriendRestrictedMode()) return;
 
     purgeLocalScheduleAndOwnerState();
     let lastCheckedAt = Date.now();
-    void verifyFriendSessionHeartbeat();
+    const runHeartbeatAndProfileSync = async () => {
+      const status = await verifyFriendSessionHeartbeat();
+      if (status === 'valid' || status === 'offline') {
+        await syncFriendRemoteProfileFromCloud();
+      }
+    };
+    void runHeartbeatAndProfileSync();
 
     const onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
@@ -84,7 +94,7 @@ const RootDispatcher: React.FC = () => {
       const now = Date.now();
       if (now - lastCheckedAt < HEARTBEAT_COOLDOWN_MS) return;
       lastCheckedAt = now;
-      void verifyFriendSessionHeartbeat();
+      void runHeartbeatAndProfileSync();
     };
 
     document.addEventListener('visibilitychange', onVisibilityChange);

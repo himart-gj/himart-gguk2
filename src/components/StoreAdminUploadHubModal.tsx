@@ -18,8 +18,10 @@ import {
   Link2,
   Loader2,
   Lock,
+  Pencil,
   RefreshCw,
   RotateCcw,
+  Save,
   Settings,
   Shield,
   ShieldCheck,
@@ -33,11 +35,15 @@ import {
   StoreCloudKind,
   buildStaffAutoConnectUrl,
   clearStoreCloudMicroCache,
+  deleteFriendRemoteProfile,
+  fetchAllFriendRemoteProfiles,
   fetchStoreCloudDataset,
+  FriendRemoteProfile,
   getStoreCloudAppsScriptCode,
   normalizeGasWebAppUrl,
   OWNER_CUSTOM_PIN_STORAGE_KEY,
   readRawSyncConfig,
+  saveFriendRemoteProfile,
   saveStoreCloudDataset,
   STORE_CLOUD_UPDATED_EVENT,
   UNCONFIGURED_PIN_SENTINEL,
@@ -174,7 +180,23 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
 
   // 외부 지인(친구) 전용 1기기 잠금 초대코드 관리 상태
   const [friendLabelInput, setFriendLabelInput] = useState<string>('친구1');
+  const [newFriendStoreInput, setNewFriendStoreInput] = useState<string>('');
+  const [newFriendNameInput, setNewFriendNameInput] = useState<string>('');
+  const [newFriendPhoneInput, setNewFriendPhoneInput] = useState<string>('');
   const [friendInvites, setFriendInvites] = useState<FriendInviteItem[]>([]);
+  const [friendRemoteProfiles, setFriendRemoteProfiles] = useState<
+    Record<string, FriendRemoteProfile>
+  >({});
+  const [editingProfileCodeId, setEditingProfileCodeId] = useState<string | null>(
+    null
+  );
+  const [editProfileDraft, setEditProfileDraft] = useState<{
+    storeName: string;
+    consultantName: string;
+    phone: string;
+  }>({ storeName: '', consultantName: '', phone: '' });
+  const [isSavingRemoteProfile, setIsSavingRemoteProfile] =
+    useState<boolean>(false);
   const [isLoadingInvites, setIsLoadingInvites] = useState<boolean>(false);
   const [isIssuingInvite, setIsIssuingInvite] = useState<boolean>(false);
   const [busyInviteCodeId, setBusyInviteCodeId] = useState<string | null>(null);
@@ -222,11 +244,12 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setPinInput('');
     setPinError(null);
     setIsVerifyingPin(false);
+    setEditingProfileCodeId(null);
     setCloudVerified(normalizeGasWebAppUrl(rawCfg.repo) ? null : false);
     setDataTick((v) => v + 1);
   }, [isOpen]);
 
-  // 관리자 인증 상태에서 시트 URL · PIN이 준비되어 있으면 친구 초대코드 목록 자동 로드
+  // 관리자 인증 상태에서 시트 URL · PIN이 준비되어 있으면 친구 초대코드 목록 + 원격 프로필 자동 로드
   useEffect(() => {
     if (!isOpen || !isAdmin) return;
     const rawCfg = readRawSyncConfig();
@@ -237,9 +260,13 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     let cancelled = false;
     setIsLoadingInvites(true);
     setFriendPanelError(null);
-    void fetchFriendInviteList(targetUrl, targetPin)
-      .then((res) => {
+    void Promise.all([
+      fetchFriendInviteList(targetUrl, targetPin),
+      fetchAllFriendRemoteProfiles(targetUrl),
+    ])
+      .then(([res, remoteMap]) => {
         if (cancelled) return;
+        setFriendRemoteProfiles(remoteMap || {});
         if (res.ok) {
           setFriendInvites(res.items);
         } else {
@@ -613,7 +640,11 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setIsLoadingInvites(true);
     setFriendPanelError(null);
     try {
-      const res = await fetchFriendInviteList(auth.url, auth.pin);
+      const [res, remoteMap] = await Promise.all([
+        fetchFriendInviteList(auth.url, auth.pin),
+        fetchAllFriendRemoteProfiles(auth.url),
+      ]);
+      setFriendRemoteProfiles(remoteMap || {});
       if (res.ok) {
         setFriendInvites(res.items);
       } else {
@@ -630,6 +661,10 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     if (!auth) return;
 
     const cleanLabel = friendLabelInput.trim() || '친구1';
+    const initStore = newFriendStoreInput.trim();
+    const initName = newFriendNameInput.trim();
+    const initPhone = newFriendPhoneInput.trim();
+
     setIsIssuingInvite(true);
     setFriendPanelError(null);
     try {
@@ -647,6 +682,26 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       } else if (res.item) {
         setFriendInvites((prev) => [res.item!, ...prev]);
       }
+
+      if (res.item?.codeId && (initStore || initName || initPhone)) {
+        const profRes = await saveFriendRemoteProfile(
+          auth.url,
+          auth.pin,
+          res.item.codeId,
+          {
+            storeName: initStore,
+            consultantName: initName,
+            phone: initPhone,
+          }
+        );
+        if (profRes.ok && profRes.profiles) {
+          setFriendRemoteProfiles(profRes.profiles);
+        }
+        setNewFriendStoreInput('');
+        setNewFriendNameInput('');
+        setNewFriendPhoneInput('');
+      }
+
       const formatted = res.item
         ? formatFriendInviteCode(res.item.inviteCode)
         : '';
@@ -656,6 +711,68 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       );
     } finally {
       setIsIssuingInvite(false);
+    }
+  };
+
+  const handleOpenRemoteProfileEditor = (item: FriendInviteItem) => {
+    if (editingProfileCodeId === item.codeId) {
+      setEditingProfileCodeId(null);
+      return;
+    }
+    const existing = friendRemoteProfiles[item.codeId];
+    setEditProfileDraft({
+      storeName: existing?.storeName || '',
+      consultantName: existing?.consultantName || '',
+      phone: existing?.phone || '',
+    });
+    setEditingProfileCodeId(item.codeId);
+  };
+
+  const handleSaveRemoteProfileForFriend = async (item: FriendInviteItem) => {
+    if (isSavingRemoteProfile) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const cleanStore = editProfileDraft.storeName.trim();
+    const cleanName = editProfileDraft.consultantName.trim();
+    const cleanPhone = editProfileDraft.phone.trim();
+
+    if (!cleanStore && !cleanName && !cleanPhone) {
+      showToastMessage(
+        'error',
+        '지점명, 담당자 이름, 연락처 중 최소 1개 이상을 입력해 주세요.'
+      );
+      return;
+    }
+
+    setIsSavingRemoteProfile(true);
+    setFriendPanelError(null);
+    try {
+      const saveRes = await saveFriendRemoteProfile(
+        auth.url,
+        auth.pin,
+        item.codeId,
+        {
+          storeName: cleanStore,
+          consultantName: cleanName,
+          phone: cleanPhone,
+        }
+      );
+      if (!saveRes.ok) {
+        setFriendPanelError(saveRes.message);
+        showToastMessage('error', `⚠️ ${saveRes.message}`);
+        return;
+      }
+      if (saveRes.profiles) {
+        setFriendRemoteProfiles(saveRes.profiles);
+      }
+      setEditingProfileCodeId(null);
+      showToastMessage(
+        'success',
+        `✅ [${item.label}] 기기에 지점명(${cleanStore || '유지'}) · 담당자(${cleanName || '유지'}) 원격 설정 완료! 친구가 앱을 열거나 견적전달 창을 열면 자동 반영됩니다.`
+      );
+    } finally {
+      setIsSavingRemoteProfile(false);
     }
   };
 
@@ -737,6 +854,14 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         setFriendPanelError(msg);
         showToastMessage('error', `⚠️ ${msg}`);
         return;
+      }
+      if (mode === 'delete') {
+        void deleteFriendRemoteProfile(auth.url, auth.pin, item.codeId);
+        setFriendRemoteProfiles((prev) => {
+          const next = { ...prev };
+          delete next[item.codeId];
+          return next;
+        });
       }
       if (Array.isArray(res.items)) {
         setFriendInvites(res.items);
@@ -1537,28 +1662,57 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                   </button>
                 </div>
 
-                {/* 별칭 입력 + [+ 1회용 8자리 코드 발급] */}
-                <div className="flex flex-col min-[460px]:flex-row items-stretch min-[460px]:items-center gap-2">
-                  <input
-                    type="text"
-                    value={friendLabelInput}
-                    onChange={(e) => setFriendLabelInput(e.target.value)}
-                    placeholder="별칭 입력 (예: 친구1)"
-                    className={`flex-1 min-[460px]:max-w-[220px] px-3 py-2 rounded-xl border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
-                  />
-                  <button
-                    type="button"
-                    disabled={isIssuingInvite}
-                    onClick={() => void handleIssueFriendInvite()}
-                    className="py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-slate-800 dark:bg-[#1B64DA] dark:hover:bg-blue-600 disabled:opacity-55 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer transition shrink-0"
-                  >
-                    {isIssuingInvite ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                    ) : (
-                      <UserPlus className="w-3.5 h-3.5 shrink-0" />
-                    )}
-                    <span>+ 1회용 8자리 코드 발급</span>
-                  </button>
+                {/* 별칭 + 초기 지점명·담당자(선택) + [+ 1회용 8자리 코드 발급] */}
+                <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    <input
+                      type="text"
+                      value={friendLabelInput}
+                      onChange={(e) => setFriendLabelInput(e.target.value)}
+                      placeholder="관리용 별칭 (예: 친구1)"
+                      className={`px-3 py-2 rounded-xl border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                    />
+                    <input
+                      type="text"
+                      value={newFriendStoreInput}
+                      onChange={(e) => setNewFriendStoreInput(e.target.value)}
+                      placeholder="소속 지점명 (선택, 예: 롯데하이마트 수원점)"
+                      className={`px-3 py-2 rounded-xl border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                    />
+                    <input
+                      type="text"
+                      value={newFriendNameInput}
+                      onChange={(e) => setNewFriendNameInput(e.target.value)}
+                      placeholder="담당자 이름 (선택, 예: 홍길동)"
+                      className={`px-3 py-2 rounded-xl border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                    />
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={newFriendPhoneInput}
+                      onChange={(e) => setNewFriendPhoneInput(e.target.value)}
+                      placeholder="담당자 연락처 (선택)"
+                      className={`px-3 py-2 rounded-xl border text-base sm:text-xs font-bold font-mono focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className={`text-[11px] font-semibold break-keep ${mutedText}`}>
+                      💡 이미 다운받은 친구도 아래 목록의 <strong>[지점·이름 원격수정]</strong>을 누르면 친구 앱에 원격 자동 반영됩니다. (추천코드 사용자 견적서에는 네이버 지도 버튼이 자동 제외됩니다.)
+                    </p>
+                    <button
+                      type="button"
+                      disabled={isIssuingInvite}
+                      onClick={() => void handleIssueFriendInvite()}
+                      className="w-full sm:w-auto py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-slate-800 dark:bg-[#1B64DA] dark:hover:bg-blue-600 disabled:opacity-55 text-white text-xs font-extrabold inline-flex items-center justify-center gap-1.5 cursor-pointer transition shrink-0"
+                    >
+                      {isIssuingInvite ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      ) : (
+                        <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span>+ 1회용 8자리 코드 발급</span>
+                    </button>
+                  </div>
                 </div>
 
                 {friendPanelError && (
@@ -1583,6 +1737,14 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                       const isBusy = busyInviteCodeId === item.codeId;
                       const isCopied = copiedInviteCodeId === item.codeId;
                       const isRevoked = item.status === 'REVOKED';
+                      const assignedProf = friendRemoteProfiles[item.codeId];
+                      const hasAssignedProf = Boolean(
+                        assignedProf &&
+                          (assignedProf.storeName ||
+                            assignedProf.consultantName ||
+                            assignedProf.phone)
+                      );
+                      const isEditingThis = editingProfileCodeId === item.codeId;
                       const statusBadge =
                         item.status === 'BOUND'
                           ? {
@@ -1602,111 +1764,234 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                       return (
                         <div
                           key={item.codeId}
-                          className={`p-3 rounded-xl border flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 ${subBoxBg}`}
+                          className={`p-3 rounded-xl border space-y-2.5 ${subBoxBg}`}
                         >
-                          <div className="min-w-0 space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-mono text-sm font-black tracking-wider text-[#1B64DA] dark:text-blue-300">
-                                {formattedCode}
-                              </span>
-                              <span className="text-xs font-extrabold">
-                                {item.label}
-                              </span>
-                              <span
-                                className={`px-2 py-0.5 rounded-md border text-[10.5px] font-black ${statusBadge.cls}`}
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono text-sm font-black tracking-wider text-[#1B64DA] dark:text-blue-300">
+                                  {formattedCode}
+                                </span>
+                                <span className="text-xs font-extrabold">
+                                  {item.label}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-md border text-[10.5px] font-black ${statusBadge.cls}`}
+                                >
+                                  {statusBadge.text}
+                                </span>
+                                {hasAssignedProf ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-[#EFF6FF] dark:bg-blue-500/20 border border-[#BFDBFE] dark:border-blue-500/35 text-[#1B64DA] dark:text-blue-200 text-[11px] font-extrabold">
+                                    📍 {assignedProf.storeName || '롯데하이마트'}
+                                    {assignedProf.consultantName
+                                      ? ` · 👤 ${assignedProf.consultantName}`
+                                      : ''}
+                                    {assignedProf.phone
+                                      ? ` · ${assignedProf.phone}`
+                                      : ''}
+                                  </span>
+                                ) : (
+                                  <span
+                                    className={`text-[11px] font-semibold ${mutedText}`}
+                                  >
+                                    (지점·이름 원격 미지정 · 기본 표기: 롯데하이마트)
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                className={`text-[11px] font-medium flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-mono tabular-nums ${mutedText}`}
                               >
-                                {statusBadge.text}
-                              </span>
+                                <span>
+                                  최근 접속: {item.lastSeenAt || item.boundAt || '미접속'}
+                                </span>
+                                {item.createdAt && (
+                                  <span>· 발급: {item.createdAt}</span>
+                                )}
+                                {item.boundDevicePreview && (
+                                  <span>· 기기ID: {item.boundDevicePreview}</span>
+                                )}
+                              </div>
                             </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleOpenRemoteProfileEditor(item)}
+                                className={`py-1.5 px-2.5 rounded-lg border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${
+                                  isEditingThis
+                                    ? 'bg-[#191F28] text-white border-[#191F28] dark:bg-blue-600 dark:border-blue-500'
+                                    : `${cardBg} text-[#1B64DA] dark:text-blue-300 border-[#BFDBFE] dark:border-blue-500/40`
+                                }`}
+                                title="이미 설치·등록된 친구 기기의 고객 견적서 지점명·이름·연락처를 원격으로 지정하거나 수정합니다"
+                              >
+                                <Pencil className="w-3 h-3 shrink-0" />
+                                <span>지점·이름 원격수정</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => void handleCopyFriendInviteGuide(item)}
+                                className="py-1.5 px-2.5 rounded-lg bg-[#1B64DA] hover:bg-[#1552B5] disabled:opacity-50 text-white text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer transition"
+                              >
+                                {isCopied ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 shrink-0" />
+                                    <span>복사됨!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5 shrink-0" />
+                                    <span>초대 안내문 복사</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() =>
+                                  void handleMutateFriendInvite(item, 'reset_device')
+                                }
+                                className={`py-1.5 px-2.5 rounded-lg border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${cardBg}`}
+                                title="휴대폰 기기변경 시 기존 귀속을 풀어 새 휴대폰 1대를 다시 등록할 수 있게 초기화"
+                              >
+                                <RotateCcw className="w-3 h-3 shrink-0" />
+                                <span>기기 초기화</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() =>
+                                  void handleMutateFriendInvite(
+                                    item,
+                                    isRevoked ? 'activate' : 'revoke'
+                                  )
+                                }
+                                className={`py-1.5 px-2.5 rounded-lg text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${
+                                  isRevoked
+                                    ? 'bg-[#059669] hover:bg-emerald-700 text-white'
+                                    : 'bg-[#E60012] hover:bg-[#C8000F] text-white'
+                                }`}
+                              >
+                                {isRevoked ? (
+                                  <>
+                                    <Unlock className="w-3 h-3 shrink-0" />
+                                    <span>차단 해제</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Ban className="w-3 h-3 shrink-0" />
+                                    <span>즉시 차단</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() =>
+                                  void handleMutateFriendInvite(item, 'delete')
+                                }
+                                aria-label="초대코드 삭제"
+                                title="초대코드 영구 삭제"
+                                className={`p-1.5 rounded-lg border cursor-pointer disabled:opacity-50 hover:text-[#E60012] transition ${cardBg} ${mutedText}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {isEditingThis && (
                             <div
-                              className={`text-[11px] font-medium flex flex-wrap items-center gap-x-2.5 gap-y-0.5 font-mono tabular-nums ${mutedText}`}
+                              className={`pt-2.5 border-t border-[#E5E8EB] dark:border-white/10 space-y-2`}
                             >
-                              <span>
-                                최근 접속: {item.lastSeenAt || item.boundAt || '미접속'}
-                              </span>
-                              {item.createdAt && (
-                                <span>· 발급: {item.createdAt}</span>
-                              )}
-                              {item.boundDevicePreview && (
-                                <span>· 기기ID: {item.boundDevicePreview}</span>
-                              )}
+                              <div className="text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-300">
+                                ✏️ [{item.label}] 고객 견적서 표기 프로필 원격 지정 (이미 설치한 친구 기기에도 자동 동기화)
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div>
+                                  <label className="block text-[11px] font-bold mb-1 opacity-80">
+                                    소속 지점명
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editProfileDraft.storeName}
+                                    onChange={(e) =>
+                                      setEditProfileDraft((d) => ({
+                                        ...d,
+                                        storeName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="예: 롯데하이마트 수원점"
+                                    className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold mb-1 opacity-80">
+                                    담당자 이름
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={editProfileDraft.consultantName}
+                                    onChange={(e) =>
+                                      setEditProfileDraft((d) => ({
+                                        ...d,
+                                        consultantName: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="예: 홍길동"
+                                    className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-bold mb-1 opacity-80">
+                                    담당자 직통 연락처 (선택)
+                                  </label>
+                                  <input
+                                    type="tel"
+                                    inputMode="numeric"
+                                    value={editProfileDraft.phone}
+                                    onChange={(e) =>
+                                      setEditProfileDraft((d) => ({
+                                        ...d,
+                                        phone: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="010-0000-0000"
+                                    className={`w-full px-3 py-2 rounded-lg border text-base sm:text-xs font-bold font-mono focus:outline-none focus:border-[#1B64DA] ${inputCls}`}
+                                  />
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  disabled={isSavingRemoteProfile}
+                                  onClick={() => setEditingProfileCodeId(null)}
+                                  className={`px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer ${cardBg}`}
+                                >
+                                  취소
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={isSavingRemoteProfile}
+                                  onClick={() =>
+                                    void handleSaveRemoteProfileForFriend(item)
+                                  }
+                                  className="px-3.5 py-1.5 rounded-lg bg-[#059669] hover:bg-emerald-700 disabled:opacity-55 text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer transition"
+                                >
+                                  {isSavingRemoteProfile ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                                  ) : (
+                                    <Save className="w-3.5 h-3.5 shrink-0" />
+                                  )}
+                                  <span>친구 기기에 원격 반영</span>
+                                </button>
+                              </div>
                             </div>
-                          </div>
-
-                          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => void handleCopyFriendInviteGuide(item)}
-                              className="py-1.5 px-2.5 rounded-lg bg-[#1B64DA] hover:bg-[#1552B5] disabled:opacity-50 text-white text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer transition"
-                            >
-                              {isCopied ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5 shrink-0" />
-                                  <span>복사됨!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="w-3.5 h-3.5 shrink-0" />
-                                  <span>초대 안내문 복사</span>
-                                </>
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() =>
-                                void handleMutateFriendInvite(item, 'reset_device')
-                              }
-                              className={`py-1.5 px-2.5 rounded-lg border text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${cardBg}`}
-                              title="휴대폰 기기변경 시 기존 귀속을 풀어 새 휴대폰 1대를 다시 등록할 수 있게 초기화"
-                            >
-                              <RotateCcw className="w-3 h-3 shrink-0" />
-                              <span>기기 초기화</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() =>
-                                void handleMutateFriendInvite(
-                                  item,
-                                  isRevoked ? 'activate' : 'revoke'
-                                )
-                              }
-                              className={`py-1.5 px-2.5 rounded-lg text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${
-                                isRevoked
-                                  ? 'bg-[#059669] hover:bg-emerald-700 text-white'
-                                  : 'bg-[#E60012] hover:bg-[#C8000F] text-white'
-                              }`}
-                            >
-                              {isRevoked ? (
-                                <>
-                                  <Unlock className="w-3 h-3 shrink-0" />
-                                  <span>차단 해제</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Ban className="w-3 h-3 shrink-0" />
-                                  <span>즉시 차단</span>
-                                </>
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() =>
-                                void handleMutateFriendInvite(item, 'delete')
-                              }
-                              aria-label="초대코드 삭제"
-                              title="초대코드 영구 삭제"
-                              className={`p-1.5 rounded-lg border cursor-pointer disabled:opacity-50 hover:text-[#E60012] transition ${cardBg} ${mutedText}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
+                          )}
                         </div>
                       );
                     })}

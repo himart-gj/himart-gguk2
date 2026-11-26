@@ -26,8 +26,13 @@ import {
   FRIEND_SESSION_STORAGE_KEY,
   isFriendRestrictedMode,
   PENDING_INVITE_PROMPT_KEY,
+  readFriendSession,
 } from './friendAccessGuard';
-import { UNCONFIGURED_PIN_SENTINEL } from './storeCloudSync';
+import {
+  fetchAllFriendRemoteProfiles,
+  FriendRemoteProfile,
+  UNCONFIGURED_PIN_SENTINEL,
+} from './storeCloudSync';
 
 export interface ConsultantProfile {
   name: string;
@@ -35,6 +40,12 @@ export interface ConsultantProfile {
   phone: string;
   storeName: string;
   greeting: string;
+  /** 친구(외부 지인) 모드 등에서 고객 견적 뷰어 하단 네이버 지도 버튼 숨김 여부 */
+  hideStoreMap?: boolean;
+  /** 사용자가 직접 지점명을 수정했는지 여부 (친구 기기 초기 경기광주점 오노출 방지) */
+  storeCustomized?: boolean;
+  /** 오너가 원격 지정한 프로필의 마지막 반영 타임스탬프 */
+  remoteAppliedAt?: string;
 }
 
 export interface SharedQuotePayload {
@@ -57,7 +68,12 @@ export interface EncodedQuoteLinks {
   isShortened?: boolean;
 }
 
-const DEFAULT_STORE_NAME = '롯데하이마트 경기광주점';
+export const OWNER_DEFAULT_STORE_NAME = '롯데하이마트 경기광주점';
+export const FRIEND_NEUTRAL_STORE_NAME = '롯데하이마트';
+export const CONSULTANT_PROFILE_UPDATED_EVENT =
+  'himart_consultant_profile_updated';
+
+const DEFAULT_STORE_NAME = OWNER_DEFAULT_STORE_NAME;
 const DEFAULT_ROLE_TITLE = '고객 맞춤 가전 컨설턴트';
 
 export function normalizeConsultantRoleTitle(raw?: string | null): string {
@@ -215,17 +231,36 @@ export function saveCustomViewerBaseUrl(url: string): string {
 }
 
 export function loadConsultantProfile(): ConsultantProfile {
+  const isFriend = isFriendRestrictedMode();
   try {
     const raw = localStorage.getItem(CONSULTANT_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        const rawStore = String(parsed.storeName || '').trim();
+        const storeCustomized = Boolean(parsed.storeCustomized);
+        const remoteAppliedAt =
+          typeof parsed.remoteAppliedAt === 'string' && parsed.remoteAppliedAt.trim()
+            ? parsed.remoteAppliedAt.trim()
+            : undefined;
+
+        const resolvedStoreName = isFriend
+          ? !storeCustomized &&
+            !remoteAppliedAt &&
+            (!rawStore || rawStore === DEFAULT_STORE_NAME)
+            ? FRIEND_NEUTRAL_STORE_NAME
+            : rawStore || FRIEND_NEUTRAL_STORE_NAME
+          : rawStore || DEFAULT_STORE_NAME;
+
         return {
           name: String(parsed.name || loadSavedUserName() || '전문 상담사').trim(),
           roleTitle: normalizeConsultantRoleTitle(parsed.roleTitle),
           phone: String(parsed.phone || '').trim(),
-          storeName: String(parsed.storeName || DEFAULT_STORE_NAME).trim(),
+          storeName: resolvedStoreName,
           greeting: String(parsed.greeting || DEFAULT_GREETING).trim(),
+          ...(isFriend || parsed.hideStoreMap ? { hideStoreMap: true } : {}),
+          ...(storeCustomized ? { storeCustomized: true } : {}),
+          ...(remoteAppliedAt ? { remoteAppliedAt } : {}),
         };
       }
     }
@@ -236,16 +271,95 @@ export function loadConsultantProfile(): ConsultantProfile {
     name: loadSavedUserName() || '전문 상담사',
     roleTitle: DEFAULT_ROLE_TITLE,
     phone: '',
-    storeName: DEFAULT_STORE_NAME,
+    storeName: isFriend ? FRIEND_NEUTRAL_STORE_NAME : DEFAULT_STORE_NAME,
     greeting: DEFAULT_GREETING,
+    ...(isFriend ? { hideStoreMap: true } : {}),
   };
 }
 
 export function saveConsultantProfile(profile: ConsultantProfile): void {
   try {
-    localStorage.setItem(CONSULTANT_STORAGE_KEY, JSON.stringify(profile));
+    const normalized: ConsultantProfile = {
+      ...profile,
+      ...(isFriendRestrictedMode() ? { hideStoreMap: true } : {}),
+    };
+    const nextJson = JSON.stringify(normalized);
+    const prevJson = localStorage.getItem(CONSULTANT_STORAGE_KEY);
+    if (prevJson !== nextJson) {
+      localStorage.setItem(CONSULTANT_STORAGE_KEY, nextJson);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(CONSULTANT_PROFILE_UPDATED_EVENT));
+      }
+    }
   } catch {
     // ignore
+  }
+}
+
+export function getEffectiveStoreDisplayName(): string {
+  const storeName = (loadConsultantProfile().storeName || '').trim();
+  if (storeName) return storeName;
+  return isFriendRestrictedMode() ? FRIEND_NEUTRAL_STORE_NAME : DEFAULT_STORE_NAME;
+}
+
+export function getShortBranchLabel(storeNameInput?: string): string {
+  const full = String(storeNameInput ?? getEffectiveStoreDisplayName()).trim();
+  if (!full || full === FRIEND_NEUTRAL_STORE_NAME || full === '하이마트') {
+    return '';
+  }
+  const stripped = full
+    .replace(/^롯데하이마트\s*/i, '')
+    .replace(/^하이마트\s*/i, '')
+    .trim();
+  return stripped || full;
+}
+
+export function applyRemoteFriendProfileToLocal(
+  remote: FriendRemoteProfile
+): boolean {
+  if (!remote || !remote.updatedAt) return false;
+  const current = loadConsultantProfile();
+  if (current.remoteAppliedAt === remote.updatedAt) return false;
+
+  const hasAnyValue = Boolean(
+    remote.storeName.trim() ||
+      remote.consultantName.trim() ||
+      remote.phone.trim()
+  );
+  if (!hasAnyValue) return false;
+
+  const nextStore = remote.storeName.trim() || current.storeName;
+  const nextName = remote.consultantName.trim() || current.name;
+  const nextPhone = remote.phone.trim() || current.phone;
+
+  const nextProfile: ConsultantProfile = {
+    ...current,
+    storeName: nextStore,
+    name: nextName,
+    phone: nextPhone,
+    hideStoreMap: true,
+    storeCustomized: Boolean(remote.storeName.trim() || current.storeCustomized),
+    remoteAppliedAt: remote.updatedAt,
+  };
+  saveConsultantProfile(nextProfile);
+  return true;
+}
+
+export async function syncFriendRemoteProfileFromCloud(
+  explicitCodeId?: string
+): Promise<boolean> {
+  if (!isFriendRestrictedMode()) return false;
+  const codeId = String(
+    explicitCodeId || readFriendSession()?.codeId || ''
+  ).trim();
+  if (!codeId) return false;
+  try {
+    const map = await fetchAllFriendRemoteProfiles();
+    const matched = map[codeId];
+    if (!matched) return false;
+    return applyRemoteFriendProfileToLocal(matched);
+  } catch {
+    return false;
   }
 }
 
@@ -641,12 +755,17 @@ export function packCompactQuoteV2(payload: SharedQuotePayload): any[] {
     packedTuples.length >= 3 ? packedTuples.slice(2) : 0;
 
   const c = payload.consultant;
+  const shouldHideMap = Boolean(c.hideStoreMap || isFriendRestrictedMode());
+  const effectiveStore =
+    (c.storeName || '').trim() ||
+    (isFriendRestrictedMode() ? FRIEND_NEUTRAL_STORE_NAME : DEFAULT_STORE_NAME);
   const profTuple = trimTrailingZeros([
     c.name || '',
     c.phone || '',
     normalizeConsultantRoleTitle(c.roleTitle) === DEFAULT_ROLE_TITLE ? '' : normalizeConsultantRoleTitle(c.roleTitle),
-    c.storeName === DEFAULT_STORE_NAME ? '' : c.storeName || '',
+    effectiveStore === DEFAULT_STORE_NAME ? '' : effectiveStore,
     c.greeting === DEFAULT_GREETING ? '' : c.greeting || '',
+    shouldHideMap ? 1 : 0,
   ]);
 
   const dateCompact = (payload.createdAt || '').replace(/-/g, '');
@@ -710,6 +829,7 @@ export function unpackCompactQuoteV2(arr: any[]): SharedQuotePayload | null {
     roleTitle: normalizeConsultantRoleTitle(prof[2]),
     storeName: String(prof[3] || DEFAULT_STORE_NAME),
     greeting: String(prof[4] || DEFAULT_GREETING),
+    ...(prof[5] ? { hideStoreMap: true } : {}),
   };
 
   const quoteMode: QuoteMode = QUOTE_MODES[Number(arr[4]) || 0] || 'general';

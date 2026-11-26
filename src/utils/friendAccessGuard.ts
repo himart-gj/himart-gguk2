@@ -602,6 +602,29 @@ export async function verifyFriendSessionHeartbeat(): Promise<
       return 'revoked';
     }
 
+    if (json && typeof json.codeId === 'string' && json.codeId.trim()) {
+      const nextCodeId = json.codeId.trim();
+      const nextLabel =
+        typeof json.label === 'string' && json.label.trim()
+          ? json.label.trim()
+          : session.label;
+      if (nextCodeId !== session.codeId || nextLabel !== session.label) {
+        try {
+          localStorage.setItem(
+            FRIEND_SESSION_STORAGE_KEY,
+            JSON.stringify({
+              ...session,
+              deviceToken,
+              codeId: nextCodeId,
+              label: nextLabel,
+            })
+          );
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     return 'valid';
   } catch {
     return 'offline';

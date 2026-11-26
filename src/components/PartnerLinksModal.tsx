@@ -17,6 +17,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 
 export type PartnerLinkCategory = 'living' | 'resell' | 'staff';
 
@@ -293,7 +294,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
     withGreeting: boolean
   ) => {
     const textToCopy = withGreeting
-      ? `[롯데하이마트 경기광주점] ${item.title} 안내드립니다.\n• ${item.description}\n👉 바로 확인하기: ${item.url}`
+      ? `[${getEffectiveStoreDisplayName()}] ${item.title} 안내드립니다.\n• ${item.description}\n👉 바로 확인하기: ${item.url}`
       : item.url;
     try {
       await navigator.clipboard.writeText(textToCopy);

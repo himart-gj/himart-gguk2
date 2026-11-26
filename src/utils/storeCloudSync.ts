@@ -23,6 +23,14 @@ export interface StoreCloudRawConfig {
   token: string;
 }
 
+export interface FriendRemoteProfile {
+  storeName: string;
+  consultantName: string;
+  phone: string;
+  updatedAt: string;
+}
+
+export const FRIEND_REMOTE_PROFILES_FIELD = '__friendProfiles' as const;
 export const STORE_CLOUD_CONFIG_KEY = 'himart_care_gh_sync_config_v1';
 export const OWNER_CUSTOM_PIN_STORAGE_KEY = 'himart_gj_owner_db_pin_v1';
 export const STORE_CLOUD_UPDATED_EVENT = 'himart_gj_store_cloud_updated';
@@ -37,6 +45,15 @@ function mapFileSlugToKind(slug: string): StoreCloudKind {
   if (lower === 'model-incentive') return 'incentive';
   if (lower === 'care-table') return 'care';
   return 'installment';
+}
+
+function hasValidCloudCareItems(data: unknown): boolean {
+  return Boolean(
+    data &&
+      typeof data === 'object' &&
+      Array.isArray((data as { items?: unknown[] }).items) &&
+      (data as { items: unknown[] }).items.length > 0
+  );
 }
 
 function getEmptyFallbackForKind(kind: StoreCloudKind): unknown {
@@ -310,8 +327,50 @@ export async function saveStoreCloudDataset(
     };
   }
 
+  let finalPayload: unknown = payloadData;
+  if (kind === 'care') {
+    try {
+      const parsedObj =
+        typeof payloadData === 'string'
+          ? JSON.parse(payloadData)
+          : payloadData && typeof payloadData === 'object'
+          ? { ...(payloadData as Record<string, unknown>) }
+          : null;
+      if (
+        parsedObj &&
+        typeof parsedObj === 'object' &&
+        !Array.isArray(parsedObj) &&
+        !(FRIEND_REMOTE_PROFILES_FIELD in parsedObj)
+      ) {
+        const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>(
+          'care',
+          {
+            bypassCache: true,
+            gasUrlOverride: gasUrl,
+          }
+        );
+        const existingProfiles =
+          existingCare &&
+          typeof existingCare === 'object' &&
+          existingCare[FRIEND_REMOTE_PROFILES_FIELD] &&
+          typeof existingCare[FRIEND_REMOTE_PROFILES_FIELD] === 'object'
+            ? existingCare[FRIEND_REMOTE_PROFILES_FIELD]
+            : undefined;
+        if (existingProfiles) {
+          (parsedObj as Record<string, unknown>)[FRIEND_REMOTE_PROFILES_FIELD] =
+            existingProfiles;
+          finalPayload = parsedObj;
+        }
+      }
+    } catch {
+      // keep original payloadData if JSON parse fails
+    }
+  }
+
   const serialized =
-    typeof payloadData === 'string' ? payloadData : JSON.stringify(payloadData ?? {});
+    typeof finalPayload === 'string'
+      ? finalPayload
+      : JSON.stringify(finalPayload ?? {});
 
   try {
     const res = await getNativeFetch()(gasUrl, {
@@ -344,7 +403,7 @@ export async function saveStoreCloudDataset(
 
     try {
       const parsedForCache =
-        typeof payloadData === 'string' ? JSON.parse(payloadData) : payloadData;
+        typeof finalPayload === 'string' ? JSON.parse(finalPayload) : finalPayload;
       datasetMicroCache.set(kind, {
         fetchedAtMs: Date.now(),
         data: parsedForCache,
@@ -366,6 +425,141 @@ export async function saveStoreCloudDataset(
       configured: true,
       message: `구글 시트 통신 오류 (${err?.message || '연결 확인'})`,
     };
+  }
+}
+
+export function extractFriendRemoteProfilesMap(
+  rawData: unknown
+): Record<string, FriendRemoteProfile> {
+  if (!rawData || typeof rawData !== 'object') return {};
+  const rawMap = (rawData as Record<string, unknown>)[FRIEND_REMOTE_PROFILES_FIELD];
+  if (!rawMap || typeof rawMap !== 'object' || Array.isArray(rawMap)) return {};
+  const out: Record<string, FriendRemoteProfile> = {};
+  for (const [rawCodeId, entry] of Object.entries(rawMap as Record<string, any>)) {
+    const codeId = String(rawCodeId || '').trim();
+    if (!codeId || !entry || typeof entry !== 'object') continue;
+    out[codeId] = {
+      storeName: String(entry.storeName || '').trim(),
+      consultantName: String(entry.consultantName || '').trim(),
+      phone: String(entry.phone || '').trim(),
+      updatedAt: String(entry.updatedAt || '').trim(),
+    };
+  }
+  return out;
+}
+
+export async function fetchAllFriendRemoteProfiles(
+  gasUrlOverride?: string
+): Promise<Record<string, FriendRemoteProfile>> {
+  const careData = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
+    bypassCache: true,
+    gasUrlOverride,
+  });
+  return extractFriendRemoteProfilesMap(careData);
+}
+
+export async function saveFriendRemoteProfile(
+  rawGasUrl: string,
+  pin: string,
+  codeId: string,
+  profileInput: {
+    storeName: string;
+    consultantName: string;
+    phone: string;
+  }
+): Promise<{
+  ok: boolean;
+  profiles?: Record<string, FriendRemoteProfile>;
+  message: string;
+}> {
+  const cleanCodeId = String(codeId || '').trim();
+  if (!cleanCodeId) {
+    return { ok: false, message: '대상 초대코드 식별자(codeId)가 없습니다.' };
+  }
+  const gasUrl = normalizeGasWebAppUrl(rawGasUrl);
+  if (!gasUrl || !pin.trim()) {
+    return {
+      ok: false,
+      message: '구글 시트 웹앱 URL과 관리자 PIN을 먼저 확인해 주세요.',
+    };
+  }
+
+  const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>(
+    'care',
+    {
+      bypassCache: true,
+      gasUrlOverride: gasUrl,
+    }
+  );
+  const baseObj: Record<string, unknown> =
+    existingCare && typeof existingCare === 'object' && !Array.isArray(existingCare)
+      ? { ...existingCare }
+      : { versionTitle: '', updatedAt: '', fileName: '', items: [] };
+  if (!Array.isArray(baseObj.items)) {
+    baseObj.items = [];
+  }
+
+  const prevMap = extractFriendRemoteProfilesMap(baseObj);
+  const nextProfile: FriendRemoteProfile = {
+    storeName: String(profileInput.storeName || '').trim(),
+    consultantName: String(profileInput.consultantName || '').trim(),
+    phone: String(profileInput.phone || '').trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  const nextMap: Record<string, FriendRemoteProfile> = {
+    ...prevMap,
+    [cleanCodeId]: nextProfile,
+  };
+  baseObj[FRIEND_REMOTE_PROFILES_FIELD] = nextMap;
+
+  const res = await saveStoreCloudDataset('care', baseObj, {
+    repo: gasUrl,
+    token: pin.trim(),
+  });
+  if (!res.ok) {
+    return { ok: false, message: res.message };
+  }
+  return {
+    ok: true,
+    profiles: nextMap,
+    message: '친구 기기 프로필(지점명·담당자)이 비공개 시트에 원격 반영되었습니다.',
+  };
+}
+
+export async function deleteFriendRemoteProfile(
+  rawGasUrl: string,
+  pin: string,
+  codeId: string
+): Promise<void> {
+  const cleanCodeId = String(codeId || '').trim();
+  const gasUrl = normalizeGasWebAppUrl(rawGasUrl);
+  if (!cleanCodeId || !gasUrl || !pin.trim()) return;
+  try {
+    const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>(
+      'care',
+      {
+        bypassCache: true,
+        gasUrlOverride: gasUrl,
+      }
+    );
+    if (!existingCare || typeof existingCare !== 'object') return;
+    const prevMap = extractFriendRemoteProfilesMap(existingCare);
+    if (!(cleanCodeId in prevMap)) return;
+    const nextMap = { ...prevMap };
+    delete nextMap[cleanCodeId];
+    await saveStoreCloudDataset(
+      'care',
+      {
+        ...existingCare,
+        [FRIEND_REMOTE_PROFILES_FIELD]: nextMap,
+      },
+      {
+        repo: gasUrl,
+        token: pin.trim(),
+      }
+    );
+  } catch {
+    // ignore optional cleanup errors
   }
 }
 
@@ -493,11 +687,14 @@ export function installStoreCloudFetchBridge(): void {
       const cloudData = await fetchStoreCloudDataset(kind, {
         gasUrlOverride: urlGas || undefined,
       });
-      if (cloudData !== null) {
+      if (
+        cloudData !== null &&
+        (kind !== 'care' || hasValidCloudCareItems(cloudData))
+      ) {
         return jsonHttpResponse(cloudData, 200);
       }
       const fallback = getEmptyFallbackForKind(kind);
-      if (fallback === null) {
+      if (fallback === null || kind === 'care') {
         return jsonHttpResponse({ message: 'No cloud dataset yet' }, 404);
       }
       return jsonHttpResponse(fallback, 200);
@@ -505,7 +702,10 @@ export function installStoreCloudFetchBridge(): void {
 
     // 정적 ./schedule-data.json, ./model-incentive-data.json, ./care-table-data.json, ./card-installment-data.json 요청 중계
     const cloudData = await fetchStoreCloudDataset(kind);
-    if (cloudData !== null) {
+    if (
+      cloudData !== null &&
+      (kind !== 'care' || hasValidCloudCareItems(cloudData))
+    ) {
       return jsonHttpResponse(cloudData, 200);
     }
     return rawFetch(input, init);

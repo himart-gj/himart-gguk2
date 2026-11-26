@@ -13,6 +13,10 @@ import {
   SubscriptionCardSpendGaugeCard,
   SubscriptionRefundTimelineCard,
 } from './ProposalComplianceBlocks';
+import {
+  getEffectiveStoreDisplayName,
+  getShortBranchLabel,
+} from '../utils/shareQuoteCodec';
 
 const sanitizeFiveYearText = (text?: string): string => {
   if (!text) return '';
@@ -802,6 +806,8 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
     subSummary.finalMonthlyFee,
     subSummary.hiPlusPayoutMethod
   );
+  const previewFullStoreName = getEffectiveStoreDisplayName();
+  const previewShortBranch = getShortBranchLabel(previewFullStoreName);
 
   return (
     <>
@@ -816,7 +822,9 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
                   LOTTE HIMART
                 </span>
                 <span className="text-xs font-extrabold text-[#4E5968]">
-                  경기광주점 공식 구독 제안서
+                  {previewShortBranch
+                    ? `${previewShortBranch} 공식 구독 제안서`
+                    : '공식 구독 제안서'}
                 </span>
                 {hasBothPlans && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#191F28] text-white text-[11px] font-extrabold">
@@ -916,7 +924,7 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
           />
 
           <div className="pt-2 border-t border-[#E5E8EB] flex flex-wrap items-center justify-between gap-2 text-[11.5px] font-medium text-[#8B95A1]">
-            <span>롯데하이마트 경기광주점 · 고객 맞춤 가전 구독 공식 견적서</span>
+            <span>{previewFullStoreName} · 고객 맞춤 가전 구독 공식 견적서</span>
             <span>본 제안서는 상담일 기준 프로모션 및 카드사 정책 기준이며 변동될 수 있습니다.</span>
           </div>
         </div>
@@ -1234,7 +1242,7 @@ export const ProposalPreviewSubAndHybrid: React.FC<Record<string, any>> = ({
           />
 
           <div className="pt-2 border-t border-[#E5E8EB] flex flex-wrap items-center justify-between gap-2 text-[11.5px] font-medium text-[#8B95A1]">
-            <span>롯데하이마트 경기광주점 · 일반구매 + 구독구매 통합 맞춤 견적서</span>
+            <span>{previewFullStoreName} · 일반구매 + 구독구매 통합 맞춤 견적서</span>
             <span>본 제안서는 상담일 기준 프로모션 및 카드사 정책 기준이며 변동될 수 있습니다.</span>
           </div>
         </div>

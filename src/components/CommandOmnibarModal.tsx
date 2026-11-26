@@ -39,6 +39,7 @@ import {
   MASSAGE_CHAIR_LOGISTICS_ROWS,
   openStorePolicyModal,
 } from './StorePolicyGuideView';
+import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 
 // 한글 초성 검색 엔진 ('ㅎㄱㄷ' -> '홍길동', 'ㅇㅇㅋ' -> '에어컨')
 const CHOSEONG = [
@@ -365,42 +366,46 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onNavigateStep('himobile');
         },
       },
-      {
-        id: 'menu-sub-landing-link',
-        group: '메뉴',
-        title: '내 랜딩페이지 · 구독 랜딩페이지 열기',
-        subtitle: '가전구독 × 구독플러스 맞춤 혜택 시뮬레이터 (새 창 링크)',
-        badge: '랜딩링크',
-        copyText: 'https://himart-gj.github.io/himart-subscription-simulator/#/',
-        onSelect: () => {
-          onClose();
-          window.open('https://himart-gj.github.io/himart-subscription-simulator/#/', '_blank', 'noopener,noreferrer');
-        },
-      },
-      {
-        id: 'menu-store-landing-link',
-        group: '메뉴',
-        title: '내 랜딩페이지 · 일반 매장랜딩페이지 열기',
-        subtitle: '경기광주점 A·B동 쇼룸 & 1:1 통합 상담 예약 페이지 (새 창 링크)',
-        badge: '랜딩링크',
-        copyText: 'https://himart-gj.github.io/himart-11/',
-        onSelect: () => {
-          onClose();
-          window.open('https://himart-gj.github.io/himart-11/', '_blank', 'noopener,noreferrer');
-        },
-      },
-      {
-        id: 'menu-sub-admin-link',
-        group: '메뉴',
-        title: '내 랜딩페이지 · 구독페이지 관리자페이지 열기',
-        subtitle: '구독 시뮬레이터 품목 · 추천세트 · 정책 마스터 관리자 CMS (새 창 링크)',
-        badge: '관리자링크',
-        copyText: 'https://himart-gj.github.io/himart-subscription-simulator/#/admin',
-        onSelect: () => {
-          onClose();
-          window.open('https://himart-gj.github.io/himart-subscription-simulator/#/admin', '_blank', 'noopener,noreferrer');
-        },
-      },
+      ...(!isFriendMode
+        ? ([
+            {
+              id: 'menu-sub-landing-link',
+              group: '메뉴',
+              title: '내 랜딩페이지 · 구독 랜딩페이지 열기',
+              subtitle: '가전구독 × 구독플러스 맞춤 혜택 시뮬레이터 (새 창 링크)',
+              badge: '랜딩링크',
+              copyText: 'https://himart-gj.github.io/himart-subscription-simulator/#/',
+              onSelect: () => {
+                onClose();
+                window.open('https://himart-gj.github.io/himart-subscription-simulator/#/', '_blank', 'noopener,noreferrer');
+              },
+            },
+            {
+              id: 'menu-store-landing-link',
+              group: '메뉴',
+              title: '내 랜딩페이지 · 일반 매장랜딩페이지 열기',
+              subtitle: '경기광주점 A·B동 쇼룸 & 1:1 통합 상담 예약 페이지 (새 창 링크)',
+              badge: '랜딩링크',
+              copyText: 'https://himart-gj.github.io/himart-11/',
+              onSelect: () => {
+                onClose();
+                window.open('https://himart-gj.github.io/himart-11/', '_blank', 'noopener,noreferrer');
+              },
+            },
+            {
+              id: 'menu-sub-admin-link',
+              group: '메뉴',
+              title: '내 랜딩페이지 · 구독페이지 관리자페이지 열기',
+              subtitle: '구독 시뮬레이터 품목 · 추천세트 · 정책 마스터 관리자 CMS (새 창 링크)',
+              badge: '관리자링크',
+              copyText: 'https://himart-gj.github.io/himart-subscription-simulator/#/admin',
+              onSelect: () => {
+                onClose();
+                window.open('https://himart-gj.github.io/himart-subscription-simulator/#/admin', '_blank', 'noopener,noreferrer');
+              },
+            },
+          ] as OmnibarResultItem[])
+        : []),
       ...(onOpenPartnerLinksModal
         ? [
             {
@@ -577,7 +582,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           badge: pl.isStaffOnly ? '직원전용 ↗' : '바로열기 ↗',
           copyText: pl.isStaffOnly
             ? pl.url
-            : `[롯데하이마트 경기광주점] ${pl.title} 안내\n👉 ${pl.url}`,
+            : `[${getEffectiveStoreDisplayName()}] ${pl.title} 안내\n👉 ${pl.url}`,
           onSelect: () => {
             onClose();
             window.open(pl.url, '_blank', 'noopener,noreferrer');
