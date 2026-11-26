@@ -1,6 +1,6 @@
 import { ADMIN_PIN_CODE, refreshAdminPinBinding } from './careTableParser';
 import { isFriendRestrictedMode } from './friendAccessGuard';
-import { normalizeGasWebAppUrl, readRawSyncConfig } from './storeCloudSync';
+import { extractGoogleSheetId, getStoreCloudAppsScriptCode, normalizeGasWebAppUrl, readRawSyncConfig, saveInstaSpreadsheetId } from './storeCloudSync';
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from './ownerBusinessCardAsset';
 import {
   getOrCreateMonthSchedule,
@@ -91,90 +91,24 @@ export const LEGACY_INITIAL_SENT_PHONES = new Set<string>();
 
 // ==================== 시트 비공개 100% 유지용 전용 Apps Script 코드 생성기 ====================
 
-export function getReadyMadeAppsScriptCode(): string {
-  return `// =========================================================================
-// [롯데하이마트 경기광주점 - 인스타 광고 DB 비공개 시트 PIN 보안 양방향 연동 스크립트]
-// - 시트 공유는 반드시 [제한됨(나만 보기)] 비공개 상태를 유지하세요.
-// - 무인증 GET 접근은 전면 차단되며, 관리자 비밀번호(PIN)가 일치하는 POST 요청만 허용됩니다.
-// =========================================================================
-
-const INSTA_SHEET_ID = '여기에_인스타_DB_시트_ID_입력';
-const BACKUP_SHEET_NAME = '_앱DB관리백업';
-const CHUNK_SIZE = 40000;
-
-function getInstaSpreadsheet() {
-  return SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(INSTA_SHEET_ID);
-}
-
-function jsonOut(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function checkPin(inputPin) {
-  const clean = String(inputPin || '').trim();
-  if (!clean) return false;
-  const props = PropertiesService.getScriptProperties();
-  const saved = String(props.getProperty('ADMIN_PIN') || '').trim();
-  if (!saved) {
-    props.setProperty('ADMIN_PIN', clean);
-    return true;
-  }
-  return saved === clean;
-}
-
-function doGet() {
-  return jsonOut({ ok: false, error: 'PIN 인증된 POST 요청만 허용됩니다.' });
-}
-
-function doPost(e) {
-  try {
-    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
-    if (!checkPin(body.pin)) {
-      Utilities.sleep(300);
-      return jsonOut({ ok: false, error: '관리자 비밀번호(PIN)가 일치하지 않습니다.' });
-    }
-    const ss = getInstaSpreadsheet();
-    if (body.action === 'saveBackupState' && body.backupState) {
-      let sh = ss.getSheetByName(BACKUP_SHEET_NAME);
-      if (!sh) {
-        sh = ss.insertSheet(BACKUP_SHEET_NAME);
-        sh.hideSheet();
+export function getReadyMadeAppsScriptCode(instaSheetUrlOrId?: string): string {
+  let candidate = String(instaSheetUrlOrId || '').trim();
+  if (!candidate && typeof localStorage !== 'undefined') {
+    try {
+      const rawStore = localStorage.getItem('himart_gj_marketing_db_state_v1');
+      if (rawStore) {
+        const parsed = JSON.parse(rawStore);
+        candidate = String(parsed?.config?.sheetCsvOrShareUrl || '').trim();
       }
-      sh.clearContents();
-      const raw = JSON.stringify(body.backupState);
-      const rows = [];
-      for (let i = 0; i < raw.length; i += CHUNK_SIZE) {
-        rows.push(['CHUNK', i / CHUNK_SIZE + 1, raw.slice(i, i + CHUNK_SIZE)]);
-      }
-      if (rows.length > 0) sh.getRange(1, 1, rows.length, 3).setValues(rows);
-      return jsonOut({ ok: true });
+    } catch {
+      // ignore
     }
-    const sheets = ss.getSheets();
-    const outSheets = [];
-    for (let i = 0; i < sheets.length; i++) {
-      const sh = sheets[i];
-      const name = sh.getName();
-      if (name === BACKUP_SHEET_NAME || name.indexOf('_') === 0) continue;
-      if (sh.getLastRow() < 2 || sh.getLastColumn() < 2) continue;
-      outSheets.push({ name: name, rows: sh.getDisplayValues() });
-    }
-    let backupState = null;
-    const bSh = ss.getSheetByName(BACKUP_SHEET_NAME);
-    if (bSh && bSh.getLastRow() >= 1) {
-      try {
-        const vals = bSh.getRange(1, 1, bSh.getLastRow(), Math.min(3, bSh.getLastColumn())).getValues();
-        if (vals[0][0] === 'CHUNK') {
-          backupState = JSON.parse(vals.map(function(r) { return String(r[2] || ''); }).join(''));
-        } else if (vals[0][0]) {
-          backupState = JSON.parse(String(vals[0][0]));
-        }
-      } catch (err) {}
-    }
-    return jsonOut({ ok: true, sheets: outSheets, backupState: backupState });
-  } catch (err) {
-    return jsonOut({ ok: false, error: String(err) });
   }
-}`;
+  const cleanInsta = extractGoogleSheetId(candidate);
+  if (cleanInsta) {
+    saveInstaSpreadsheetId(cleanInsta);
+  }
+  return getStoreCloudAppsScriptCode(undefined, cleanInsta || undefined);
 }
 
 export function resolveEffectiveMarketingGasAuth(store?: MarketingDbStore): {
@@ -421,7 +355,16 @@ export function isOwnerMarketingDbUnlocked(): boolean {
       window.history.replaceState({}, '', cleanUrl);
       return true;
     }
-    return localStorage.getItem(OWNER_DB_UNLOCKED_KEY) === '1';
+    if (localStorage.getItem(OWNER_DB_UNLOCKED_KEY) === '1') return true;
+    // 관리자 PIN이 저장되어 있고 관리자 잠금 해제가 활성화된 오너 기기는 동일 오너 세션으로 인정
+    if (
+      localStorage.getItem('himart_gj_admin_unlocked') === 'true' &&
+      readRawSyncConfig().token.trim().length >= 4
+    ) {
+      localStorage.setItem(OWNER_DB_UNLOCKED_KEY, '1');
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -1030,6 +973,9 @@ export async function pushMarketingStateToGasBackup(
       body: JSON.stringify({
         action: 'saveBackupState',
         pin,
+        ...(extractGoogleSheetId(store?.config?.sheetCsvOrShareUrl)
+          ? { instaSpreadsheetId: extractGoogleSheetId(store.config.sheetCsvOrShareUrl) }
+          : {}),
         backupState: {
           leads: store.leads,
           deletedFingerprints: store.deletedFingerprints,

@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { ADMIN_PIN_CODE } from './careTableParser';
+import { extractGoogleSheetId, saveInstaSpreadsheetId } from './storeCloudSync';
 import { DEFAULT_OWNER_BUSINESS_CARD_DATA_URI } from './ownerBusinessCardAsset';
 import { idbMirrorGet, idbMirrorSet } from './offlineDbQueue';
 import { CustomerItem } from '../crm/types/crm';
@@ -1122,6 +1123,13 @@ export async function syncLeadsFromGoogleSheet(
           body: JSON.stringify({
             action: 'syncLeads',
             pin: gasPin,
+            ...(extractGoogleSheetId(initialStore?.config?.sheetCsvOrShareUrl)
+              ? {
+                  instaSpreadsheetId: saveInstaSpreadsheetId(
+                    initialStore?.config?.sheetCsvOrShareUrl
+                  ),
+                }
+              : {}),
           }),
         });
         if (res.ok) {
