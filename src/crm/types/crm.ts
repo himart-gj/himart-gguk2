@@ -108,6 +108,7 @@ export interface QuoteRecord {
   contractDate?: string; // 전표별 계약/접수일 (YYYY-MM-DD, 총판 기준월)
   deliveryDate?: string; // 전표별 배달일자 (YYYY-MM-DD, 실판 기준월)
   deliveryStatus?: SlipDeliveryStatus; // '배송대기' | '배송완료'
+  deliveredAtMs?: number; // 해당 전표가 배송완료로 확정된 시각(ms)
   outboundType?: string; // 출고지/직배 요약 (예: '자송', '타사물류 / 타사직배')
   deliveryTimeSlot?: string; // 배달 시간대 (예: '오후FT')
 }
@@ -138,6 +139,7 @@ export interface CustomerItem {
   orderNo?: string; // 대표/최신 전표번호
   giftItems?: string; // 약속 사은품 내역
   giftSent?: boolean; // 사은품 지급 완료 여부
+  giftSentAtMs?: number; // 사은품 지급 완료 처리 시각(ms)
   logisticsConfirmed?: boolean; // 물류/기사 배정 확인 여부
 
   // 미결/고민 고객 재연락 예정일 (YYYY-MM-DD)
@@ -145,6 +147,12 @@ export interface CustomerItem {
 
   // 고객별 다중 전표·견적 보관함 (최대 30개)
   quotes?: QuoteRecord[];
+
+  // 배송완료 및 모든 전표·사은품 처리 완료 시각 추적 (14일 경과 자동정리 기산 기준)
+  deliveredCompletedAtMs?: number;
+  allSettledAtMs?: number;
+  /** 배송·사은품·다중전표가 모두 완료된 뒤 14일이 경과하여 고객목록에서만 자동 정리된 시각(ms). 월간 실적·수당 지표는 100% 영구 보존됨! */
+  autoArchivedAt?: number;
 
   // 휴지통 (소프트 삭제: 삭제된 시각 타임스탬프 ms)
   deletedAt?: number;
