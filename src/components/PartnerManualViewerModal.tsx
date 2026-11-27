@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Cloud,
   Copy,
   ExternalLink,
   Info,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Settings,
   ShieldCheck,
   X,
 } from 'lucide-react';
@@ -23,7 +25,9 @@ import {
   CloudPartnerManualCallout,
   CloudPartnerManualDoc,
   fetchPartnerManualsMap,
+  hasConfiguredCloudEndpoint,
   readSessionCachedPartnerManuals,
+  saveManualCloudConnectInput,
 } from '../utils/partnerManualSync';
 
 export const OPEN_PARTNER_MANUAL_MODAL_EVENT = 'himart:open-partner-manual-modal';
@@ -85,6 +89,8 @@ interface PartnerManualViewerModalProps {
   isOpen: boolean;
   initialManualId?: string;
   initialChapterId?: string;
+  isFriendMode?: boolean;
+  onOpenCloudSetup?: () => void;
   onClose: () => void;
 }
 
@@ -92,6 +98,8 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
   isOpen,
   initialManualId,
   initialChapterId,
+  isFriendMode = false,
+  onOpenCloudSetup,
   onClose,
 }) => {
   const [manualsMap, setManualsMap] = useState<Record<string, CloudPartnerManualDoc>>(
@@ -99,6 +107,9 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
   );
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [needsCloudConnect, setNeedsCloudConnect] = useState<boolean>(false);
+  const [quickConnectInput, setQuickConnectInput] = useState<string>('');
+  const [quickConnectError, setQuickConnectError] = useState<string | null>(null);
   const [selectedManualId, setSelectedManualId] = useState<string>(
     initialManualId || ''
   );
@@ -112,14 +123,25 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
   const loadManuals = async (bypassCache = false) => {
     setIsLoading(true);
     setLoadError(null);
+    setQuickConnectError(null);
     try {
+      const hasCloud = hasConfiguredCloudEndpoint();
       const fetched = await fetchPartnerManualsMap({ bypassCache });
       const keys = Object.keys(fetched);
       if (keys.length === 0) {
-        setLoadError(
-          '연결된 클라우드 보안 저장소에서 업무 교안 데이터를 찾을 수 없습니다. 초대 링크 또는 클라우드 연결 상태를 확인해 주세요.'
-        );
+        if (!hasCloud) {
+          setNeedsCloudConnect(true);
+          setLoadError(
+            '현재 접속 중인 브라우저에 비공개 클라우드 연결 주소가 아직 등록되지 않았습니다.'
+          );
+        } else {
+          setNeedsCloudConnect(false);
+          setLoadError(
+            '연결된 비공개 클라우드에서 교안 데이터를 확인하지 못했습니다. 새로고침을 누르거나 초대 권한 상태를 확인해 주세요.'
+          );
+        }
       } else {
+        setNeedsCloudConnect(false);
         setManualsMap(fetched);
       }
     } catch {
@@ -134,11 +156,26 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
     const cached = readSessionCachedPartnerManuals();
     if (Object.keys(cached).length > 0) {
       setManualsMap(cached);
+      setNeedsCloudConnect(false);
       void loadManuals(false);
     } else {
       void loadManuals(true);
     }
   }, [isOpen]);
+
+  const handleQuickCloudConnect = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const ok = saveManualCloudConnectInput(quickConnectInput);
+    if (!ok) {
+      setQuickConnectError(
+        '올바른 클라우드 자동연결 링크(?cloud=...) 또는 Apps Script 웹앱 주소(https://script.google.com/macros/s/.../exec)를 붙여넣어 주세요.'
+      );
+      return;
+    }
+    setQuickConnectInput('');
+    setQuickConnectError(null);
+    await loadManuals(true);
+  };
 
   const manualList = useMemo(() => Object.values(manualsMap), [manualsMap]);
 
@@ -331,7 +368,7 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
                 )}
               </div>
               <h2 className="text-[15px] sm:text-[17px] font-extrabold tracking-tight text-[#191F28] dark:text-slate-50 truncate mt-0.5">
-                {activeDoc?.title || '전산 실무 교안 뷰어'}
+                {activeDoc?.title || 'LG전자 구독 전산등록 실무 교안'}
               </h2>
             </div>
           </div>
@@ -459,7 +496,7 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
             <div className="py-16 flex flex-col items-center justify-center gap-3 text-center">
               <Loader2 className="w-7 h-7 animate-spin text-[#1B64DA] dark:text-blue-400" />
               <div className="text-sm font-extrabold text-[#191F28] dark:text-slate-100">
-                비공개 클라우드에서 전산 교안을 불러오는 중입니다...
+                비공개 클라우드에서 전산 교안(63P 전체)을 불러오는 중입니다...
               </div>
               <p className="text-xs text-[#4E5968] dark:text-slate-400">
                 인증된 기기 세션을 확인하고 데이터를 동기화합니다.
@@ -468,18 +505,75 @@ export const PartnerManualViewerModal: React.FC<PartnerManualViewerModalProps> =
           )}
 
           {!isLoading && loadError && !activeDoc && (
-            <div className="rounded-2xl border border-[#FECDD3] dark:border-rose-500/30 bg-[#FFF1F2] dark:bg-rose-500/10 p-5 text-center space-y-3">
-              <AlertTriangle className="w-7 h-7 text-[#E60012] dark:text-rose-400 mx-auto" />
-              <div className="text-sm font-extrabold text-[#9F1239] dark:text-rose-200">
-                {loadError}
+            <div className="rounded-2xl border border-[#BFDBFE] dark:border-blue-500/30 bg-white dark:bg-[#131C2E] p-5 sm:p-6 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#FFF1F2] dark:bg-rose-500/15 border border-[#FECDD3] dark:border-rose-500/30 flex items-center justify-center shrink-0">
+                  <Cloud className="w-5 h-5 text-[#E60012] dark:text-rose-400" />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <h3 className="text-sm sm:text-base font-extrabold text-[#191F28] dark:text-slate-100">
+                    {needsCloudConnect
+                      ? '보안 클라우드 1회 연결이 필요합니다'
+                      : '클라우드 교안 데이터를 다시 불러와 주세요'}
+                  </h3>
+                  <p className="text-xs leading-relaxed text-[#4E5968] dark:text-slate-300 break-keep">
+                    {loadError} 공개 저장소 유출 방지를 위해 전산 교안 본문은 비공개 구글 시트에만 저장되어 있으며, 클라우드 연결 주소가 등록된 기기와 초대 링크로 접속한 기기에서 즉시 열립니다.
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => loadManuals(true)}
-                className="px-4 py-2 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs font-extrabold cursor-pointer"
-              >
-                다시 불러오기
-              </button>
+
+              <form onSubmit={handleQuickCloudConnect} className="space-y-2.5">
+                <label className="block text-xs font-extrabold text-[#333D4B] dark:text-slate-200">
+                  자동연결 링크(?cloud=...) 또는 Apps Script 웹앱 주소 붙여넣기
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={quickConnectInput}
+                    onChange={(e) => {
+                      setQuickConnectInput(e.target.value);
+                      setQuickConnectError(null);
+                    }}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl border border-[#D1D6DB] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-900/70 text-xs font-mono font-bold text-[#191F28] dark:text-slate-100 focus:outline-none focus:border-[#1B64DA]"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 rounded-xl bg-[#1B64DA] hover:bg-[#1554B8] text-white text-xs font-extrabold cursor-pointer shrink-0"
+                  >
+                    연결 후 바로 열기
+                  </button>
+                </div>
+                {quickConnectError && (
+                  <p className="text-xs font-bold text-[#E60012] dark:text-rose-400">
+                    {quickConnectError}
+                  </p>
+                )}
+              </form>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => loadManuals(true)}
+                  className="px-4 py-2 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>다시 불러오기</span>
+                </button>
+                {!isFriendMode && onOpenCloudSetup && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenCloudSetup();
+                    }}
+                    className="px-4 py-2 rounded-xl border border-[#D1D6DB] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800 text-xs font-extrabold text-[#191F28] dark:text-slate-200 inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>매장 클라우드 설정 허브 열기</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
