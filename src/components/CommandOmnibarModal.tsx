@@ -43,7 +43,6 @@ import {
 } from './StorePolicyGuideView';
 import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
 
-// 한글 초성 검색 엔진 ('ㅎㄱㄷ' -> '홍길동', 'ㅇㅇㅋ' -> '에어컨')
 const CHOSEONG = [
   'ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ',
   'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
@@ -75,6 +74,7 @@ export interface CommandOmnibarModalProps {
   onClose: () => void;
   isDark: boolean;
   isFriendMode?: boolean;
+  canViewSchedule?: boolean;
   customers: CustomerItem[];
   careDataset: CareTableDataset | null;
   installmentDataset: InstallmentDataset;
@@ -106,6 +106,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
   onClose,
   isDark,
   isFriendMode = false,
+  canViewSchedule: canViewScheduleProp,
   customers,
   careDataset,
   installmentDataset,
@@ -133,9 +134,10 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     }, 30);
   }, [isOpen]);
 
-  // 오늘 기준 근무/휴무 스냅샷
+  const canViewSchedule = typeof canViewScheduleProp === 'boolean' ? canViewScheduleProp : !isFriendMode;
+
   const todayStaffSnapshot = useMemo(() => {
-    if (!isOpen || isFriendMode) return [];
+    if (!isOpen || !canViewSchedule) return [];
     const now = new Date();
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const schedules = loadAllSchedules();
@@ -150,14 +152,12 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         isOff: isOffDayCode(code) || code === '교육' || code === '회의',
       };
     });
-  }, [isOpen, isFriendMode]);
+  }, [isOpen, canViewSchedule]);
 
-  // 0.01초 로컬 통합 인덱싱 결과 산출
   const results = useMemo<OmnibarResultItem[]>(() => {
     const q = query.trim();
     const list: OmnibarResultItem[] = [];
 
-    // 0) 스텔스 소유자 전용 코드 감지 (설정된 PIN 암호 입력 시에만 노출, 친구 모드 및 타 직원에게는 노출 0%)
     if (!isFriendMode && q.startsWith('#') && q.length >= 5) {
       const candidatePin = q.replace(/^#(?:db)?/i, '').trim();
       if (
@@ -179,7 +179,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
       }
     }
 
-    // 1) 앱 빠른 메뉴 액션
     const ownerUnlocked = !isFriendMode && isOwnerMarketingDbUnlocked();
     const quickMenus: OmnibarResultItem[] = [
       ...(ownerUnlocked
@@ -274,7 +273,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           onNavigateStep('lotte-plan');
         },
       },
-      ...(!isFriendMode
+      ...(canViewSchedule
         ? ([
             {
               id: 'menu-sched',
@@ -437,7 +436,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     ];
 
     if (!q) {
-      // 검색어 입력 전: 최근 고객 3명 + 핵심 메뉴 표시
       const recentCust = customers
         .filter((c) => !c.deletedAt)
         .slice(0, 3)
@@ -460,8 +458,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
       return [...recentCust, ...quickMenus.slice(0, 7)];
     }
 
-    // 검색어가 있을 때 6대 인덱스 동시 고속 스캔
-    // 1. 고객 CRM (고객 최상위 orderNo + 모든 전표/견적 quotes[].orderNo 100% 매칭)
     customers
       .filter((c) => {
         if (c.deletedAt) return false;
@@ -522,7 +518,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         });
       });
 
-    // 2. 안심케어 · 가전이사 조견표
     if (careDataset?.items) {
       careDataset.items
         .filter(
@@ -551,7 +546,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         });
     }
 
-    // 3. 카드 무이자 할부
     (installmentDataset?.quickSummaries || [])
       .filter(
         (card) =>
@@ -576,7 +570,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         });
       });
 
-    // 3-1. 비공개 클라우드 실무 교안 (인증 기기 세션 메모리 동적 인덱싱)
     Object.values(readSessionCachedPartnerManuals()).forEach((doc) => {
       if (matchSearch(`${doc.title} ${doc.version || ''} 전산 교안 매뉴얼`, q)) {
         list.push({
@@ -614,7 +607,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
       });
     });
 
-    // 3-2. 제휴 · 업무 바로가기 허브 링크
     loadPartnerLinks()
       .filter(
         (pl) =>
@@ -642,7 +634,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         });
       });
 
-    // 4. 가전 A/S 서비스센터 & 플럭스 파트너
     MAJOR_AS_CENTERS.filter(
       (asItem) =>
         matchSearch(asItem.brand, q) ||
@@ -700,8 +691,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
       });
     });
 
-    // 5. 오늘 근무·휴무 직원
-    if (!isFriendMode) {
+    if (canViewSchedule) {
       todayStaffSnapshot
         .filter(
           (st) =>
@@ -728,7 +718,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         });
     }
 
-    // 5-2. 상시 고정 기준표 (프리드 운영 상품 요약 & 안마의자 물류 기준)
     FREED_OPERATION_GROUPS.filter(
       (grp) =>
         matchSearch(grp.groupLabel, q) ||
@@ -778,7 +767,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
       });
     });
 
-    // 6. 메뉴 일치 항목
     quickMenus
       .filter((m) => matchSearch(m.title, q) || matchSearch(m.subtitle, q))
       .slice(0, 4)
@@ -788,6 +776,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
   }, [
     query,
     isFriendMode,
+    canViewSchedule,
     customers,
     careDataset,
     installmentDataset,
@@ -889,7 +878,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
         className="w-full max-w-2xl rounded-[20px] bg-white dark:bg-[#131C2E] text-[#191F28] dark:text-slate-100 border border-[#D1D6DB] dark:border-slate-700 border-t-[3px] border-t-[#E60012] shadow-2xl modal-kb-safe overflow-hidden schedule-modal-enter"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 상단 초고속 검색 입력 바 */}
         <div className="px-4 py-3.5 border-b border-[#E5E8EB] dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/70 flex items-center gap-3">
           <Search className="w-5 h-5 shrink-0 text-[#1B64DA] dark:text-blue-400" />
           <input
@@ -923,7 +911,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           </button>
         </div>
 
-        {/* AI 코파일럿 즉시 위임 배너 (검색어 입력 시 상단 상시 노출) */}
         {query.trim().length >= 2 && (
           <div className="px-4 py-2.5 border-b border-[#BFDBFE] dark:border-blue-500/30 bg-[#EFF6FF] dark:bg-blue-500/12 flex items-center justify-between gap-2">
             <div className="min-w-0 flex items-center gap-2">
@@ -946,7 +933,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           </div>
         )}
 
-        {/* 결과 리스트 */}
         <div className="max-h-[60dvh] overflow-y-auto p-2 space-y-1 bg-white dark:bg-[#131C2E]">
           {results.length === 0 ? (
             <div className="py-10 px-4 text-center space-y-2">
@@ -1033,7 +1019,6 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           )}
         </div>
 
-        {/* 하단 단축키 힌트 바 */}
         <div className="px-4 py-2 border-t border-[#E5E8EB] dark:border-slate-800 bg-[#F8FAFC] dark:bg-[#0B1120]/80 text-[11.5px] font-bold text-[#4E5968] dark:text-slate-400 flex items-center justify-between">
           <span>⚡ 대기시간 0초 통합 검색 (초성 지원)</span>
           <span className="hidden sm:inline font-mono">
