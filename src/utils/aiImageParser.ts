@@ -1319,7 +1319,6 @@ export function normalizeHisisSlipPayload(
       ? 'subscription'
       : 'general';
 
-  const giftCandidates: string[] = [];
   const generalItems: HisisSlipGeneralItemInput[] = [];
   const subscriptionItems: HisisSlipSubscriptionItemInput[] = [];
 
@@ -1433,9 +1432,8 @@ export function normalizeHisisSlipPayload(
           ? receiptAmt
           : 0;
 
-      if (resolvedActual <= 0 && receiptAmt <= 0) {
-        const giftLabel = normalizeModelCode(r.productCode || r.productName);
-        if (giftLabel) giftCandidates.push(giftLabel);
+      // HISIS 판매접수 전산 화면에는 사은품란이 없으며 0원 행(배달·설치·전액에누리·빈 행 등)은 사은품이 아니므로 절대 사은품(giftItems)에 넣지 않음
+      if (resolvedActual <= 0) {
         continue;
       }
 
@@ -1585,7 +1583,7 @@ export function normalizeHisisSlipPayload(
     logisticsConfirmed: deliveryMeta.logisticsConfirmed,
     roadAddress,
     customerRequest,
-    giftItems: giftCandidates.join(', '),
+    giftItems: '',
     memoSummary,
     proposalState,
   };
@@ -1826,6 +1824,7 @@ export function rebuildParsedHisisSlipFromEdits(
     deliveryStatus: nextDeliveryStatus,
     crmStatus: nextCrmStatus,
     logisticsConfirmed: nextLogisticsConfirmed,
+    giftItems: '',
     memoSummary,
     proposalState,
   };
@@ -1868,6 +1867,7 @@ export const HISIS_SLIP_PROMPT_TEXT = `당신은 롯데하이마트 HISIS v3 '[�
   - outboundPlace: '출고지' 열 텍스트 정확히 (예: "자송", "타사물류", "중앙물류", "지역물류")
   - directDelivery: '직배' 열 텍스트 정확히 (예: "타사직배", 비어 있으면 "")
   - cancelDate: '취소일자' 열에 날짜가 적혀 있으면 그 텍스트, 비어 있으면 ""
+- 주의: HISIS 판매접수 전산 화면에는 사은품란이 없으므로 금액이 0원인 부가코드·설치자재·빈 행을 임의로 사은품으로 해석하거나 추가하지 마세요.
 
 [4. 하단 '[결제]' 영역 금액 추출 규칙 (매우 중요 — 구독 월요금 산출 기준)]
 - 품목 그리드 아래쪽 좌측 세로 헤더 '결제' 영역에서 다음 3개 금액을 숫자로 정확히 읽으세요 (원 단위 정수, 콤마 제외):
