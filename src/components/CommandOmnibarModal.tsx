@@ -408,13 +408,24 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
             },
           ] as OmnibarResultItem[])
         : []),
+      {
+        id: 'menu-lg-sub-manual-direct',
+        group: '메뉴' as const,
+        title: '📘 LG전자 구독 전산등록 실무 교안 열기',
+        subtitle: '63P 전수 수록 · 청약요청 · 주문확정 · 전자서명 · 외국인/회수비 기준표',
+        badge: '보안교안',
+        onSelect: () => {
+          onClose();
+          openPartnerManualModal({});
+        },
+      },
       ...(onOpenPartnerLinksModal
         ? [
             {
               id: 'menu-partner-hub',
               group: '메뉴' as const,
               title: '제휴 · 업무 바로가기 허브 열기',
-              subtitle: '방충망 · 입주청소 · 중고보상 · 하이프리드 수당 · SK인터넷 청약',
+              subtitle: 'LG구독 전산교안 · 방충망 · 입주청소 · 중고보상 · 하이프리드 수당 · SK청약',
               badge: 'STEP 03',
               onSelect: () => {
                 onClose();
@@ -607,7 +618,7 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
     loadPartnerLinks()
       .filter(
         (pl) =>
-          pl.id !== 'lg-sub-calc-portal' &&
+          pl.id !== 'lg-sub-calc-portal' && pl.id !== 'lg-sub-manual-viewer' && !pl.internalAction &&
           (!q ||
             matchSearch(pl.title, q) ||
             matchSearch(pl.badgeText, q) ||
