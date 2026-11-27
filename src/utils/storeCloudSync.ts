@@ -1,13 +1,3 @@
-// ============================================================================
-// 롯데하이마트 경기광주점 — 비공개 구글 시트(Apps Script) 전용 클라우드 동기화 브릿지
-// 목적:
-// 1) 월간 휴무표·모델별 수당단가표·안심케어 조견표·무이자할부를 GitHub에 커밋하지 않고
-//    비공개 구글 시트(Apps Script 웹앱)로만 저장·불러오기 수행 (깃허브 민감정보 노출 0% 보장)
-// 2) 기존 ScheduleModal · CareTableView · CardInstallmentModal · settlementSheetParser의
-//    api.github.com 및 정적 *-data.json 요청을 투명하게 가로채어 구글 시트로 중계
-// 3) 인증된 기기 자동 클라우드 연결 + 초대직원 휴무표 ON/OFF + 개인별 다중기기 CRM 동기화 지원
-// ============================================================================
-
 import {
   bootstrapInviteFromUrl,
   canAccessStoreSchedule,
@@ -66,6 +56,7 @@ export const FRIEND_REMOTE_PROFILES_FIELD = '__friendProfiles' as const;
 export const FRIEND_SCHEDULE_MAP_FIELD = '__friendScheduleMap' as const;
 export const ENCRYPTED_OWNER_CRM_VAULT_FIELD = '__encryptedOwnerCrmVault' as const;
 export const PARTNER_MANUALS_META_FIELD = '__partnerManuals' as const;
+export const PARTNER_MANUALS_PERSIST_CACHE_KEY = 'himart_partner_manuals_cache_v2' as const;
 
 const PRESERVED_CARE_META_FIELDS = [
   FRIEND_REMOTE_PROFILES_FIELD,
@@ -113,7 +104,7 @@ export function saveSpreadsheetId(raw?: string | null): string {
         localStorage.removeItem(TARGET_SPREADSHEET_ID_STORAGE_KEY);
       }
     } catch {
-      // ignore storage errors
+      // ignore
     }
   }
   return clean;
@@ -140,7 +131,7 @@ export function saveInstaSpreadsheetId(raw?: string | null): string {
         localStorage.removeItem(INSTA_SPREADSHEET_ID_STORAGE_KEY);
       }
     } catch {
-      // ignore storage errors
+      // ignore
     }
   }
   return clean;
@@ -235,7 +226,7 @@ export function readRawSyncConfig(): StoreCloudRawConfig {
       };
     }
   } catch {
-    // ignore storage parse errors
+    // ignore
   }
   return { repo: fallbackRelay, branch: 'main', token: '' };
 }
@@ -325,20 +316,50 @@ export function extractFriendScheduleMap(rawData: unknown): Record<string, boole
   return out;
 }
 
-export function syncCurrentFriendScheduleAccessFromCareData(rawData: unknown): void {
-  if (!rawData || typeof rawData !== 'object') return;
+function readLocallyCachedPartnerManualsForPreserve(): Record<string, unknown> | null {
   try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(PARTNER_MANUALS_PERSIST_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+          return parsed as Record<string, unknown>;
+        }
+      }
+    }
     if (typeof sessionStorage !== 'undefined') {
-      const manuals = (rawData as Record<string, unknown>)[PARTNER_MANUALS_META_FIELD];
-      if (manuals && typeof manuals === 'object' && !Array.isArray(manuals) && Object.keys(manuals).length > 0) {
-        sessionStorage.setItem('himart_partner_manuals_session_v1', JSON.stringify(manuals));
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('himart_partner_manuals_updated'));
+      const rawSession = sessionStorage.getItem('himart_partner_manuals_session_v1');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+          return parsed as Record<string, unknown>;
         }
       }
     }
   } catch {
-    // ignore session quota
+    // ignore
+  }
+  return null;
+}
+
+export function syncCurrentFriendScheduleAccessFromCareData(rawData: unknown): void {
+  if (!rawData || typeof rawData !== 'object') return;
+  try {
+    const manuals = (rawData as Record<string, unknown>)[PARTNER_MANUALS_META_FIELD];
+    if (manuals && typeof manuals === 'object' && !Array.isArray(manuals) && Object.keys(manuals).length > 0) {
+      const serialized = JSON.stringify(manuals);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem('himart_partner_manuals_session_v1', serialized);
+      }
+      if (typeof localStorage !== 'undefined' && localStorage.getItem('himart_friend_revoked_v1') !== '1') {
+        localStorage.setItem(PARTNER_MANUALS_PERSIST_CACHE_KEY, serialized);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('himart_partner_manuals_updated'));
+      }
+    }
+  } catch {
+    // ignore
   }
 
   if (!isFriendRestrictedMode()) return;
@@ -355,7 +376,7 @@ interface CacheEntry {
 }
 
 const datasetMicroCache = new Map<StoreCloudKind, CacheEntry>();
-const inFlightReads = new Map<StoreCloudKind, Promise<unknown>>();
+const inFlightReads = new Map<string, Promise<unknown>>();
 const MICRO_CACHE_TTL_MS = 1500;
 
 let nativeFetchRef: typeof fetch | null = null;
@@ -387,13 +408,18 @@ export async function fetchStoreCloudDataset<T = unknown>(
   const gasUrl = normalizeGasWebAppUrl(options?.gasUrlOverride ?? readRawSyncConfig().repo);
   if (!gasUrl) return null;
 
+  const isDefaultTarget = !options?.gasUrlOverride || gasUrl === normalizeGasWebAppUrl(readRawSyncConfig().repo);
   const now = Date.now();
-  if (!options?.bypassCache) {
+  if (!options?.bypassCache && isDefaultTarget) {
     const cached = datasetMicroCache.get(kind);
     if (cached && now - cached.fetchedAtMs < MICRO_CACHE_TTL_MS) {
       return (cached.data as T) ?? null;
     }
-    const existingFlight = inFlightReads.get(kind);
+  }
+
+  const flightKey = `${gasUrl}::${kind}`;
+  if (!options?.bypassCache) {
+    const existingFlight = inFlightReads.get(flightKey);
     if (existingFlight) {
       return (await existingFlight) as T | null;
     }
@@ -402,8 +428,6 @@ export async function fetchStoreCloudDataset<T = unknown>(
   const runner = (async (): Promise<unknown> => {
     try {
       const friendSession = isFriendRestrictedMode() ? readFriendSession() : null;
-      // 관리자가 휴무표 공유를 ON(canAccessStoreSchedule === true)한 초대 직원의 경우,
-      // 구버전 Code.gs의 role=friend 일괄 휴무표 차단 분기를 우회하여 읽기 전용으로 열람 가능하도록 처리
       const includeFriendRoleParam =
         friendSession &&
         friendSession.deviceToken &&
@@ -411,12 +435,10 @@ export async function fetchStoreCloudDataset<T = unknown>(
       const friendQuery = includeFriendRoleParam
         ? `&role=friend&dt=${encodeURIComponent(friendSession.deviceToken)}`
         : '';
-      const savedSid = !friendSession ? loadSavedSpreadsheetId() : '';
-      const sidQuery = savedSid ? `&sid=${encodeURIComponent(savedSid)}` : '';
       const sep = gasUrl.includes('?') ? '&' : '?';
       const targetUrl = `${gasUrl}${sep}action=getDataset&kind=${encodeURIComponent(
         kind
-      )}${friendQuery}${sidQuery}&_t=${Date.now()}`;
+      )}${friendQuery}&_t=${Date.now()}`;
       const res = await getNativeFetch()(targetUrl, { cache: 'no-store' });
       if (!res.ok) return null;
       const json = await res.json();
@@ -426,24 +448,28 @@ export async function fetchStoreCloudDataset<T = unknown>(
         return null;
       }
       if (!json?.ok || json.data === null || json.data === undefined) {
-        datasetMicroCache.set(kind, { fetchedAtMs: Date.now(), data: null });
+        if (isDefaultTarget) {
+          datasetMicroCache.set(kind, { fetchedAtMs: Date.now(), data: null });
+        }
         return null;
       }
       if (kind === 'care') {
         syncCurrentFriendScheduleAccessFromCareData(json.data);
       }
-      datasetMicroCache.set(kind, { fetchedAtMs: Date.now(), data: json.data });
+      if (isDefaultTarget) {
+        datasetMicroCache.set(kind, { fetchedAtMs: Date.now(), data: json.data });
+      }
       return json.data;
     } catch {
       return null;
     }
   })();
 
-  inFlightReads.set(kind, runner);
+  inFlightReads.set(flightKey, runner);
   try {
     return ((await runner) as T) ?? null;
   } finally {
-    inFlightReads.delete(kind);
+    inFlightReads.delete(flightKey);
   }
 }
 
@@ -506,34 +532,47 @@ export async function saveStoreCloudDataset(
           : payloadData && typeof payloadData === 'object'
           ? { ...(payloadData as Record<string, unknown>) }
           : null;
-      if (
-        parsedObj &&
-        typeof parsedObj === 'object' &&
-        !Array.isArray(parsedObj) &&
-        PRESERVED_CARE_META_FIELDS.some((field) => !(field in parsedObj))
-      ) {
-        const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>(
-          'care',
-          {
-            bypassCache: true,
-            gasUrlOverride: gasUrl,
-          }
-        );
-        if (existingCare && typeof existingCare === 'object') {
-          for (const field of PRESERVED_CARE_META_FIELDS) {
+      if (parsedObj && typeof parsedObj === 'object' && !Array.isArray(parsedObj)) {
+        if (PRESERVED_CARE_META_FIELDS.some((field) => !(field in parsedObj))) {
+          const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>(
+            'care',
+            {
+              bypassCache: true,
+              gasUrlOverride: gasUrl,
+            }
+          );
+          if (existingCare && typeof existingCare === 'object') {
+            for (const field of PRESERVED_CARE_META_FIELDS) {
+              if (
+                !(field in parsedObj) &&
+                existingCare[field] &&
+                typeof existingCare[field] === 'object'
+              ) {
+                (parsedObj as Record<string, unknown>)[field] = existingCare[field];
+              }
+            }
             if (
-              !(field in parsedObj) &&
-              existingCare[field] &&
-              typeof existingCare[field] === 'object'
+              (!Array.isArray(parsedObj.items) || parsedObj.items.length === 0) &&
+              Array.isArray(existingCare.items) &&
+              existingCare.items.length > 0
             ) {
-              (parsedObj as Record<string, unknown>)[field] = existingCare[field];
+              parsedObj.items = existingCare.items;
+              parsedObj.versionTitle = parsedObj.versionTitle || existingCare.versionTitle || '';
+              parsedObj.updatedAt = parsedObj.updatedAt || existingCare.updatedAt || '';
+              parsedObj.fileName = parsedObj.fileName || existingCare.fileName || '';
             }
           }
-          finalPayload = parsedObj;
         }
+        if (!(PARTNER_MANUALS_META_FIELD in parsedObj)) {
+          const localManuals = readLocallyCachedPartnerManualsForPreserve();
+          if (localManuals) {
+            (parsedObj as Record<string, unknown>)[PARTNER_MANUALS_META_FIELD] = localManuals;
+          }
+        }
+        finalPayload = parsedObj;
       }
     } catch {
-      // keep original payloadData if JSON parse fails
+      // keep original
     }
   }
 
@@ -573,7 +612,7 @@ export async function saveStoreCloudDataset(
         configured: true,
         needsSpreadsheetId: isNullSheetErr,
         message: isNullSheetErr
-          ? '독립형 Apps Script가 감지되었습니다! 상단 [연동할 구글 시트 주소(URL)] 칸에 기존 구글 시트 주소를 붙여넣고 최신 Apps Script 코드로 배포 후 [연결 저장·확인]을 눌러주세요.'
+          ? '독립형 Apps Script가 감지되었습니다! [클라우드 설정] 탭에서 기존 구글 시트 주소를 붙여넣고 [연결 저장·상태 점검]을 눌러주세요.'
           : rawErr || '구글 시트 저장 실패: 업로드 비밀번호(PIN)를 확인해 주세요.',
       };
     }
@@ -594,7 +633,7 @@ export async function saveStoreCloudDataset(
       configured: true,
       message: json.pinInitialized
         ? '비공개 구글 시트에 저장되었으며 입력하신 PIN이 관리자 비밀번호로 최초 등록되었습니다!'
-        : '비공개 구글 시트에 최신 자료가 반영되었습니다! 전 직원 기기에서 자동 연동됩니다.',
+        : '비공개 구글 시트에 최신 자료가 반영되었습니다!',
     };
   } catch (err: any) {
     return {
@@ -602,6 +641,54 @@ export async function saveStoreCloudDataset(
       configured: true,
       message: `구글 시트 통신 오류 (${err?.message || '연결 확인'})`,
     };
+  }
+}
+
+let healedCloudCareThisSession = false;
+
+export async function healCloudCareItemsFromLocalIfEmpty(
+  localDataset: {
+    versionTitle?: string;
+    updatedAt?: string;
+    fileName?: string;
+    items?: unknown[];
+  } | null
+): Promise<boolean> {
+  if (healedCloudCareThisSession || isFriendRestrictedMode()) return false;
+  if (!localDataset || !Array.isArray(localDataset.items) || localDataset.items.length === 0) {
+    return false;
+  }
+  const pin = resolveRuntimeAdminPin();
+  if (!pin || pin === UNCONFIGURED_PIN_SENTINEL || pin.length < 4) return false;
+  const gasUrl = normalizeGasWebAppUrl(readRawSyncConfig().repo);
+  if (!gasUrl) return false;
+
+  try {
+    const cloudCare = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
+      bypassCache: true,
+      gasUrlOverride: gasUrl,
+    });
+    if (!cloudCare || typeof cloudCare !== 'object') return false;
+    const cloudItems = Array.isArray(cloudCare.items) ? cloudCare.items : [];
+    if (cloudItems.length > 0) {
+      healedCloudCareThisSession = true;
+      return false;
+    }
+    healedCloudCareThisSession = true;
+    const mergedPayload: Record<string, unknown> = {
+      ...cloudCare,
+      versionTitle: localDataset.versionTitle || cloudCare.versionTitle || '',
+      updatedAt: localDataset.updatedAt || cloudCare.updatedAt || '',
+      fileName: localDataset.fileName || cloudCare.fileName || '',
+      items: localDataset.items,
+    };
+    const res = await saveStoreCloudDataset('care', mergedPayload, {
+      repo: gasUrl,
+      token: pin,
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -642,10 +729,14 @@ export async function saveFriendSchedulePermission(
     bypassCache: true,
     gasUrlOverride: gasUrl,
   });
-  const baseObj: Record<string, unknown> =
-    existingCare && typeof existingCare === 'object' && !Array.isArray(existingCare)
-      ? { ...existingCare }
-      : { versionTitle: '', updatedAt: '', fileName: '', items: [] };
+  if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) {
+    return {
+      ok: false,
+      message: '클라우드 시트 응답을 확인하지 못해 기존 자료 보호를 위해 저장을 보류했습니다. 잠시 후 다시 눌러주세요.',
+    };
+  }
+
+  const baseObj: Record<string, unknown> = { ...existingCare };
   if (!Array.isArray(baseObj.items)) {
     baseObj.items = [];
   }
@@ -752,15 +843,14 @@ export async function diagnoseStoreCloudConnection(
         ok: false,
         needsSpreadsheetId: true,
         error: rawErr.includes('getSheetByName')
-          ? '현재 Apps Script에 구버전 단독 코드가 배포되어 시트를 찾지 못했습니다! [연결할 구글 시트 주소(URL)] 칸에 기존 시트 주소를 입력한 뒤 [Apps Script 코드 복사] → Code.gs 붙여넣기·배포를 1회 진행해 주세요. (기존 초대 목록과 4대 자료는 시트에 100% 보존되어 있습니다!)'
+          ? '현재 Apps Script에 구버전 단독 코드가 배포되어 시트를 찾지 못했습니다! [구글 시트 주소] 칸에 기존 시트 주소를 입력한 뒤 [Apps Script 코드 복사] → Code.gs 붙여넣기·배포를 1회 진행해 주세요.'
           : rawErr,
       };
     }
 
     if (rawErr.includes('diagnoseCloudSync')) {
       const sep = gasUrl.includes('?') ? '&' : '?';
-      const sidParam = spreadsheetId ? `&sid=${encodeURIComponent(spreadsheetId)}` : '';
-      const getRes = await getNativeFetch()(`${gasUrl}${sep}action=getAll${sidParam}&_t=${Date.now()}`, {
+      const getRes = await getNativeFetch()(`${gasUrl}${sep}action=getAll&_t=${Date.now()}`, {
         cache: 'no-store',
       });
       if (getRes.ok) {
@@ -793,7 +883,7 @@ export async function diagnoseStoreCloudConnection(
           });
           return {
             ok: true,
-            spreadsheetTitle: '비공개 구글 시트 (구버전 스크립트 — AI공유 기능을 쓰려면 코드 업데이트 권장)',
+            spreadsheetTitle: '비공개 구글 시트 (구버전 스크립트 — 코드 업데이트 권장)',
             datasets: ds,
           };
         }
@@ -867,7 +957,7 @@ export async function saveCloudSharedGeminiConfig(
       return {
         ok: false,
         error: rawErr.includes('saveSharedGeminiConfig')
-          ? '초대 친구 API 키 공유 ON/OFF 기능을 활성화하려면 상단 [Apps Script 코드 복사]를 눌러 Code.gs를 최신 코드로 1회 업데이트(새 버전 배포)해 주세요!'
+          ? '[클라우드 설정] 탭에서 [Apps Script 코드 복사]를 눌러 Code.gs를 최신 코드로 1회 업데이트(새 버전 배포)해 주세요!'
           : rawErr || '공유 API 키 설정 저장에 실패했습니다.',
       };
     }
@@ -999,10 +1089,14 @@ export async function saveFriendRemoteProfile(
       gasUrlOverride: gasUrl,
     }
   );
-  const baseObj: Record<string, unknown> =
-    existingCare && typeof existingCare === 'object' && !Array.isArray(existingCare)
-      ? { ...existingCare }
-      : { versionTitle: '', updatedAt: '', fileName: '', items: [] };
+  if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) {
+    return {
+      ok: false,
+      message: '클라우드 시트 응답을 확인하지 못해 기존 자료 보호를 위해 저장을 보류했습니다.',
+    };
+  }
+
+  const baseObj: Record<string, unknown> = { ...existingCare };
   if (!Array.isArray(baseObj.items)) {
     baseObj.items = [];
   }
@@ -1030,7 +1124,7 @@ export async function saveFriendRemoteProfile(
   return {
     ok: true,
     profiles: nextMap,
-    message: '친구 기기 프로필(지점명·담당자)이 비공개 시트에 원격 반영되었습니다.',
+    message: '초대 기기 프로필이 비공개 시트에 원격 반영되었습니다.',
   };
 }
 
@@ -1050,7 +1144,7 @@ export async function deleteFriendRemoteProfile(
         gasUrlOverride: gasUrl,
       }
     );
-    if (!existingCare || typeof existingCare !== 'object') return;
+    if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) return;
     const prevMap = extractFriendRemoteProfilesMap(existingCare);
     const prevSched = extractFriendScheduleMap(existingCare);
     if (!(cleanCodeId in prevMap) && !(cleanCodeId in prevSched)) return;
@@ -1071,7 +1165,7 @@ export async function deleteFriendRemoteProfile(
       }
     );
   } catch {
-    // ignore optional cleanup errors
+    // ignore
   }
 }
 
@@ -1100,7 +1194,7 @@ function extractGasUrlFromGitHubApiUrl(urlStr: string): string {
       candidate = decodeURIComponent(candidate);
     }
   } catch {
-    // ignore decode error
+    // ignore
   }
   return normalizeGasWebAppUrl(candidate);
 }
@@ -1142,7 +1236,6 @@ export function installStoreCloudFetchBridge(): void {
 
     const kind = mapFileSlugToKind(dataMatch[1]);
 
-    // 초대 기기에서 휴무표 공유가 OFF 상태이면 schedule 네트워크 요청을 즉시 차단
     if (kind === 'schedule' && !canAccessStoreSchedule()) {
       return jsonHttpResponse({}, 200);
     }
@@ -1221,7 +1314,6 @@ export function installStoreCloudFetchBridge(): void {
     return rawFetch(input, init);
   };
 }
-
 
 export { getStoreCloudAppsScriptCode } from './storeCloudAppsScriptCode';
 

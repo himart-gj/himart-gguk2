@@ -1,6 +1,8 @@
+import { resolveBuiltInDefaultRelayUrl } from './friendAccessGuard';
 import {
   fetchStoreCloudDataset,
   normalizeGasWebAppUrl,
+  PARTNER_MANUALS_PERSIST_CACHE_KEY,
   readRawSyncConfig,
   STORE_CLOUD_CONFIG_KEY,
   STORE_CLOUD_UPDATED_EVENT,
@@ -89,32 +91,33 @@ function decodeCloudParamIfPresent(input: string): string {
   }
 }
 
-export function resolveEffectiveManualGasUrl(): string {
-  const primary = normalizeGasWebAppUrl(readRawSyncConfig().repo);
-  if (primary) return primary;
-  if (typeof localStorage === 'undefined') return '';
-  try {
-    const rawMdb = localStorage.getItem(MARKETING_DB_STATE_KEY);
-    if (rawMdb) {
-      const parsed = JSON.parse(rawMdb);
-      const mdbUrl = normalizeGasWebAppUrl(parsed?.config?.gasWebAppUrl || '');
-      if (mdbUrl) {
-        const prev = readRawSyncConfig();
-        localStorage.setItem(
-          STORE_CLOUD_CONFIG_KEY,
-          JSON.stringify({
-            repo: mdbUrl,
-            branch: prev.branch || 'main',
-            token: prev.token || '',
-          })
-        );
-        return mdbUrl;
-      }
+export function resolveCandidateManualGasUrls(explicitOverride?: string): string[] {
+  const urls: string[] = [];
+  const add = (raw?: string | null) => {
+    const norm = normalizeGasWebAppUrl(raw);
+    if (norm && !urls.includes(norm)) {
+      urls.push(norm);
     }
-  } catch {
-    // ignore storage parse error
+  };
+  add(explicitOverride);
+  add(readRawSyncConfig().repo);
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const rawMdb = localStorage.getItem(MARKETING_DB_STATE_KEY);
+      if (rawMdb) {
+        const parsed = JSON.parse(rawMdb);
+        add(parsed?.config?.gasWebAppUrl || '');
+      }
+    } catch {
+      // ignore
+    }
   }
-  return '';
+  add(resolveBuiltInDefaultRelayUrl());
+  return urls;
+}
+
+export function resolveEffectiveManualGasUrl(): string {
+  return resolveCandidateManualGasUrls()[0] || '';
 }
 
 export function saveManualCloudConnectInput(rawInput: string): boolean {
@@ -140,7 +143,7 @@ export function saveManualCloudConnectInput(rawInput: string): boolean {
 }
 
 export function hasConfiguredCloudEndpoint(): boolean {
-  return Boolean(resolveEffectiveManualGasUrl());
+  return resolveCandidateManualGasUrls().length > 0;
 }
 
 export function extractPartnerManualsMap(
@@ -169,6 +172,28 @@ export function extractPartnerManualsMap(
   return out;
 }
 
+function persistPartnerManualsCache(map: Record<string, CloudPartnerManualDoc>): void {
+  if (!map || Object.keys(map).length === 0) return;
+  try {
+    const serialized = JSON.stringify(map);
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(PARTNER_MANUALS_SESSION_KEY, serialized);
+    }
+    if (
+      typeof localStorage !== 'undefined' &&
+      localStorage.getItem('himart_friend_revoked_v1') !== '1' &&
+      localStorage.getItem('himart_customer_viewer_only_v1') !== '1'
+    ) {
+      localStorage.setItem(PARTNER_MANUALS_PERSIST_CACHE_KEY, serialized);
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(PARTNER_MANUALS_UPDATED_EVENT));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function readSessionCachedPartnerManuals(): Record<
   string,
   CloudPartnerManualDoc
@@ -176,11 +201,13 @@ export function readSessionCachedPartnerManuals(): Record<
   try {
     if (
       typeof localStorage !== 'undefined' &&
-      localStorage.getItem('himart_friend_revoked_v1') === '1'
+      (localStorage.getItem('himart_friend_revoked_v1') === '1' ||
+        localStorage.getItem('himart_customer_viewer_only_v1') === '1')
     ) {
       if (typeof sessionStorage !== 'undefined') {
         sessionStorage.removeItem(PARTNER_MANUALS_SESSION_KEY);
       }
+      localStorage.removeItem(PARTNER_MANUALS_PERSIST_CACHE_KEY);
       return {};
     }
     if (typeof sessionStorage !== 'undefined') {
@@ -193,6 +220,13 @@ export function readSessionCachedPartnerManuals(): Record<
       }
     }
     if (typeof localStorage !== 'undefined') {
+      const persisted = localStorage.getItem(PARTNER_MANUALS_PERSIST_CACHE_KEY);
+      if (persisted) {
+        const parsed = JSON.parse(persisted);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length > 0) {
+          return parsed as Record<string, CloudPartnerManualDoc>;
+        }
+      }
       const rawCare = localStorage.getItem(LOCAL_CARE_DATASET_KEY);
       if (rawCare) {
         const parsedCare = JSON.parse(rawCare);
@@ -203,7 +237,7 @@ export function readSessionCachedPartnerManuals(): Record<
       }
     }
   } catch {
-    // ignore storage errors
+    // ignore
   }
   return {};
 }
@@ -214,7 +248,8 @@ export async function fetchPartnerManualsMap(options?: {
 }): Promise<Record<string, CloudPartnerManualDoc>> {
   if (
     typeof localStorage !== 'undefined' &&
-    localStorage.getItem('himart_friend_revoked_v1') === '1'
+    (localStorage.getItem('himart_friend_revoked_v1') === '1' ||
+      localStorage.getItem('himart_customer_viewer_only_v1') === '1')
   ) {
     return {};
   }
@@ -224,26 +259,31 @@ export async function fetchPartnerManualsMap(options?: {
       return cached;
     }
   }
-  const effectiveGasUrl = options?.gasUrlOverride || resolveEffectiveManualGasUrl();
-  if (!effectiveGasUrl) {
-    return readSessionCachedPartnerManuals();
-  }
-  const careData = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
-    bypassCache: options?.bypassCache ?? true,
-    gasUrlOverride: effectiveGasUrl,
-  });
-  const map = extractPartnerManualsMap(careData);
-  if (Object.keys(map).length > 0) {
-    try {
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(PARTNER_MANUALS_SESSION_KEY, JSON.stringify(map));
-      }
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent(PARTNER_MANUALS_UPDATED_EVENT));
-      }
-    } catch {
-      // ignore session quota errors
+
+  const candidates = resolveCandidateManualGasUrls(options?.gasUrlOverride);
+  for (const url of candidates) {
+    const careData = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
+      bypassCache: true,
+      gasUrlOverride: url,
+    });
+    const map = extractPartnerManualsMap(careData);
+    if (Object.keys(map).length > 0) {
+      persistPartnerManualsCache(map);
+      return map;
     }
   }
-  return map;
+
+  return readSessionCachedPartnerManuals();
+}
+
+let prefetchInFlight = false;
+
+export function prefetchPartnerManualsInBackground(): void {
+  if (prefetchInFlight) return;
+  const cached = readSessionCachedPartnerManuals();
+  if (Object.keys(cached).length > 0) return;
+  prefetchInFlight = true;
+  void fetchPartnerManualsMap({ bypassCache: true }).finally(() => {
+    prefetchInFlight = false;
+  });
 }
