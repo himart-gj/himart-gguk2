@@ -9,7 +9,9 @@ import {
   Copy,
   KeyRound,
   Loader2,
+  MessageSquareHeart,
   MoreHorizontal,
+  Send,
   Pencil,
   RefreshCw,
   RotateCcw,
@@ -29,8 +31,10 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
     cardBg,
     copiedInviteCodeId,
     editProfileDraft,
+    editingNoticeCodeId,
     editingProfileCodeId,
     friendInvites,
+    friendNoticesMap,
     friendLabelInput,
     friendPanelError,
     friendRemoteProfiles,
@@ -40,7 +44,10 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
     handleCycleMaxDevices,
     handleIssueFriendInvite,
     handleMutateFriendInvite,
+    handleClearFriendNotice,
+    handleOpenFriendNoticeEditor,
     handleOpenRemoteProfileEditor,
+    handleSaveFriendNotice,
     handleRefreshFriendInvites,
     handleSaveRemoteProfileForFriend,
     handleSaveSharedAiKey,
@@ -50,7 +57,9 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
     inputCls,
     isIssuingInvite,
     isLoadingInvites,
+    isSavingFriendNotice,
     isSavingRemoteProfile,
+    noticeDraftText,
     isSavingSharedAi,
     mutedText,
     newFriendMaxDevices,
@@ -58,7 +67,9 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
     newFriendPhoneInput,
     newFriendStoreInput,
     setEditProfileDraft,
+    setEditingNoticeCodeId,
     setEditingProfileCodeId,
+    setNoticeDraftText,
     setFriendLabelInput,
     setNewFriendMaxDevices,
     setNewFriendNameInput,
@@ -211,6 +222,9 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
                   (assignedProf.storeName || assignedProf.consultantName || assignedProf.phone)
               );
               const isEditingThis = editingProfileCodeId === item.codeId;
+              const isEditingNotice = editingNoticeCodeId === item.codeId;
+              const activeNotice = friendNoticesMap?.[item.codeId];
+              const hasActiveNotice = Boolean(activeNotice?.message);
               const isManageOpen = expandedManageCodeId === item.codeId;
               const maxDev = Math.max(1, item.maxDevices || 1);
               const boundCnt =
@@ -298,6 +312,23 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
                       >
                         <Bot className="w-3.5 h-3.5 shrink-0" />
                         <span>AI {friendAiAllowed ? 'ON' : 'OFF'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isBusy || isSavingFriendNotice}
+                        onClick={() => handleOpenFriendNoticeEditor(item)}
+                        title="해당 친구/직원이 통합앱을 켰을 때 1회 팝업으로 띄울 맞춤 멘트 설정"
+                        className={`py-1.5 px-2.5 rounded-xl border text-xs font-extrabold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50 transition ${
+                          isEditingNotice
+                            ? 'bg-amber-500 text-white border-amber-500'
+                            : hasActiveNotice && !isRevoked
+                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-400/50'
+                            : `${cardBg} ${mutedText}`
+                        }`}
+                      >
+                        <MessageSquareHeart className="w-3.5 h-3.5 shrink-0" />
+                        <span>{hasActiveNotice ? '1회 멘트 ON' : '1회 멘트'}</span>
                       </button>
 
                       <button
@@ -405,6 +436,65 @@ export const StoreAdminFriendInvitesPanel: React.FC<{ ctx: Record<string, any> }
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {isEditingNotice && (
+                    <div className="pt-2.5 border-t border-[#E5E8EB] dark:border-white/10 space-y-2">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-extrabold text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                          <MessageSquareHeart className="w-3.5 h-3.5" />
+                          <span>
+                            [{item.label}] 앱 실행 시 1회 노출 멘트 설정
+                          </span>
+                        </span>
+                        {hasActiveNotice && activeNotice?.createdAt && (
+                          <span className={`text-[11px] font-semibold ${mutedText}`}>
+                            현재 등록됨 ({activeNotice.createdAt.slice(0, 16).replace('T', ' ')})
+                          </span>
+                        )}
+                      </div>
+                      <textarea
+                        rows={3}
+                        value={noticeDraftText || ''}
+                        onChange={(e) => setNoticeDraftText(e.target.value)}
+                        placeholder={`예) ${item.label}님! 12월부터 구독 건당 상품권 시상 기능이 추가되었으니 상단 상품권시상 버튼을 확인해 보세요 😊 (상대방이 앱을 켜면 팝업으로 딱 1번 뜨고 [확인]을 누르면 사라집니다)`}
+                        className={`w-full px-3 py-2 rounded-xl border text-base sm:text-xs font-semibold leading-relaxed resize-y focus:outline-none focus:border-amber-500 ${inputCls}`}
+                      />
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          {hasActiveNotice && (
+                            <button
+                              type="button"
+                              disabled={isSavingFriendNotice}
+                              onClick={() => void handleClearFriendNotice(item)}
+                              className="px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-500/40 text-rose-600 dark:text-rose-300 text-xs font-extrabold cursor-pointer disabled:opacity-50"
+                            >
+                              등록된 멘트 내리기
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 ml-auto">
+                          <button
+                            type="button"
+                            onClick={() => setEditingNoticeCodeId(null)}
+                            className={`px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer ${cardBg}`}
+                          >
+                            취소
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSavingFriendNotice || !(noticeDraftText || '').trim()}
+                            onClick={() => void handleSaveFriendNotice(item)}
+                            className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-extrabold inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            <span>
+                              {hasActiveNotice ? '새 1회 멘트로 재발송' : '1회 멘트 등록·발송'}
+                            </span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

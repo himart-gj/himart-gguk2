@@ -35,6 +35,7 @@ import { SpringNumberFlow } from './SpringNumberFlow';
 export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }> = ({ ctx }) => {
   const {
     currentMonthAllCareCount,
+    currentMonthGiftCardReport,
     currentMonthNum,
     dynamicRoster,
     hideAmounts,
@@ -45,6 +46,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
     leftSummary,
     liveMood,
     monthlyIncentiveSummary,
+    onOpenGiftCardModal,
     onOpenIncentiveTab,
     onOpenScheduleModal,
     pillColorStyle,
@@ -630,7 +632,6 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
         }
       `}</style>
 
-      {/* 상단 브리핑 바: 기본 펼침 상태에서는 중복 문구 없이 액션만 깔끔하게 제공 */}
       <div
         className={`scb-header-bar ${!isExpanded ? 'is-collapsed' : ''}`}
         onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
@@ -809,6 +810,35 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
             </div>
 
             <div className="scb-inc-pills">
+              <button
+                type="button"
+                className="scb-inc-chip"
+                style={
+                  isDark
+                    ? {
+                        background: 'rgba(245,158,11,0.18)',
+                        borderColor: 'rgba(251,191,36,0.45)',
+                        color: '#FDE68A',
+                      }
+                    : {
+                        background: '#FFFBEB',
+                        borderColor: '#FCD34D',
+                        color: '#92400E',
+                      }
+                }
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenGiftCardModal?.();
+                }}
+                title="클릭하여 구독·올케어 상품권 시상 내역 보기"
+              >
+                🎁 상품권시상
+                {!hideAmounts &&
+                  ` +${formatShortManwon(
+                    currentMonthGiftCardReport?.totalGiftCardAmount || 0
+                  )}`}
+              </button>
+
               <button
                 type="button"
                 className="scb-inc-chip is-sub"
