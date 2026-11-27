@@ -219,8 +219,8 @@ export async function saveCustomerQuote(payload: {
   const rawDeliveryDate = (payload.deliveryDate || '').trim();
   const effectiveIsConfirmedSlip = Boolean(
     payload.isConfirmedSlip ||
-      payload.status === '배송완료' ||
       payload.status === '계약완료' ||
+      payload.status === '배송완료' ||
       cleanOrderNo
   );
   const effectiveSlipDelivStatus: SlipDeliveryStatus =
@@ -318,6 +318,7 @@ export async function saveCustomerQuote(payload: {
 
     let nextQuotes: QuoteRecord[];
     if (duplicateOrderIdx >= 0) {
+      // 동일 전표번호(orderNo) 재업로드/재저장 시 중복 추가 대신 해당 전표만 안전하게 업데이트
       wasOverwritten = true;
       const preservedId = prevQuotes[duplicateOrderIdx]?.id || newQuote.id;
       savedQuoteId = preservedId;
@@ -339,6 +340,7 @@ export async function saveCustomerQuote(payload: {
       const candidateTarget =
         candidateIdx >= 0 ? prevQuotes[candidateIdx] : undefined;
 
+      // 확정 전표는 명시적 허용(allowOverwriteConfirmedSlip) 없이는 절대 덮어쓰지 않고 새 전표/견적으로 안전 추가
       if (
         candidateTarget &&
         (!candidateTarget.isConfirmedSlip ||
@@ -525,6 +527,11 @@ export async function saveCustomerQuote(payload: {
   };
 }
 
+/**
+ * 다중 업로드된 HISIS 확정 전표(1장~수십 장)를 원클릭 일괄 등록합니다.
+ * - 동일 고객(이름 + 전화번호 숫자 일치)은 단 1개의 고객 카드로 자동 통합(일반 2회+ / 구독 2회+ / 혼합 자동 합산)
+ * - 동일 전표번호(orderNo) 재업로드 시 중복 생성 없이 기존 전표 항목만 덮어쓰기 업데이트
+ */
 export async function saveHisisSlipsBatch(
   slips: ParsedHisisSlipResult[],
   options: { targetCustomerId?: string } = {}
@@ -597,7 +604,8 @@ export async function saveHisisSlipsBatch(
       status: slip.crmStatus,
       memo: slip.memoSummary,
       orderNo: slip.orderNo,
-      giftItems: slip.giftItems,
+      // HISIS 판매접수 전산 사진에는 사은품란이 없으므로 전표 등록 시 사은품을 임의 채움/체크하지 않음 (기존 고객 수동 사은품은 보존)
+      giftItems: undefined,
       quoteTitle,
       proposalState: slip.proposalState,
       quoteMode: slip.quoteMode,
