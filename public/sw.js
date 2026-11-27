@@ -1,11 +1,19 @@
-const CACHE_NAME = 'himart-shell-v58';
-const DATA_CACHE_NAME = 'himart-data-v58';
+const CACHE_NAME = 'himart-shell-v59';
+const DATA_CACHE_NAME = 'himart-data-v59';
 const APP_SHELL = ['./', './index.html', './app-manifest.json'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => {}))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(
+        APP_SHELL.map((u) =>
+          fetch(u, { cache: 'reload' })
+            .then((res) => (res && res.ok ? cache.put(u, res) : null))
+            .catch(() => {})
+        )
+      )
+    )
   );
 });
 
@@ -52,14 +60,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML navigation requests bypass stale browser HTTP cache so new bundles reflect immediately
+  // HTML navigation requests bypass browser HTTP cache (max-age=600) so new bundles reflect immediately
   const isHtmlNav =
     request.mode === 'navigate' ||
     url.pathname.endsWith('/') ||
     url.pathname.endsWith('.html');
 
   event.respondWith(
-    fetch(request, isHtmlNav ? { cache: 'no-cache' } : undefined)
+    fetch(request, isHtmlNav ? { cache: 'reload' } : undefined)
       .then((response) => {
         if (response && response.ok) {
           const copy = response.clone();

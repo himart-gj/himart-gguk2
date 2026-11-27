@@ -532,6 +532,7 @@ export function revokeLocalFriendAccess(): void {
     localStorage.removeItem(FRIEND_SESSION_STORAGE_KEY);
     localStorage.removeItem(INTERNAL_STAFF_VERIFIED_V2_KEY);
     localStorage.removeItem(INTERNAL_STAFF_TRUSTED_DEVICE_KEY);
+    localStorage.removeItem('himart_care_table_dataset_v1');
     purgeLocalScheduleAndOwnerState();
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('himart_partner_manuals_session_v1');

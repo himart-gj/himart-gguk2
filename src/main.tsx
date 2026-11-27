@@ -106,7 +106,7 @@ const RootDispatcher: React.FC = () => {
     };
   }, [mode]);
 
-  // 직원 앱('staff-app') 및 친구 초대 인증 화면('public-gate') 프로덕션 빌드에서 PWA 서비스워커 등록 (고객 전용 뷰어 제외)
+  // 직원 앱('staff-app') 및 친구 초대 인증 화면('public-gate') 프로덕션 빌드에서 PWA 서비스워커 등록 및 포그라운드 자동 업데이트 점검
   useEffect(() => {
     if (
       mode !== 'customer-quote' &&
@@ -114,6 +114,7 @@ const RootDispatcher: React.FC = () => {
       import.meta.env.PROD
     ) {
       let refreshing = false;
+      let activeReg: ServiceWorkerRegistration | null = null;
       const hadController = Boolean(navigator.serviceWorker.controller);
       const onControllerChange = () => {
         if (!hadController || refreshing) return;
@@ -124,11 +125,23 @@ const RootDispatcher: React.FC = () => {
       navigator.serviceWorker
         .register('./sw.js', { updateViaCache: 'none' })
         .then((reg) => {
+          activeReg = reg;
           reg.update().catch(() => {});
         })
         .catch(() => {});
+
+      const checkSwUpdate = () => {
+        if (document.visibilityState === 'visible' && activeReg) {
+          activeReg.update().catch(() => {});
+        }
+      };
+      document.addEventListener('visibilitychange', checkSwUpdate);
+      window.addEventListener('focus', checkSwUpdate);
+
       return () => {
         navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+        document.removeEventListener('visibilitychange', checkSwUpdate);
+        window.removeEventListener('focus', checkSwUpdate);
       };
     }
   }, [mode]);
