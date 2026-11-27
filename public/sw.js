@@ -1,5 +1,5 @@
-const CACHE_NAME = 'himart-shell-v60';
-const DATA_CACHE_NAME = 'himart-data-v60';
+const CACHE_NAME = 'himart-shell-v61';
+const DATA_CACHE_NAME = 'himart-data-v61';
 const APP_SHELL = ['./', './index.html', './app-manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -44,6 +44,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  // Data JSON files: Network-First, fallback to cache
   if (url.pathname.endsWith('-data.json')) {
     event.respondWith(
       fetch(request, { cache: 'no-store' })
@@ -59,6 +60,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // HTML navigation requests bypass browser HTTP cache (max-age=600) so new bundles reflect immediately
   const isHtmlNav =
     request.mode === 'navigate' ||
     url.pathname.endsWith('/') ||

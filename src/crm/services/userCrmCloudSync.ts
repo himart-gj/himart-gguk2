@@ -449,10 +449,10 @@ export async function pushUserCrmSnapshotToCloud(
       bypassCache: true,
       gasUrlOverride: gasUrl,
     });
-    const baseObj: Record<string, unknown> =
-      existingCare && typeof existingCare === 'object' && !Array.isArray(existingCare)
-        ? { ...existingCare }
-        : { versionTitle: '', updatedAt: '', fileName: '', items: [] };
+    if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) {
+      return { ok: false, message: '클라우드 응답 지연으로 기존 자료 보호를 위해 동기화를 다음 주기로 보류했습니다.' };
+    }
+    const baseObj: Record<string, unknown> = { ...existingCare };
     baseObj[ENCRYPTED_OWNER_CRM_VAULT_FIELD] = encryptedEnvelope;
 
     const saveRes = await saveStoreCloudDataset('care', baseObj, {
