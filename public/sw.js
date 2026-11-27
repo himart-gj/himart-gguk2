@@ -1,5 +1,5 @@
-const CACHE_NAME = 'himart-shell-v62';
-const DATA_CACHE_NAME = 'himart-data-v62';
+const CACHE_NAME = 'himart-shell-v63';
+const DATA_CACHE_NAME = 'himart-data-v63';
 const APP_SHELL = ['./', './index.html', './app-manifest.json'];
 
 self.addEventListener('install', (event) => {

@@ -1,16 +1,21 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  calculateGeneralHiPreedSummary,
   calculateGeneralPurchaseSummary,
+  calculateHiPlusSummary,
   calculateSubscriptionSummary,
+  GeneralPlanData,
   getActiveCompareModes,
   getAllGeneralPlanSummaries,
+  getLottePlanQuoteMeta,
   getSubscriptionSurplusMeta,
   hasMeaningfulGeneralItems,
   hasMeaningfulSubItems,
   ProposalState,
   QuoteMode,
   resolveComparisonModePlanData,
+  switchGeneralPlanInState,
   switchQuoteModeInState,
 } from '../types/proposal';
 import {
@@ -35,6 +40,7 @@ import { maskModelCodeAfter3, maskProposalStateModels } from '../utils/modelMask
 import { safeCopyText } from '../utils/mobileQaRuntime';
 import {
   AlertTriangle,
+  BookOpen,
   Check,
   Copy,
   ExternalLink,
@@ -235,6 +241,355 @@ export interface ShareQuoteLinkModalProps {
   customerPhone?: string;
   initialMaskModels?: boolean;
   isDark?: boolean;
+}
+
+export interface SharedQuotePreedMeta {
+  hasGenPreed: boolean;
+  hasSubPreed: boolean;
+  hasAnyPreed: boolean;
+  genAccounts: number;
+  subAccounts: number;
+  guideLabel: string;
+  smsGuideLine: string;
+  kakaoGuideLine: string;
+}
+
+export function detectSharedQuotePreedMeta(
+  state: ProposalState,
+  compareModes?: QuoteMode[]
+): SharedQuotePreedMeta {
+  const modes =
+    compareModes && compareModes.length > 0
+      ? compareModes
+      : getActiveCompareModes(state);
+  let hasGenPreed = false;
+  let hasSubPreed = false;
+  let genAccounts = 0;
+  let subAccounts = 0;
+
+  const inspectPlan = (plan: GeneralPlanData, mode: QuoteMode) => {
+    if (
+      (mode === 'general' || mode === 'hybrid') &&
+      !plan.hideHiPreed &&
+      !getLottePlanQuoteMeta(plan).isLottePlan
+    ) {
+      const gCnt = calculateGeneralHiPreedSummary(
+        plan.generalHiPreedCounts,
+        Boolean(plan.hideHiPreed)
+      ).totalAccounts;
+      if (gCnt > 0) {
+        hasGenPreed = true;
+        genAccounts = Math.max(genAccounts, gCnt);
+      }
+    }
+    if ((mode === 'subscription' || mode === 'hybrid') && !plan.hideSubPreed) {
+      const sCnt = calculateHiPlusSummary(
+        plan.hiPlusCounts,
+        plan.subscriptionPeriod || 60,
+        Boolean(plan.hideSubPreed)
+      ).totalAccounts;
+      if (sCnt > 0) {
+        hasSubPreed = true;
+        subAccounts = Math.max(subAccounts, sCnt);
+      }
+    }
+  };
+
+  if (modes.length >= 2) {
+    modes.forEach((m) => {
+      const pData = resolveComparisonModePlanData(state, m);
+      inspectPlan(pData, m);
+    });
+  } else {
+    const m = modes[0] || state.quoteMode;
+    const validPlans = getAllGeneralPlanSummaries(state).filter((p) => p.hasData);
+    if (validPlans.length > 0) {
+      validPlans.forEach((p) => {
+        const switched = switchGeneralPlanInState(state, p.planNum);
+        inspectPlan(switched, m);
+      });
+    } else {
+      inspectPlan(state, m);
+    }
+  }
+
+  const hasAnyPreed = hasGenPreed || hasSubPreed;
+  const guideLabel =
+    hasGenPreed && hasSubPreed
+      ? '하이프리드 · Hi구독 플러스 안내서'
+      : hasSubPreed
+      ? 'Hi구독 플러스 안내서'
+      : hasGenPreed
+      ? '하이프리드 안내서'
+      : '';
+
+  return {
+    hasGenPreed,
+    hasSubPreed,
+    hasAnyPreed,
+    genAccounts,
+    subAccounts,
+    guideLabel,
+    smsGuideLine: hasAnyPreed
+      ? `📘 링크 내 [웅진프리드라이프 ${guideLabel}(만기 100% 환급·멤버십 혜택)] 함께 동봉`
+      : '',
+    kakaoGuideLine: hasAnyPreed
+      ? `📘 전용 링크에 [웅진프리드라이프 ${guideLabel}(지원·납입·만기 100% 환급·멤버십 우대)]가 함께 동봉되어 있습니다.`
+      : '',
+  };
+}
+
+export function composeCustomerShareMessages(params: {
+  profile: ConsultantProfile;
+  customerName?: string;
+  effectiveShareState: ProposalState;
+  activeCompareList: QuoteMode[];
+  activeUrl: string;
+}): { sms: string; kakao: string; preedMeta: SharedQuotePreedMeta } {
+  const {
+    profile,
+    customerName = '',
+    effectiveShareState,
+    activeCompareList,
+    activeUrl,
+  } = params;
+  const preedMeta = detectSharedQuotePreedMeta(
+    effectiveShareState,
+    activeCompareList
+  );
+  const genSummary = calculateGeneralPurchaseSummary(effectiveShareState);
+  const subSummary = calculateSubscriptionSummary(effectiveShareState);
+
+  const formatSubMonthlyShort = (
+    sSum: ReturnType<typeof calculateSubscriptionSummary>
+  ) => {
+    const sSurplus = getSubscriptionSurplusMeta(
+      sSum.finalMonthlyFee,
+      sSum.hiPlusPayoutMethod
+    );
+    if (sSurplus.isSurplusZone) {
+      return sSurplus.monthlySurplus > 0
+        ? `월 0원(${sSurplus.surplusStickyText})`
+        : '월 0원';
+    }
+    return `월 ${sSum.finalMonthlyFee.toLocaleString()}원`;
+  };
+
+  const formatSubTotalShort = (
+    sSum: ReturnType<typeof calculateSubscriptionSummary>
+  ) => {
+    const sSurplus = getSubscriptionSurplusMeta(
+      sSum.finalMonthlyFee,
+      sSum.hiPlusPayoutMethod
+    );
+    if (sSurplus.isSurplusZone || sSum.finalTotalFee <= 0) {
+      return sSum.totalTermSurplus > 0
+        ? `0원(누적 +${sSum.totalTermSurplus.toLocaleString()}원 혜택)`
+        : '0원';
+    }
+    return `${sSum.finalTotalFee.toLocaleString()}원`;
+  };
+
+  const honorific = customerName.trim() ? `${customerName.trim()} 고객님` : '고객님';
+  const isMultiModeShare = activeCompareList.length >= 2;
+  const multiModeTabLabels = activeCompareList
+    .map((_, idx) => `${idx + 1}안`)
+    .join(' · ');
+
+  const multiModeSummaries = activeCompareList.map((m, idx) => {
+    const pData = resolveComparisonModePlanData(effectiveShareState, m);
+    const gSum = calculateGeneralPurchaseSummary(pData);
+    const sSum = calculateSubscriptionSummary(pData);
+    if (m === 'general') {
+      return {
+        mode: m,
+        planLabel: `${idx + 1}안`,
+        modeTitle: '일반구매',
+        line: `[${idx + 1}안 일반구매] 최종 체감가 ${gSum.rawNet.toLocaleString()}원`,
+        itemNames: gSum.displayItems
+          .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
+          .filter(Boolean),
+      };
+    }
+    if (m === 'subscription') {
+      return {
+        mode: m,
+        planLabel: `${idx + 1}안`,
+        modeTitle: '구독구매',
+        line: `[${idx + 1}안 구독구매] ${formatSubMonthlyShort(sSum)} (${sSum.periodLabel} 총 체감 ${formatSubTotalShort(sSum)})`,
+        itemNames: sSum.validSubNames,
+      };
+    }
+    return {
+      mode: m,
+      planLabel: `${idx + 1}안`,
+      modeTitle: '혼합구매',
+      line: `[${idx + 1}안 혼합구매] 일시불 체감 ${gSum.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(sSum)}`,
+      itemNames: [
+        ...gSum.displayItems
+          .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
+          .filter(Boolean),
+        ...sSum.validSubNames,
+      ],
+    };
+  });
+
+  const itemLine = isMultiModeShare
+    ? Array.from(new Set(multiModeSummaries.flatMap((s) => s.itemNames))).join(', ') ||
+      '맞춤 가전 비교 패키지'
+    : effectiveShareState.quoteMode === 'subscription'
+    ? subSummary.validSubNames.join(', ') || '맞춤 가전 구독 패키지'
+    : effectiveShareState.generalItems
+        .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
+        .filter(Boolean)
+        .join(', ') || '맞춤 가전 패키지';
+
+  const subOneTimeExtra =
+    subSummary.totalSubCashback + subSummary.subLotteBillingDiscount;
+  const subOneTimeLabel =
+    subSummary.subLotteBillingDiscount > 0 && subSummary.totalSubCashback > 0
+      ? `5% 청구할인·캐시백 -${subOneTimeExtra.toLocaleString()}원 반영`
+      : subSummary.subLotteBillingDiscount > 0
+      ? `롯데카드 5% 청구할인 -${subSummary.subLotteBillingDiscount.toLocaleString()}원 반영`
+      : subSummary.totalSubCashback > 0
+      ? `1회 캐시백 -${subSummary.totalSubCashback.toLocaleString()}원 반영`
+      : '';
+
+  const mainSubSurplus = getSubscriptionSurplusMeta(
+    subSummary.finalMonthlyFee,
+    subSummary.hiPlusPayoutMethod
+  );
+  const mainSubMonthlyHighlight = mainSubSurplus.isSurplusZone
+    ? mainSubSurplus.monthlySurplus > 0
+      ? `월 체감 0원 (${mainSubSurplus.surplusStickyText})`
+      : '월 체감 0원'
+    : `월 체감 ${subSummary.finalMonthlyFee.toLocaleString()}원`;
+
+  const priceHighlight =
+    effectiveShareState.quoteMode === 'subscription'
+      ? `${mainSubMonthlyHighlight} (최종 ${
+          subSummary.periodLabel
+        } 체감가 ${formatSubTotalShort(subSummary)}${
+          subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''
+        })`
+      : effectiveShareState.quoteMode === 'hybrid'
+      ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(
+          subSummary
+        )} (통합 최종 체감가 ${(
+          genSummary.rawNet + subSummary.finalTotalFee
+        ).toLocaleString()}원${subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''})`
+      : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원`;
+
+  const validSharePlans = getAllGeneralPlanSummaries(effectiveShareState).filter(
+    (p) => p.hasData
+  );
+  const hasMultipleGeneralPlans = validSharePlans.length >= 2;
+  const planRangeText = hasMultipleGeneralPlans
+    ? validSharePlans.map((p) => `${p.planNum}안`).join('·')
+    : '';
+
+  const shortItem =
+    itemLine.length > 42 ? `${itemLine.slice(0, 40)}...` : itemLine;
+
+  const sms = isMultiModeShare
+    ? [
+        `[${profile.storeName}] ${honorific} 맞춤 비교 견적서 안내`,
+        `품목: ${shortItem}`,
+        ...multiModeSummaries.map((s) => s.line),
+        ...(preedMeta.hasAnyPreed ? [preedMeta.smsGuideLine] : []),
+        ``,
+        `아래 링크에서 [${multiModeTabLabels}] 탭${
+          preedMeta.hasAnyPreed ? ' 및 프리드 안내서' : ''
+        }를 확인해 보세요.`,
+        ``,
+        activeUrl,
+        ``,
+        `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
+      ]
+        .join('\n')
+        .trim()
+    : [
+        `[${profile.storeName}] ${honorific} 맞춤 견적서 안내`,
+        `품목: ${shortItem}`,
+        `혜택: ${priceHighlight}`,
+        ...(hasMultipleGeneralPlans
+          ? validSharePlans.map((p) => {
+              if (effectiveShareState.quoteMode === 'subscription') {
+                return `• ${p.planNum}안: ${formatSubMonthlyShort(p.subSummary)}`;
+              }
+              if (effectiveShareState.quoteMode === 'hybrid') {
+                return `• ${p.planNum}안: 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + ${formatSubMonthlyShort(p.subSummary)}`;
+              }
+              return `• ${p.planNum}안: 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
+            })
+          : []),
+        ...(preedMeta.hasAnyPreed ? [preedMeta.smsGuideLine] : []),
+        ``,
+        hasMultipleGeneralPlans
+          ? `아래 링크를 누르시면 스마트폰에서 [${planRangeText}] 및 제휴카드·라이프케어 체감가를 직접 비교하실 수 있습니다.`
+          : `아래 전용 링크를 누르시면 스마트폰에서 상세 혜택 내역과 제휴카드·라이프케어 조건을 확인하실 수 있습니다.`,
+        ``,
+        activeUrl,
+        ``,
+        `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
+      ]
+        .join('\n')
+        .trim();
+
+  const kakao = isMultiModeShare
+    ? [
+        `[${profile.storeName}] ${honorific} 맞춤 비교 견적서`,
+        `상담 품목: ${itemLine}`,
+        ...multiModeSummaries.map((s) => `• ${s.line}`),
+        ...(preedMeta.hasAnyPreed ? [preedMeta.kakaoGuideLine] : []),
+        ``,
+        `아래 전용 링크에서 [${multiModeTabLabels}] 탭${
+          preedMeta.hasAnyPreed ? '과 함께 동봉된 프리드 안내서' : ''
+        }를 직접 확인해 보세요.`,
+        ``,
+        activeUrl,
+        ``,
+        `담당: ${profile.name} (${normalizeConsultantRoleTitle(profile.roleTitle)})${
+          profile.phone ? ` / ${profile.phone}` : ''
+        }`,
+        profile.greeting ? `"${profile.greeting}"` : '',
+      ]
+        .filter((line) => line !== undefined && line !== '')
+        .join('\n')
+    : [
+        `[${profile.storeName}] ${honorific} ${
+          hasMultipleGeneralPlans ? '맞춤 비교 견적서' : '공식 맞춤 견적서'
+        }`,
+        `상담 품목: ${itemLine}`,
+        `핵심 혜택: ${priceHighlight}`,
+        ...(hasMultipleGeneralPlans
+          ? validSharePlans.map((p) => {
+              if (effectiveShareState.quoteMode === 'subscription') {
+                return `• [${p.planNum}안] ${formatSubMonthlyShort(p.subSummary)} (${p.subSummary.periodLabel} 총 ${formatSubTotalShort(p.subSummary)})`;
+              }
+              if (effectiveShareState.quoteMode === 'hybrid') {
+                return `• [${p.planNum}안] 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(p.subSummary)}`;
+              }
+              return `• [${p.planNum}안] 실결제 ${p.genSummary.payPrice.toLocaleString()}원 / 최종 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
+            })
+          : []),
+        ...(preedMeta.hasAnyPreed ? [preedMeta.kakaoGuideLine] : []),
+        ``,
+        hasMultipleGeneralPlans
+          ? `아래 전용 링크에서 [${planRangeText}] 및 제휴카드·구좌별 체감가를 직접 비교하실 수 있습니다.`
+          : `아래 전용 링크에서 상세 혜택과 제휴카드·구좌별 조건을 확인하실 수 있습니다.`,
+        ``,
+        activeUrl,
+        ``,
+        `담당: ${profile.name} (${normalizeConsultantRoleTitle(profile.roleTitle)})${
+          profile.phone ? ` / ${profile.phone}` : ''
+        }`,
+        profile.greeting ? `"${profile.greeting}"` : '',
+      ]
+        .filter((line) => line !== undefined && line !== '')
+        .join('\n');
+
+  return { sms, kakao, preedMeta };
 }
 
 const MODE_ORDER: QuoteMode[] = ['general', 'subscription', 'hybrid'];
@@ -447,234 +802,17 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   if (!isOpen) return null;
 
   const activeUrl = linkBundle?.shortUrl || '';
-  const genSummary = calculateGeneralPurchaseSummary(effectiveShareState);
-  const subSummary = calculateSubscriptionSummary(effectiveShareState);
-
-  const formatSubMonthlyShort = (
-    sSum: ReturnType<typeof calculateSubscriptionSummary>
-  ) => {
-    const sSurplus = getSubscriptionSurplusMeta(
-      sSum.finalMonthlyFee,
-      sSum.hiPlusPayoutMethod
-    );
-    if (sSurplus.isSurplusZone) {
-      return sSurplus.monthlySurplus > 0
-        ? `월 0원(${sSurplus.surplusStickyText})`
-        : '월 0원';
-    }
-    return `월 ${sSum.finalMonthlyFee.toLocaleString()}원`;
-  };
-
-  const formatSubTotalShort = (
-    sSum: ReturnType<typeof calculateSubscriptionSummary>
-  ) => {
-    const sSurplus = getSubscriptionSurplusMeta(
-      sSum.finalMonthlyFee,
-      sSum.hiPlusPayoutMethod
-    );
-    if (sSurplus.isSurplusZone || sSum.finalTotalFee <= 0) {
-      return sSum.totalTermSurplus > 0
-        ? `0원(누적 +${sSum.totalTermSurplus.toLocaleString()}원 혜택)`
-        : '0원';
-    }
-    return `${sSum.finalTotalFee.toLocaleString()}원`;
-  };
-
-  const honorific = custInput.trim() ? `${custInput.trim()} 고객님` : '고객님';
   const isMultiModeShare = activeCompareList.length >= 2;
-  const multiModeTabLabels = activeCompareList
-    .map((_, idx) => `${idx + 1}안`)
-    .join(' · ');
-
-  const multiModeSummaries = activeCompareList.map((m, idx) => {
-    const pData = resolveComparisonModePlanData(effectiveShareState, m);
-    const gSum = calculateGeneralPurchaseSummary(pData);
-    const sSum = calculateSubscriptionSummary(pData);
-    if (m === 'general') {
-      return {
-        mode: m,
-        planLabel: `${idx + 1}안`,
-        modeTitle: '일반구매',
-        line: `[${idx + 1}안 일반구매] 최종 체감가 ${gSum.rawNet.toLocaleString()}원`,
-        itemNames: gSum.displayItems
-          .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
-          .filter(Boolean),
-      };
-    }
-    if (m === 'subscription') {
-      return {
-        mode: m,
-        planLabel: `${idx + 1}안`,
-        modeTitle: '구독구매',
-        line: `[${idx + 1}안 구독구매] ${formatSubMonthlyShort(sSum)} (${sSum.periodLabel} 총 체감 ${formatSubTotalShort(sSum)})`,
-        itemNames: sSum.validSubNames,
-      };
-    }
-    return {
-      mode: m,
-      planLabel: `${idx + 1}안`,
-      modeTitle: '혼합구매',
-      line: `[${idx + 1}안 혼합구매] 일시불 체감 ${gSum.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(sSum)}`,
-      itemNames: [
-        ...gSum.displayItems
-          .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
-          .filter(Boolean),
-        ...sSum.validSubNames,
-      ],
-    };
+  const composedMessages = composeCustomerShareMessages({
+    profile,
+    customerName: custInput,
+    effectiveShareState,
+    activeCompareList,
+    activeUrl,
   });
-
-  const itemLine = isMultiModeShare
-    ? Array.from(new Set(multiModeSummaries.flatMap((s) => s.itemNames))).join(', ') ||
-      '맞춤 가전 비교 패키지'
-    : effectiveShareState.quoteMode === 'subscription'
-    ? subSummary.validSubNames.join(', ') || '맞춤 가전 구독 패키지'
-    : effectiveShareState.generalItems
-        .map((it) => `${it.category}${it.modelName ? `(${it.modelName})` : ''}`)
-        .filter(Boolean)
-        .join(', ') || '맞춤 가전 패키지';
-
-  const subOneTimeExtra =
-    subSummary.totalSubCashback + subSummary.subLotteBillingDiscount;
-  const subOneTimeLabel =
-    subSummary.subLotteBillingDiscount > 0 && subSummary.totalSubCashback > 0
-      ? `5% 청구할인·캐시백 -${subOneTimeExtra.toLocaleString()}원 반영`
-      : subSummary.subLotteBillingDiscount > 0
-      ? `롯데카드 5% 청구할인 -${subSummary.subLotteBillingDiscount.toLocaleString()}원 반영`
-      : subSummary.totalSubCashback > 0
-      ? `1회 캐시백 -${subSummary.totalSubCashback.toLocaleString()}원 반영`
-      : '';
-
-  const mainSubSurplus = getSubscriptionSurplusMeta(
-    subSummary.finalMonthlyFee,
-    subSummary.hiPlusPayoutMethod
-  );
-  const mainSubMonthlyHighlight = mainSubSurplus.isSurplusZone
-    ? mainSubSurplus.monthlySurplus > 0
-      ? `월 체감 0원 (${mainSubSurplus.surplusStickyText})`
-      : '월 체감 0원'
-    : `월 체감 ${subSummary.finalMonthlyFee.toLocaleString()}원`;
-
-  const priceHighlight =
-    effectiveShareState.quoteMode === 'subscription'
-      ? `${mainSubMonthlyHighlight} (최종 ${
-          subSummary.periodLabel
-        } 체감가 ${formatSubTotalShort(subSummary)}${
-          subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''
-        })`
-      : effectiveShareState.quoteMode === 'hybrid'
-      ? `일시불 체감 ${genSummary.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(
-          subSummary
-        )} (통합 최종 체감가 ${(
-          genSummary.rawNet + subSummary.finalTotalFee
-        ).toLocaleString()}원${subOneTimeLabel ? ` · ${subOneTimeLabel}` : ''})`
-      : `최종 혜택 체감가 ${genSummary.rawNet.toLocaleString()}원`;
-
-  const validSharePlans = getAllGeneralPlanSummaries(effectiveShareState).filter(
-    (p) => p.hasData
-  );
-  const hasMultipleGeneralPlans = validSharePlans.length >= 2;
-  const planRangeText = hasMultipleGeneralPlans
-    ? validSharePlans.map((p) => `${p.planNum}안`).join('·')
-    : '';
-
-  const buildSmsShareMessage = () => {
-    const shortItem =
-      itemLine.length > 42 ? `${itemLine.slice(0, 40)}...` : itemLine;
-    if (isMultiModeShare) {
-      return [
-        `[${profile.storeName}] ${honorific} 맞춤 비교 견적서 안내`,
-        `품목: ${shortItem}`,
-        ...multiModeSummaries.map((s) => s.line),
-        ``,
-        `아래 링크에서 [${multiModeTabLabels}] 탭을 눌러 비교해 보세요.`,
-        ``,
-        activeUrl,
-        ``,
-        `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
-      ]
-        .join('\n')
-        .trim();
-    }
-    return [
-      `[${profile.storeName}] ${honorific} 맞춤 견적서 안내`,
-      `품목: ${shortItem}`,
-      `혜택: ${priceHighlight}`,
-      ...(hasMultipleGeneralPlans
-        ? validSharePlans.map((p) => {
-            if (effectiveShareState.quoteMode === 'subscription') {
-              return `• ${p.planNum}안: ${formatSubMonthlyShort(p.subSummary)}`;
-            }
-            if (effectiveShareState.quoteMode === 'hybrid') {
-              return `• ${p.planNum}안: 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + ${formatSubMonthlyShort(p.subSummary)}`;
-            }
-            return `• ${p.planNum}안: 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
-          })
-        : []),
-      ``,
-      hasMultipleGeneralPlans
-        ? `아래 링크를 누르시면 스마트폰에서 [${planRangeText}] 및 제휴카드·라이프케어 체감가를 직접 비교하실 수 있습니다.`
-        : `아래 전용 링크를 누르시면 스마트폰에서 상세 혜택 내역과 제휴카드·라이프케어 조건을 확인하실 수 있습니다.`,
-      ``,
-      activeUrl,
-      ``,
-      `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
-    ]
-      .join('\n')
-      .trim();
-  };
-
-  const buildKakaoShareMessage = () => {
-    if (isMultiModeShare) {
-      return [
-        `[${profile.storeName}] ${honorific} 맞춤 비교 견적서`,
-        `상담 품목: ${itemLine}`,
-        ...multiModeSummaries.map((s) => `• ${s.line}`),
-        ``,
-        `아래 전용 링크에서 [${multiModeTabLabels}] 탭을 눌러 혜택을 직접 비교해 보세요.`,
-        ``,
-        activeUrl,
-        ``,
-        `담당: ${profile.name} (${normalizeConsultantRoleTitle(profile.roleTitle)})${
-          profile.phone ? ` / ${profile.phone}` : ''
-        }`,
-        profile.greeting ? `"${profile.greeting}"` : '',
-      ]
-        .filter((line) => line !== undefined && line !== '')
-        .join('\n');
-    }
-    return [
-      `[${profile.storeName}] ${honorific} ${
-        hasMultipleGeneralPlans ? '맞춤 비교 견적서' : '공식 맞춤 견적서'
-      }`,
-      `상담 품목: ${itemLine}`,
-      `핵심 혜택: ${priceHighlight}`,
-      ...(hasMultipleGeneralPlans
-        ? validSharePlans.map((p) => {
-            if (effectiveShareState.quoteMode === 'subscription') {
-              return `• [${p.planNum}안] ${formatSubMonthlyShort(p.subSummary)} (${p.subSummary.periodLabel} 총 ${formatSubTotalShort(p.subSummary)})`;
-            }
-            if (effectiveShareState.quoteMode === 'hybrid') {
-              return `• [${p.planNum}안] 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + 구독 ${formatSubMonthlyShort(p.subSummary)}`;
-            }
-            return `• [${p.planNum}안] 실결제 ${p.genSummary.payPrice.toLocaleString()}원 / 최종 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
-          })
-        : []),
-      ``,
-      hasMultipleGeneralPlans
-        ? `아래 전용 링크에서 [${planRangeText}] 및 제휴카드·구좌별 체감가를 직접 비교하실 수 있습니다.`
-        : `아래 전용 링크에서 상세 혜택과 제휴카드·구좌별 조건을 확인하실 수 있습니다.`,
-      ``,
-      activeUrl,
-      ``,
-      `담당: ${profile.name} (${normalizeConsultantRoleTitle(profile.roleTitle)})${
-        profile.phone ? ` / ${profile.phone}` : ''
-      }`,
-      profile.greeting ? `"${profile.greeting}"` : '',
-    ]
-      .filter((line) => line !== undefined && line !== '')
-      .join('\n');
-  };
+  const preedMeta = composedMessages.preedMeta;
+  const buildSmsShareMessage = () => composedMessages.sms;
+  const buildKakaoShareMessage = () => composedMessages.kakao;
 
   const previewText =
     channelTab === 'sms' ? buildSmsShareMessage() : buildKakaoShareMessage();
@@ -1013,6 +1151,28 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                 setProfile((p) => ({ ...p }));
               }}
             />
+          )}
+
+          {/* 프리드 포함 시 안내서 자동 동봉 배너 */}
+          {preedMeta.hasAnyPreed && (
+            <div
+              className={`rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${
+                isDark
+                  ? 'bg-emerald-950/35 border-emerald-700/50 text-emerald-200'
+                  : 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1 text-xs leading-snug break-keep">
+                <div className="font-black text-emerald-800 dark:text-emerald-300">
+                  프리드 결합 감지됨 · 안내서 자동 동봉
+                </div>
+                <p className="text-[11.5px] font-semibold text-emerald-700 dark:text-emerald-200/90 mt-0.5">
+                  고객 전용 링크 열람 화면과 문자·카톡 안내문에{' '}
+                  <strong>웅진프리드라이프 {preedMeta.guideLabel}</strong>가 자동으로 함께 포함됩니다.
+                </p>
+              </div>
+            </div>
           )}
 
           {/* 생성된 단축 URL 바 */}

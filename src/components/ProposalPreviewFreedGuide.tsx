@@ -75,6 +75,7 @@ export const ProposalPreviewFreedGuide: React.FC<Record<string, any>> = ({
   representativePeriod,
   scale,
   useMobileFluid = false,
+  sheetId = 'sheet-freed-guide',
 }) => {
   const isSubGuide = activeTab === 'guide-sub';
 
@@ -82,7 +83,7 @@ export const ProposalPreviewFreedGuide: React.FC<Record<string, any>> = ({
     <>
       {isGuideTab && (
         <div
-          id="sheet-freed-guide"
+          id={sheetId}
           ref={guideSheetRef}
           style={
             useMobileFluid
@@ -350,7 +351,7 @@ export const ProposalPreviewFreedGuide: React.FC<Record<string, any>> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 flex-1 content-between">
+              <div className={`grid ${useMobileFluid ? 'grid-cols-1 min-[380px]:grid-cols-2' : 'grid-cols-2'} gap-2 flex-1 content-between`}>
                 {LIFE_CARE_SERVICES.map((svc) => (
                   <div
                     key={svc.title}
