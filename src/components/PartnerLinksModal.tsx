@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  BookOpen,
   Check,
   Copy,
+  Loader2,
   Edit3,
   ExternalLink,
   Globe,
@@ -18,6 +20,14 @@ import {
   X,
 } from 'lucide-react';
 import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
+import {
+  CloudPartnerManualDoc,
+  fetchPartnerManualsMap,
+  hasConfiguredCloudEndpoint,
+  PARTNER_MANUALS_UPDATED_EVENT,
+  readSessionCachedPartnerManuals,
+} from '../utils/partnerManualSync';
+import { openPartnerManualModal } from './PartnerManualViewerModal';
 
 export type PartnerLinkCategory = 'living' | 'resell' | 'staff';
 
@@ -229,6 +239,10 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [cloudManuals, setCloudManuals] = useState<CloudPartnerManualDoc[]>(() =>
+    Object.values(readSessionCachedPartnerManuals())
+  );
+  const [isLoadingManuals, setIsLoadingManuals] = useState<boolean>(false);
 
   // QR 팝업 상태
   const [qrTarget, setQrTarget] = useState<PartnerQuickLinkItem | null>(null);
@@ -247,6 +261,14 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
     if (isOpen) {
       setLinks(loadPartnerLinks());
       setFavoriteIds(loadFavoriteIds());
+      const cached = Object.values(readSessionCachedPartnerManuals());
+      setCloudManuals(cached);
+      if (hasConfiguredCloudEndpoint()) {
+        if (cached.length === 0) setIsLoadingManuals(true);
+        fetchPartnerManualsMap()
+          .then((map) => setCloudManuals(Object.values(map)))
+          .finally(() => setIsLoadingManuals(false));
+      }
     } else {
       setQrTarget(null);
       setIsFormOpen(false);
@@ -429,14 +451,39 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
       });
   }, [links, activeTab, searchQuery, favoriteIds]);
 
+  useEffect(() => {
+    const syncManuals = () =>
+      setCloudManuals(Object.values(readSessionCachedPartnerManuals()));
+    window.addEventListener(PARTNER_MANUALS_UPDATED_EVENT, syncManuals);
+    return () =>
+      window.removeEventListener(PARTNER_MANUALS_UPDATED_EVENT, syncManuals);
+  }, []);
+
+  const filteredCloudManuals = useMemo(() => {
+    if (activeTab !== 'all' && activeTab !== 'staff') return [];
+    if (!searchQuery.trim()) return cloudManuals;
+    return cloudManuals.filter((doc) => {
+      const searchable = [
+        doc.title,
+        doc.version || '',
+        ...doc.chapters.flatMap((ch) => [
+          ch.title,
+          ch.summary,
+          ...(ch.keywords || []),
+        ]),
+      ].join(' ');
+      return matchesSearch(searchable, searchQuery);
+    });
+  }, [cloudManuals, activeTab, searchQuery]);
+
   const counts = useMemo(
     () => ({
-      all: links.length,
+      all: links.length + cloudManuals.length,
       living: links.filter((x) => x.category === 'living').length,
       resell: links.filter((x) => x.category === 'resell').length,
-      staff: links.filter((x) => x.category === 'staff').length,
+      staff: links.filter((x) => x.category === 'staff').length + cloudManuals.length,
     }),
-    [links]
+    [links, cloudManuals.length]
   );
 
   if (!isOpen) return null;
@@ -464,7 +511,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                   제휴 · 업무 바로가기 허브
                 </h2>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 text-[11.5px] font-bold text-[#1B64DA] dark:text-blue-300 font-mono tabular-nums shrink-0">
-                  총 {links.length}개 등록됨
+                  총 {links.length + cloudManuals.length}개 등록됨
                 </span>
               </div>
               <p className="text-xs text-[#4E5968] dark:text-slate-400 font-medium truncate mt-0.5">
@@ -673,6 +720,79 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
               </div>
             </form>
           )}
+
+          {/* 비공개 클라우드 연동 전산 실무 교안 카드 (오너 및 초대 인증 기기 전용) */}
+          {(activeTab === 'all' || activeTab === 'staff') &&
+            isLoadingManuals &&
+            cloudManuals.length === 0 && (
+              <div className="rounded-[20px] border border-[#BFDBFE] dark:border-blue-500/30 bg-white dark:bg-[#131C2E] p-4 flex items-center gap-2.5 text-xs font-bold text-[#1B64DA] dark:text-blue-300">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                <span>인증 기기 전용 업무 교안을 클라우드에서 동기화하는 중입니다...</span>
+              </div>
+            )}
+
+          {filteredCloudManuals.map((doc) => (
+            <div
+              key={`cloud-manual-${doc.id}`}
+              className="rounded-[20px] border-2 border-[#FECDD3] dark:border-rose-500/40 bg-white dark:bg-[#131C2E] p-4 sm:p-5 flex flex-col gap-3 shadow-xs"
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11.5px] font-extrabold border bg-[#FFF1F2] dark:bg-rose-500/15 text-[#E60012] dark:text-[#FF3B47] border-[#FECDD3] dark:border-rose-500/30">
+                    <Lock className="w-3 h-3" />
+                    보안 실무 교안 · {doc.chapters.length}개 단계 수록
+                  </span>
+                  {doc.version && (
+                    <span className="text-[11px] font-mono font-bold text-[#4E5968] dark:text-slate-400">
+                      {doc.version}
+                    </span>
+                  )}
+                </div>
+
+                <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-[#191F28] dark:text-slate-50 flex items-center gap-1.5">
+                  <BookOpen className="w-4 h-4 text-[#E60012] dark:text-rose-400 shrink-0" />
+                  <span>{doc.title}</span>
+                </h3>
+
+                <p className="text-xs leading-relaxed font-medium text-[#4E5968] dark:text-slate-400">
+                  단계별 체크리스트 · 증빙 및 회수비 기준표 · 키워드/초성 즉시 검색 지원 (외부 공유 금지)
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {doc.chapters.map((ch) => (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    onClick={() =>
+                      openPartnerManualModal({
+                        manualId: doc.id,
+                        chapterId: ch.id,
+                      })
+                    }
+                    className="px-2.5 py-1 rounded-lg border border-[#E5E8EB] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800/80 hover:border-[#1B64DA] dark:hover:border-blue-400 text-[11px] font-bold text-[#333D4B] dark:text-slate-200 cursor-pointer transition-colors"
+                  >
+                    {ch.number}. {ch.title.split('(')[0].trim()}
+                  </button>
+                ))}
+              </div>
+
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    openPartnerManualModal({
+                      manualId: doc.id,
+                    })
+                  }
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                  <span>전산등록 교안 전체 열기</span>
+                </button>
+              </div>
+            </div>
+          ))}
 
           {/* 바로가기 카드 그리드 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
