@@ -446,7 +446,8 @@ export async function saveStoreCloudDataset(
         parsedObj &&
         typeof parsedObj === 'object' &&
         !Array.isArray(parsedObj) &&
-        !(FRIEND_REMOTE_PROFILES_FIELD in parsedObj)
+        (!(FRIEND_REMOTE_PROFILES_FIELD in parsedObj) ||
+          !('__partnerManuals' in parsedObj))
       ) {
         const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>(
           'care',
@@ -455,16 +456,23 @@ export async function saveStoreCloudDataset(
             gasUrlOverride: gasUrl,
           }
         );
-        const existingProfiles =
-          existingCare &&
-          typeof existingCare === 'object' &&
-          existingCare[FRIEND_REMOTE_PROFILES_FIELD] &&
-          typeof existingCare[FRIEND_REMOTE_PROFILES_FIELD] === 'object'
-            ? existingCare[FRIEND_REMOTE_PROFILES_FIELD]
-            : undefined;
-        if (existingProfiles) {
-          (parsedObj as Record<string, unknown>)[FRIEND_REMOTE_PROFILES_FIELD] =
-            existingProfiles;
+        if (existingCare && typeof existingCare === 'object') {
+          if (
+            !(FRIEND_REMOTE_PROFILES_FIELD in parsedObj) &&
+            existingCare[FRIEND_REMOTE_PROFILES_FIELD] &&
+            typeof existingCare[FRIEND_REMOTE_PROFILES_FIELD] === 'object'
+          ) {
+            (parsedObj as Record<string, unknown>)[FRIEND_REMOTE_PROFILES_FIELD] =
+              existingCare[FRIEND_REMOTE_PROFILES_FIELD];
+          }
+          if (
+            !('__partnerManuals' in parsedObj) &&
+            existingCare['__partnerManuals'] &&
+            typeof existingCare['__partnerManuals'] === 'object'
+          ) {
+            (parsedObj as Record<string, unknown>)['__partnerManuals'] =
+              existingCare['__partnerManuals'];
+          }
           finalPayload = parsedObj;
         }
       }
