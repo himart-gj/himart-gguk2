@@ -25,7 +25,9 @@ import {
   buildStaffAutoConnectUrl,
   clearStoreCloudMicroCache,
   fetchAllFriendRemoteProfiles,
+  fetchFriendNoticesMap,
   fetchFriendScheduleMap,
+  FriendOneTimeNotice,
   fetchStoreCloudDataset,
   FriendRemoteProfile,
   getStoreCloudAppsScriptCode,
@@ -162,6 +164,10 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     Record<string, FriendRemoteProfile>
   >({});
   const [friendScheduleMap, setFriendScheduleMap] = useState<Record<string, boolean>>({});
+  const [friendNoticesMap, setFriendNoticesMap] = useState<Record<string, FriendOneTimeNotice>>({});
+  const [editingNoticeCodeId, setEditingNoticeCodeId] = useState<string | null>(null);
+  const [noticeDraftText, setNoticeDraftText] = useState<string>('');
+  const [isSavingFriendNotice, setIsSavingFriendNotice] = useState<boolean>(false);
   const [editingProfileCodeId, setEditingProfileCodeId] = useState<string | null>(null);
   const [editProfileDraft, setEditProfileDraft] = useState<{
     storeName: string;
@@ -211,6 +217,7 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setPinError(null);
     setIsVerifyingPin(false);
     setEditingProfileCodeId(null);
+    setEditingNoticeCodeId(null);
     setNeedsSheetBinding(false);
     setCloudVerified(validUrl ? null : false);
     setActiveHubTab(!validUrl ? 'cloud' : 'datasets');
@@ -240,12 +247,14 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
       fetchFriendInviteList(targetUrl, targetPin, savedSid),
       fetchAllFriendRemoteProfiles(targetUrl),
       fetchFriendScheduleMap(targetUrl),
+      fetchFriendNoticesMap(targetUrl),
       diagnoseStoreCloudConnection(targetUrl, targetPin, savedSid),
     ])
-      .then(([res, remoteMap, schedMap, diag]) => {
+      .then(([res, remoteMap, schedMap, noticesMap, diag]) => {
         if (cancelled) return;
         setFriendRemoteProfiles(remoteMap || {});
         setFriendScheduleMap(schedMap || {});
+        setFriendNoticesMap(noticesMap || {});
         setCloudDiag(diag);
         if (diag.ok) {
           setCloudVerified(true);
@@ -490,15 +499,17 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setCloudPin(cleanPin);
     setIsCheckingCloud(true);
     try {
-      const [diag, invRes, remoteMap, schedMap] = await Promise.all([
+      const [diag, invRes, remoteMap, schedMap, noticesMap] = await Promise.all([
         diagnoseStoreCloudConnection(normalized, cleanPin, extractedSid),
         fetchFriendInviteList(normalized, cleanPin, extractedSid),
         fetchAllFriendRemoteProfiles(normalized),
         fetchFriendScheduleMap(normalized),
+        fetchFriendNoticesMap(normalized),
       ]);
       setCloudDiag(diag);
       setFriendRemoteProfiles(remoteMap || {});
       setFriendScheduleMap(schedMap || {});
+      setFriendNoticesMap(noticesMap || {});
       if (invRes.ok) {
         setFriendInvites(invRes.items);
         if (invRes.sharedAi) setSharedAiState(invRes.sharedAi);
@@ -667,7 +678,10 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     handleToggleFriendScheduleAllowed,
     handleRefreshFriendInvites,
     handleIssueFriendInvite,
+    handleClearFriendNotice,
+    handleOpenFriendNoticeEditor,
     handleOpenRemoteProfileEditor,
+    handleSaveFriendNotice,
     handleSaveRemoteProfileForFriend,
     handleCycleMaxDevices,
     handleCopyFriendInviteGuide,
@@ -677,8 +691,12 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     editProfileDraft,
     editingProfileCodeId,
     friendLabelInput: friendLabelInput || `직원${friendInvites.length + 1}`,
+    editingNoticeCodeId,
+    friendNoticesMap,
     friendRemoteProfiles,
     friendScheduleMap,
+    isSavingFriendNotice,
+    noticeDraftText,
     gasUrl,
     isIssuingInvite,
     isSavingRemoteProfile,
@@ -695,8 +713,12 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
     setEditingProfileCodeId,
     setFriendInvites,
     setFriendPanelError,
+    setEditingNoticeCodeId,
+    setFriendNoticesMap,
     setFriendRemoteProfiles,
     setFriendScheduleMap,
+    setIsSavingFriendNotice,
+    setNoticeDraftText,
     setIsFriendListCollapsed,
     setIsIssuingInvite,
     setIsLoadingInvites,
@@ -788,7 +810,6 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
         className={`w-full max-w-4xl max-h-[92dvh] rounded-[22px] border border-t-[3px] border-t-[#E60012] shadow-2xl flex flex-col overflow-hidden ${modalBg}`}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 심플 상단 헤더 */}
         <div
           className={`px-4 sm:px-6 py-3.5 border-b flex items-center justify-between gap-2 shrink-0 ${
             isDark ? 'bg-[#131C2E] border-slate-800' : 'bg-white border-[#E5E8EB]'
@@ -854,7 +875,6 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
           </div>
         </div>
 
-        {/* 관리자 3탭 네비게이션 바 — 한 화면에 한 가지 업무만 깔끔하게 표시 */}
         {isAdmin && (
           <div
             className={`px-4 sm:px-6 py-2.5 border-b shrink-0 ${
@@ -954,7 +974,6 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
           </div>
         )}
 
-        {/* 본문 영역 */}
         <div
           className={`flex-1 overflow-y-auto p-4 sm:p-6 ${
             isDark ? 'bg-[#0B1120]' : 'bg-[#F2F4F6]'
@@ -1065,8 +1084,10 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                 cardBg,
                 copiedInviteCodeId,
                 editProfileDraft,
+                editingNoticeCodeId,
                 editingProfileCodeId,
                 friendInvites,
+                friendNoticesMap,
                 friendLabelInput,
                 friendPanelError,
                 friendRemoteProfiles,
@@ -1076,8 +1097,11 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                 handleCycleMaxDevices,
                 handleIssueFriendInvite,
                 handleMutateFriendInvite,
+                handleClearFriendNotice,
+                handleOpenFriendNoticeEditor,
                 handleOpenRemoteProfileEditor,
                 handleRefreshFriendInvites,
+                handleSaveFriendNotice,
                 handleSaveRemoteProfileForFriend,
                 handleSaveSharedAiKey,
                 handleToggleFriendAiAllowed,
@@ -1087,15 +1111,19 @@ export const StoreAdminUploadHubModal: React.FC<StoreAdminUploadHubModalProps> =
                 isFriendListCollapsed,
                 isIssuingInvite,
                 isLoadingInvites,
+                isSavingFriendNotice,
                 isSavingRemoteProfile,
                 isSavingSharedAi,
+                noticeDraftText,
                 mutedText,
                 newFriendMaxDevices,
                 newFriendNameInput,
                 newFriendPhoneInput,
                 newFriendStoreInput,
                 setEditProfileDraft,
+                setEditingNoticeCodeId,
                 setEditingProfileCodeId,
+                setNoticeDraftText,
                 setFriendLabelInput,
                 setIsFriendListCollapsed,
                 setNewFriendMaxDevices,

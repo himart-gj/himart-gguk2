@@ -49,8 +49,10 @@ import {
   clearStoreCloudMicroCache,
   deleteFriendRemoteProfile,
   fetchAllFriendRemoteProfiles,
+  fetchFriendNoticesMap,
   fetchFriendScheduleMap,
   fetchStoreCloudDataset,
+  saveFriendOneTimeNotice,
   saveFriendSchedulePermission,
   FriendRemoteProfile,
   getStoreCloudAppsScriptCode,
@@ -118,13 +120,17 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
   const {
     busyInviteCodeId,
     editProfileDraft,
+    editingNoticeCodeId,
     editingProfileCodeId,
+    friendNoticesMap,
     friendLabelInput,
     friendRemoteProfiles,
     friendScheduleMap,
     gasUrl,
     isIssuingInvite,
+    isSavingFriendNotice,
     isSavingRemoteProfile,
+    noticeDraftText,
     isSavingSharedAi,
     newFriendMaxDevices,
     newFriendNameInput,
@@ -135,7 +141,9 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
     setCloudDiag,
     setCopiedInviteCodeId,
     setEditProfileDraft,
+    setEditingNoticeCodeId,
     setEditingProfileCodeId,
+    setFriendNoticesMap,
     setFriendInvites,
     setFriendPanelError,
     setFriendRemoteProfiles,
@@ -143,7 +151,9 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
     setIsFriendListCollapsed,
     setIsIssuingInvite,
     setIsLoadingInvites,
+    setIsSavingFriendNotice,
     setIsSavingRemoteProfile,
+    setNoticeDraftText,
     setIsSavingSharedAi,
     setNeedsSheetBinding,
     setNewFriendNameInput,
@@ -375,14 +385,16 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
     setIsLoadingInvites(true);
     setFriendPanelError(null);
     try {
-      const [res, remoteMap, schedMap, diag] = await Promise.all([
+      const [res, remoteMap, schedMap, noticesMap, diag] = await Promise.all([
         fetchFriendInviteList(auth.url, auth.pin, auth.sid),
         fetchAllFriendRemoteProfiles(auth.url),
         fetchFriendScheduleMap(auth.url),
+        fetchFriendNoticesMap(auth.url),
         diagnoseStoreCloudConnection(auth.url, auth.pin, auth.sid),
       ]);
       setFriendRemoteProfiles(remoteMap || {});
       setFriendScheduleMap(schedMap || {});
+      setFriendNoticesMap(noticesMap || {});
       setCloudDiag(diag);
       if (diag.ok) {
         setNeedsSheetBinding(false);
@@ -532,6 +544,87 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
     }
   };
 
+  const handleOpenFriendNoticeEditor = (item: FriendInviteItem) => {
+    if (editingNoticeCodeId === item.codeId) {
+      setEditingNoticeCodeId(null);
+      return;
+    }
+    const existingNotice = friendNoticesMap?.[item.codeId];
+    setNoticeDraftText(existingNotice?.message || '');
+    setEditingProfileCodeId(null);
+    setEditingNoticeCodeId(item.codeId);
+  };
+
+  const handleSaveFriendNotice = async (item: FriendInviteItem) => {
+    if (isSavingFriendNotice) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    const cleanMsg = String(noticeDraftText || '').trim();
+    if (!cleanMsg) {
+      showToastMessage('error', '전달할 1회성 공지 멘트를 입력해 주세요.');
+      return;
+    }
+
+    setIsSavingFriendNotice(true);
+    setFriendPanelError(null);
+    try {
+      const saveRes = await saveFriendOneTimeNotice(
+        auth.url,
+        auth.pin,
+        item.codeId,
+        cleanMsg,
+        auth.sid
+      );
+      if (!saveRes.ok) {
+        setFriendPanelError(saveRes.message);
+        showToastMessage('error', `⚠️ ${saveRes.message}`);
+        return;
+      }
+      if (saveRes.noticesMap) {
+        setFriendNoticesMap(saveRes.noticesMap);
+      }
+      setEditingNoticeCodeId(null);
+      showToastMessage(
+        'success',
+        `💬 [${item.label}] 기기에 1회성 멘트가 발송 대기 등록되었습니다! 해당 친구/직원이 통합앱을 켜면 팝업으로 딱 1번 표시됩니다.`
+      );
+    } finally {
+      setIsSavingFriendNotice(false);
+    }
+  };
+
+  const handleClearFriendNotice = async (item: FriendInviteItem) => {
+    if (isSavingFriendNotice) return;
+    const auth = resolveActiveCloudAuth();
+    if (!auth) return;
+
+    setIsSavingFriendNotice(true);
+    setFriendPanelError(null);
+    try {
+      const saveRes = await saveFriendOneTimeNotice(
+        auth.url,
+        auth.pin,
+        item.codeId,
+        '',
+        auth.sid
+      );
+      if (!saveRes.ok) {
+        setFriendPanelError(saveRes.message);
+        showToastMessage('error', `⚠️ ${saveRes.message}`);
+        return;
+      }
+      if (saveRes.noticesMap) {
+        setFriendNoticesMap(saveRes.noticesMap);
+      }
+      setNoticeDraftText('');
+      setEditingNoticeCodeId(null);
+      showToastMessage('info', `🗑️ [${item.label}] 등록된 1회성 멘트를 내렸습니다.`);
+    } finally {
+      setIsSavingFriendNotice(false);
+    }
+  };
+
   const handleCycleMaxDevices = async (item: FriendInviteItem) => {
     if (busyInviteCodeId) return;
     const auth = resolveActiveCloudAuth();
@@ -592,7 +685,6 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
       return;
     }
 
-    // URL 주소창 노출 최소화를 위해 단축 URL 자동 시도 (실패/지연 시 즉시 원본 URL 사용)
     let displayInviteUrl = rawInviteUrl;
     try {
       const controller = new AbortController();
@@ -713,6 +805,11 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
           delete next[item.codeId];
           return next;
         });
+        setFriendNoticesMap((prev: Record<string, any>) => {
+          const next = { ...(prev || {}) };
+          delete next[item.codeId];
+          return next;
+        });
       }
       if (res.sharedAi) setSharedAiState(res.sharedAi);
       if (Array.isArray(res.items)) {
@@ -744,8 +841,6 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
     }
   };
 
-  // 공통 클라우드 업로드 헬퍼 (설정창 최신 입력값 및 시트ID 우선 반영 + 진단 즉시 갱신)
-
   return {
     handleSaveSharedAiKey,
     handleToggleGlobalSharedAi,
@@ -754,6 +849,9 @@ export function useStoreAdminFriendsAndAi(ctx: Record<string, any>) {
     handleToggleFriendScheduleAllowed,
     handleRefreshFriendInvites,
     handleIssueFriendInvite,
+    handleOpenFriendNoticeEditor,
+    handleSaveFriendNotice,
+    handleClearFriendNotice,
     handleOpenRemoteProfileEditor,
     handleSaveRemoteProfileForFriend,
     handleCycleMaxDevices,
