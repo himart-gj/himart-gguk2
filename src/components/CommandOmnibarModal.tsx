@@ -10,6 +10,8 @@ import { ADMIN_PIN_CODE, CareTableDataset, CareTableItem } from '../utils/careTa
 import { InstallmentDataset } from '../utils/installmentParser';
 import { MAJOR_AS_CENTERS, PLUX_AS_GROUPS } from './QuickCenterModal';
 import { loadPartnerLinks } from './PartnerLinksModal';
+import { openPartnerManualModal } from './PartnerManualViewerModal';
+import { readSessionCachedPartnerManuals } from '../utils/partnerManualSync';
 import {
   getOrCreateMonthSchedule,
   isOffDayCode,
@@ -562,6 +564,44 @@ export const CommandOmnibarModal: React.FC<CommandOmnibarModalProps> = ({
           },
         });
       });
+
+    // 3-1. 비공개 클라우드 실무 교안 (인증 기기 세션 메모리 동적 인덱싱)
+    Object.values(readSessionCachedPartnerManuals()).forEach((doc) => {
+      if (matchSearch(`${doc.title} ${doc.version || ''} 전산 교안 매뉴얼`, q)) {
+        list.push({
+          id: `cloud-manual-root-${doc.id}`,
+          group: '메뉴',
+          title: `📘 ${doc.title}`,
+          subtitle: `${doc.version || '실무 교안'} · 전체 ${doc.chapters.length}개 단계 열기`,
+          badge: '보안교안',
+          onSelect: () => {
+            onClose();
+            openPartnerManualModal({ manualId: doc.id });
+          },
+        });
+      }
+      doc.chapters.forEach((ch) => {
+        const chBlob = [
+          ch.title,
+          ch.summary,
+          ...(ch.keywords || []),
+          ...(ch.callouts || []).map((c) => c.title),
+        ].join(' ');
+        if (matchSearch(chBlob, q)) {
+          list.push({
+            id: `cloud-manual-ch-${doc.id}-${ch.id}`,
+            group: '고정 기준표',
+            title: `📘 [교안 ${ch.number}] ${ch.title}`,
+            subtitle: ch.summary,
+            badge: ch.slideRange || '실무교안',
+            onSelect: () => {
+              onClose();
+              openPartnerManualModal({ manualId: doc.id, chapterId: ch.id });
+            },
+          });
+        }
+      });
+    });
 
     // 3-2. 제휴 · 업무 바로가기 허브 링크
     loadPartnerLinks()
