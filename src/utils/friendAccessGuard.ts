@@ -1,13 +1,15 @@
 // ============================================================================
-// 외부 지인(친구) 전용 1회용 8자리 초대코드 · 1기기 영구 귀속 · 원격 차단 보안 가드
+// 외부 지인(친구) 전용 초대코드 · 다중기기 허용 · 휴무표 공유 ON/OFF · 원격 차단 보안 가드
 // - 비공개 구글 시트(_친구기기_접근관리) 서버 검증 연동
 // - localStorage + IndexedDB 이중 기기 고유 토큰(deviceToken) 영속화
-// - 친구 세션 시 경기광주점 휴무표 및 오너 전용 기능 로컬 흔적 즉시 소거
+// - 친구 세션 시 오너 전용 기능 로컬 흔적 즉시 소거 + 휴무표 공유 ON/OFF 실시간 반영
 // ============================================================================
 
 export const FRIEND_SESSION_STORAGE_KEY = 'himart_friend_session_v1';
 export const FRIEND_DEVICE_TOKEN_KEY = 'himart_friend_device_token_v1';
 export const FRIEND_DEVICE_REVOKED_KEY = 'himart_friend_revoked_v1';
+export const FRIEND_SCHEDULE_ALLOWED_KEY = 'himart_friend_schedule_allowed_v1';
+export const FRIEND_INVITE_CREDENTIAL_CACHE_KEY = 'himart_friend_invite_cred_v1';
 export const PENDING_INVITE_PROMPT_KEY = 'himart_pending_invite_prompt_v1';
 export const FRIEND_ROLE_CHANGED_EVENT = 'himart_friend_role_changed';
 export const FRIEND_SHARED_AI_SYNC_EVENT = 'himart_friend_shared_ai_sync';
@@ -17,8 +19,30 @@ const INTERNAL_TARGET_SHEET_ID_KEY = 'himart_gj_target_sheet_id_v1';
 const INTERNAL_CLOUD_UPDATED_EVENT = 'himart_gj_store_cloud_updated';
 const INTERNAL_STAFF_VERIFIED_V2_KEY = 'himart_staff_verified_gate_v2';
 const INTERNAL_STAFF_TRUSTED_DEVICE_KEY = 'himart_staff_trusted_device_v1';
+const INTERNAL_STAFF_CUSTOM_PIN_KEY = 'himart_staff_custom_pin_v1';
+const INTERNAL_OWNER_DB_PIN_KEY = 'himart_gj_owner_db_pin_v1';
+const INTERNAL_OWNER_DB_UNLOCKED_KEY = 'himart_gj_owner_db_unlocked_v1';
+const INTERNAL_ADMIN_UNLOCKED_KEY = 'himart_gj_admin_unlocked';
 const INTERNAL_CUSTOMER_VIEWER_ONLY_KEY = 'himart_customer_viewer_only_v1';
 const INTERNAL_CUSTOMER_TAB_LOCK_KEY = 'himart_customer_tab_lock_v1';
+
+const RELAY_XOR_KEY = 0x5a;
+const DEFAULT_RELAY_BYTES: readonly number[] = [
+  50, 46, 46, 42, 41, 96, 117, 117, 41, 57, 40, 51, 42, 46, 116, 61, 53, 53, 61,
+  54, 63, 116, 57, 53, 55, 117, 55, 59, 57, 40, 53, 41, 117, 41, 117, 27, 17,
+  60, 35, 57, 56, 45, 32, 32, 107, 54, 62, 14, 55, 27, 31, 21, 62, 12, 99, 104,
+  47, 2, 54, 57, 111, 27, 21, 43, 48, 19, 27, 32, 46, 3, 106, 16, 106, 29, 41,
+  106, 3, 24, 25, 31, 106, 13, 40, 49, 34, 55, 24, 63, 8, 19, 8, 62, 105, 8, 12,
+  119, 19, 34, 55, 60, 107, 10, 17, 110, 53, 49, 20, 117, 63, 34, 63, 57,
+];
+
+export function resolveBuiltInDefaultRelayUrl(): string {
+  let out = '';
+  for (let i = 0; i < DEFAULT_RELAY_BYTES.length; i++) {
+    out += String.fromCharCode(DEFAULT_RELAY_BYTES[i] ^ RELAY_XOR_KEY);
+  }
+  return out;
+}
 
 const IDB_NAME = 'himart_device_auth_db';
 const IDB_VERSION = 1;
@@ -30,6 +54,7 @@ export interface FriendSessionRecord {
   codeId: string;
   label: string;
   verifiedAt: string;
+  scheduleAllowed?: boolean;
 }
 
 export type FriendInviteStatus = 'ACTIVE' | 'BOUND' | 'REVOKED';
@@ -44,6 +69,7 @@ export interface FriendInviteItem {
   boundDevicePreview?: string;
   boundUserAgent?: string;
   aiAllowed?: boolean;
+  scheduleAllowed?: boolean;
   createdAt: string;
   boundAt: string;
   lastSeenAt: string;
@@ -61,6 +87,7 @@ export interface AuthenticateDeviceResult {
   role?: 'staff' | 'friend';
   codeId?: string;
   label?: string;
+  scheduleAllowed?: boolean;
   codeAlreadyUsed?: boolean;
   revoked?: boolean;
   error?: string;
@@ -107,14 +134,15 @@ function decodeB64UrlUtf8(token: string): string {
 
 function readStoredCloudRepo(): { repo: string; branch: string; token: string } {
   if (typeof localStorage === 'undefined') {
-    return { repo: '', branch: 'main', token: '' };
+    return { repo: resolveBuiltInDefaultRelayUrl(), branch: 'main', token: '' };
   }
   try {
     const raw = localStorage.getItem(INTERNAL_CLOUD_CONFIG_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const explicitRepo = String(parsed?.repo || '').trim();
       return {
-        repo: String(parsed?.repo || '').trim(),
+        repo: explicitRepo || resolveBuiltInDefaultRelayUrl(),
         branch: String(parsed?.branch || 'main').trim() || 'main',
         token: String(parsed?.token || '').trim(),
       };
@@ -122,7 +150,7 @@ function readStoredCloudRepo(): { repo: string; branch: string; token: string } 
   } catch {
     // ignore parse error
   }
-  return { repo: '', branch: 'main', token: '' };
+  return { repo: resolveBuiltInDefaultRelayUrl(), branch: 'main', token: '' };
 }
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -263,9 +291,6 @@ async function writeDeviceTokenToIdb(token: string): Promise<void> {
   });
 }
 
-/**
- * 기기 고유 토큰 이중 영속화 (localStorage + IndexedDB 상호 복구)
- */
 export async function getOrCreateDeviceBindingToken(): Promise<string> {
   let lsToken = '';
   try {
@@ -320,9 +345,6 @@ export async function getOrCreateDeviceBindingToken(): Promise<string> {
   return freshToken;
 }
 
-/**
- * 초대 전용 링크(?invite=<base64url(gasUrl)>) 생성
- */
 export function buildFriendInviteUrl(rawGasUrl?: string): string {
   const gasUrl = isValidGasUrl(rawGasUrl ?? readStoredCloudRepo().repo);
   if (!gasUrl) return '';
@@ -371,16 +393,11 @@ function shouldKeepInviteQueryInAddressBar(): boolean {
     Boolean(window.matchMedia?.('(display-mode: standalone)').matches) ||
     (window.navigator as any)?.standalone === true;
 
-  // 아이폰(iOS) 브라우저(미설치 상태)에서는 [Safari로 열기] 및 [홈 화면에 추가] 시 ?invite 파라미터가 함께 북마크되도록 보존
   if (isIos && !isStandalone) return true;
 
   return false;
 }
 
-/**
- * URL 쿼리 ?invite=<base64url(gasUrl)> 감지 시 repo 설정을 저장하고
- * 입력창 즉시 오픈 플래그 기록 (카톡 인앱브라우저 및 아이폰 설치 전 Safari에서는 외부열기/홈화면추가를 위해 쿼리 유지)
- */
 export function bootstrapInviteFromUrl(): boolean {
   if (typeof window === 'undefined' || !window.location) return false;
   try {
@@ -450,12 +467,17 @@ export function readFriendSession(): FriendSessionRecord | null {
       typeof parsed.deviceToken === 'string' &&
       parsed.deviceToken.trim().length > 0
     ) {
+      const explicitScheduleFlag =
+        typeof parsed.scheduleAllowed === 'boolean'
+          ? parsed.scheduleAllowed
+          : localStorage.getItem(FRIEND_SCHEDULE_ALLOWED_KEY) === '1';
       return {
         role: 'friend',
         deviceToken: parsed.deviceToken.trim(),
         codeId: String(parsed.codeId || '').trim(),
         label: String(parsed.label || '외부지인').trim(),
         verifiedAt: String(parsed.verifiedAt || '').trim(),
+        scheduleAllowed: explicitScheduleFlag,
       };
     }
   } catch {
@@ -468,18 +490,98 @@ export function isFriendRestrictedMode(): boolean {
   return readFriendSession() !== null;
 }
 
-/**
- * 친구 세션에서 경기광주점 근무·휴무표 캐시 및 오너 전용 권한 흔적 원천 소거
- */
-export function purgeLocalScheduleAndOwnerState(): void {
+export function isFriendScheduleAllowed(): boolean {
+  const session = readFriendSession();
+  if (!session) return false;
+  return Boolean(session.scheduleAllowed);
+}
+
+export function canAccessStoreSchedule(): boolean {
+  if (!isFriendRestrictedMode()) return true;
+  return isFriendScheduleAllowed();
+}
+
+export function purgeLocalScheduleDataOnly(): void {
   if (typeof localStorage === 'undefined') return;
   try {
     localStorage.removeItem('himart_gj_schedules_v4');
     localStorage.removeItem('himart_gj_schedules_v5');
     localStorage.removeItem('himart_gj_user_name');
     localStorage.removeItem('himart_gj_my_name');
-    localStorage.removeItem('himart_gj_owner_db_unlocked_v1');
-    localStorage.removeItem('himart_gj_admin_unlocked');
+  } catch {
+    // ignore
+  }
+}
+
+export function purgeLocalOwnerStateOnly(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.removeItem(INTERNAL_OWNER_DB_UNLOCKED_KEY);
+    localStorage.removeItem(INTERNAL_ADMIN_UNLOCKED_KEY);
+    localStorage.removeItem(INTERNAL_OWNER_DB_PIN_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+export function purgeLocalScheduleAndOwnerState(): void {
+  purgeLocalOwnerStateOnly();
+  if (!isFriendScheduleAllowed()) {
+    purgeLocalScheduleDataOnly();
+  }
+}
+
+export function syncFriendSchedulePermission(allowed: boolean): void {
+  if (typeof localStorage === 'undefined') return;
+  const session = readFriendSession();
+  if (!session) return;
+
+  const prevAllowed = Boolean(session.scheduleAllowed);
+  const nextAllowed = Boolean(allowed);
+
+  try {
+    localStorage.setItem(FRIEND_SCHEDULE_ALLOWED_KEY, nextAllowed ? '1' : '0');
+    localStorage.setItem(
+      FRIEND_SESSION_STORAGE_KEY,
+      JSON.stringify({
+        ...session,
+        scheduleAllowed: nextAllowed,
+      })
+    );
+  } catch {
+    // ignore
+  }
+
+  if (!nextAllowed) {
+    purgeLocalScheduleDataOnly();
+  }
+
+  if (prevAllowed !== nextAllowed && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(FRIEND_ROLE_CHANGED_EVENT));
+    window.dispatchEvent(new CustomEvent('himart_gj_schedule_updated'));
+  }
+}
+
+export function persistVerifiedOwnerStaffPin(cleanPin: string): void {
+  if (typeof localStorage === 'undefined' || !cleanPin || cleanPin.length < 4) return;
+  try {
+    const prev = readStoredCloudRepo();
+    localStorage.setItem(
+      INTERNAL_CLOUD_CONFIG_KEY,
+      JSON.stringify({
+        repo: prev.repo || resolveBuiltInDefaultRelayUrl(),
+        branch: prev.branch || 'main',
+        token: cleanPin,
+      })
+    );
+    localStorage.setItem(INTERNAL_STAFF_CUSTOM_PIN_KEY, cleanPin);
+    localStorage.setItem(INTERNAL_OWNER_DB_PIN_KEY, cleanPin);
+    localStorage.setItem(INTERNAL_OWNER_DB_UNLOCKED_KEY, '1');
+    localStorage.setItem(INTERNAL_ADMIN_UNLOCKED_KEY, 'true');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(INTERNAL_CLOUD_UPDATED_EVENT));
+      window.dispatchEvent(new CustomEvent('himart_gj_marketing_db_updated'));
+    }
   } catch {
     // ignore
   }
@@ -522,18 +624,18 @@ export function dispatchFriendSharedAiSync(
   );
 }
 
-/**
- * 서버 측 차단(revoked) 감지 시 로컬 친구 세션 즉시 회수 및 게이트 강제 복귀
- */
 export function revokeLocalFriendAccess(): void {
   if (typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(FRIEND_DEVICE_REVOKED_KEY, '1');
     localStorage.removeItem(FRIEND_SESSION_STORAGE_KEY);
+    localStorage.removeItem(FRIEND_SCHEDULE_ALLOWED_KEY);
+    localStorage.removeItem(FRIEND_INVITE_CREDENTIAL_CACHE_KEY);
     localStorage.removeItem(INTERNAL_STAFF_VERIFIED_V2_KEY);
     localStorage.removeItem(INTERNAL_STAFF_TRUSTED_DEVICE_KEY);
     localStorage.removeItem('himart_care_table_dataset_v1');
-    purgeLocalScheduleAndOwnerState();
+    purgeLocalOwnerStateOnly();
+    purgeLocalScheduleDataOnly();
     if (typeof sessionStorage !== 'undefined') {
       sessionStorage.removeItem('himart_partner_manuals_session_v1');
     }
@@ -546,9 +648,6 @@ export function revokeLocalFriendAccess(): void {
   }
 }
 
-/**
- * 클라우드 서버로 기기 인증 요청 (관리자 PIN -> 'staff', 8자리 초대코드 -> 'friend' 기기 귀속)
- */
 export async function authenticateDeviceWithCloud(
   rawCredential: string
 ): Promise<AuthenticateDeviceResult> {
@@ -597,6 +696,8 @@ export async function authenticateDeviceWithCloud(
       try {
         localStorage.removeItem(FRIEND_SESSION_STORAGE_KEY);
         localStorage.removeItem(FRIEND_DEVICE_REVOKED_KEY);
+        localStorage.removeItem(FRIEND_SCHEDULE_ALLOWED_KEY);
+        localStorage.removeItem(FRIEND_INVITE_CREDENTIAL_CACHE_KEY);
         localStorage.removeItem(INTERNAL_CUSTOMER_VIEWER_ONLY_KEY);
         localStorage.setItem(INTERNAL_STAFF_VERIFIED_V2_KEY, '1');
         localStorage.setItem(INTERNAL_STAFF_TRUSTED_DEVICE_KEY, '1');
@@ -607,6 +708,7 @@ export async function authenticateDeviceWithCloud(
       } catch {
         // ignore
       }
+      persistVerifiedOwnerStaffPin(credential);
       dispatchFriendSharedAiSync(false, '');
       cleanInviteQueryFromAddressBar();
       if (typeof window !== 'undefined') {
@@ -616,15 +718,31 @@ export async function authenticateDeviceWithCloud(
     }
 
     if (json?.ok && json.role === 'friend') {
+      const initScheduleAllowed = Boolean(json.scheduleAllowed === true);
       const session: FriendSessionRecord = {
         role: 'friend',
         deviceToken,
         codeId: String(json.codeId || '').trim(),
         label: String(json.label || '외부지인').trim(),
         verifiedAt: String(json.verifiedAt || new Date().toISOString()),
+        scheduleAllowed: initScheduleAllowed,
       };
       try {
+        const prev = readStoredCloudRepo();
+        localStorage.setItem(
+          INTERNAL_CLOUD_CONFIG_KEY,
+          JSON.stringify({
+            repo: gasUrl,
+            branch: prev.branch || 'main',
+            token: '',
+          })
+        );
         localStorage.setItem(FRIEND_SESSION_STORAGE_KEY, JSON.stringify(session));
+        localStorage.setItem(
+          FRIEND_SCHEDULE_ALLOWED_KEY,
+          initScheduleAllowed ? '1' : '0'
+        );
+        localStorage.setItem(FRIEND_INVITE_CREDENTIAL_CACHE_KEY, credential);
         localStorage.removeItem(FRIEND_DEVICE_REVOKED_KEY);
         localStorage.removeItem(INTERNAL_CUSTOMER_VIEWER_ONLY_KEY);
         localStorage.removeItem(INTERNAL_STAFF_TRUSTED_DEVICE_KEY);
@@ -652,6 +770,7 @@ export async function authenticateDeviceWithCloud(
         role: 'friend',
         codeId: session.codeId,
         label: session.label,
+        scheduleAllowed: initScheduleAllowed,
       };
     }
 
@@ -671,9 +790,6 @@ export async function authenticateDeviceWithCloud(
   }
 }
 
-/**
- * 친구 세션 백그라운드 유효성/차단 여부 확인 (일시적 오프라인 시 잠그지 않고 'offline' 반환)
- */
 export async function verifyFriendSessionHeartbeat(): Promise<
   'not-friend' | 'valid' | 'revoked' | 'offline'
 > {
@@ -712,18 +828,23 @@ export async function verifyFriendSessionHeartbeat(): Promise<
       );
     }
 
+    if (json && typeof json.scheduleAllowed === 'boolean') {
+      syncFriendSchedulePermission(Boolean(json.scheduleAllowed));
+    }
+
     if (json && typeof json.codeId === 'string' && json.codeId.trim()) {
       const nextCodeId = json.codeId.trim();
       const nextLabel =
         typeof json.label === 'string' && json.label.trim()
           ? json.label.trim()
           : session.label;
-      if (nextCodeId !== session.codeId || nextLabel !== session.label) {
+      const latestSession = readFriendSession() || session;
+      if (nextCodeId !== latestSession.codeId || nextLabel !== latestSession.label) {
         try {
           localStorage.setItem(
             FRIEND_SESSION_STORAGE_KEY,
             JSON.stringify({
-              ...session,
+              ...latestSession,
               deviceToken,
               codeId: nextCodeId,
               label: nextLabel,
@@ -778,6 +899,7 @@ function normalizeInviteItem(raw: any): FriendInviteItem {
     boundDevicePreview: previewStr,
     boundUserAgent: raw?.boundUserAgent ? String(raw.boundUserAgent) : undefined,
     aiAllowed: raw?.aiAllowed !== false,
+    scheduleAllowed: raw?.scheduleAllowed === true,
     createdAt: String(raw?.createdAt || '').trim(),
     boundAt: String(raw?.boundAt || '').trim(),
     lastSeenAt: String(raw?.lastSeenAt || '').trim(),
@@ -825,9 +947,6 @@ function normalizeSheetIdCandidate(raw?: string | null): string {
   return '';
 }
 
-/**
- * [오너 전용] 발급된 친구 초대코드 목록 조회
- */
 export async function fetchFriendInviteList(
   rawGasUrl: string,
   pin: string,
@@ -839,7 +958,7 @@ export async function fetchFriendInviteList(
   needsSpreadsheetId?: boolean;
   error?: string;
 }> {
-  const gasUrl = isValidGasUrl(rawGasUrl);
+  const gasUrl = isValidGasUrl(rawGasUrl || resolveBuiltInDefaultRelayUrl());
   const cleanPin = String(pin || '').trim();
   const spreadsheetId =
     normalizeSheetIdCandidate(spreadsheetIdOverride) || readSavedSheetId();
@@ -898,14 +1017,11 @@ export async function fetchFriendInviteList(
   }
 }
 
-/**
- * [오너 전용] 신규 8자리 초대코드 발급 (maxDevices 지정 가능: 1대 / 2대(폰+PC) / 3대)
- */
 export async function issueNewFriendInvite(
   rawGasUrl: string,
   pin: string,
   label: string,
-  maxDevices = 1,
+  maxDevices = 3,
   spreadsheetIdOverride?: string
 ): Promise<{
   ok: boolean;
@@ -915,7 +1031,7 @@ export async function issueNewFriendInvite(
   needsSpreadsheetId?: boolean;
   error?: string;
 }> {
-  const gasUrl = isValidGasUrl(rawGasUrl);
+  const gasUrl = isValidGasUrl(rawGasUrl || resolveBuiltInDefaultRelayUrl());
   const cleanPin = String(pin || '').trim();
   const spreadsheetId =
     normalizeSheetIdCandidate(spreadsheetIdOverride) || readSavedSheetId();
@@ -933,7 +1049,7 @@ export async function issueNewFriendInvite(
         action: 'issueFriendInvite',
         pin: cleanPin,
         label: String(label || '').trim() || '친구1',
-        maxDevices: Math.max(1, Math.min(5, Math.floor(Number(maxDevices) || 1))),
+        maxDevices: Math.max(1, Math.min(5, Math.floor(Number(maxDevices) || 3))),
         ...(spreadsheetId ? { spreadsheetId } : {}),
       }),
     });
@@ -972,9 +1088,6 @@ export async function issueNewFriendInvite(
   }
 }
 
-/**
- * [오너 전용] 초대코드 상태 변경 (즉시 차단 / 기기 초기화 / 차단 해제 / 허용기기수 변경 / 삭제)
- */
 export async function mutateFriendInviteStatus(
   rawGasUrl: string,
   pin: string,
@@ -989,7 +1102,7 @@ export async function mutateFriendInviteStatus(
   message?: string;
   error?: string;
 }> {
-  const gasUrl = isValidGasUrl(rawGasUrl);
+  const gasUrl = isValidGasUrl(rawGasUrl || resolveBuiltInDefaultRelayUrl());
   const cleanPin = String(pin || '').trim();
   const spreadsheetId =
     normalizeSheetIdCandidate(options?.spreadsheetId) || readSavedSheetId();
