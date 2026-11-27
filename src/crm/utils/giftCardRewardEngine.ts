@@ -426,9 +426,20 @@ function computeSubscriptionGiftCardForPayoutMonth(
         c.deliveryDate,
         profile.contractYearMonth
       );
-      const subModels = profile.purchasedModels.filter(
+      const explicitCustSubModels = Array.isArray(c.purchasedModels)
+        ? c.purchasedModels.filter(
+            (m) => m && m.saleType === 'subscription' && (Number(m.principalAmount) || 0) > 0
+          )
+        : [];
+      const profileSubModels = profile.purchasedModels.filter(
         (m) => m.saleType === 'subscription'
       );
+      const subModels =
+        profileSubModels.some((m) => (Number(m.principalAmount) || 0) > 0)
+          ? profileSubModels
+          : explicitCustSubModels.length > 0
+          ? explicitCustSubModels
+          : profileSubModels;
       const extracted = buildSubscriptionUnitsFromModels({
         idPrefix: `${c.id}-cust`,
         customerId: c.id,
