@@ -665,7 +665,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                 className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-between gap-2 border transition cursor-pointer ${surfaceBtn}`}
               >
                 <span>제휴 · 업무 바로가기 허브</span>
-                <span className="text-[11.5px] text-[#1B64DA] dark:text-blue-300">입주 · 중고 · 수당 · 청약</span>
+                <span className="text-[11.5px] text-[#1B64DA] dark:text-blue-300">구독교안 · 입주 · 중고 · 수당</span>
               </button>
 
               <div className={`grid ${isFriendMode ? 'grid-cols-3' : 'grid-cols-4'} gap-1.5`}>
@@ -1147,7 +1147,7 @@ export const AppHeaderAndHome: React.FC<Record<string, any>> = ({
                           제휴 · 업무 바로가기 허브
                         </div>
                         <div className="text-[11.5px] text-[#4E5968] dark:text-slate-300 mt-0.5 break-keep">
-                          입주 · 중고매입 · 수당조회 · 청약 QR 포털
+                          LG구독 전산교안 · 입주 · 중고 · 수당 · 청약
                         </div>
                       </div>
                     </div>
