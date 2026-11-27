@@ -7,6 +7,15 @@ import { ScheduleModal } from './ScheduleModal';
 import { AiCommandModal } from './AiCommandModal';
 import { CommandOmnibarModal } from './CommandOmnibarModal';
 import { PartnerLinksModal } from './PartnerLinksModal';
+import {
+  OPEN_PARTNER_MANUAL_MODAL_EVENT,
+  OpenPartnerManualDetail,
+  PartnerManualViewerModal,
+} from './PartnerManualViewerModal';
+import {
+  fetchPartnerManualsMap,
+  hasConfiguredCloudEndpoint,
+} from '../utils/partnerManualSync';
 import { StoreAdminUploadHubModal } from './StoreAdminUploadHubModal';
 import { OPEN_STORE_POLICY_MODAL_EVENT, PolicyGuideTab, StorePolicyQuickModal } from './StorePolicyGuideView';
 import { getCachedCustomers } from '../crm/services/gasApi';
@@ -85,14 +94,27 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
   uploadHubFocus,
 }) => {
   const [policyModalTab, setPolicyModalTab] = useState<PolicyGuideTab | null>(null);
+  const [partnerManualTarget, setPartnerManualTarget] =
+    useState<OpenPartnerManualDetail | null>(null);
 
   useEffect(() => {
     const onOpenPolicy = (ev: Event) => {
       const customEv = ev as CustomEvent<{ tab?: PolicyGuideTab }>;
       setPolicyModalTab(customEv.detail?.tab || 'freed');
     };
+    const onOpenManual = (ev: Event) => {
+      const customEv = ev as CustomEvent<OpenPartnerManualDetail>;
+      setPartnerManualTarget(customEv.detail || {});
+    };
+    if (hasConfiguredCloudEndpoint()) {
+      void fetchPartnerManualsMap();
+    }
     window.addEventListener(OPEN_STORE_POLICY_MODAL_EVENT, onOpenPolicy);
-    return () => window.removeEventListener(OPEN_STORE_POLICY_MODAL_EVENT, onOpenPolicy);
+    window.addEventListener(OPEN_PARTNER_MANUAL_MODAL_EVENT, onOpenManual);
+    return () => {
+      window.removeEventListener(OPEN_STORE_POLICY_MODAL_EVENT, onOpenPolicy);
+      window.removeEventListener(OPEN_PARTNER_MANUAL_MODAL_EVENT, onOpenManual);
+    };
   }, []);
 
   return (
@@ -110,6 +132,12 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
         isOpen={isPartnerLinksOpen}
         onClose={() => setIsPartnerLinksOpen(false)}
         isDark={isDark}
+      />
+      <PartnerManualViewerModal
+        isOpen={Boolean(partnerManualTarget)}
+        initialManualId={partnerManualTarget?.manualId}
+        initialChapterId={partnerManualTarget?.chapterId}
+        onClose={() => setPartnerManualTarget(null)}
       />
       <StorePolicyQuickModal
         isOpen={Boolean(policyModalTab)}
