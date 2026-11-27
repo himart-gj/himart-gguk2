@@ -137,6 +137,11 @@ export const AppGlobalModals: React.FC<AppGlobalModalsProps> = ({
         isOpen={Boolean(partnerManualTarget)}
         initialManualId={partnerManualTarget?.manualId}
         initialChapterId={partnerManualTarget?.chapterId}
+        isFriendMode={Boolean(isFriendMode)}
+        onOpenCloudSetup={() => {
+          setIsPartnerLinksOpen(false);
+          setIsUploadHubOpen?.(true);
+        }}
         onClose={() => setPartnerManualTarget(null)}
       />
       <StorePolicyQuickModal

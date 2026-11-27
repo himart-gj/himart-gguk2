@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { getEffectiveStoreDisplayName } from '../utils/shareQuoteCodec';
+import { CARE_TABLE_UPDATED_EVENT } from '../utils/careTableParser';
 import {
   CloudPartnerManualDoc,
   fetchPartnerManualsMap,
@@ -40,12 +41,24 @@ export interface PartnerQuickLinkItem {
   description: string;
   isStaffOnly?: boolean;
   isBuiltIn?: boolean;
+  internalAction?: 'open-lg-sub-manual';
 }
 
 export const PARTNER_LINKS_STORAGE_KEY = 'himart_gj_partner_links_v1';
 export const PARTNER_FAVORITES_STORAGE_KEY = 'himart_gj_partner_favs_v1';
 
 export const DEFAULT_PARTNER_LINKS: PartnerQuickLinkItem[] = [
+  {
+    id: 'lg-sub-manual-viewer',
+    title: 'LG전자 구독 전산등록 교안',
+    url: '#internal-manual',
+    category: 'staff',
+    badgeText: '보안 실무 교안',
+    description: '63P 전산 매뉴얼 전체 수록 · 청약요청 · 주문확정 · 전자서명 · 외국인/회수비 기준표',
+    isStaffOnly: true,
+    isBuiltIn: true,
+    internalAction: 'open-lg-sub-manual',
+  },
   {
     id: 'kobang-screen',
     title: '방충망 셀프 견적',
@@ -172,19 +185,28 @@ export function loadPartnerLinks(): PartnerQuickLinkItem[] {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return DEFAULT_PARTNER_LINKS;
     }
-    const cleaned = parsed.filter((x: any) => !isRemovedBuiltInLandingItem(x));
+    const defaultMap = new Map(DEFAULT_PARTNER_LINKS.map((d) => [d.id, d]));
+    const cleaned = parsed
+      .filter((x: any) => !isRemovedBuiltInLandingItem(x))
+      .map((x: any) => {
+        const def = defaultMap.get(String(x?.id || ''));
+        if (def?.internalAction) {
+          return { ...def, ...x, internalAction: def.internalAction, isBuiltIn: true };
+        }
+        return x;
+      });
     if (cleaned.length !== parsed.length) {
       localStorage.setItem(PARTNER_LINKS_STORAGE_KEY, JSON.stringify(cleaned));
     }
     if (cleaned.length === 0) {
       return DEFAULT_PARTNER_LINKS;
     }
-    // 기본 탑재 링크가 새로 추가된 경우 누락 없이 병합
+    // 새로 추가된 기본 탑재 항목(예: LG전자 구독 전산등록 교안)을 최상단에 누락 없이 병합
     const savedIds = new Set(cleaned.map((x: any) => x?.id));
     const missingDefaults = DEFAULT_PARTNER_LINKS.filter(
       (d) => !savedIds.has(d.id)
     );
-    return [...cleaned, ...missingDefaults];
+    return [...missingDefaults, ...cleaned];
   } catch {
     return DEFAULT_PARTNER_LINKS;
   }
@@ -266,7 +288,10 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
       if (hasConfiguredCloudEndpoint()) {
         if (cached.length === 0) setIsLoadingManuals(true);
         fetchPartnerManualsMap()
-          .then((map) => setCloudManuals(Object.values(map)))
+          .then((map) => {
+            const vals = Object.values(map);
+            if (vals.length > 0) setCloudManuals(vals);
+          })
           .finally(() => setIsLoadingManuals(false));
       }
     } else {
@@ -315,9 +340,13 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
     saveFavoriteIds(next);
   };
 
-  const handleOpenExternal = (url: string) => {
-    const cleanUrl = url.trim();
-    if (!cleanUrl) return;
+  const handleOpenItem = (item: PartnerQuickLinkItem) => {
+    if (item.internalAction === 'open-lg-sub-manual') {
+      openPartnerManualModal({});
+      return;
+    }
+    const cleanUrl = item.url.trim();
+    if (!cleanUrl || cleanUrl.startsWith('#')) return;
     window.open(cleanUrl, '_blank', 'noopener,noreferrer');
   };
 
@@ -429,7 +458,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
   const handleResetDefaults = () => {
     setLinks(DEFAULT_PARTNER_LINKS);
     savePartnerLinks(DEFAULT_PARTNER_LINKS);
-    showToast('🔄 기본 6대 바로가기 주소로 복원되었습니다.');
+    showToast('🔄 기본 바로가기 및 전산교안 구성으로 복원되었습니다.');
   };
 
   const filteredLinks = useMemo(() => {
@@ -447,7 +476,10 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
       .sort((a, b) => {
         const favA = favoriteIds.includes(a.id) ? 1 : 0;
         const favB = favoriteIds.includes(b.id) ? 1 : 0;
-        return favB - favA;
+        if (favB !== favA) return favB - favA;
+        if (a.internalAction === 'open-lg-sub-manual') return -1;
+        if (b.internalAction === 'open-lg-sub-manual') return 1;
+        return 0;
       });
   }, [links, activeTab, searchQuery, favoriteIds]);
 
@@ -455,35 +487,39 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
     const syncManuals = () =>
       setCloudManuals(Object.values(readSessionCachedPartnerManuals()));
     window.addEventListener(PARTNER_MANUALS_UPDATED_EVENT, syncManuals);
-    return () =>
+    window.addEventListener(CARE_TABLE_UPDATED_EVENT, syncManuals);
+    return () => {
       window.removeEventListener(PARTNER_MANUALS_UPDATED_EVENT, syncManuals);
+      window.removeEventListener(CARE_TABLE_UPDATED_EVENT, syncManuals);
+    };
   }, []);
 
-  const filteredCloudManuals = useMemo(() => {
-    if (activeTab !== 'all' && activeTab !== 'staff') return [];
-    if (!searchQuery.trim()) return cloudManuals;
-    return cloudManuals.filter((doc) => {
-      const searchable = [
-        doc.title,
-        doc.version || '',
-        ...doc.chapters.flatMap((ch) => [
-          ch.title,
-          ch.summary,
-          ...(ch.keywords || []),
-        ]),
-      ].join(' ');
-      return matchesSearch(searchable, searchQuery);
-    });
-  }, [cloudManuals, activeTab, searchQuery]);
+  const primaryManualDoc: CloudPartnerManualDoc | null =
+    cloudManuals.length > 0 ? cloudManuals[0] : null;
+
+  const showPinnedManualHero = useMemo(() => {
+    if (activeTab !== 'all' && activeTab !== 'staff') return false;
+    if (!searchQuery.trim()) return true;
+    const baseText = [
+      'LG전자 구독 전산등록 실무 교안 매뉴얼 청약요청 주문입력 전자서명 외국인 회수비 선납 농막',
+      primaryManualDoc?.title || '',
+      ...(primaryManualDoc?.chapters || []).flatMap((ch) => [
+        ch.title,
+        ch.summary,
+        ...(ch.keywords || []),
+      ]),
+    ].join(' ');
+    return matchesSearch(baseText, searchQuery);
+  }, [activeTab, searchQuery, primaryManualDoc]);
 
   const counts = useMemo(
     () => ({
-      all: links.length + cloudManuals.length,
+      all: links.length,
       living: links.filter((x) => x.category === 'living').length,
       resell: links.filter((x) => x.category === 'resell').length,
-      staff: links.filter((x) => x.category === 'staff').length + cloudManuals.length,
+      staff: links.filter((x) => x.category === 'staff').length,
     }),
-    [links, cloudManuals.length]
+    [links]
   );
 
   if (!isOpen) return null;
@@ -510,12 +546,15 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                 <h2 className="text-[15px] sm:text-[17px] font-extrabold tracking-tight text-[#191F28] dark:text-slate-50 truncate">
                   제휴 · 업무 바로가기 허브
                 </h2>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#FFF1F2] dark:bg-rose-500/15 border border-[#FECDD3] dark:border-rose-500/30 text-[11px] font-extrabold text-[#E60012] dark:text-rose-300 shrink-0">
+                  구독교안 탑재
+                </span>
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 text-[11.5px] font-bold text-[#1B64DA] dark:text-blue-300 font-mono tabular-nums shrink-0">
-                  총 {links.length + cloudManuals.length}개 등록됨
+                  총 {counts.all}개 등록됨
                 </span>
               </div>
               <p className="text-xs text-[#4E5968] dark:text-slate-400 font-medium truncate mt-0.5">
-                입주청소 · 방충망 · 중고보상 · 하이프리드 수당 · SK청약을 터치 한 번으로 실행·공유합니다
+                LG구독 전산교안 · 입주청소 · 방충망 · 중고보상 · 하이프리드 수당 · SK청약 원터치 실행
               </p>
             </div>
           </div>
@@ -548,7 +587,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                 { id: 'all', label: `전체 (${counts.all})` },
                 { id: 'living', label: `🏠 입주·이사 제휴 (${counts.living})` },
                 { id: 'resell', label: `♻️ 중고·특가 (${counts.resell})` },
-                { id: 'staff', label: `🔒 직원 전용 (${counts.staff})` },
+                { id: 'staff', label: `🔒 직원·초대 전용 (${counts.staff})` },
               ] as const
             ).map((tab) => {
               const active = activeTab === tab.id;
@@ -571,7 +610,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
             <button
               type="button"
               onClick={handleResetDefaults}
-              title="기본 6개 주소로 복원"
+              title="기본 목록으로 복원"
               className="ml-auto px-2.5 py-1.5 rounded-xl text-[11.5px] font-bold flex items-center gap-1 border bg-white dark:bg-[#131C2E] text-[#4E5968] dark:text-slate-300 border-[#E5E8EB] dark:border-slate-700 hover:bg-[#F2F4F6] dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
@@ -585,7 +624,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="방충망, 크린토피아, 중고, 수당, SK인터넷 (초성 ㅂㅊㅁ, ㅅㄷ 검색 가능)"
+              placeholder="LG구독 교안, 방충망, 크린토피아, 중고, 수당, SK인터넷 (초성 ㄱㄷㄱㅇ, ㅂㅊㅁ 검색 가능)"
               className="w-full pl-9 pr-8 py-2 rounded-xl border border-[#D1D6DB] dark:border-slate-700 bg-white dark:bg-[#131C2E] text-[#191F28] dark:text-slate-100 placeholder:text-[#8B95A1] dark:placeholder:text-slate-500 text-base sm:text-xs font-bold focus:outline-none focus:border-[#1B64DA] dark:focus:border-blue-400"
             />
             {searchQuery && (
@@ -721,69 +760,60 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
             </form>
           )}
 
-          {/* 비공개 클라우드 연동 전산 실무 교안 카드 (오너 및 초대 인증 기기 전용) */}
-          {(activeTab === 'all' || activeTab === 'staff') &&
-            isLoadingManuals &&
-            cloudManuals.length === 0 && (
-              <div className="rounded-[20px] border border-[#BFDBFE] dark:border-blue-500/30 bg-white dark:bg-[#131C2E] p-4 flex items-center gap-2.5 text-xs font-bold text-[#1B64DA] dark:text-blue-300">
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                <span>인증 기기 전용 업무 교안을 클라우드에서 동기화하는 중입니다...</span>
-              </div>
-            )}
-
-          {filteredCloudManuals.map((doc) => (
-            <div
-              key={`cloud-manual-${doc.id}`}
-              className="rounded-[20px] border-2 border-[#FECDD3] dark:border-rose-500/40 bg-white dark:bg-[#131C2E] p-4 sm:p-5 flex flex-col gap-3 shadow-xs"
-            >
+          {/* 상단 상시 고정: LG전자 구독 전산등록 실무 교안 히어로 카드 (0초 즉시 노출 · 클라우드 내용 동적 로딩) */}
+          {showPinnedManualHero && (
+            <div className="rounded-[20px] border-2 border-[#FECDD3] dark:border-rose-500/45 bg-white dark:bg-[#131C2E] p-4 sm:p-5 flex flex-col gap-3 shadow-xs">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11.5px] font-extrabold border bg-[#FFF1F2] dark:bg-rose-500/15 text-[#E60012] dark:text-[#FF3B47] border-[#FECDD3] dark:border-rose-500/30">
                     <Lock className="w-3 h-3" />
-                    보안 실무 교안 · {doc.chapters.length}개 단계 수록
+                    보안 실무 교안 · {primaryManualDoc ? `${primaryManualDoc.chapters.length}개 단계 전수 수록` : '63P 전수 정리'}
                   </span>
-                  {doc.version && (
-                    <span className="text-[11px] font-mono font-bold text-[#4E5968] dark:text-slate-400">
-                      {doc.version}
-                    </span>
-                  )}
+                  <span className="text-[11px] font-mono font-bold text-[#4E5968] dark:text-slate-400 flex items-center gap-1.5">
+                    {isLoadingManuals && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#1B64DA] dark:text-blue-400" />
+                    )}
+                    {primaryManualDoc?.version || '2026.04 업데이트 · 클라우드 보안 연동'}
+                  </span>
                 </div>
 
                 <h3 className="text-sm sm:text-base font-extrabold tracking-tight text-[#191F28] dark:text-slate-50 flex items-center gap-1.5">
                   <BookOpen className="w-4 h-4 text-[#E60012] dark:text-rose-400 shrink-0" />
-                  <span>{doc.title}</span>
+                  <span>{primaryManualDoc?.title || 'LG전자 구독 전산등록 실무 교안'}</span>
                 </h3>
 
                 <p className="text-xs leading-relaxed font-medium text-[#4E5968] dark:text-slate-400">
-                  단계별 체크리스트 · 증빙 및 회수비 기준표 · 키워드/초성 즉시 검색 지원 (외부 공유 금지)
+                  청약요청 · 계약요청조회 · 주문확정 · 전자서명 · 외국인/할부/회수비 기준표 · 초성 즉시 검색 지원 (인증 기기 전용)
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-1.5">
-                {doc.chapters.map((ch) => (
-                  <button
-                    key={ch.id}
-                    type="button"
-                    onClick={() =>
-                      openPartnerManualModal({
-                        manualId: doc.id,
-                        chapterId: ch.id,
-                      })
-                    }
-                    className="px-2.5 py-1 rounded-lg border border-[#E5E8EB] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800/80 hover:border-[#1B64DA] dark:hover:border-blue-400 text-[11px] font-bold text-[#333D4B] dark:text-slate-200 cursor-pointer transition-colors"
-                  >
-                    {ch.number}. {ch.title.split('(')[0].trim()}
-                  </button>
-                ))}
-              </div>
+              {primaryManualDoc && primaryManualDoc.chapters.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {primaryManualDoc.chapters.map((ch) => (
+                    <button
+                      key={ch.id}
+                      type="button"
+                      onClick={() =>
+                        openPartnerManualModal({
+                          manualId: primaryManualDoc.id,
+                          chapterId: ch.id,
+                        })
+                      }
+                      className="px-2.5 py-1 rounded-lg border border-[#E5E8EB] dark:border-slate-700 bg-[#F8FAFC] dark:bg-slate-800/80 hover:border-[#1B64DA] dark:hover:border-blue-400 text-[11px] font-bold text-[#333D4B] dark:text-slate-200 cursor-pointer transition-colors"
+                    >
+                      {ch.number}. {ch.title.split('(')[0].trim()}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <div className="pt-0.5">
                 <button
                   type="button"
                   onClick={() =>
-                    openPartnerManualModal({
-                      manualId: doc.id,
-                    })
+                    openPartnerManualModal(
+                      primaryManualDoc ? { manualId: primaryManualDoc.id } : {}
+                    )
                   }
                   className="w-full py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
                 >
@@ -792,13 +822,14 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                 </button>
               </div>
             </div>
-          ))}
+          )}
 
           {/* 바로가기 카드 그리드 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filteredLinks.map((item) => {
               const isFav = favoriteIds.includes(item.id);
               const isStaff = item.category === 'staff' || item.isStaffOnly;
+              const isInternalManual = item.internalAction === 'open-lg-sub-manual';
 
               const catTone =
                 item.category === 'living'
@@ -810,7 +841,11 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
               return (
                 <div
                   key={item.id}
-                  className="min-w-0 rounded-[20px] border border-[#E5E8EB] dark:border-slate-800 hover:border-[#D1D6DB] dark:hover:border-slate-600 bg-white dark:bg-[#131C2E] p-4 flex flex-col justify-between gap-3 transition-colors"
+                  className={`min-w-0 rounded-[20px] border p-4 flex flex-col justify-between gap-3 transition-colors ${
+                    isInternalManual
+                      ? 'border-[#FECDD3] dark:border-rose-500/40 bg-[#FFFBFB] dark:bg-[#181E32]'
+                      : 'border-[#E5E8EB] dark:border-slate-800 hover:border-[#D1D6DB] dark:hover:border-slate-600 bg-white dark:bg-[#131C2E]'
+                  }`}
                 >
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
@@ -840,14 +875,16 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                             className={`w-4 h-4 ${isFav ? 'fill-current' : ''}`}
                           />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => openEditForm(item)}
-                          title="주소 또는 설명 수정"
-                          className="p-1.5 rounded-lg text-[#8B95A1] hover:text-[#191F28] dark:hover:text-white cursor-pointer"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
+                        {!isInternalManual && (
+                          <button
+                            type="button"
+                            onClick={() => openEditForm(item)}
+                            title="주소 또는 설명 수정"
+                            className="p-1.5 rounded-lg text-[#8B95A1] hover:text-[#191F28] dark:hover:text-white cursor-pointer"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {!item.isBuiltIn && (
                           <button
                             type="button"
@@ -874,15 +911,21 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                   <div className="flex items-center gap-1.5 pt-1">
                     <button
                       type="button"
-                      onClick={() => handleOpenExternal(item.url)}
+                      onClick={() => handleOpenItem(item)}
                       className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer transition-colors ${
-                        isStaff
+                        isInternalManual
+                          ? 'bg-[#E60012] hover:bg-[#C8000F] text-white'
+                          : isStaff
                           ? 'bg-[#1B64DA] hover:bg-[#1554B8] text-white'
                           : 'bg-[#191F28] dark:bg-[#60A5FA] hover:opacity-90 text-white dark:text-[#0B1120]'
                       }`}
                     >
-                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
-                      <span>바로 열기</span>
+                      {isInternalManual ? (
+                        <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                      ) : (
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                      )}
+                      <span>{isInternalManual ? '교안 바로 열기' : '바로 열기'}</span>
                     </button>
 
                     {!isStaff ? (
@@ -911,7 +954,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                           <span>QR</span>
                         </button>
                       </>
-                    ) : (
+                    ) : !isInternalManual ? (
                       <button
                         type="button"
                         onClick={() => handleCopyLink(item, false)}
@@ -925,7 +968,7 @@ export const PartnerLinksModal: React.FC<PartnerLinksModalProps> = ({
                         )}
                         <span>주소 복사</span>
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               );
