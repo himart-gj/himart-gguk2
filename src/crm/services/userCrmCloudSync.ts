@@ -32,10 +32,12 @@ export interface UserCrmCloudSnapshot {
   updatedAtMs: number;
   customers: CustomerItem[];
   monthlyAllCareCounts?: Record<string, number>;
+  allCareQuarterOverrides?: Record<string, number>;
 }
 
 export const USER_CRM_CLOUD_SYNCED_EVENT = 'himart_user_crm_cloud_synced';
 const ALLCARE_STORAGE_KEY = 'himart_crm_monthly_allcare_counts_v1';
+const ALLCARE_QUARTER_OVERRIDES_KEY = 'himart_crm_allcare_quarter_confirmed_overrides_v1';
 
 function bytesToBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== 'undefined') {
@@ -113,10 +115,6 @@ async function deriveAesGcmKey(
   );
 }
 
-/**
- * 본인 보안코드(PIN/초대코드)를 키로 사용하여 CRM 데이터를 브라우저 내부에서 AES-256-GCM 암호화
- * -> 설령 외부인이 암호문을 보더라도 본인 코드 없이는 단 1글자도 복호화 불가
- */
 export async function encryptVaultJsonWithPin(
   payload: unknown,
   secretPin: string
@@ -189,12 +187,6 @@ function makeSyncIdentityKey(c: CustomerItem): string {
   return c.id;
 }
 
-/**
- * 휴대폰 · 태블릿 · PC 등 여러 기기에서 등록/수정한 고객 목록을 유실 없이 스마트 병합
- * - updatedAtMs / deletedAt 최신 타임스탬프 우선 적용
- * - 다중 전표(quotes) 배열 및 상담 메모·사은품 내역 무손실 통합
- * - 병합 직후 14일 경과 자동정리(autoArchive) 조건까지 일괄 재평가
- */
 export function mergeCustomerListsForCloudSync(
   localList: CustomerItem[],
   remoteList: CustomerItem[],
@@ -314,6 +306,27 @@ function writeLocalMonthlyAllCare(next: Record<string, number>): void {
   }
 }
 
+function readLocalAllCareQuarterOverrides(): Record<string, number> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(ALLCARE_QUARTER_OVERRIDES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeLocalAllCareQuarterOverrides(next: Record<string, number>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(ALLCARE_QUARTER_OVERRIDES_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+}
+
 export interface CloudCrmIdentityStatus {
   ready: boolean;
   role: 'staff' | 'friend' | 'unlinked';
@@ -352,11 +365,6 @@ let lastCloudUpdatedAtMs = 0;
 let pushDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let isSyncingNow = false;
 
-/**
- * 현재 기기의 CRM 고객 목록을 본인 코드 전용 클라우드 금고로 안전하게 업로드
- * - 1순위: Apps Script 전용 액션(pushUserCrm — 관리자 및 초대사용자 모두 지원)
- * - 2순위(구버전 Apps Script 무중단 자동 폴백): 관리자는 AES-256-GCM 암호화 금고(__encryptedOwnerCrmVault)로 즉시 저장!
- */
 export async function pushUserCrmSnapshotToCloud(
   customers: CustomerItem[]
 ): Promise<{ ok: boolean; mode?: 'native' | 'encrypted_vault'; message?: string }> {
@@ -370,6 +378,7 @@ export async function pushUserCrmSnapshotToCloud(
     updatedAtMs: Date.now(),
     customers,
     monthlyAllCareCounts: readLocalMonthlyAllCare(),
+    allCareQuarterOverrides: readLocalAllCareQuarterOverrides(),
   };
 
   if (isFriendRestrictedMode()) {
@@ -418,7 +427,6 @@ export async function pushUserCrmSnapshotToCloud(
 
   const spreadsheetId = loadSavedSpreadsheetId();
 
-  // 1차: 네이티브 pushUserCrm 시도
   try {
     const nativeRes = await fetch(gasUrl, {
       method: 'POST',
@@ -442,7 +450,6 @@ export async function pushUserCrmSnapshotToCloud(
     // fallback to encrypted vault below
   }
 
-  // 2차: 기존 배포된 Apps Script에서도 재배포 없이 100% 즉시 작동하는 AES-256-GCM 암호화 볼트 폴백
   try {
     const encryptedEnvelope = await encryptVaultJsonWithPin(snapshot, adminPin);
     const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
@@ -470,9 +477,6 @@ export async function pushUserCrmSnapshotToCloud(
   }
 }
 
-/**
- * 클라우드 금고에서 본인 코드의 최신 CRM 고객 목록을 가져와 로컬 데이터와 유실 없이 병합 반환
- */
 export async function pullUserCrmSnapshotFromCloud(): Promise<UserCrmCloudSnapshot | null> {
   const gasUrl = normalizeGasWebAppUrl(
     readRawSyncConfig().repo || resolveBuiltInDefaultRelayUrl()
@@ -518,7 +522,6 @@ export async function pullUserCrmSnapshotFromCloud(): Promise<UserCrmCloudSnapsh
 
   const spreadsheetId = loadSavedSpreadsheetId();
 
-  // 1차: 네이티브 pullUserCrm 시도
   let nativeSupported = false;
   let nativeSnapshot: UserCrmCloudSnapshot | null = null;
   try {
@@ -545,7 +548,6 @@ export async function pullUserCrmSnapshotFromCloud(): Promise<UserCrmCloudSnapsh
     // ignore
   }
 
-  // 2차: AES-256-GCM 암호화 볼트 폴백 조회 (기존 배포 서버 호환)
   let vaultSnapshot: UserCrmCloudSnapshot | null = null;
   if (!nativeSupported || !nativeSnapshot) {
     try {
@@ -578,9 +580,6 @@ export async function pullUserCrmSnapshotFromCloud(): Promise<UserCrmCloudSnapsh
   return nativeSnapshot || vaultSnapshot;
 }
 
-/**
- * 로컬 고객 목록과 클라우드 고객 목록을 양방향 동기화(Pull + Merge + 변경 시 Push)
- */
 export async function syncBidirectionalUserCrm(
   getLocalCustomers: () => CustomerItem[],
   commitLocalCustomers: (merged: CustomerItem[]) => CustomerItem[],
@@ -629,6 +628,16 @@ export async function syncBidirectionalUserCrm(
         }
         writeLocalMonthlyAllCare(mergedAc);
       }
+      if (
+        remoteSnap.allCareQuarterOverrides &&
+        typeof remoteSnap.allCareQuarterOverrides === 'object'
+      ) {
+        const localOv = readLocalAllCareQuarterOverrides();
+        writeLocalAllCareQuarterOverrides({
+          ...remoteSnap.allCareQuarterOverrides,
+          ...localOv,
+        });
+      }
 
       const merged = mergeCustomerListsForCloudSync(
         latestLocal,
@@ -659,7 +668,6 @@ export async function syncBidirectionalUserCrm(
       };
     }
 
-    // 클라우드에 아직 스냅샷이 없고 현재 기기(예: 주로 쓰던 휴대폰)에 고객이 있으면 즉시 최초 업로드!
     if (latestLocal.length > 0) {
       const pushRes = await pushUserCrmSnapshotToCloud(latestLocal);
       return {
@@ -699,9 +707,6 @@ export function scheduleDebouncedUserCrmCloudPush(
   }, delayMs);
 }
 
-/**
- * 태블릿 · PC 등 이미 열려 있는 기기에서 본인 보안코드(관리자 PIN)를 1회 입력해 다중기기 실시간 동기화를 즉시 연결
- */
 export async function linkOwnerCodeAndSyncCrmNow(
   rawCode: string,
   getLocalCustomers: () => CustomerItem[],
