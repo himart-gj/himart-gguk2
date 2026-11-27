@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ChevronUp,
   Coins,
+  Gift,
   Copy,
   Download,
   FileSpreadsheet,
@@ -26,6 +27,14 @@ import {
   X,
 } from 'lucide-react';
 import { CrmModelIncentiveTabSection } from './CrmModelIncentiveTabSection';
+import { GiftCardRewardDetailModal } from './GiftCardRewardDetailModal';
+import {
+  AllCareQuarterOverridesMap,
+  computeMonthlyGiftCardRewardReport,
+  GIFT_CARD_REWARD_UPDATED_EVENT,
+  hydrateAllCareQuarterOverridesFromIdb,
+  loadAllCareQuarterOverrides,
+} from '../utils/giftCardRewardEngine';
 import {
   CustomerItem,
   ModelIncentiveRule,
@@ -113,6 +122,9 @@ export const CrmSalesAndIncentivePanel: React.FC<
     loadAllMonthlyAllCareCounts()
   );
   const [isEditingAllCare, setIsEditingAllCare] = useState<boolean>(false);
+  const [isGiftCardModalOpen, setIsGiftCardModalOpen] = useState<boolean>(false);
+  const [quarterOverridesMap, setQuarterOverridesMap] =
+    useState<AllCareQuarterOverridesMap>(() => loadAllCareQuarterOverrides());
   const [allCareDraft, setAllCareDraft] = useState<string>('');
 
   useEffect(() => {
@@ -158,18 +170,28 @@ export const CrmSalesAndIncentivePanel: React.FC<
         setAllCareMap(loadedAllCare);
       }
     });
+    hydrateAllCareQuarterOverridesFromIdb().then((loadedOverrides) => {
+      if (Object.keys(loadedOverrides).length > 0) {
+        setQuarterOverridesMap(loadedOverrides);
+      }
+    });
     const sync = () => setSheetsMap(loadAllModelIncentiveSheets());
-    const syncAllCare = () => setAllCareMap(loadAllMonthlyAllCareCounts());
+    const syncAllCare = () => {
+      setAllCareMap(loadAllMonthlyAllCareCounts());
+      setQuarterOverridesMap(loadAllCareQuarterOverrides());
+    };
     const syncStorage = () => {
       sync();
       syncAllCare();
     };
     window.addEventListener(MODEL_INCENTIVE_UPDATED_EVENT, sync);
     window.addEventListener(ALLCARE_COUNT_UPDATED_EVENT, syncAllCare);
+    window.addEventListener(GIFT_CARD_REWARD_UPDATED_EVENT, syncAllCare);
     window.addEventListener('storage', syncStorage);
     return () => {
       window.removeEventListener(MODEL_INCENTIVE_UPDATED_EVENT, sync);
       window.removeEventListener(ALLCARE_COUNT_UPDATED_EVENT, syncAllCare);
+      window.removeEventListener(GIFT_CARD_REWARD_UPDATED_EVENT, syncAllCare);
       window.removeEventListener('storage', syncStorage);
     };
   }, []);
@@ -191,6 +213,17 @@ export const CrmSalesAndIncentivePanel: React.FC<
         incentiveBasis
       ),
     [customers, selectedYearMonth, currentSheet, incentiveBasis]
+  );
+
+  const giftCardReport = useMemo(
+    () =>
+      computeMonthlyGiftCardRewardReport(
+        customers,
+        selectedYearMonth,
+        allCareMap,
+        quarterOverridesMap
+      ),
+    [customers, selectedYearMonth, allCareMap, quarterOverridesMap]
   );
 
   const currentRealYm = getCurrentYearMonth();
@@ -243,7 +276,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
     }
   };
 
-  // 비공개 구글 시트(_매장공유_수당단가표)에서 최신 공식 단가표 받아오기 전용 (내 기기 추가 항목 자동 보존 · 시트 쓰기 0%)
   const handleManualPullOrPush = async () => {
     setIsSyncingCloud(true);
     try {
@@ -395,7 +427,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
   };
 
   const handleRuleAmountBlur = () => {
-    // 내 기기 로컬에만 반영 (구글 시트 자동 업로드 차단)
     onShowToast?.('✏️ 수정된 단가가 내 기기에 저장되었습니다.');
   };
 
@@ -437,9 +468,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
       id="crm-sales-incentive-hub"
       className={`rounded-[20px] border px-3.5 py-2.5 shadow-2xs transition ${shellCls}`}
     >
-      {/* 슬림 요약 바: 상단 월 선택·수당합계 헤더 + 하단 6칸 대칭 실적/수량 그리드 (모바일 2×3 · 태블릿/폴드 3×2 · 와이드PC 6열) */}
       <div className="space-y-1.5">
-        {/* 1행: 월 선택기 + 우측 수당 총합 토글 */}
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5">
             <div
@@ -485,31 +514,52 @@ export const CrmSalesAndIncentivePanel: React.FC<
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsExpanded((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
-              isDark
-                ? 'bg-blue-500/15 border-blue-400/35 text-blue-200'
-                : 'bg-[#EFF6FF] border-[#BFDBFE] text-[#191F28]'
-            }`}
-          >
-            <Coins className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
-            <span>수당</span>
-            <span className="font-mono tabular-nums text-[#1B64DA] dark:text-blue-300">
-              +{formatCurrency(report.grandTotalIncentive)}원
-            </span>
-            {isExpanded ? (
-              <ChevronUp className="w-3.5 h-3.5 opacity-75" />
-            ) : (
-              <ChevronDown className="w-3.5 h-3.5 opacity-75" />
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            <button
+              type="button"
+              onClick={() => setIsGiftCardModalOpen(true)}
+              title="클릭하여 구독·올케어 상품권 시상 상세 내역 보기"
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
+                giftCardReport.totalGiftCardAmount > 0
+                  ? isDark
+                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                    : 'bg-amber-50 border-amber-300 text-amber-950'
+                  : isDark
+                  ? 'bg-amber-500/10 border-amber-400/30 text-amber-200/90'
+                  : 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
+              }`}
+            >
+              <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>상품권시상</span>
+              <span className="font-mono tabular-nums text-[#D97706] dark:text-amber-300">
+                +{formatCurrency(giftCardReport.totalGiftCardAmount)}원
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsExpanded((v) => !v)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
+                isDark
+                  ? 'bg-blue-500/15 border-blue-400/35 text-blue-200'
+                  : 'bg-[#EFF6FF] border-[#BFDBFE] text-[#191F28]'
+              }`}
+            >
+              <Coins className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
+              <span>수당</span>
+              <span className="font-mono tabular-nums text-[#1B64DA] dark:text-blue-300">
+                +{formatCurrency(report.grandTotalIncentive)}원
+              </span>
+              {isExpanded ? (
+                <ChevronUp className="w-3.5 h-3.5 opacity-75" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 opacity-75" />
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* 2행: 6칸 정렬 지표 그리드 (총판 · 실판 · 프리드 · 모델수당 · 구독[자동집계] · 가전올케어[수량조정]) */}
         <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-1.5">
-          {/* 1. 총판 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('sales', 'gross')}
@@ -533,7 +583,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
-          {/* 2. 실판 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('sales', 'delivery')}
@@ -561,7 +610,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
-          {/* 3. 프리드 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('freed')}
@@ -583,7 +631,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
-          {/* 4. 모델수당 */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('models')}
@@ -609,7 +656,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
-          {/* 5. 구독 건수 (해당월 구독 판매접수건 자동 집계 · 클릭 시 당월 구독 접수 내역 확인) */}
           <button
             type="button"
             onClick={() => handleOpenOrToggleTab('sales', 'subscription')}
@@ -640,7 +686,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </span>
           </button>
 
-          {/* 6. 가전올케어 건수 (월별 수량 직접 조정 전용: [-] / 숫자클릭 직접입력 / [+]) */}
           <div
             className={`min-h-[38px] flex items-center justify-between gap-1 px-2 py-1 rounded-xl border text-xs transition ${
               currentAllCareCount > 0
@@ -729,14 +774,12 @@ export const CrmSalesAndIncentivePanel: React.FC<
         </div>
       </div>
 
-      {/* 펼쳐졌을 때만 나타나는 심플·컴팩트 상세 탭 영역 */}
       {isExpanded && (
         <div
           className={`mt-2.5 pt-2.5 border-t space-y-2.5 ${
             isDark ? 'border-slate-800' : 'border-[#E5E8EB]'
           }`}
         >
-          {/* 컴팩트 탭 바 + 안내 + 닫기 */}
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             <div
               className={`inline-flex items-center gap-1 p-0.5 rounded-xl border ${subSurfaceCls}`}
@@ -790,7 +833,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </div>
           </div>
 
-          {/* 탭 1: 총판 · 실판 컴팩트 내역 */}
           {activeTab === 'sales' && (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs">
@@ -964,7 +1006,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </div>
           )}
 
-          {/* 탭 2: 프리드 가입 건수 & 종류별 수당 (심플 컴팩트형) */}
           {activeTab === 'freed' && (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -1007,7 +1048,6 @@ export const CrmSalesAndIncentivePanel: React.FC<
                 </div>
               </div>
 
-              {/* 5종 컴팩트 수당 칩 그리드 */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                 {[
                   {
@@ -1156,6 +1196,18 @@ export const CrmSalesAndIncentivePanel: React.FC<
           />
         </div>
       )}
+      <GiftCardRewardDetailModal
+        isOpen={isGiftCardModalOpen}
+        onClose={() => setIsGiftCardModalOpen(false)}
+        initialYearMonth={selectedYearMonth}
+        customers={customers}
+        isDark={isDark}
+        onSyncYearMonth={onChangeYearMonth}
+        onSelectCustomer={(cid) => {
+          const found = customers.find((c) => c.id === cid);
+          if (found) onSelectCustomer(found);
+        }}
+      />
     </section>
   );
 };

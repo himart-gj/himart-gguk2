@@ -1,3 +1,10 @@
+// ============================================================================
+// 롯데하이마트 경기광주점 — 비공개 구글 시트(Apps Script) 전용 클라우드 동기화 브릿지
+// - GET 요청 시 Google 예약어(sid) 사용 금지 (HTTP 400 원천 차단)
+// - 부분 메타데이터 저장(휴무표 권한·원격 프로필·암호화 볼트) 시 기존 care 데이터 유실 원천 차단
+// - 전산교안(__partnerManuals) 로컬 캐시 이중 보존 및 로컬 조견표 자동 복구 지원
+// ============================================================================
+
 import {
   bootstrapInviteFromUrl,
   canAccessStoreSchedule,
@@ -7,6 +14,15 @@ import {
   revokeLocalFriendAccess,
   syncFriendSchedulePermission,
 } from './friendAccessGuard';
+import {
+  createFriendOneTimeNotice,
+  evaluateAndEmitFriendNoticeFromCareData,
+  extractFriendNoticesMap,
+  FRIEND_ONE_TIME_NOTICES_FIELD,
+  FriendOneTimeNotice,
+} from './friendNoticeManager';
+export { extractFriendNoticesMap, FRIEND_ONE_TIME_NOTICES_FIELD };
+export type { FriendOneTimeNotice };
 
 export type StoreCloudKind = 'schedule' | 'incentive' | 'care' | 'installment';
 
@@ -62,6 +78,7 @@ const PRESERVED_CARE_META_FIELDS = [
   FRIEND_REMOTE_PROFILES_FIELD,
   PARTNER_MANUALS_META_FIELD,
   FRIEND_SCHEDULE_MAP_FIELD,
+  FRIEND_ONE_TIME_NOTICES_FIELD,
   ENCRYPTED_OWNER_CRM_VAULT_FIELD,
 ] as const;
 
@@ -104,7 +121,7 @@ export function saveSpreadsheetId(raw?: string | null): string {
         localStorage.removeItem(TARGET_SPREADSHEET_ID_STORAGE_KEY);
       }
     } catch {
-      // ignore
+      // ignore storage errors
     }
   }
   return clean;
@@ -131,7 +148,7 @@ export function saveInstaSpreadsheetId(raw?: string | null): string {
         localStorage.removeItem(INSTA_SPREADSHEET_ID_STORAGE_KEY);
       }
     } catch {
-      // ignore
+      // ignore storage errors
     }
   }
   return clean;
@@ -226,7 +243,7 @@ export function readRawSyncConfig(): StoreCloudRawConfig {
       };
     }
   } catch {
-    // ignore
+    // ignore storage parse errors
   }
   return { repo: fallbackRelay, branch: 'main', token: '' };
 }
@@ -359,7 +376,7 @@ export function syncCurrentFriendScheduleAccessFromCareData(rawData: unknown): v
       }
     }
   } catch {
-    // ignore
+    // ignore storage quota
   }
 
   if (!isFriendRestrictedMode()) return;
@@ -368,6 +385,7 @@ export function syncCurrentFriendScheduleAccessFromCareData(rawData: unknown): v
   const scheduleMap = extractFriendScheduleMap(rawData);
   const allowed = scheduleMap[session.codeId] === true;
   syncFriendSchedulePermission(allowed);
+  evaluateAndEmitFriendNoticeFromCareData(rawData);
 }
 
 interface CacheEntry {
@@ -572,7 +590,7 @@ export async function saveStoreCloudDataset(
         finalPayload = parsedObj;
       }
     } catch {
-      // keep original
+      // keep original payloadData if JSON parse fails
     }
   }
 
@@ -612,7 +630,7 @@ export async function saveStoreCloudDataset(
         configured: true,
         needsSpreadsheetId: isNullSheetErr,
         message: isNullSheetErr
-          ? '독립형 Apps Script가 감지되었습니다! [클라우드 설정] 탭에서 기존 구글 시트 주소를 붙여넣고 [연결 저장·상태 점검]을 눌러주세요.'
+          ? '독립형 Apps Script가 감지되었습니다! [클라우드 설정] 탭에서 기존 구글 시트 주소를 붙여넣고 [연결 저장·검수]를 눌러주세요.'
           : rawErr || '구글 시트 저장 실패: 업로드 비밀번호(PIN)를 확인해 주세요.',
       };
     }
@@ -633,7 +651,7 @@ export async function saveStoreCloudDataset(
       configured: true,
       message: json.pinInitialized
         ? '비공개 구글 시트에 저장되었으며 입력하신 PIN이 관리자 비밀번호로 최초 등록되었습니다!'
-        : '비공개 구글 시트에 최신 자료가 반영되었습니다!',
+        : '비공개 구글 시트에 최신 자료가 반영되었습니다! 전 직원 기기에서 자동 연동됩니다.',
     };
   } catch (err: any) {
     return {
@@ -646,14 +664,12 @@ export async function saveStoreCloudDataset(
 
 let healedCloudCareThisSession = false;
 
-export async function healCloudCareItemsFromLocalIfEmpty(
-  localDataset: {
-    versionTitle?: string;
-    updatedAt?: string;
-    fileName?: string;
-    items?: unknown[];
-  } | null
-): Promise<boolean> {
+export async function healCloudCareItemsFromLocalIfEmpty(localDataset: {
+  versionTitle?: string;
+  updatedAt?: string;
+  fileName?: string;
+  items?: unknown[];
+} | null): Promise<boolean> {
   if (healedCloudCareThisSession || isFriendRestrictedMode()) return false;
   if (!localDataset || !Array.isArray(localDataset.items) || localDataset.items.length === 0) {
     return false;
@@ -843,7 +859,7 @@ export async function diagnoseStoreCloudConnection(
         ok: false,
         needsSpreadsheetId: true,
         error: rawErr.includes('getSheetByName')
-          ? '현재 Apps Script에 구버전 단독 코드가 배포되어 시트를 찾지 못했습니다! [구글 시트 주소] 칸에 기존 시트 주소를 입력한 뒤 [Apps Script 코드 복사] → Code.gs 붙여넣기·배포를 1회 진행해 주세요.'
+          ? '현재 Apps Script에 구버전 단독 코드가 배포되어 시트를 찾지 못했습니다! [연동할 구글 시트 주소(URL)] 칸에 기존 시트 주소를 입력한 뒤 [Apps Script 코드 복사] → Code.gs 붙여넣기·배포를 1회 진행해 주세요.'
           : rawErr,
       };
     }
@@ -1092,7 +1108,7 @@ export async function saveFriendRemoteProfile(
   if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) {
     return {
       ok: false,
-      message: '클라우드 시트 응답을 확인하지 못해 기존 자료 보호를 위해 저장을 보류했습니다.',
+      message: '클라우드 시트 응답을 확인하지 못해 기존 자료 보호를 위해 저장을 보류했습니다. 잠시 후 다시 눌러주세요.',
     };
   }
 
@@ -1124,7 +1140,89 @@ export async function saveFriendRemoteProfile(
   return {
     ok: true,
     profiles: nextMap,
-    message: '초대 기기 프로필이 비공개 시트에 원격 반영되었습니다.',
+    message: '초대 기기 프로필(지점명·담당자)이 비공개 시트에 원격 반영되었습니다.',
+  };
+}
+
+export async function fetchFriendNoticesMap(
+  gasUrlOverride?: string
+): Promise<Record<string, FriendOneTimeNotice>> {
+  const careData = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
+    bypassCache: true,
+    gasUrlOverride,
+  });
+  return extractFriendNoticesMap(careData);
+}
+
+export async function saveFriendOneTimeNotice(
+  rawGasUrl: string,
+  pin: string,
+  codeId: string,
+  message: string,
+  spreadsheetIdOverride?: string
+): Promise<{
+  ok: boolean;
+  noticesMap?: Record<string, FriendOneTimeNotice>;
+  notice?: FriendOneTimeNotice | null;
+  message: string;
+}> {
+  const cleanCodeId = String(codeId || '').trim();
+  if (!cleanCodeId) {
+    return { ok: false, message: '대상 초대코드 식별자(codeId)가 없습니다.' };
+  }
+  const gasUrl = normalizeGasWebAppUrl(rawGasUrl || readRawSyncConfig().repo);
+  if (!gasUrl || !pin.trim()) {
+    return {
+      ok: false,
+      message: '구글 시트 웹앱 URL과 관리자 PIN을 먼저 확인해 주세요.',
+    };
+  }
+
+  const existingCare = await fetchStoreCloudDataset<Record<string, unknown>>('care', {
+    bypassCache: true,
+    gasUrlOverride: gasUrl,
+  });
+  if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) {
+    return {
+      ok: false,
+      message: '클라우드 시트 응답을 확인하지 못해 저장을 보류했습니다. 잠시 후 다시 시도해 주세요.',
+    };
+  }
+
+  const baseObj: Record<string, unknown> = { ...existingCare };
+  if (!Array.isArray(baseObj.items)) {
+    baseObj.items = [];
+  }
+
+  const prevNotices = extractFriendNoticesMap(baseObj);
+  const nextNotices: Record<string, FriendOneTimeNotice> = { ...prevNotices };
+  const trimmedMsg = String(message || '').trim();
+  let savedItem: FriendOneTimeNotice | null = null;
+
+  if (trimmedMsg) {
+    savedItem = createFriendOneTimeNotice(cleanCodeId, trimmedMsg);
+    nextNotices[cleanCodeId] = savedItem;
+  } else {
+    delete nextNotices[cleanCodeId];
+  }
+
+  baseObj[FRIEND_ONE_TIME_NOTICES_FIELD] = nextNotices;
+
+  const res = await saveStoreCloudDataset('care', baseObj, {
+    repo: gasUrl,
+    token: pin.trim(),
+    ...(spreadsheetIdOverride ? { spreadsheetId: spreadsheetIdOverride } : {}),
+  });
+  if (!res.ok) {
+    return { ok: false, message: res.message };
+  }
+  return {
+    ok: true,
+    noticesMap: nextNotices,
+    notice: savedItem,
+    message: trimmedMsg
+      ? '1회성 공지 멘트가 등록되었습니다! 해당 사용자가 앱을 켜면 즉시 1회 팝업으로 표시됩니다.'
+      : '등록된 1회성 멘트가 내려갔습니다.',
   };
 }
 
@@ -1147,17 +1245,21 @@ export async function deleteFriendRemoteProfile(
     if (!existingCare || typeof existingCare !== 'object' || Array.isArray(existingCare)) return;
     const prevMap = extractFriendRemoteProfilesMap(existingCare);
     const prevSched = extractFriendScheduleMap(existingCare);
-    if (!(cleanCodeId in prevMap) && !(cleanCodeId in prevSched)) return;
+    const prevNotices = extractFriendNoticesMap(existingCare);
+    if (!(cleanCodeId in prevMap) && !(cleanCodeId in prevSched) && !(cleanCodeId in prevNotices)) return;
     const nextMap = { ...prevMap };
     const nextSched = { ...prevSched };
+    const nextNotices = { ...prevNotices };
     delete nextMap[cleanCodeId];
     delete nextSched[cleanCodeId];
+    delete nextNotices[cleanCodeId];
     await saveStoreCloudDataset(
       'care',
       {
         ...existingCare,
         [FRIEND_REMOTE_PROFILES_FIELD]: nextMap,
         [FRIEND_SCHEDULE_MAP_FIELD]: nextSched,
+        [FRIEND_ONE_TIME_NOTICES_FIELD]: nextNotices,
       },
       {
         repo: gasUrl,
@@ -1165,7 +1267,7 @@ export async function deleteFriendRemoteProfile(
       }
     );
   } catch {
-    // ignore
+    // ignore optional cleanup errors
   }
 }
 
@@ -1194,7 +1296,7 @@ function extractGasUrlFromGitHubApiUrl(urlStr: string): string {
       candidate = decodeURIComponent(candidate);
     }
   } catch {
-    // ignore
+    // ignore decode error
   }
   return normalizeGasWebAppUrl(candidate);
 }
