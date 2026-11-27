@@ -23,6 +23,7 @@ import { ADMIN_PIN_CODE } from './careTableParser';
 import {
   FRIEND_DEVICE_REVOKED_KEY,
   FRIEND_ROLE_CHANGED_EVENT,
+  persistVerifiedOwnerStaffPin,
   FRIEND_SESSION_STORAGE_KEY,
   isFriendRestrictedMode,
   PENDING_INVITE_PROMPT_KEY,
@@ -40,11 +41,8 @@ export interface ConsultantProfile {
   phone: string;
   storeName: string;
   greeting: string;
-  /** 친구(외부 지인) 모드 등에서 고객 견적 뷰어 하단 네이버 지도 버튼 숨김 여부 */
   hideStoreMap?: boolean;
-  /** 사용자가 직접 지점명을 수정했는지 여부 (친구 기기 초기 경기광주점 오노출 방지) */
   storeCustomized?: boolean;
-  /** 오너가 원격 지정한 프로필의 마지막 반영 타임스탬프 */
   remoteAppliedAt?: string;
 }
 
@@ -57,13 +55,9 @@ export interface SharedQuotePayload {
 }
 
 export interface EncodedQuoteLinks {
-  /** 기본 무손실 초압축 링크 (?s=2_... - 점(.) 없음, 단독으로도 문자 링크 인식 가능) */
   compactUrl: string;
-  /** 서버 단축(/q/Ab3x9Z) 또는 외부 단축(is.gd) 적용된 최종 최단 링크 (폴백 시 compactUrl) */
   shortUrl: string;
-  /** 적용된 단축 방식 ('server' | 'external' | 'compact') */
   mode?: 'server' | 'external' | 'compact';
-  /** 내부 압축 토큰 */
   token?: string;
   isShortened?: boolean;
 }
@@ -204,7 +198,7 @@ export async function syncViewerBaseUrlFromServer(): Promise<string> {
       }
     }
   } catch {
-    // 정적 배포 환경에서는 무시
+    // ignore
   }
   return localVal;
 }
@@ -386,7 +380,6 @@ function base64UrlToBytes(b64url: string): Uint8Array {
   return bytes;
 }
 
-// ==================== V2 초경량 무손실 튜플 코덱 (URL 길이 80~85% 단축) ====================
 type PackedMoney = number | string;
 
 function packMoney(val?: number): PackedMoney {
@@ -1089,6 +1082,7 @@ export function unlockStaffDeviceWithPin(pin: string): boolean {
     localStorage.removeItem(FRIEND_DEVICE_REVOKED_KEY);
     localStorage.removeItem(FRIEND_SESSION_STORAGE_KEY);
     localStorage.setItem(STAFF_VERIFIED_V2_KEY, '1');
+    persistVerifiedOwnerStaffPin(input);
     localStorage.setItem(STAFF_TRUSTED_DEVICE_KEY, '1');
     localStorage.removeItem(CUSTOMER_DEVICE_VIEWER_ONLY_KEY);
     sessionStorage.removeItem(CUSTOMER_TAB_LOCK_KEY);
@@ -1420,7 +1414,7 @@ export async function decodeSharedQuoteToken(
 
     const jsonText = new TextDecoder().decode(jsonBytes);
     const parsed = JSON.parse(jsonText) as SharedQuotePayload;
-    if (!parsed || typeof parsed !== 'object' || !parsed.state) {
+    if (!parsed || typeof parsed === 'object' === false || !parsed.state) {
       return null;
     }
     if (parsed.consultant) {
