@@ -565,32 +565,29 @@ export default function PopCard({
               </div>
             </div>
 
-            {/* [2단] 확장된 메인 크림슨 스테이지: 좌측 컴팩트 지원금 / 우측 초대형 메인 체감가 */}
+            {/* [2단] 확장된 메인 크림슨 스테이지: 좌측 가전지원금(xx개월) 2단 블록 / 우측 초대형 메인 체감가 */}
             <div
-              className="flex-1 px-[19px] flex items-center justify-between relative overflow-hidden"
+              className="flex-1 px-[22px] flex items-center justify-between relative overflow-hidden"
               style={{
                 background:
                   'repeating-linear-gradient(-45deg, rgba(255,255,255,0.042) 0px, rgba(255,255,255,0.042) 2px, transparent 2px, transparent 8px), radial-gradient(circle at 72% 42%, #F5001E 0%, #CA0015 58%, #92000D 100%)',
               }}
             >
-              <div className="flex flex-col items-start justify-center z-10 shrink-0">
+              <div className="flex flex-col items-start justify-center -translate-y-[3px] z-10 shrink-0">
                 <div
-                  className="bg-[#FFE600] text-[#0E1117] text-[13px] font-black px-[9px] py-[3px] tracking-tight whitespace-nowrap"
-                  style={{ boxShadow: '0 4px 10px rgba(60,0,6,0.32)' }}
+                  className="bg-[#FFE600] text-[#0E1117] text-[13.5px] font-black px-[10px] py-[3.5px] tracking-tight whitespace-nowrap tabular-nums"
+                  style={{ boxShadow: '0 4px 10px rgba(60,0,6,0.34)' }}
                 >
-                  프리드 추가지원
+                  가전지원금({safePeriod}개월)
                 </div>
                 <div
-                  className="mt-[6px] text-white flex items-baseline whitespace-nowrap tabular-nums"
-                  style={{ textShadow: '0 3px 8px rgba(55,0,6,0.55)' }}
+                  className="mt-[8px] text-white flex items-baseline whitespace-nowrap tabular-nums"
+                  style={{ textShadow: '0 4px 10px rgba(55,0,6,0.58)' }}
                 >
-                  <span className="text-[26px] font-black leading-[0.95] tracking-tight">
+                  <span className="text-[31px] font-black leading-[0.94] tracking-tight">
                     -{formatNumber(underPreed.monthlyDiscount)}
                   </span>
-                  <span className="text-[14px] font-black ml-[2.5px]">원/월</span>
-                </div>
-                <div className="mt-[5px] text-[11.2px] font-extrabold text-amber-50/95 tracking-tight whitespace-nowrap tabular-nums">
-                  가전지원금 {safePeriod}개월 현금입금
+                  <span className="text-[15.5px] font-black ml-[3px]">원/월</span>
                 </div>
               </div>
 
