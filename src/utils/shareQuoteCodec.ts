@@ -1320,7 +1320,7 @@ export async function createShortenedQuoteLinks(
             if (data && typeof data.shorturl === 'string' && data.shorturl.startsWith('http')) {
               return {
                 compactUrl,
-                shortUrl: data.shorturl,
+                shortUrl: data.shorturl.replace(/^http:\/\//i, 'https://'),
                 mode: 'external',
                 token,
               };
@@ -1336,10 +1336,35 @@ export async function createShortenedQuoteLinks(
     if (jsonpShort) {
       return {
         compactUrl,
-        shortUrl: jsonpShort,
+        shortUrl: jsonpShort.replace(/^http:\/\//i, 'https://'),
         mode: 'external',
         token,
       };
+    }
+
+    if (typeof fetch !== 'undefined') {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2400);
+        const tinyRes = await fetch(
+          `https://tinyurl.com/api-create.php?url=${encodeURIComponent(compactUrl)}`,
+          { signal: ctrl.signal }
+        );
+        clearTimeout(timer);
+        if (tinyRes.ok) {
+          const tinyUrl = (await tinyRes.text()).trim();
+          if (/^https?:\/\//i.test(tinyUrl)) {
+            return {
+              compactUrl,
+              shortUrl: tinyUrl.replace(/^http:\/\//i, 'https://'),
+              mode: 'external',
+              token,
+            };
+          }
+        }
+      } catch {
+        // ignore
+      }
     }
   }
 
