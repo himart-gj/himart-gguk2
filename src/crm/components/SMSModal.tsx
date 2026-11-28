@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
   Copy,
@@ -9,17 +9,25 @@ import {
   Share2,
   Smartphone,
   Sparkles,
+  Trash2,
+  Upload,
 } from 'lucide-react';
 import { CustomerItem } from '../types/crm';
 import { SMS_TEMPLATES } from '../data/mockData';
 import {
-  copyBusinessCardImageToClipboard,
-  getEffectiveBusinessCardDataUri,
-  isOwnerMarketingDbUnlocked,
-  loadMarketingDbStore,
-  shareBusinessCardFileWithText,
-  warmUpBusinessCardCache,
-} from '../../utils/marketingDbEngine';
+  buildNativeSmsHref,
+  clearConsultantBusinessCardDataUri,
+  compressBusinessCardFileToDataUri,
+  CONSULTANT_CARD_UPDATED_EVENT,
+  copyConsultantCardToClipboard,
+  hydrateConsultantBusinessCardFromIdb,
+  loadConsultantBusinessCardDataUri,
+  loadConsultantCardAutoInclude,
+  saveConsultantBusinessCardDataUri,
+  saveConsultantCardAutoInclude,
+  shareConsultantBusinessCardWithText,
+} from '../../utils/consultantBusinessCard';
+import { loadConsultantProfile } from '../../utils/shareQuoteCodec';
 import { FlagshipModalShell } from '../../components/ui/FlagshipModalShell';
 
 interface SMSModalProps {
@@ -38,33 +46,47 @@ export const SMSModal: React.FC<SMSModalProps> = ({
   );
   const [messageText, setMessageText] = useState<string>('');
   const [copied, setCopied] = useState(false);
-  const [includeOwnerCard, setIncludeOwnerCard] = useState<boolean>(true);
+  const [cardDataUri, setCardDataUri] = useState<string>(() =>
+    loadConsultantBusinessCardDataUri()
+  );
+  const [includeCard, setIncludeCard] = useState<boolean>(() =>
+    loadConsultantCardAutoInclude()
+  );
   const [cardNotice, setCardNotice] = useState<string | null>(null);
-
-  const isOwnerDevice =
-    typeof window !== 'undefined' && isOwnerMarketingDbUnlocked();
-  const ownerCardDataUri = isOwnerDevice
-    ? getEffectiveBusinessCardDataUri(loadMarketingDbStore().config)
-    : '';
+  const cardInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (customer) {
-      let defaultId = SMS_TEMPLATES[0].id;
-      if (customer.status === '미구매/고민중') {
-        defaultId = 'promo_closing';
-      } else if (customer.status === '계약완료') {
-        defaultId = 'delivery_notice';
-      }
-      setSelectedTemplateId(defaultId);
-      const tpl =
-        SMS_TEMPLATES.find((t) => t.id === defaultId) || SMS_TEMPLATES[0];
-      setMessageText(tpl.generate(customer));
-      setCopied(false);
-      setCardNotice(null);
-      if (isOwnerMarketingDbUnlocked()) {
-        warmUpBusinessCardCache();
-      }
+    if (!customer) return;
+    let defaultId = SMS_TEMPLATES[0].id;
+    if (customer.status === '미구매/고민중') {
+      defaultId = 'promo_closing';
+    } else if (customer.status === '계약완료') {
+      defaultId = 'delivery_notice';
     }
+    setSelectedTemplateId(defaultId);
+    const tpl =
+      SMS_TEMPLATES.find((t) => t.id === defaultId) || SMS_TEMPLATES[0];
+    setMessageText(tpl.generate(customer));
+    setCopied(false);
+    setCardNotice(null);
+
+    setCardDataUri(loadConsultantBusinessCardDataUri());
+    setIncludeCard(loadConsultantCardAutoInclude());
+    void hydrateConsultantBusinessCardFromIdb().then((restored) => {
+      if (restored) {
+        setCardDataUri(restored);
+        setIncludeCard(loadConsultantCardAutoInclude());
+      }
+    });
+
+    const syncCard = () => {
+      setCardDataUri(loadConsultantBusinessCardDataUri());
+      setIncludeCard(loadConsultantCardAutoInclude());
+    };
+    window.addEventListener(CONSULTANT_CARD_UPDATED_EVENT, syncCard);
+    return () => {
+      window.removeEventListener(CONSULTANT_CARD_UPDATED_EVENT, syncCard);
+    };
   }, [customer]);
 
   if (!customer) return null;
@@ -76,6 +98,21 @@ export const SMSModal: React.FC<SMSModalProps> = ({
       setMessageText(tpl.generate(customer));
     }
     setCopied(false);
+  };
+
+  const handleUploadCard = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const compressed = await compressBusinessCardFileToDataUri(file);
+      saveConsultantBusinessCardDataUri(compressed);
+      setCardDataUri(compressed);
+      setIncludeCard(true);
+      setCardNotice('✅ 본인 명함 사진이 저장되었습니다! 제안서 공유창에서도 함께 사용됩니다.');
+    } catch {
+      setCardNotice('⚠️ 명함 이미지를 불러오지 못했습니다.');
+    }
   };
 
   const handleCopy = async () => {
@@ -95,34 +132,33 @@ export const SMSModal: React.FC<SMSModalProps> = ({
     }
   };
 
-  const cleanPhone = customer.phone.replace(/[^0-9]/g, '');
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const smsSeparator = isIOS ? '&' : '?';
-  const smsHref = `sms:${cleanPhone}${smsSeparator}body=${encodeURIComponent(
-    messageText
-  )}`;
+  const cleanPhone = customer.phone.replace(/[^0-9+]/g, '');
+  const smsHref = buildNativeSmsHref(customer.phone, messageText);
+  const hasActiveCard = Boolean(cardDataUri && includeCard);
 
   const handleOpenSmsApp = async () => {
     onMarkSent(customer.id);
-    if (isOwnerDevice && includeOwnerCard && ownerCardDataUri) {
-      const imgOk = await copyBusinessCardImageToClipboard(ownerCardDataUri);
+    if (hasActiveCard) {
+      const imgOk = await copyConsultantCardToClipboard(cardDataUri);
       if (imgOk) {
         setCardNotice(
-          '🪪 명함 이미지가 키보드 클립보드에 복사되었습니다! 문자 입력칸에서 붙여넣기 해주세요.'
+          '🪪 명함 이미지가 클립보드에 복사되었습니다! 열린 문자창(PC Ctrl+V / 모바일 클립보드)에서 붙여넣기 해주세요.'
         );
-        await new Promise((r) => setTimeout(r, 320));
+        await new Promise((r) => setTimeout(r, 280));
       }
     }
     window.location.href = smsHref;
   };
 
   const handleDirectShareWithBusinessCard = () => {
-    if (!ownerCardDataUri) return;
-    // 클릭 제스처(User Activation) 보존을 위해 await 없이 즉시 호출!
-    shareBusinessCardFileWithText({
-      dataUri: ownerCardDataUri,
+    if (!cardDataUri) return;
+    const prof = loadConsultantProfile();
+    shareConsultantBusinessCardWithText({
+      dataUri: cardDataUri,
       bodyText: messageText,
       customerPhone: customer.phone,
+      storeName: prof.storeName,
+      consultantName: prof.name,
     }).then((res) => {
       if (res === 'shared') {
         onMarkSent(customer.id);
@@ -171,7 +207,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
       bodyClassName="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1"
       footer={
         <div className="space-y-2">
-          {isOwnerDevice && includeOwnerCard && ownerCardDataUri && (
+          {hasActiveCard && (
             <button
               type="button"
               onClick={handleDirectShareWithBusinessCard}
@@ -207,14 +243,14 @@ export const SMSModal: React.FC<SMSModalProps> = ({
 
             <button
               type="button"
-              onClick={handleOpenSmsApp}
+              onClick={() => void handleOpenSmsApp()}
               className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#E60012] hover:bg-[#C8000F] text-white shadow-xs transition cursor-pointer"
             >
               <Smartphone className="w-4 h-4" />
               <span>
-                {isOwnerDevice && includeOwnerCard
+                {hasActiveCard
                   ? '번호자동 문자앱 (명함복사)'
-                  : '휴대폰 문자앱 바로 열기'}
+                  : '휴대폰·PC 문자앱 열기'}
               </span>
               <Send className="w-3.5 h-3.5 ml-0.5" />
             </button>
@@ -222,44 +258,84 @@ export const SMSModal: React.FC<SMSModalProps> = ({
         </div>
       }
     >
+      <input
+        ref={cardInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleUploadCard}
+        className="hidden"
+      />
+
       {cardNotice && (
         <div className="p-3 rounded-2xl bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 text-[#1B64DA] dark:text-blue-300 text-xs font-extrabold leading-relaxed">
           {cardNotice}
         </div>
       )}
 
-      {/* 관리자 전용: 명함 사진 동봉 선택 바 (타 직원 기기 노출 0%) */}
-      {isOwnerDevice && ownerCardDataUri && (
-        <div className="p-3 rounded-2xl bg-[#EFF6FF] dark:bg-blue-500/12 border border-[#BFDBFE] dark:border-blue-500/30 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
+      {/* 기기별 내 명함 사진 등록 · 자동 동봉 바 */}
+      <div className="p-3 rounded-2xl bg-[#EFF6FF] dark:bg-blue-500/12 border border-[#BFDBFE] dark:border-blue-500/30 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          {cardDataUri && (
             <img
-              src={ownerCardDataUri}
+              src={cardDataUri}
               alt="내 명함"
-              className="w-16 h-auto rounded-lg border border-[#BFDBFE] dark:border-blue-500/30 bg-white shrink-0"
+              className="w-16 max-h-12 object-contain rounded-lg border border-[#BFDBFE] dark:border-blue-500/30 bg-white shrink-0"
             />
-            <div className="min-w-0">
-              <div className="text-xs font-extrabold text-[#191F28] dark:text-slate-100 flex items-center gap-1">
-                <ImageIcon className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
-                <span className="truncate">내 명함 사진 함께 보내기</span>
-              </div>
-              <p className="text-[11.5px] text-[#4E5968] dark:text-slate-300 font-semibold leading-snug mt-0.5">
-                [명함파일 직접첨부]를 누르면 사진+문구가 한번에 첨부되며 고객 번호는 자동 복사됩니다.
-              </p>
+          )}
+          <div className="min-w-0">
+            <div className="text-xs font-extrabold text-[#191F28] dark:text-slate-100 flex items-center gap-1">
+              <ImageIcon className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
+              <span className="truncate">내 명함 사진 함께 보내기</span>
             </div>
+            <p className="text-[11.5px] text-[#4E5968] dark:text-slate-300 font-semibold leading-snug mt-0.5">
+              {cardDataUri
+                ? '[명함파일+문자 자동첨부] 터치 시 사진+문구가 함께 첨부됩니다.'
+                : '본인 명함을 1회 등록해 두면 문자 발송 시 계속 함께 보낼 수 있습니다.'}
+            </p>
           </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => setIncludeOwnerCard((v) => !v)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-extrabold shrink-0 cursor-pointer transition ${
-              includeOwnerCard
-                ? 'bg-[#1B64DA] text-white shadow-2xs'
-                : 'bg-white dark:bg-slate-800 text-[#4E5968] dark:text-slate-300 border border-[#D1D6DB] dark:border-slate-700'
-            }`}
+            onClick={() => cardInputRef.current?.click()}
+            className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-[#D1D6DB] dark:border-slate-700 text-[11.5px] font-extrabold text-[#191F28] dark:text-slate-100 inline-flex items-center gap-1 cursor-pointer"
           >
-            {includeOwnerCard ? '동봉 ON' : 'OFF'}
+            <Upload className="w-3 h-3" />
+            <span>{cardDataUri ? '교체' : '명함 등록'}</span>
           </button>
+          {cardDataUri && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !includeCard;
+                  setIncludeCard(next);
+                  saveConsultantCardAutoInclude(next);
+                }}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-extrabold shrink-0 cursor-pointer transition ${
+                  includeCard
+                    ? 'bg-[#1B64DA] text-white shadow-2xs'
+                    : 'bg-white dark:bg-slate-800 text-[#4E5968] dark:text-slate-300 border border-[#D1D6DB] dark:border-slate-700'
+                }`}
+              >
+                {includeCard ? '동봉 ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  clearConsultantBusinessCardDataUri();
+                  setCardDataUri('');
+                  setIncludeCard(false);
+                }}
+                className="p-1.5 rounded-lg text-[#8B95A1] hover:text-[#E60012] cursor-pointer"
+                title="명함 삭제"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* 4가지 상황별 템플릿 탭 */}
       <div>
