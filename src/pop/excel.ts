@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { ProductData } from './types';
+import { inferCategoryFromModelCode } from '../utils/aiImageParser';
 
 // 다양한 엑셀 헤더 이름을 유연하게 인식하기 위한 별칭(Alias) 사전
 const HEADER_ALIASES = {
@@ -154,7 +155,11 @@ export function parseExcel(file: File): Promise<ProductData[]> {
 
           products.push({
             id: crypto.randomUUID(),
-            category: colIndices.category !== -1 ? (row[colIndices.category]?.toString() || '') : '',
+            category: (() => {
+              const rawCat = colIndices.category !== -1 ? (row[colIndices.category]?.toString().trim() || '') : '';
+              const inferred = inferCategoryFromModelCode(modelName, rawCat);
+              return inferred === '가전품목' ? rawCat : inferred;
+            })(),
             modelName,
             period,
             monthlyFee,

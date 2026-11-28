@@ -8,6 +8,7 @@ import {
   PopPaperSize,
   UnderPreedScope,
 } from './types';
+import { inferCategoryFromModelCode } from '../utils/aiImageParser';
 
 // 브라우저 직접 인쇄(window.print)용 A3 세로 배율 (418mm 안전 높이 내 중앙 배치)
 const A3_PORTRAIT_BROWSER_PRINT_SCALE = 1.9;
@@ -476,20 +477,28 @@ export default function PopCard({
     );
     const underFinalTotal = underFinalMonthly * safePeriod;
     const netStr = formatNumber(underFinalMonthly);
+
+    // 메인 체감가 숫자를 카드 전체에서 압도적으로 크게 확대 (자릿수별 무충돌 최대치)
     const bigNumPx =
       netStr.length <= 2
-        ? 108
+        ? 154
         : netStr.length <= 3
-        ? 98
+        ? 134
         : netStr.length <= 5
-        ? 84
+        ? 106
         : netStr.length === 6
-        ? 70
-        : 58;
+        ? 88
+        : 72;
+    const unitSidePx = netStr.length <= 3 ? 34 : netStr.length <= 5 ? 28 : 24;
 
     const cleanModelText = (product.modelName || '').trim() || '구독모델';
+    const inferredCategory = inferCategoryFromModelCode(cleanModelText, product.category);
+    const displayCategory =
+      inferredCategory && inferredCategory !== '가전품목'
+        ? inferredCategory
+        : (product.category || '').trim();
     const topModelFontPx =
-      cleanModelText.length > 20 ? 9.5 : cleanModelText.length > 15 ? 10.2 : 11;
+      cleanModelText.length > 20 ? 9.2 : cleanModelText.length > 15 ? 9.8 : 10.5;
 
     const effectiveHalfScale = isPrintSheet ? 1 : scale;
     const halfStageW = BASE_CARD_WIDTH_PX * effectiveHalfScale;
@@ -522,89 +531,104 @@ export default function PopCard({
                 : { transform: `scale(${effectiveHalfScale})` }
             }
           >
-            {/* [1단] 상단 블랙 도킹 바: 위 구독가 직결 문구 + 우측 모델명·기간·계약금(소형) */}
+            {/* [1단] 상단 슬림 블랙 도킹 바 (68px): 위 구독가 직결 문구 + 우측 품목명·모델명·계약금(소형) */}
             <div
-              className="h-[74px] px-[21px] flex items-center justify-between border-b border-white/15 shrink-0"
+              className="h-[68px] px-[19px] flex items-center justify-between border-b border-white/15 shrink-0"
               style={{
                 background: 'linear-gradient(180deg, #0D1017 0%, #161B26 100%)',
               }}
             >
-              <div className="flex items-center gap-[8px] min-w-0">
-                <div className="w-[20px] h-[20px] bg-[#FFE600] text-[#0D1017] flex items-center justify-center text-[11.5px] font-black shrink-0">
+              <div className="flex items-center gap-[7px] min-w-0">
+                <div className="w-[19px] h-[19px] bg-[#FFE600] text-[#0D1017] flex items-center justify-center text-[11px] font-black shrink-0">
                   ▲
                 </div>
-                <div className="text-[18px] font-black text-white tracking-tight whitespace-nowrap leading-none">
+                <div className="text-[17px] font-black text-white tracking-tight whitespace-nowrap leading-none">
                   위 구독가에 <span className="text-[#FFE600]">프리드 혜택</span> 추가 시
                 </div>
               </div>
 
-              <div className="flex flex-col items-end justify-center text-right shrink-0 ml-2 tabular-nums">
+              <div className="flex flex-col items-end justify-center text-right shrink-0 ml-2 tabular-nums gap-[1px]">
+                {displayCategory && (
+                  <div className="text-[9.8px] font-black text-[#FFE600] tracking-tight whitespace-nowrap leading-tight max-w-[195px] truncate">
+                    {displayCategory}
+                  </div>
+                )}
                 <div
-                  className="font-extrabold text-slate-200 tracking-tight whitespace-nowrap leading-tight"
+                  className="font-extrabold text-slate-100 tracking-tight whitespace-nowrap leading-tight"
                   style={{ fontSize: `${topModelFontPx}px` }}
                 >
                   {cleanModelText} · {safePeriod}개월
                 </div>
-                <div className="text-[9.8px] font-bold text-slate-400 tracking-tight whitespace-nowrap leading-tight mt-[2px]">
+                <div className="text-[9.2px] font-bold text-slate-400 tracking-tight whitespace-nowrap leading-tight">
                   계약금 {formatNumber(calculatedDownPayment)}원
                 </div>
               </div>
             </div>
 
-            {/* [2단] 메인 시그니처 크림슨 스테이지: 좌측 프리드 추가지원 / 우측 초대형 체감가 + 최종혜택금액(소형) */}
+            {/* [2단] 확장된 메인 크림슨 스테이지: 좌측 컴팩트 지원금 / 우측 초대형 메인 체감가 */}
             <div
-              className="flex-1 px-[24px] flex items-center justify-between relative overflow-hidden"
+              className="flex-1 px-[19px] flex items-center justify-between relative overflow-hidden"
               style={{
                 background:
-                  'repeating-linear-gradient(-45deg, rgba(255,255,255,0.042) 0px, rgba(255,255,255,0.042) 2px, transparent 2px, transparent 8px), radial-gradient(circle at 73% 40%, #F5001E 0%, #CA0015 58%, #92000D 100%)',
+                  'repeating-linear-gradient(-45deg, rgba(255,255,255,0.042) 0px, rgba(255,255,255,0.042) 2px, transparent 2px, transparent 8px), radial-gradient(circle at 72% 42%, #F5001E 0%, #CA0015 58%, #92000D 100%)',
               }}
             >
-              <div className="flex flex-col items-start justify-center z-10">
+              <div className="flex flex-col items-start justify-center z-10 shrink-0">
                 <div
-                  className="bg-[#FFE600] text-[#0E1117] text-[14.5px] font-black px-[10px] py-[3.5px] tracking-tight whitespace-nowrap"
+                  className="bg-[#FFE600] text-[#0E1117] text-[13px] font-black px-[9px] py-[3px] tracking-tight whitespace-nowrap"
                   style={{ boxShadow: '0 4px 10px rgba(60,0,6,0.32)' }}
                 >
                   프리드 추가지원
                 </div>
                 <div
-                  className="mt-[7px] text-white flex items-baseline whitespace-nowrap tabular-nums"
+                  className="mt-[6px] text-white flex items-baseline whitespace-nowrap tabular-nums"
                   style={{ textShadow: '0 3px 8px rgba(55,0,6,0.55)' }}
                 >
-                  <span className="text-[29px] font-black leading-[0.95] tracking-tight">
+                  <span className="text-[26px] font-black leading-[0.95] tracking-tight">
                     -{formatNumber(underPreed.monthlyDiscount)}
                   </span>
-                  <span className="text-[15.5px] font-black ml-[3px]">원/월</span>
+                  <span className="text-[14px] font-black ml-[2.5px]">원/월</span>
                 </div>
-                <div className="mt-[5px] text-[12px] font-extrabold text-rose-100/95 tracking-tight whitespace-nowrap tabular-nums">
-                  위 구독 혜택가 {formatNumber(perceivedPrice)}원 기준
+                <div className="mt-[5px] text-[11.2px] font-extrabold text-amber-50/95 tracking-tight whitespace-nowrap tabular-nums">
+                  가전지원금 {safePeriod}개월 현금입금
                 </div>
               </div>
 
-              <div className="flex flex-col items-end justify-center z-10">
+              <div className="flex flex-col items-end justify-center z-10 min-w-0">
                 <div
-                  className="text-[14.5px] font-black text-[#FFE600] tracking-tight mb-[2px] whitespace-nowrap"
+                  className="text-[15px] font-black text-[#FFE600] tracking-tight mb-[3px] whitespace-nowrap leading-none"
                   style={{ textShadow: '0 2px 6px rgba(55,0,6,0.5)' }}
                 >
                   최종 결합 체감가
                 </div>
                 <div
                   className="flex items-baseline text-white whitespace-nowrap tabular-nums"
-                  style={{ textShadow: '0 6px 14px rgba(58,0,7,0.75)' }}
+                  style={{ textShadow: '0 8px 20px rgba(48,0,6,0.82)' }}
                 >
-                  <span className="text-[29px] font-black mr-[5px]">월</span>
                   <span
-                    className="font-black leading-[0.84] tracking-[-0.055em]"
+                    className="font-black mr-[5px] leading-none"
+                    style={{ fontSize: `${unitSidePx}px` }}
+                  >
+                    월
+                  </span>
+                  <span
+                    className="font-black leading-[0.8] tracking-[-0.06em]"
                     style={{ fontSize: `${bigNumPx}px` }}
                   >
                     {netStr}
                   </span>
-                  <span className="text-[30px] font-black ml-[3px]">원~</span>
+                  <span
+                    className="font-black ml-[3px] leading-none"
+                    style={{ fontSize: `${unitSidePx + 1}px` }}
+                  >
+                    원~
+                  </span>
                 </div>
                 <div
-                  className="mt-[6px] px-[8px] py-[2.5px] text-[10.8px] font-extrabold text-amber-50 tracking-tight whitespace-nowrap tabular-nums"
+                  className="mt-[7px] px-[8px] py-[2px] text-[10.4px] font-extrabold text-amber-50 tracking-tight whitespace-nowrap tabular-nums"
                   style={{
-                    backgroundColor: 'rgba(13, 16, 23, 0.38)',
-                    border: '1px solid rgba(255, 230, 0, 0.45)',
+                    backgroundColor: 'rgba(13, 16, 23, 0.42)',
+                    border: '1px solid rgba(255, 230, 0, 0.48)',
                   }}
                 >
                   {safePeriod}개월 최종혜택금액{' '}
@@ -615,10 +639,10 @@ export default function PopCard({
               </div>
             </div>
 
-            {/* [3단] 하단 화이트 요약 바 (지점명 무표기 범용 규격) */}
-            <div className="h-[88px] px-[21px] bg-white border-t-[4px] border-[#FFE600] flex flex-col justify-center gap-[5px] shrink-0">
+            {/* [3단] 하단 슬림 화이트 요약 바 (78px · 지점명 무표기 범용 규격) */}
+            <div className="h-[78px] px-[19px] bg-white border-t-[4px] border-[#FFE600] flex flex-col justify-center gap-[4px] shrink-0">
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-[6px] text-[16.5px] font-black tracking-tight whitespace-nowrap tabular-nums">
+                <div className="flex items-center gap-[6px] text-[15.5px] font-black tracking-tight whitespace-nowrap tabular-nums">
                   <span className="text-[#1B64DA]">
                     제휴카드 -{formatManwonFixedOne(activeCardBenefit.discount)}
                   </span>
@@ -627,11 +651,11 @@ export default function PopCard({
                     프리드지원 -{formatShortManwon(underPreed.monthlyDiscount)}
                   </span>
                 </div>
-                <div className="bg-[#0E1117] text-[#FFE600] text-[13px] font-black px-[9.5px] py-[3.5px] tracking-tight whitespace-nowrap shrink-0">
+                <div className="bg-[#0E1117] text-[#FFE600] text-[12.5px] font-black px-[9px] py-[3px] tracking-tight whitespace-nowrap shrink-0">
                   만기 100% 환급형 · 직원문의
                 </div>
               </div>
-              <div className="text-[9.4px] text-slate-500 font-bold tracking-tight whitespace-nowrap">
+              <div className="text-[9.1px] text-slate-500 font-bold tracking-tight whitespace-nowrap">
                 ※ {safePeriod}개월 약정 · 제휴카드 혜택(전월 30만원↑ 조건 충족 시) 및 프리드라이프(별도납입 · 만기 100% 환급) 결합 기준
               </div>
             </div>
