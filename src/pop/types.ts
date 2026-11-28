@@ -42,4 +42,5 @@ export const CARD_BENEFITS: CardBenefit[] = [
 ];
 
 export type PopMode = 'standard' | 'preed';
-export type PopPaperSize = 'a4-2up' | 'a3-portrait';
+export type PopPaperSize = 'a4-4up' | 'a4-2up' | 'a3-portrait';
+export type UnderPreedScope = 'optimal' | 'single';

@@ -1,6 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { Upload, FileSpreadsheet, Printer, CreditCard, Settings, Trash2, X, Filter, Download, FileText, Camera, Sparkles, ArrowLeft, Maximize2, Columns2, CheckSquare } from 'lucide-react';
-import { ProductData, CARD_BENEFITS, PopPaperSize } from './types';
+import {
+  Upload,
+  FileSpreadsheet,
+  Printer,
+  Settings,
+  Trash2,
+  Filter,
+  Download,
+  FileText,
+  Camera,
+  Sparkles,
+  ArrowLeft,
+  CheckSquare,
+} from 'lucide-react';
+import {
+  ProductData,
+  CARD_BENEFITS,
+  PopPaperSize,
+  UnderPreedScope,
+} from './types';
 import { parseExcel } from './excel';
 import PopCard from './PopCard';
 import ImageScannerModal from './ImageScannerModal';
@@ -13,7 +31,6 @@ export interface PopPrinterAppProps {
   backLabel?: string;
 }
 
-// PWA Install Hook
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
@@ -91,7 +108,7 @@ function loadSavedPopProducts(): ProductData[] {
 export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
-  
+
   const [products, setProducts] = useState<ProductData[]>(() => loadSavedPopProducts());
 
   useEffect(() => {
@@ -100,24 +117,26 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       try {
         localStorage.setItem(POP_PRODUCTS_STORAGE_KEY, JSON.stringify(products));
       } catch {
-        // quota fallback handled by inMemoryPopProductsCache
+        // quota fallback
       }
     }
   }, [products]);
+
   const [loading, setLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [selectedCardId, setSelectedCardId] = useState<string>(CARD_BENEFITS[0].id);
   const [popMode, setPopMode] = useState<'standard' | 'preed'>('standard');
-  const [paperSize, setPaperSize] = useState<PopPaperSize>('a4-2up');
+  const [paperSize, setPaperSize] = useState<PopPaperSize>('a4-4up');
+  const [underPreedScope, setUnderPreedScope] = useState<UnderPreedScope>('optimal');
   const [selectedA3Ids, setSelectedA3Ids] = useState<string[]>([]);
   const [onlySelectedInA3, setOnlySelectedInA3] = useState<boolean>(false);
   const [singleA3Job, setSingleA3Job] = useState<{
     product: ProductData;
     action: 'print' | 'pdf';
   } | null>(null);
-  
+
   // Modals
   const [isDataModalOpen, setIsDataModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -125,7 +144,6 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   const [scannerInitialImage, setScannerInitialImage] = useState<string | null>(null);
   const [uploadSuccessMessage, setUploadSuccessMessage] = useState<string | null>(null);
 
-  // 구독 POP 내부 모달 열림 시 뒤로가기로 해당 모달만 먼저 닫기
   useEffect(() => {
     if (
       isImageScannerOpen ||
@@ -162,21 +180,22 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       delete (window as any).__subViewBackHandler;
     };
   }, [isImageScannerOpen, isDataModalOpen, isSettingsModalOpen, showIOSGuide]);
-  
-  // Print Mode
+
   const [printMode, setPrintMode] = useState<'all' | 'changed' | 'new' | 'allcare' | 'standard'>('all');
 
   const handleToggleAllCare = (id: string) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, isAllCare: !p.isAllCare } : p));
+    setProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, isAllCare: !p.isAllCare } : p))
+    );
   };
 
   const handleSetAllCare = (enable: boolean) => {
-    setProducts(prev => prev.map(p => ({ ...p, isAllCare: enable })));
+    setProducts((prev) => prev.map((p) => ({ ...p, isAllCare: enable })));
   };
 
   const handleAddProductFromScanner = (newProduct: ProductData) => {
-    setProducts(prev => {
-      const idx = prev.findIndex(p => p.modelName === newProduct.modelName);
+    setProducts((prev) => {
+      const idx = prev.findIndex((p) => p.modelName === newProduct.modelName);
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx] = { ...updated[idx], ...newProduct, changeStatus: 'changed' };
@@ -185,12 +204,11 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       return [newProduct, ...prev];
     });
     setUploadSuccessMessage(
-      `📸 [${newProduct.category || '가전'}] ${newProduct.modelName} 모델이 견적서 사진에서 인식되어 POP 목록에 추가되었습니다!`
+      `📸 [${newProduct.category || '가전'}] ${newProduct.modelName} 모델이 POP 목록에 추가되었습니다.`
     );
-    setTimeout(() => setUploadSuccessMessage(null), 6000);
+    setTimeout(() => setUploadSuccessMessage(null), 5000);
   };
 
-  // 전역 클립보드 이미지 붙여넣기(Ctrl+V) 리스너
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement;
@@ -224,7 +242,6 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
   const [apiKey, setApiKey] = useState('');
   const [aiModel, setAiModel] = useState('gemini-3.8-flash');
 
-  // Load API key and model from local storage on mount (1~4번 메뉴 공통 키 'gemini_api_key' 공유)
   React.useEffect(() => {
     const storedKey =
       localStorage.getItem('gemini_api_key') ||
@@ -264,20 +281,17 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       if (parsedProducts.length === 0) {
         setError('데이터를 찾을 수 없거나 구독료가 0원인 항목만 있습니다.');
       } else {
-        // parseExcel이 판별한 각 상품의 p.isAllCare 값을 그대로 따름
         const finalProducts = parsedProducts;
-        const hasAnyAllCare = finalProducts.some(p => p.isAllCare);
+        const hasAnyAllCare = finalProducts.some((p) => p.isAllCare);
 
-        // 기존 데이터와 비교 (Diff Logic)
         if (products.length === 0) {
-          // 최초 업로드면 모두 'new'
-          setProducts(finalProducts.map(p => ({ ...p, changeStatus: 'new' })));
+          setProducts(finalProducts.map((p) => ({ ...p, changeStatus: 'new' })));
         } else {
-          // 기존 데이터 병합 및 비교
           const newProductsList = [...products];
-          
-          finalProducts.forEach(parsed => {
-            const existingIndex = newProductsList.findIndex(p => p.modelName === parsed.modelName);
+          finalProducts.forEach((parsed) => {
+            const existingIndex = newProductsList.findIndex(
+              (p) => p.modelName === parsed.modelName
+            );
             if (existingIndex >= 0) {
               const existing = newProductsList[existingIndex];
               newProductsList[existingIndex] = {
@@ -285,23 +299,23 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 ...parsed,
                 id: existing.id,
                 isAllCare: parsed.isAllCare ?? existing.isAllCare,
-                changeStatus: existing.monthlyFee !== parsed.monthlyFee ? 'changed' : 'unchanged'
+                changeStatus:
+                  existing.monthlyFee !== parsed.monthlyFee ? 'changed' : 'unchanged',
               };
             } else {
-              // 새로 추가
               newProductsList.push({ ...parsed, changeStatus: 'new' });
             }
           });
-          
           setProducts(newProductsList);
         }
 
-        // 업로드 성공 알림 및 모달 닫기
         setIsDataModalOpen(false);
         if (hasAnyAllCare) {
-          setUploadSuccessMessage('🛡️ [올케어] 자료가 감지되어 [사용중인 가전 2년 수리비 보증] 혜택이 자동 적용되었습니다!');
+          setUploadSuccessMessage(
+            '🛡️ [올케어] 자료가 감지되어 2년 수리비 보증 혜택이 자동 적용되었습니다.'
+          );
         } else {
-          setUploadSuccessMessage(`${finalProducts.length}개 모델이 성공적으로 로드되었습니다.`);
+          setUploadSuccessMessage(`${finalProducts.length}개 모델이 로드되었습니다.`);
         }
         setTimeout(() => setUploadSuccessMessage(null), 5000);
       }
@@ -309,7 +323,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       setError(err.message || '파일 처리 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
-      if (e.target) e.target.value = ''; // Reset input
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -336,12 +350,10 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
     setIsDownloading(true);
     const originalCssText = printArea.style.cssText;
     try {
-      // 모바일/갤럭시폴드/태블릿의 좁은 화면 폭에 눌리지 않도록 1200px 고정 오프스크린 스테이지에서 렌더링
       printArea.classList.remove('hidden', 'print:block');
       printArea.style.cssText =
         'display: block; position: fixed; left: -20000px; top: 0; width: 1200px; min-width: 1200px; background: #ffffff; z-index: -1; pointer-events: none;';
 
-      // 웹폰트(Pretendard) 및 레이아웃 완료 대기
       if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
         try {
           await (document as any).fonts.ready;
@@ -355,7 +367,12 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
       await new Promise((resolve) => setTimeout(resolve, 220));
 
       const isA3 = targetPaper === 'a3-portrait';
-      const selector = isA3 ? '.print-page-a3-pdf' : '.print-page-a4';
+      const is4Up = targetPaper === 'a4-4up';
+      const selector = isA3
+        ? '.print-page-a3-pdf'
+        : is4Up
+        ? '.print-page-a4-4up'
+        : '.print-page-a4';
       const pages = printArea.querySelectorAll(selector);
       if (pages.length === 0) return;
 
@@ -372,13 +389,12 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         const page = pages[i] as HTMLElement;
         const captureW = page.offsetWidth;
         const captureH = page.offsetHeight;
-        // scale(1) 원본 비율 상태에서 pixelRatio 3.4로 초고해상도 래스터화 -> 폰트 자간 팽창·깨짐 0% 보장
         const pageDataUrl = await toJpeg(page, {
           quality: 0.97,
           backgroundColor: '#ffffff',
           width: captureW,
           height: captureH,
-          pixelRatio: isA3 ? 3.4 : 2.4,
+          pixelRatio: isA3 ? 3.4 : is4Up ? 2.8 : 2.4,
           style: {
             transform: 'none',
             margin: '0',
@@ -389,7 +405,11 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         pdf.addImage(pageDataUrl, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
       }
 
-      const defaultName = isA3 ? '구독POP_A3세로_단독연출.pdf' : '구독POP_A4_2분할_출력물.pdf';
+      const defaultName = isA3
+        ? '구독POP_A3세로_단독포스터.pdf'
+        : is4Up
+        ? '구독POP_하단미니_A4_4분할.pdf'
+        : '구독POP_기본쇼카드_A4_2분할.pdf';
       pdf.save(customFileName || defaultName);
     } catch (err) {
       console.error(err);
@@ -418,7 +438,6 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
     setSingleA3Job({ product, action: 'pdf' });
   };
 
-  // 카드별 [A3 단독인쇄] / [A3 PDF] 원클릭 작업 큐 실행 및 자동 복구
   useEffect(() => {
     if (!singleA3Job) return;
     let cancelled = false;
@@ -432,10 +451,12 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         };
         window.addEventListener('afterprint', cleanup);
         window.print();
-        // 데스크톱 브라우저에서 window.print() 반환 직후 안전 복구
         window.setTimeout(cleanup, 600);
       } else {
-        const safeModel = (singleA3Job.product.modelName || '단독모델').replace(/[\/:*?"<>|]/g, '_');
+        const safeModel = (singleA3Job.product.modelName || '단독모델').replace(
+          /[\/:*?"<>|]/g,
+          '_'
+        );
         await exportPrintAreaToPDF('a3-portrait', `구독POP_A3세로_${safeModel}.pdf`);
         if (!cancelled) setSingleA3Job(null);
       }
@@ -447,23 +468,21 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
     };
   }, [singleA3Job]);
 
-  const selectedCard = CARD_BENEFITS.find(c => c.id === selectedCardId) || CARD_BENEFITS[0];
+  const selectedCard =
+    CARD_BENEFITS.find((c) => c.id === selectedCardId) || CARD_BENEFITS[0];
 
-  // 필터링된 상품 목록 (웹 화면 표시 기준)
-  const displayedProducts = products.filter(p => {
+  const displayedProducts = products.filter((p) => {
     if (printMode === 'changed') return p.changeStatus === 'changed';
     if (printMode === 'new') return p.changeStatus === 'new';
     if (printMode === 'allcare') return !!p.isAllCare;
     if (printMode === 'standard') return !p.isAllCare;
-    return true; // 'all'
+    return true;
   });
 
-  // A3 세로 개별 연출 체크된 모델 목록 (현재 필터 내)
   const selectedDisplayedProducts = displayedProducts.filter((p) =>
     selectedA3Ids.includes(p.id)
   );
 
-  // 실제 인쇄/PDF 영역(#print-area)에 렌더링될 규격 및 대상 모델
   const effectivePaperSize: PopPaperSize = singleA3Job ? 'a3-portrait' : paperSize;
   const activePrintProducts: ProductData[] = singleA3Job
     ? [singleA3Job.product]
@@ -473,11 +492,19 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
     ? selectedDisplayedProducts
     : displayedProducts;
 
-  // A4 가로 2분할 인쇄용 묶음 (2개씩)
+  // A4 가로 4분할 인쇄용 묶음 (4개씩: 148.5mm × 105mm)
+  const productQuads: ProductData[][] = [];
+  for (let i = 0; i < activePrintProducts.length; i += 4) {
+    productQuads.push(activePrintProducts.slice(i, i + 4));
+  }
+
+  // A4 가로 2분할 인쇄용 묶음 (2개씩: 148.5mm × 210mm)
   const productPairs: ProductData[][] = [];
   for (let i = 0; i < activePrintProducts.length; i += 2) {
     productPairs.push(activePrintProducts.slice(i, i + 2));
   }
+
+  const anyAllCare = products.some((p) => p.isAllCare);
 
   return (
     <div className="min-h-screen bg-[#F2F4F6] dark:bg-[#0B1120] print:bg-white text-[#191F28] dark:text-slate-100 print:text-slate-900 font-sans flex flex-col">
@@ -497,212 +524,85 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
             }`
           : `@media print { @page { size: A4 landscape !important; margin: 0 !important; } }`
       }</style>
-      {/* Header (Hidden on Print) */}
+
+      {/* ==================== 간소화된 통합 상단 컨트롤 헤더 (중복 좌측 사이드바 완전 제거) ==================== */}
       <header
         style={{ top: 'var(--app-header-h, 54px)' }}
         className="bg-white/95 dark:bg-[#131C2E]/95 backdrop-blur-md border-b border-[#E5E8EB] dark:border-slate-800 sticky z-20 shadow-2xs no-print"
       >
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-5 py-2.5 flex flex-col gap-2">
-          {/* Top Row */}
-          <div className="flex items-center justify-between gap-2 flex-wrap xl:flex-nowrap">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 space-y-2">
+          {/* 1열: 뒤로가기 + 타이틀 + 핵심 액션 버튼 4개 (사진등록 / 자료관리 / 인쇄 / PDF) */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2 min-w-0">
               <button
                 type="button"
                 onClick={onBackToHome}
-                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-xl bg-[#F2F4F6] dark:bg-slate-800 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 text-[#191F28] dark:text-slate-100 font-bold text-xs border border-[#E5E8EB] dark:border-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1 h-8 px-2.5 rounded-xl bg-[#F2F4F6] dark:bg-slate-800 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 text-[#191F28] dark:text-slate-100 font-bold text-xs border border-[#E5E8EB] dark:border-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                {backLabel || '홈으로'}
+                <span>{backLabel || '홈'}</span>
               </button>
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-8 h-8 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-[#E5E8EB] dark:border-slate-700 flex items-center justify-center shrink-0">
-                  <FileSpreadsheet className="text-[#1B64DA] dark:text-blue-400 w-4 h-4 shrink-0" />
-                </div>
-                <h1 className="text-[15px] sm:text-[17px] font-extrabold tracking-tight text-[#191F28] dark:text-slate-50 whitespace-nowrap truncate">
-                  구독 POP 자동 출력기
-                </h1>
-                <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md bg-[#EFF6FF] dark:bg-blue-500/15 border border-[#BFDBFE] dark:border-blue-500/30 text-[11.5px] font-bold text-[#1B64DA] dark:text-blue-300 shrink-0">
-                  A4 · A3 쇼카드
+              <h1 className="text-[15px] sm:text-[16.5px] font-extrabold tracking-tight text-[#191F28] dark:text-slate-50 whitespace-nowrap">
+                구독 POP 출력
+              </h1>
+              {products.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 text-xs font-extrabold tabular-nums">
+                  {displayedProducts.length}건
                 </span>
-              </div>
+              )}
             </div>
-            <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap justify-end ml-auto shrink-0">
+
+            <div className="flex items-center gap-1.5 flex-wrap ml-auto">
               <button
                 type="button"
                 onClick={() => {
                   setScannerInitialImage(null);
                   setIsImageScannerOpen(true);
                 }}
-                className="flex items-center gap-1 sm:gap-1.5 bg-[#1B64DA] hover:bg-blue-700 text-white h-8 px-2.5 sm:px-3 rounded-xl text-[11.5px] sm:text-xs font-extrabold shadow-2xs transition-all cursor-pointer whitespace-nowrap shrink-0"
-                title="스마트폰 견적 화면 사진이나 캡처 이미지를 AI가 자동으로 읽어 POP 카드로 만듭니다 (Ctrl+V 붙여넣기 지원)"
+                className="inline-flex items-center gap-1.5 bg-[#1B64DA] hover:bg-blue-700 text-white h-8 px-3 rounded-xl text-xs font-extrabold transition cursor-pointer whitespace-nowrap"
+                title="사진 촬영 또는 화면 캡처(Ctrl+V)로 모델 자동 등록"
               >
                 <Camera className="w-3.5 h-3.5 shrink-0" />
-                <span>사진/캡처 AI 등록</span>
+                <span>사진 등록</span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setIsDataModalOpen(true)}
-                className="flex items-center gap-1 sm:gap-1.5 bg-[#EFF6FF] dark:bg-blue-500/15 text-[#1B64DA] dark:text-blue-300 h-8 px-2.5 sm:px-3 rounded-xl text-[11.5px] sm:text-xs font-bold border border-[#BFDBFE] dark:border-blue-500/30 hover:bg-blue-100/70 dark:hover:bg-blue-500/25 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 bg-[#F2F4F6] dark:bg-slate-800 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 text-[#191F28] dark:text-slate-100 h-8 px-3 rounded-xl text-xs font-bold border border-[#E5E8EB] dark:border-slate-700 transition cursor-pointer whitespace-nowrap"
               >
-                <Upload className="w-3.5 h-3.5 shrink-0" />
-                <span>자료 관리 (엑셀)</span>
+                <Upload className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
+                <span>엑셀 · 자료</span>
               </button>
+
               <button
                 type="button"
-                onClick={() => setIsSettingsModalOpen(true)}
-                aria-label="설정 열기"
-                className="w-8 h-8 flex items-center justify-center text-[#4E5968] dark:text-slate-300 bg-[#F2F4F6] dark:bg-slate-800 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 border border-[#E5E8EB] dark:border-slate-700 rounded-xl transition-colors cursor-pointer shrink-0"
+                onClick={handlePrint}
+                disabled={activePrintProducts.length === 0}
+                className="inline-flex items-center gap-1 bg-[#191F28] dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600 text-white h-8 px-3 rounded-xl text-xs font-extrabold tabular-nums transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
               >
-                <Settings className="w-4 h-4" />
+                <Printer className="w-3.5 h-3.5 shrink-0" />
+                <span>인쇄</span>
               </button>
-            </div>
-          </div>
 
-          {/* Bottom Row (모바일/폴드용 상단 설정 바 - lg 이상에서는 좌측 패널에서도 제어 가능) */}
-          <div className="flex items-center justify-between gap-1.5 flex-wrap xl:flex-nowrap border-t border-[#E5E8EB] dark:border-slate-800 pt-2">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Paper Size Switch (A4 가로 2분할 쇼카드 vs A3 세로 단독 연출) */}
-              <div className="flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setPaperSize('a4-2up')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    paperSize === 'a4-2up'
-                      ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] shadow-2xs'
-                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28] dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800'
-                  }`}
-                  title="A4 가로 용지 1장에 2개 모델을 나란히 배치하여 반으로 재단해 쓰는 기본 쇼카드 모드"
-                >
-                  <Columns2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>A4 2분할</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPaperSize('a3-portrait')}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    paperSize === 'a3-portrait'
-                      ? 'bg-[#059669] text-white shadow-2xs'
-                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#059669] dark:hover:text-emerald-400 hover:bg-white/70 dark:hover:bg-slate-800'
-                  }`}
-                  title="A3 세로(297×420mm) 용지 1장에 1개 모델을 2배 크기로 단독 확대 출력하는 개별 연출 모드"
-                >
-                  <Maximize2 className="w-3.5 h-3.5 shrink-0" />
-                  <span>A3 세로 단독</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                disabled={activePrintProducts.length === 0 || isDownloading}
+                className="inline-flex items-center gap-1 bg-[#E60012] hover:bg-[#C8000F] text-white h-8 px-3 rounded-xl text-xs font-extrabold transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+              >
+                <FileText className="w-3.5 h-3.5 shrink-0" />
+                <span>{isDownloading ? '생성중...' : 'PDF'}</span>
+              </button>
 
-              {/* POP Mode Switch (일반모드 vs 상조모드) */}
-              <div className="flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setPopMode('standard')}
-                  className={`px-2.5 py-1 rounded-lg text-[11.5px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    popMode === 'standard'
-                      ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] shadow-2xs'
-                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28] dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  💳 일반모드 (카드단독)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPopMode('preed')}
-                  className={`px-2.5 py-1 rounded-lg text-[11.5px] sm:text-xs font-extrabold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    popMode === 'preed'
-                      ? 'bg-[#E60012] text-white shadow-2xs'
-                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#E60012] dark:hover:text-rose-400 hover:bg-white/70 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  👑 상조모드 (1안·2안 비교)
-                </button>
-              </div>
-
-              {/* Card Selector (Compact Inline Buttons) */}
-              <div className="flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800 max-w-full overflow-x-auto">
-                <CreditCard className="w-3.5 h-3.5 text-[#8B95A1] dark:text-slate-400 ml-1.5 shrink-0" />
-                {CARD_BENEFITS.map((card) => {
-                  const isSelected = selectedCardId === card.id;
-                  const shortCardName = card.name.replace('하이마트 ', '').replace('구독 ', '');
-                  return (
-                    <button
-                      key={card.id}
-                      type="button"
-                      onClick={() => setSelectedCardId(card.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[11.5px] sm:text-xs font-bold tabular-nums transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#1B64DA] text-white shadow-2xs'
-                          : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28] dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      {shortCardName} ({card.discount.toLocaleString()}원)
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Print Filter Selector */}
-              {products.length > 0 && (
-                <div className="flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 px-2.5 py-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800 shrink-0">
-                  <Filter className="w-3.5 h-3.5 text-[#8B95A1] dark:text-slate-400 shrink-0" />
-                  <select
-                    value={printMode}
-                    onChange={(e) => setPrintMode(e.target.value as any)}
-                    className="bg-transparent dark:bg-slate-900 border-none text-base sm:text-xs font-bold text-[#191F28] dark:text-slate-100 focus:ring-0 cursor-pointer px-1 py-0.5 pr-5 whitespace-nowrap"
-                  >
-                    <option value="all">전체 인쇄 ({products.length})</option>
-                    {products.some((p) => p.isAllCare) && (
-                      <option value="allcare">
-                        🛡️ 올케어 모델만 ({products.filter((p) => p.isAllCare).length})
-                      </option>
-                    )}
-                    {products.some((p) => !p.isAllCare) &&
-                      products.some((p) => p.isAllCare) && (
-                        <option value="standard">
-                          일반 모델만 ({products.filter((p) => !p.isAllCare).length})
-                        </option>
-                      )}
-                    <option value="changed">
-                      가격 변동 모델만 ({products.filter((p) => p.changeStatus === 'changed').length})
-                    </option>
-                    <option value="new">
-                      새로 추가된 모델만 ({products.filter((p) => p.changeStatus === 'new').length})
-                    </option>
-                  </select>
-                </div>
-              )}
-
-              {/* All-Care Quick Mode Switch */}
-              {products.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const anyAllCare = products.some((p) => p.isAllCare);
-                    handleSetAllCare(!anyAllCare);
-                  }}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11.5px] sm:text-xs font-extrabold border transition-colors whitespace-nowrap shrink-0 shadow-2xs cursor-pointer ${
-                    products.some((p) => p.isAllCare)
-                      ? 'bg-[#059669] text-white border-[#059669] hover:bg-emerald-700'
-                      : 'bg-white dark:bg-slate-800 text-[#4E5968] dark:text-slate-300 border-[#D1D6DB] dark:border-slate-700 hover:bg-[#F2F4F6] dark:hover:bg-slate-700'
-                  }`}
-                  title="클릭하여 전체 카드의 올케어(사용중인가전 2년 수리비 보증)를 켜거나 끕니다"
-                >
-                  <span className="text-xs">🛡️</span>
-                  <span>
-                    올케어 {products.some((p) => p.isAllCare) ? '적용중(ON)' : '미적용(OFF)'}
-                  </span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
               {isInstallable && !isInstalled && (
                 <button
                   type="button"
                   onClick={install}
-                  className="flex items-center gap-1 bg-[#1B64DA] text-white px-2.5 py-1.5 rounded-xl text-[11.5px] sm:text-xs font-extrabold hover:bg-blue-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-800 text-[#191F28] dark:text-slate-200 h-8 px-2.5 rounded-xl text-xs font-bold border border-[#E5E8EB] dark:border-slate-700 cursor-pointer whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  앱 설치하기
+                  <span>설치</span>
                 </button>
               )}
 
@@ -710,508 +610,450 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 <button
                   type="button"
                   onClick={() => setShowIOSGuide(true)}
-                  className="flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-800 text-[#191F28] dark:text-slate-100 px-2.5 py-1.5 rounded-xl text-[11.5px] sm:text-xs font-bold border border-[#E5E8EB] dark:border-slate-700 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  className="hidden sm:inline-flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-800 text-[#191F28] dark:text-slate-200 h-8 px-2.5 rounded-xl text-xs font-bold border border-[#E5E8EB] dark:border-slate-700 cursor-pointer whitespace-nowrap"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  홈 화면 추가
                 </button>
               )}
 
-              {/* Print Button */}
               <button
                 type="button"
-                onClick={handlePrint}
-                disabled={activePrintProducts.length === 0}
-                className={`flex items-center gap-1 text-white px-3 py-1.5 rounded-xl text-[11.5px] sm:text-xs font-extrabold tabular-nums transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer ${
-                  paperSize === 'a3-portrait'
-                    ? 'bg-[#059669] hover:bg-emerald-700'
-                    : 'bg-[#191F28] dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600'
-                }`}
+                onClick={() => setIsSettingsModalOpen(true)}
+                aria-label="설정 열기"
+                className="w-8 h-8 flex items-center justify-center text-[#4E5968] dark:text-slate-300 bg-[#F2F4F6] dark:bg-slate-800 hover:bg-[#E5E8EB] dark:hover:bg-slate-700 border border-[#E5E8EB] dark:border-slate-700 rounded-xl transition cursor-pointer shrink-0"
               >
-                <Printer className="w-3.5 h-3.5" />
-                {paperSize === 'a3-portrait'
-                  ? `A3 세로 인쇄 (${activePrintProducts.length}장)`
-                  : `A4 인쇄 (${activePrintProducts.length}건)`}
+                <Settings className="w-4 h-4" />
               </button>
+            </div>
+          </div>
 
-              {/* PDF Button */}
-              <button
-                type="button"
-                onClick={handleDownloadPDF}
-                disabled={activePrintProducts.length === 0 || isDownloading}
-                className="flex items-center gap-1 bg-[#E60012] text-white px-3 py-1.5 rounded-xl text-[11.5px] sm:text-xs font-extrabold hover:bg-[#C8000F] transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                <FileText className="w-3.5 h-3.5" />
-                {isDownloading
-                  ? 'PDF 생성 중...'
-                  : paperSize === 'a3-portrait'
-                  ? 'A3 PDF 저장'
-                  : 'A4 PDF 저장'}
-              </button>
+          {/* 2열: 상황 맞춤 슬림 옵션 바 (POP 형태 3종 + 선택한 형태에 필요한 스위치만 노출) */}
+          <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[#E5E8EB] dark:border-slate-800">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* 1) POP 형태·용지 규격 (3종) */}
+              <div className="inline-flex items-center bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setPaperSize('a4-4up')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                    paperSize === 'a4-4up'
+                      ? 'bg-[#E60012] text-white shadow-2xs'
+                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28] dark:hover:text-white'
+                  }`}
+                  title="전자가격표(ESL) 바로 아래 부착하는 프리드 체감가 미니 POP (A4 1장당 4모델 출력)"
+                >
+                  하단 미니 (4분할)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaperSize('a4-2up')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                    paperSize === 'a4-2up'
+                      ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] shadow-2xs'
+                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28] dark:hover:text-white'
+                  }`}
+                  title="기존 A5 세로 상세형 쇼카드 (A4 1장당 2모델 출력)"
+                >
+                  기본 쇼카드 (2분할)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaperSize('a3-portrait')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                    paperSize === 'a3-portrait'
+                      ? 'bg-[#059669] text-white shadow-2xs'
+                      : 'text-[#4E5968] dark:text-slate-300 hover:text-[#059669] dark:hover:text-emerald-400'
+                  }`}
+                  title="A3 세로 1장에 크게 뽑는 단독 연출 포스터"
+                >
+                  A3 포스터
+                </button>
+              </div>
+
+              {/* 2) 선택된 형태별 핵심 세부 옵션만 깔끔하게 분기 */}
+              {paperSize === 'a4-4up' ? (
+                <div className="inline-flex items-center bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setUnderPreedScope('optimal')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                      underPreedScope === 'optimal'
+                        ? 'bg-[#191F28] text-white dark:bg-amber-400 dark:text-slate-950 shadow-2xs'
+                        : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28]'
+                    }`}
+                    title="앞자리가 확 낮아지는 최적 구좌수로 체감가를 자동 계산합니다"
+                  >
+                    최적 체감가
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnderPreedScope('single')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                      underPreedScope === 'single'
+                        ? 'bg-[#191F28] text-white dark:bg-amber-400 dark:text-slate-950 shadow-2xs'
+                        : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28]'
+                    }`}
+                    title="1구좌 기준 보수적인 지원금만 반영합니다"
+                  >
+                    1구좌 기준
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="inline-flex items-center bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setPopMode('standard')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                        popMode === 'standard'
+                          ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120]'
+                          : 'text-[#4E5968] dark:text-slate-300'
+                      }`}
+                    >
+                      카드 단독
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPopMode('preed')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer whitespace-nowrap ${
+                        popMode === 'preed'
+                          ? 'bg-[#E60012] text-white'
+                          : 'text-[#4E5968] dark:text-slate-300'
+                      }`}
+                    >
+                      프리드 비교
+                    </button>
+                  </div>
+
+                  {products.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSetAllCare(!anyAllCare)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-extrabold border transition cursor-pointer whitespace-nowrap ${
+                        anyAllCare
+                          ? 'bg-[#059669] text-white border-[#059669]'
+                          : 'bg-white dark:bg-slate-800 text-[#4E5968] dark:text-slate-300 border-[#D1D6DB] dark:border-slate-700'
+                      }`}
+                    >
+                      🛡️ 올케어 {anyAllCare ? 'ON' : 'OFF'}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* 3) 우측: 제휴카드 선택 + 필터 */}
+            <div className="flex items-center gap-1.5 flex-wrap ml-auto">
+              <div className="inline-flex items-center bg-[#F2F4F6] dark:bg-slate-900 p-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800">
+                {CARD_BENEFITS.map((card) => {
+                  const isSelected = selectedCardId === card.id;
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => setSelectedCardId(card.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold tabular-nums transition cursor-pointer whitespace-nowrap ${
+                        isSelected
+                          ? 'bg-[#1B64DA] text-white shadow-2xs'
+                          : 'text-[#4E5968] dark:text-slate-300 hover:text-[#191F28]'
+                      }`}
+                    >
+                      {card.name.replace('카드', '')} -1.8만
+                    </button>
+                  );
+                })}
+              </div>
+
+              {products.length > 0 && (
+                <div className="inline-flex items-center gap-1 bg-[#F2F4F6] dark:bg-slate-900 px-2 py-0.5 rounded-xl border border-[#E5E8EB] dark:border-slate-800">
+                  <Filter className="w-3.5 h-3.5 text-[#8B95A1] shrink-0" />
+                  <select
+                    value={printMode}
+                    onChange={(e) => setPrintMode(e.target.value as any)}
+                    className="bg-transparent dark:bg-slate-900 border-none text-xs font-bold text-[#191F28] dark:text-slate-100 focus:ring-0 cursor-pointer py-0.5 pr-4 whitespace-nowrap"
+                  >
+                    <option value="all">전체 ({products.length})</option>
+                    {products.some((p) => p.isAllCare) && (
+                      <option value="allcare">
+                        올케어만 ({products.filter((p) => p.isAllCare).length})
+                      </option>
+                    )}
+                    {products.some((p) => !p.isAllCare) &&
+                      products.some((p) => p.isAllCare) && (
+                        <option value="standard">
+                          일반만 ({products.filter((p) => !p.isAllCare).length})
+                        </option>
+                      )}
+                    <option value="changed">
+                      변동 ({products.filter((p) => p.changeStatus === 'changed').length})
+                    </option>
+                    <option value="new">
+                      신규 ({products.filter((p) => p.changeStatus === 'new').length})
+                    </option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </header>
 
-      {/* Upload Notification Toast Banner */}
+      {/* 업로드 알림 토스트 */}
       {uploadSuccessMessage && (
-        <div className="bg-[#191F28] dark:bg-slate-800 text-white text-center py-2.5 px-4 text-xs sm:text-sm font-bold shadow-md no-print flex items-center justify-center gap-2 border-b border-slate-700">
-          <span>🛡️</span>
+        <div className="bg-[#191F28] dark:bg-slate-800 text-white text-center py-2 px-4 text-xs sm:text-sm font-bold no-print flex items-center justify-center gap-2 border-b border-slate-700">
           <span>{uploadSuccessMessage}</span>
           <button
             type="button"
             onClick={() => setUploadSuccessMessage(null)}
-            className="ml-3 text-slate-300 hover:text-white text-[11.5px] bg-white/10 px-2 py-0.5 rounded-md cursor-pointer"
+            className="ml-2 text-slate-300 hover:text-white text-xs bg-white/10 px-2 py-0.5 rounded cursor-pointer"
           >
             닫기 ✕
           </button>
         </div>
       )}
 
-      {/* Main Content: 모바일/폴드는 상단 설정 + 하단 POP 미리보기, PC(lg 이상)는 좌측 설정 패널 + 우측 POP 미리보기 2단 */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 lg:p-8 print:p-0 print:max-w-none flex flex-col lg:grid lg:grid-cols-12 lg:gap-6 items-start">
-        {/* PC 대화면(lg 이상) 전용 좌측 고정 설정 패널 */}
-        <aside className="hidden lg:flex lg:col-span-3 w-full bg-white dark:bg-[#131C2E] rounded-[20px] border border-[#E5E8EB] dark:border-slate-800 shadow-[0_2px_10px_rgba(25,31,40,0.03)] p-4 flex-col gap-4 sticky top-28 no-print">
-          <div className="space-y-1">
-            <h2 className="text-sm font-extrabold text-[#191F28] dark:text-slate-50">
-              POP 빠른 설정 패널
-            </h2>
-            <p className="text-xs text-[#4E5968] dark:text-slate-400 leading-relaxed">
-              A4 2분할 재단용 쇼카드와 A3 세로(297×420mm) 단독 연출 포스터를 즉시 전환·출력합니다.
-            </p>
-          </div>
+      {/* ==================== 메인 미리보기 캔버스 ==================== */}
+      <main className="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-6 print:p-0 print:max-w-none">
+        {/* 빈 상태 화면: 선택된 모드(하단 미니 등)의 실물 예시를 바로 보여줌 */}
+        {products.length === 0 && (
+          <div className="flex flex-col items-center justify-center no-print py-8 sm:py-12">
+            <div className="text-center mb-6 max-w-md">
+              <h2 className="text-lg sm:text-xl font-extrabold text-[#191F28] dark:text-slate-50 mb-1.5">
+                등록된 구독 POP 상품이 없습니다
+              </h2>
+              <p className="text-xs sm:text-sm text-[#4E5968] dark:text-slate-400">
+                견적 사진을 찍거나 엑셀 파일을 올리면 아래 디자인으로 즉시 생성됩니다.
+              </p>
 
-          <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => {
-                setScannerInitialImage(null);
-                setIsImageScannerOpen(true);
-              }}
-              className="w-full py-2.5 px-3 rounded-xl bg-[#1B64DA] hover:bg-blue-700 text-white text-xs font-extrabold shadow-2xs flex items-center justify-center gap-1.5 transition cursor-pointer"
-            >
-              <Camera className="w-4 h-4" />
-              사진/캡처 AI 자동 등록
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsDataModalOpen(true)}
-              className="w-full py-2.5 px-3 rounded-xl bg-[#EFF6FF] dark:bg-blue-500/15 hover:bg-blue-100/70 dark:hover:bg-blue-500/25 text-[#1B64DA] dark:text-blue-300 border border-[#BFDBFE] dark:border-blue-500/30 text-xs font-bold tabular-nums flex items-center justify-center gap-1.5 transition cursor-pointer"
-            >
-              <Upload className="w-4 h-4" />
-              엑셀 자료 관리 ({products.length}건)
-            </button>
-          </div>
-
-          <div className="space-y-1.5 pt-2 border-t border-[#E5E8EB] dark:border-slate-800">
-            <label className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300 block">
-              출력 용지 규격 (쇼카드 vs 단독연출)
-            </label>
-            <div className="grid grid-cols-1 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPaperSize('a4-2up')}
-                className={`w-full px-3 py-2.5 rounded-xl text-xs font-extrabold border text-left flex flex-col gap-0.5 transition cursor-pointer ${
-                  paperSize === 'a4-2up'
-                    ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] border-[#191F28] dark:border-[#60A5FA] shadow-2xs'
-                    : 'bg-[#F8FAFC] dark:bg-slate-900/70 text-[#191F28] dark:text-slate-200 border-[#E5E8EB] dark:border-slate-800 hover:bg-[#F2F4F6] dark:hover:bg-slate-800'
-                }`}
-              >
-                <div className="w-full flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Columns2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>A4 가로 2분할 (기본 쇼카드)</span>
-                  </span>
-                  {paperSize === 'a4-2up' && (
-                    <span className="text-[11.5px] font-bold opacity-90">선택됨</span>
-                  )}
-                </div>
-                <span
-                  className={`text-[11.5px] font-medium ${
-                    paperSize === 'a4-2up'
-                      ? 'text-slate-300 dark:text-slate-900/80'
-                      : 'text-[#8B95A1] dark:text-slate-400'
-                  }`}
+              <div className="flex flex-wrap items-center justify-center gap-2.5 mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScannerInitialImage(null);
+                    setIsImageScannerOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 bg-[#1B64DA] hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl font-extrabold shadow-xs transition cursor-pointer text-xs sm:text-sm"
                 >
-                  297×210mm · 1장당 2모델 중앙 재단선
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaperSize('a3-portrait')}
-                className={`w-full px-3 py-2.5 rounded-xl text-xs font-extrabold border text-left flex flex-col gap-0.5 transition cursor-pointer ${
-                  paperSize === 'a3-portrait'
-                    ? 'bg-[#059669] text-white border-[#059669] shadow-2xs'
-                    : 'bg-[#F8FAFC] dark:bg-slate-900/70 text-[#191F28] dark:text-slate-200 border-[#E5E8EB] dark:border-slate-800 hover:bg-emerald-50/70 dark:hover:bg-emerald-500/10'
-                }`}
-              >
-                <div className="w-full flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Maximize2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>A3 세로 단독 (개별 연출)</span>
-                  </span>
-                  {paperSize === 'a3-portrait' && (
-                    <span className="text-[11.5px] font-bold text-white">선택됨</span>
-                  )}
-                </div>
-                <span
-                  className={`text-[11.5px] font-medium ${
-                    paperSize === 'a3-portrait'
-                      ? 'text-emerald-100'
-                      : 'text-[#8B95A1] dark:text-slate-400'
-                  }`}
+                  <Camera className="w-4 h-4" />
+                  견적 사진 · 캡처 등록
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDataModalOpen(true)}
+                  className="inline-flex items-center gap-2 bg-white dark:bg-[#131C2E] text-[#191F28] dark:text-slate-100 border border-[#D1D6DB] dark:border-slate-700 px-5 py-2.5 rounded-xl font-extrabold hover:bg-[#F8FAFC] dark:hover:bg-slate-800 transition cursor-pointer text-xs sm:text-sm"
                 >
-                  297×420mm · 1장당 1모델 2배 확대 포스터
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-1.5 pt-2 border-t border-[#E5E8EB] dark:border-slate-800">
-            <label className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300 block">
-              POP 출력 레이아웃 모드
-            </label>
-            <div className="grid grid-cols-1 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setPopMode('standard')}
-                className={`w-full px-3 py-2 rounded-xl text-xs font-extrabold border text-left flex items-center justify-between transition cursor-pointer ${
-                  popMode === 'standard'
-                    ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] border-[#191F28] dark:border-[#60A5FA] shadow-2xs'
-                    : 'bg-[#F8FAFC] dark:bg-slate-900/70 text-[#191F28] dark:text-slate-200 border-[#E5E8EB] dark:border-slate-800 hover:bg-[#F2F4F6] dark:hover:bg-slate-800'
-                }`}
-              >
-                <span>💳 일반모드 (카드단독)</span>
-                {popMode === 'standard' && (
-                  <span className="text-[11.5px] font-bold opacity-90">선택됨</span>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPopMode('preed')}
-                className={`w-full px-3 py-2 rounded-xl text-xs font-extrabold border text-left flex items-center justify-between transition cursor-pointer ${
-                  popMode === 'preed'
-                    ? 'bg-[#E60012] text-white border-[#E60012] shadow-2xs'
-                    : 'bg-[#F8FAFC] dark:bg-slate-900/70 text-[#191F28] dark:text-slate-200 border-[#E5E8EB] dark:border-slate-800 hover:bg-[#FFF1F2] dark:hover:bg-rose-500/10'
-                }`}
-              >
-                <span>👑 상조모드 (1안·2안 비교)</span>
-                {popMode === 'preed' && (
-                  <span className="text-[11.5px] font-bold text-white">선택됨</span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-1.5 pt-2 border-t border-[#E5E8EB] dark:border-slate-800">
-            <label className="text-xs font-extrabold text-[#4E5968] dark:text-slate-300 block">
-              제휴카드 할인 기준 (36개월)
-            </label>
-            <div className="grid grid-cols-1 gap-1.5">
-              {CARD_BENEFITS.map((card) => {
-                const isSelected = selectedCardId === card.id;
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => setSelectedCardId(card.id)}
-                    className={`w-full px-3 py-2 rounded-xl text-xs font-bold border text-left flex items-center justify-between transition cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#1B64DA] text-white border-[#1B64DA] shadow-2xs'
-                        : 'bg-[#F8FAFC] dark:bg-slate-900/70 text-[#191F28] dark:text-slate-200 border-[#E5E8EB] dark:border-slate-800 hover:bg-[#F2F4F6] dark:hover:bg-slate-800'
-                    }`}
-                  >
-                    <span>{card.name.replace('하이마트 ', '')}</span>
-                    <span className="font-extrabold font-mono tabular-nums">
-                      -{card.discount.toLocaleString()}원
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="space-y-2 pt-2 border-t border-[#E5E8EB] dark:border-slate-800">
-            <button
-              type="button"
-              onClick={handlePrint}
-              disabled={activePrintProducts.length === 0}
-              className={`w-full py-2.5 px-3 rounded-xl text-white text-xs font-extrabold tabular-nums flex items-center justify-center gap-1.5 disabled:opacity-40 transition cursor-pointer ${
-                paperSize === 'a3-portrait'
-                  ? 'bg-[#059669] hover:bg-emerald-700'
-                  : 'bg-[#191F28] dark:bg-slate-700 hover:bg-slate-800 dark:hover:bg-slate-600'
-              }`}
-            >
-              <Printer className="w-4 h-4" />
-              {paperSize === 'a3-portrait'
-                ? `A3 세로 단독 인쇄 (${activePrintProducts.length}장)`
-                : `A4 2분할 인쇄 (${activePrintProducts.length}건)`}
-            </button>
-            <button
-              type="button"
-              onClick={handleDownloadPDF}
-              disabled={activePrintProducts.length === 0 || isDownloading}
-              className="w-full py-2.5 px-3 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs font-extrabold flex items-center justify-center gap-1.5 disabled:opacity-40 transition cursor-pointer"
-            >
-              <FileText className="w-4 h-4" />
-              {isDownloading
-                ? 'PDF 생성 중...'
-                : paperSize === 'a3-portrait'
-                ? '고해상도 A3 세로 PDF 저장'
-                : '고해상도 A4 PDF 저장'}
-            </button>
-          </div>
-        </aside>
-
-        {/* 우측 POP 미리보기 영역 */}
-        <div className="w-full lg:col-span-9 print:w-full">
-          {/* Blank Template State */}
-          {products.length === 0 && (
-            <div className="flex-1 flex flex-col items-center justify-center no-print pb-20">
-              <div className="text-center mb-8">
-                <h2 className="text-xl sm:text-2xl font-extrabold text-[#191F28] dark:text-slate-50 mb-2">
-                  현재 등록된 POP 자료가 없습니다.
-                </h2>
-                <p className="text-xs sm:text-sm text-[#4E5968] dark:text-slate-400">
-                  엑셀 파일을 올리거나, 견적서/POS 사진을 찍어 AI로 바로 등록해보세요.
-                </p>
-
-                <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScannerInitialImage(null);
-                      setIsImageScannerOpen(true);
-                    }}
-                    className="inline-flex items-center gap-2 bg-[#1B64DA] hover:bg-blue-700 text-white px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl font-extrabold shadow-xs transition-all cursor-pointer text-xs sm:text-sm"
-                  >
-                    <Camera className="w-5 h-5" />
-                    견적서 사진 / 캡처 AI로 자동인식
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsDataModalOpen(true)}
-                    className="inline-flex items-center gap-2 bg-white dark:bg-[#131C2E] text-[#191F28] dark:text-slate-100 border border-[#D1D6DB] dark:border-slate-700 px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl font-extrabold shadow-2xs hover:bg-[#F8FAFC] dark:hover:bg-slate-800 transition-colors cursor-pointer text-xs sm:text-sm"
-                  >
-                    <Upload className="w-5 h-5 text-[#1B64DA] dark:text-blue-400" />
-                    엑셀 파일 일괄 등록
-                  </button>
-                </div>
+                  <Upload className="w-4 h-4 text-[#1B64DA] dark:text-blue-400" />
+                  엑셀 일괄 업로드
+                </button>
               </div>
+            </div>
 
-              <div className="opacity-40 pointer-events-none transform scale-75 origin-top filter grayscale blur-[1px] max-w-full overflow-hidden flex justify-center">
-                {/* Dummy Card Preview */}
+            <div className="w-full max-w-[580px] flex flex-col items-center gap-2">
+              <span className="text-[11px] font-extrabold text-[#8B95A1] dark:text-slate-400">
+                미리보기 예시 ({paperSize === 'a4-4up' ? '전자가격표 하단 부착형 · A4 4분할' : '기본 쇼카드'})
+              </span>
+              <div className="opacity-85 pointer-events-none w-full flex justify-center">
                 <PopCard
                   product={{
-                    id: 'dummy',
-                    category: '가전',
-                    modelName: '모델명 (자동입력)',
-                    period: 36,
-                    monthlyFee: 35000,
+                    id: 'sample-preview',
+                    category: '에어드레서',
+                    modelName: 'DF90H24R4D',
+                    period: 60,
+                    monthlyFee: 48064,
                     careServiceText: '방문 케어 서비스',
-                    careServiceCycle: '3개월',
-                    careServiceCount: '12회',
+                    careServiceCycle: '12개월',
+                    careServiceCount: '5회',
                     imageUrl: '',
                     changeStatus: 'unchanged',
                   }}
                   cardBenefit={selectedCard}
                   popMode={popMode}
+                  paperSize={paperSize}
+                  underPreedScope={underPreedScope}
                 />
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* POP Grid */}
-          {products.length > 0 && (
-            <div className="w-full">
-              {/* A3 세로 개별 연출 모드 안내 및 선택 모델 필터 바 */}
-              {(paperSize === 'a3-portrait' || selectedA3Ids.length > 0) && (
-                <div className="no-print print:hidden mb-4 rounded-[20px] border border-emerald-200 dark:border-emerald-500/35 bg-emerald-50/80 dark:bg-emerald-500/12 p-3.5 sm:p-4 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#059669] text-white text-[11.5px] font-extrabold">
-                        <Maximize2 className="w-3.5 h-3.5" />
-                        A3 세로 개별 연출 지원 (297×420mm)
-                      </span>
-                      <span className="text-xs sm:text-sm font-extrabold text-[#191F28] dark:text-slate-100">
-                        1페이지당 1모델 단독 2배 확대 · 재단선 없음
-                      </span>
-                    </div>
-                    <p className="text-xs text-[#4E5968] dark:text-slate-300">
-                      진열대 단독 연출할 모델을 체크해 원하는 상품만 A3 세로로 모아 뽑거나, 각 카드 상단의{' '}
-                      <strong className="text-[#191F28] dark:text-slate-50">[A3 단독인쇄]</strong> ·{' '}
-                      <strong className="text-[#E60012] dark:text-rose-400">[A3 PDF]</strong> 버튼으로 1장씩 즉시 출력할 수 있습니다.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                    {paperSize !== 'a3-portrait' && selectedDisplayedProducts.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaperSize('a3-portrait');
-                          setOnlySelectedInA3(true);
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-[#059669] hover:bg-emerald-700 text-white text-xs font-extrabold tabular-nums cursor-pointer transition whitespace-nowrap"
-                      >
-                        선택한 {selectedDisplayedProducts.length}건 A3 세로 모드로 보기
-                      </button>
-                    )}
-
-                    {paperSize === 'a3-portrait' && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setOnlySelectedInA3(false)}
-                          className={`px-2.5 py-1.5 rounded-xl text-xs font-extrabold tabular-nums border transition cursor-pointer whitespace-nowrap ${
-                            !onlySelectedInA3 || selectedDisplayedProducts.length === 0
-                              ? 'bg-[#191F28] text-white dark:bg-[#60A5FA] dark:text-[#0B1120] border-[#191F28] dark:border-[#60A5FA]'
-                              : 'bg-white dark:bg-slate-800 text-[#4E5968] dark:text-slate-300 border-[#D1D6DB] dark:border-slate-700 hover:bg-[#F8FAFC] dark:hover:bg-slate-700'
-                          }`}
-                        >
-                          전체 출력 ({displayedProducts.length}장)
-                        </button>
-                        <button
-                          type="button"
-                          disabled={selectedDisplayedProducts.length === 0}
-                          onClick={() => setOnlySelectedInA3(true)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-extrabold tabular-nums border transition cursor-pointer whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed ${
-                            onlySelectedInA3 && selectedDisplayedProducts.length > 0
-                              ? 'bg-[#059669] text-white border-[#059669]'
-                              : 'bg-white dark:bg-slate-800 text-[#059669] dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/35 hover:bg-emerald-50 dark:hover:bg-emerald-500/15'
-                          }`}
-                        >
-                          <CheckSquare className="w-3.5 h-3.5" />
-                          선택 모델만 출력 ({selectedDisplayedProducts.length}장)
-                        </button>
-                      </>
-                    )}
-
-                    {selectedA3Ids.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedA3Ids([]);
-                          setOnlySelectedInA3(false);
-                        }}
-                        className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-[#F2F4F6] dark:hover:bg-slate-700 text-[#4E5968] dark:text-slate-300 border border-[#D1D6DB] dark:border-slate-700 text-xs font-bold cursor-pointer whitespace-nowrap"
-                      >
-                        선택 해제
-                      </button>
-                    )}
-                  </div>
+        {/* 등록 상품 목록 */}
+        {products.length > 0 && (
+          <div className="w-full">
+            {/* A3 모드일 때만 심플한 선택 안내 바 노출 */}
+            {paperSize === 'a3-portrait' && (
+              <div className="no-print print:hidden mb-4 rounded-xl border border-emerald-200 dark:border-emerald-500/35 bg-emerald-50/80 dark:bg-emerald-500/12 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-bold text-[#191F28] dark:text-slate-100">
+                  원하는 모델만 체크해 모아 뽑거나 각 카드 위 <strong>[단독 인쇄 / 단독 PDF]</strong>를 누르세요.
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOnlySelectedInA3(false)}
+                    className={`px-2.5 py-1 rounded-lg font-extrabold border cursor-pointer ${
+                      !onlySelectedInA3 || selectedDisplayedProducts.length === 0
+                        ? 'bg-[#191F28] text-white border-[#191F28]'
+                        : 'bg-white text-[#4E5968] border-[#D1D6DB]'
+                    }`}
+                  >
+                    전체 ({displayedProducts.length}장)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedDisplayedProducts.length === 0}
+                    onClick={() => setOnlySelectedInA3(true)}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-extrabold border cursor-pointer disabled:opacity-40 ${
+                      onlySelectedInA3 && selectedDisplayedProducts.length > 0
+                        ? 'bg-[#059669] text-white border-[#059669]'
+                        : 'bg-white text-[#059669] border-emerald-300'
+                    }`}
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    선택만 ({selectedDisplayedProducts.length}장)
+                  </button>
+                  {selectedA3Ids.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedA3Ids([]);
+                        setOnlySelectedInA3(false);
+                      }}
+                      className="px-2 py-1 rounded-lg bg-white text-[#4E5968] border border-[#D1D6DB] font-bold cursor-pointer"
+                    >
+                      해제
+                    </button>
+                  )}
                 </div>
-              )}
-
-              {/* 1. 웹 화면용 뷰 (인쇄 시 숨김) */}
-              <div
-                className={`grid gap-6 print:hidden ${
-                  paperSize === 'a3-portrait'
-                    ? 'grid-cols-1 xl:grid-cols-2'
-                    : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-2'
-                }`}
-              >
-                {displayedProducts.map((product) => (
-                  <PopCard
-                    key={product.id}
-                    product={product}
-                    cardBenefit={selectedCard}
-                    popMode={popMode}
-                    paperSize={paperSize}
-                    isA3Selected={selectedA3Ids.includes(product.id)}
-                    onToggleAllCare={handleToggleAllCare}
-                    onToggleA3Select={handleToggleA3Select}
-                    onQuickPrintA3={handleQuickPrintA3}
-                    onQuickDownloadA3Pdf={handleQuickDownloadA3Pdf}
-                  />
-                ))}
               </div>
+            )}
 
-              {/* 2. 인쇄/PDF용 뷰 (화면 시 숨김) - A4 가로 2분할 재단선 & A3 세로 1장 단독 확대 모두 완벽 지원 */}
-              <div id="print-area" className="hidden print:block w-full">
-                {effectivePaperSize === 'a3-portrait'
-                  ? activePrintProducts.map((product, idx) => (
-                      <React.Fragment key={`a3-wrap-${product.id}-${idx}`}>
-                        {/* (A) PDF 전용 무변형(scale 1) 1:√2 시트 -> pixelRatio 3.4로 초고해상도 캡처하여 A3 용지에 100% 무왜곡 매핑 */}
-                        <div className="print-page-a3-pdf w-[156mm] h-[220.62mm] mx-auto flex items-center justify-center relative overflow-hidden bg-white print:hidden">
-                          <PopCard
-                            product={product}
-                            cardBenefit={selectedCard}
-                            popMode={popMode}
-                            paperSize="a3-portrait"
-                            isPrintSheet={true}
-                            isA3BrowserPrintScale={false}
-                          />
-                        </div>
+            {/* 1. 웹 화면용 프리뷰 그리드 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 print:hidden">
+              {displayedProducts.map((product) => (
+                <PopCard
+                  key={product.id}
+                  product={product}
+                  cardBenefit={selectedCard}
+                  popMode={popMode}
+                  paperSize={paperSize}
+                  underPreedScope={underPreedScope}
+                  isA3Selected={selectedA3Ids.includes(product.id)}
+                  onToggleAllCare={handleToggleAllCare}
+                  onToggleA3Select={handleToggleA3Select}
+                  onQuickPrintA3={handleQuickPrintA3}
+                  onQuickDownloadA3Pdf={handleQuickDownloadA3Pdf}
+                />
+              ))}
+            </div>
 
-                        {/* (B) 브라우저 직접 인쇄(window.print) 전용 A3 시트 (418mm 안전 높이로 빈 2페이지 넘침 차단) */}
-                        <div
-                          className="print-page print-page-a3 hidden print:flex w-[297mm] h-[418mm] mx-auto items-center justify-center relative overflow-hidden bg-white"
-                          style={
-                            idx < activePrintProducts.length - 1
-                              ? { pageBreakAfter: 'always', breakAfter: 'page' }
-                              : { pageBreakAfter: 'auto', breakAfter: 'auto' }
-                          }
-                        >
-                          <PopCard
-                            product={product}
-                            cardBenefit={selectedCard}
-                            popMode={popMode}
-                            paperSize="a3-portrait"
-                            isPrintSheet={true}
-                            isA3BrowserPrintScale={true}
-                          />
-                        </div>
-                      </React.Fragment>
-                    ))
-                  : productPairs.map((pair, idx) => (
+            {/* 2. 인쇄 / PDF 전용 영역 (#print-area): A4 4분할 · A4 2분할 · A3 단독 모두 지원 */}
+            <div id="print-area" className="hidden print:block w-full">
+              {effectivePaperSize === 'a3-portrait'
+                ? activePrintProducts.map((product, idx) => (
+                    <React.Fragment key={`a3-wrap-${product.id}-${idx}`}>
+                      <div className="print-page-a3-pdf w-[156mm] h-[220.62mm] mx-auto flex items-center justify-center relative overflow-hidden bg-white print:hidden">
+                        <PopCard
+                          product={product}
+                          cardBenefit={selectedCard}
+                          popMode={popMode}
+                          paperSize="a3-portrait"
+                          isPrintSheet={true}
+                          isA3BrowserPrintScale={false}
+                        />
+                      </div>
+
                       <div
-                        key={`a4-${idx}`}
-                        className="print-page print-page-a4 w-[297mm] h-[210mm] mx-auto flex relative overflow-hidden bg-white"
+                        className="print-page print-page-a3 hidden print:flex w-[297mm] h-[418mm] mx-auto items-center justify-center relative overflow-hidden bg-white"
                         style={
-                          idx < productPairs.length - 1
+                          idx < activePrintProducts.length - 1
                             ? { pageBreakAfter: 'always', breakAfter: 'page' }
                             : { pageBreakAfter: 'auto', breakAfter: 'auto' }
                         }
                       >
-                        {/* 중앙 재단선 (Cutting Line) */}
-                        <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-slate-400 z-50"></div>
-
-                        {/* 카드 렌더링 (최대 2개) */}
-                        {pair.map((product) => (
-                          <div
-                            key={product.id}
-                            className="w-[148.5mm] h-[210mm] flex items-center justify-center box-border shrink-0"
-                          >
-                            <div className="w-full h-full flex items-center justify-center">
-                              <div className="w-full h-full relative">
-                                <PopCard
-                                  product={product}
-                                  cardBenefit={selectedCard}
-                                  popMode={popMode}
-                                  paperSize="a4-2up"
-                                  isPrintSheet={true}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
+                        <PopCard
+                          product={product}
+                          cardBenefit={selectedCard}
+                          popMode={popMode}
+                          paperSize="a3-portrait"
+                          isPrintSheet={true}
+                          isA3BrowserPrintScale={true}
+                        />
                       </div>
-                    ))}
-              </div>
+                    </React.Fragment>
+                  ))
+                : effectivePaperSize === 'a4-4up'
+                ? productQuads.map((quad, idx) => (
+                    <div
+                      key={`a4-4up-${idx}`}
+                      className="print-page print-page-a4-4up w-[297mm] h-[210mm] mx-auto grid grid-cols-2 grid-rows-2 relative overflow-hidden bg-white"
+                      style={
+                        idx < productQuads.length - 1
+                          ? { pageBreakAfter: 'always', breakAfter: 'page' }
+                          : { pageBreakAfter: 'auto', breakAfter: 'auto' }
+                      }
+                    >
+                      {/* 십자(+) 중앙 재단 점선 */}
+                      <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-slate-400/75 z-50 pointer-events-none"></div>
+                      <div className="absolute top-1/2 left-0 right-0 border-t border-dashed border-slate-400/75 z-50 pointer-events-none"></div>
 
-              {displayedProducts.length === 0 && (
-                <div className="text-center text-slate-500 mt-20 no-print w-full">
-                  해당 필터 조건에 맞는 모델이 없습니다.
-                </div>
-              )}
+                      {quad.map((product) => (
+                        <div
+                          key={product.id}
+                          className="w-[148.5mm] h-[105mm] relative overflow-hidden box-border"
+                        >
+                          <PopCard
+                            product={product}
+                            cardBenefit={selectedCard}
+                            popMode={popMode}
+                            paperSize="a4-4up"
+                            underPreedScope={underPreedScope}
+                            isPrintSheet={true}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ))
+                : productPairs.map((pair, idx) => (
+                    <div
+                      key={`a4-2up-${idx}`}
+                      className="print-page print-page-a4 w-[297mm] h-[210mm] mx-auto flex relative overflow-hidden bg-white"
+                      style={
+                        idx < productPairs.length - 1
+                          ? { pageBreakAfter: 'always', breakAfter: 'page' }
+                          : { pageBreakAfter: 'auto', breakAfter: 'auto' }
+                      }
+                    >
+                      <div className="absolute left-1/2 top-0 bottom-0 border-l border-dashed border-slate-400 z-50"></div>
+
+                      {pair.map((product) => (
+                        <div
+                          key={product.id}
+                          className="w-[148.5mm] h-[210mm] flex items-center justify-center box-border shrink-0"
+                        >
+                          <div className="w-full h-full relative">
+                            <PopCard
+                              product={product}
+                              cardBenefit={selectedCard}
+                              popMode={popMode}
+                              paperSize="a4-2up"
+                              isPrintSheet={true}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
             </div>
-          )}
-        </div>
+
+            {displayedProducts.length === 0 && (
+              <div className="text-center text-slate-500 mt-16 no-print w-full text-sm font-bold">
+                선택한 필터에 해당하는 모델이 없습니다.
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
-      {/* Data Management Modal */}
+      {/* 자료 관리 모달 */}
       <FlagshipModalShell
         isOpen={isDataModalOpen}
         onClose={() => setIsDataModalOpen(false)}
@@ -1258,7 +1100,6 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         </div>
 
         <div className="space-y-3">
-          {/* 1. 견적서/POS 사진 AI 인식 버튼 */}
           <button
             type="button"
             onClick={() => {
@@ -1275,9 +1116,6 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
               <div>
                 <div className="font-extrabold text-sm flex items-center gap-1.5 flex-wrap">
                   <span>견적서 / POS 사진 AI 자동 인식</span>
-                  <span className="bg-white/20 text-white text-[11.5px] px-2 py-0.5 rounded-md font-bold">
-                    카메라/캡처
-                  </span>
                 </div>
                 <div className="text-xs text-blue-100 mt-0.5 font-medium">
                   스마트폰 사진이나 화면 캡처(Ctrl+V)로 POP 카드 즉시 생성
@@ -1287,7 +1125,6 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
             <Sparkles className="w-5 h-5 text-blue-200 shrink-0" />
           </button>
 
-          {/* 2. 엑셀 파일 업로드 */}
           <label className="relative flex items-center justify-center w-full px-6 py-4 text-sm font-bold text-[#1B64DA] dark:text-blue-300 bg-[#EFF6FF]/60 dark:bg-blue-500/10 border-2 border-[#BFDBFE] dark:border-blue-500/35 border-dashed rounded-2xl cursor-pointer hover:bg-[#EFF6FF] dark:hover:bg-blue-500/15 transition-colors">
             <div className="flex flex-col items-center gap-1">
               <Upload className="w-6 h-6 mb-1" />
@@ -1295,12 +1132,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 {loading ? '처리 중...' : '엑셀 자료 추가 업로드 (.xlsx, .xls, .csv)'}
               </span>
               <span className="text-xs font-medium text-[#4E5968] dark:text-slate-400 text-center">
-                파일명/시트명/제목에 &lsquo;올케어&rsquo;가 적혀 있으면
-                <br />
-                <strong className="text-[#191F28] dark:text-slate-200">
-                  [사용중인가전 2년수리비보증서비스추가]
-                </strong>
-                가 자동 적용됩니다.
+                파일명/시트명에 &lsquo;올케어&rsquo;가 포함되면 2년 수리비 보증이 자동 적용됩니다.
               </span>
             </div>
             <input
@@ -1350,12 +1182,12 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         )}
       </FlagshipModalShell>
 
-      {/* Settings Modal */}
+      {/* 설정 모달 */}
       <FlagshipModalShell
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
-        title="설정 및 공유하기"
-        subtitle="Gemini AI 키 및 모델 설정"
+        title="AI 인식 설정"
+        subtitle="견적 사진 인식용 Gemini API 키 및 모델 설정"
         icon={<Settings className="w-5 h-5 text-[#4E5968] dark:text-slate-300" />}
         maxWidthClass="max-w-md"
         zIndexClass="z-50 no-print"
@@ -1378,32 +1210,9 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
           </div>
         }
       >
-        <div className="mb-5">
-          <h4 className="font-extrabold text-[#191F28] dark:text-slate-100 mb-2 text-sm">
-            💌 친구에게 배포용 소스코드 전달하기
-          </h4>
-          <div className="bg-[#F8FAFC] dark:bg-slate-900/70 p-4 rounded-xl border border-[#E5E8EB] dark:border-slate-800 text-xs sm:text-sm text-[#4E5968] dark:text-slate-300 leading-relaxed">
-            본인의 깃허브 배포 주소를 노출하지 않고, 친구가 직접 배포하게 하려면{' '}
-            <strong className="text-[#191F28] dark:text-slate-100">
-              앱의 전체 소스코드(파일 묶음)
-            </strong>
-            를 전달해야 합니다.
-            <br />
-            <br />
-            <strong className="text-[#191F28] dark:text-slate-100">[소스코드 다운로드 방법]</strong>
-            <br />
-            화면 우측 상단(앱 바깥쪽 영역)의 <strong>Export(내보내기)</strong> 메뉴에서{' '}
-            <strong>Download ZIP</strong>을 선택하세요.
-            <br />
-            <br />
-            저장된 ZIP 파일을 친구에게 보내면, 친구가 직접 자신의 GitHub Pages 등을 통해 배포할 수 있습니다.
-          </div>
-        </div>
-
-        {/* AI Setup */}
         <div className="bg-[#EFF6FF] dark:bg-blue-500/12 border border-[#BFDBFE] dark:border-blue-500/30 rounded-xl p-4">
           <h4 className="font-extrabold text-[#1B64DA] dark:text-blue-300 mb-2 flex items-center gap-1.5 text-sm">
-            ✨ AI 마케팅 문구 자동생성 (Gemini)
+            ✨ Gemini 사진 자동인식 설정
           </h4>
 
           <div className="space-y-3 mt-3">
@@ -1430,16 +1239,16 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                 className="w-full px-3 py-2 bg-white dark:bg-[#131C2E] border border-[#D1D6DB] dark:border-slate-700 rounded-xl text-base sm:text-sm text-[#191F28] dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#1B64DA]"
               >
                 <option value="gemini-3.8-flash">
-                  gemini-3.8-flash (초고속·고정밀 1순위 권장)
+                  gemini-3.8-flash (초고속·고정밀 권장)
                 </option>
                 <option value="gemini-4-hydrogen">
-                  gemini-4-hydrogen (Gemini 4 경량 프론티어 · 비용절감)
+                  gemini-4-hydrogen (Gemini 4 경량 프론티어)
                 </option>
                 <option value="gemini-3.5-flash-lite">
-                  gemini-3.5-flash-lite (초경량 최고속 · 다중인원 최적)
+                  gemini-3.5-flash-lite (초경량 최고속)
                 </option>
                 <option value="gemini-3.6-flash">
-                  gemini-3.6-flash (안정형 초고속 Flash)
+                  gemini-3.6-flash (안정형 Flash)
                 </option>
               </select>
             </div>
@@ -1459,7 +1268,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         </div>
       </FlagshipModalShell>
 
-      {/* iOS Install Guide Modal */}
+      {/* iOS 홈 화면 추가 안내 모달 */}
       <FlagshipModalShell
         isOpen={showIOSGuide}
         onClose={() => setShowIOSGuide(false)}
@@ -1477,18 +1286,11 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
         }
       >
         <p className="text-sm text-[#4E5968] dark:text-slate-300 leading-relaxed">
-          iPhone / iPad에서는 아래 방법으로 앱을 설치할 수 있습니다.
-          <br />
-          <br />
-          1. Safari 하단 툴바에서{' '}
-          <strong className="text-[#191F28] dark:text-slate-100">공유(Share)</strong> 버튼을 누르세요.
-          <br />
-          2. 스크롤을 내려서{' '}
-          <strong className="text-[#191F28] dark:text-slate-100">[홈 화면에 추가]</strong>를 선택하세요.
+          Safari 하단 <strong>공유(Share)</strong> 버튼을 누른 뒤{' '}
+          <strong>[홈 화면에 추가]</strong>를 선택하세요.
         </p>
       </FlagshipModalShell>
 
-      {/* 견적서/POS 사진 AI 인식 모달 */}
       <ImageScannerModal
         isOpen={isImageScannerOpen}
         onClose={() => {

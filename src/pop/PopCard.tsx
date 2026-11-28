@@ -1,17 +1,26 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Printer, FileText, CheckSquare, Square, Maximize2 } from 'lucide-react';
-import { ProductData, CardBenefit, CARD_BENEFITS, PopMode, PopPaperSize } from './types';
+import { Printer, FileText, CheckSquare, Square } from 'lucide-react';
+import {
+  ProductData,
+  CardBenefit,
+  CARD_BENEFITS,
+  PopMode,
+  PopPaperSize,
+  UnderPreedScope,
+} from './types';
 
 // 브라우저 직접 인쇄(window.print)용 A3 세로 배율 (418mm 안전 높이 내 중앙 배치)
 const A3_PORTRAIT_BROWSER_PRINT_SCALE = 1.9;
 const BASE_CARD_WIDTH_PX = 561.26; // 148.5mm @ 96 DPI
 const BASE_CARD_HEIGHT_PX = 793.7; // 210.0mm @ 96 DPI
+const BASE_HALF_HEIGHT_PX = 396.85; // 105.0mm @ 96 DPI (A5 세로 반절 · A4 4분할)
 
 interface PopCardProps {
   product: ProductData;
   cardBenefit: CardBenefit;
   popMode?: PopMode;
   paperSize?: PopPaperSize;
+  underPreedScope?: UnderPreedScope;
   /** 인쇄/PDF 전용 영역(#print-area) 내부 렌더링 여부 (화면용 편집 버튼 완벽 제거) */
   isPrintSheet?: boolean;
   /** 브라우저 직접 A3 인쇄(window.print) 시 1.9배 확대 적용 여부 (PDF 캡처 시에는 false로 두어 폰트 자간 왜곡 원천 차단) */
@@ -29,6 +38,12 @@ interface PreedPlanInfo {
   badgeTitle: string;
   monthlyDiscount: number;
   monthlyDepositMan: number;
+}
+
+interface OptimalUnderPreedInfo {
+  units: number;
+  monthlyDiscount: number;
+  summaryLabel: string;
 }
 
 function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlanInfo | null {
@@ -75,7 +90,6 @@ function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlan
     };
   }
 
-  // 48개월 등 기타 약정기간은 총 지원금 / 약정기간 단가로 산출
   const safePeriod = Number.isFinite(period) && period > 0 ? period : 60;
   const candidates: PreedPlanInfo[] = [
     {
@@ -105,6 +119,137 @@ function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlan
 }
 
 /**
+ * 전자가격표(ESL) 하단 부착용 미니 POP 전용:
+ * - 'optimal': 플러스 72·90·108 다구좌(최대 5구좌) 중 잔여 월 체감가를 0원~만원 미만 앞자리로 낮추는 최소 납입 조합 자동 추천
+ * - 'single': 1구좌 기준 보수적 차감
+ */
+function getUnderPopPreedAllocation(
+  period: number,
+  afterCardMonthly: number,
+  scope: UnderPreedScope = 'optimal'
+): OptimalUnderPreedInfo {
+  const safePeriod = Number.isFinite(period) && period > 0 ? period : 60;
+  if (afterCardMonthly <= 0) {
+    return { units: 0, monthlyDiscount: 0, summaryLabel: '결합없음' };
+  }
+
+  const s72 =
+    safePeriod === 36
+      ? 20000
+      : safePeriod === 60
+      ? 12000
+      : Math.round(720000 / safePeriod);
+  const s90 =
+    safePeriod === 36
+      ? 25000
+      : safePeriod === 60
+      ? 15000
+      : Math.round(900000 / safePeriod);
+  const s108 =
+    safePeriod === 36
+      ? 30000
+      : safePeriod === 60
+      ? 18000
+      : Math.round(1080000 / safePeriod);
+
+  if (scope === 'single') {
+    if (afterCardMonthly >= s108) {
+      return { units: 1, monthlyDiscount: s108, summaryLabel: '플러스108×1' };
+    }
+    if (afterCardMonthly >= s90) {
+      return { units: 1, monthlyDiscount: s90, summaryLabel: '플러스90×1' };
+    }
+    return { units: 1, monthlyDiscount: s72, summaryLabel: '플러스72×1' };
+  }
+
+  const maxUnits = 5;
+  let best: {
+    units: number;
+    monthlyDiscount: number;
+    dues: number;
+    tier: number;
+    dist: number;
+    summaryLabel: string;
+  } | null = null;
+
+  for (let c108 = 0; c108 <= maxUnits; c108++) {
+    for (let c90 = 0; c90 <= maxUnits - c108; c90++) {
+      for (let c72 = 0; c72 <= maxUnits - c108 - c90; c72++) {
+        const totalU = c108 + c90 + c72;
+        if (totalU === 0) continue;
+
+        const sup = c72 * s72 + c90 * s90 + c108 * s108;
+        const dues = c72 * 40000 + c90 * 50000 + c108 * 60000;
+        const rem = afterCardMonthly - sup;
+
+        let tier = 4;
+        let dist = Math.abs(rem);
+
+        if (rem >= 1 && rem < 10000) {
+          tier = 1;
+          dist = rem;
+        } else if (rem <= 0 && rem >= -3500) {
+          tier = 2;
+          dist = Math.abs(rem);
+        } else if (rem >= 10000) {
+          tier = 3;
+          dist = rem;
+        } else {
+          tier = 5;
+          dist = Math.abs(rem) + 100000;
+        }
+
+        const parts: string[] = [];
+        if (c108 > 0) parts.push(`108×${c108}`);
+        if (c90 > 0) parts.push(`90×${c90}`);
+        if (c72 > 0) parts.push(`72×${c72}`);
+
+        const cand = {
+          units: totalU,
+          monthlyDiscount: sup,
+          dues,
+          tier,
+          dist,
+          summaryLabel: parts.join('+'),
+        };
+
+        if (
+          !best ||
+          cand.tier < best.tier ||
+          (cand.tier === best.tier && cand.dist < best.dist) ||
+          (cand.tier === best.tier &&
+            cand.dist === best.dist &&
+            cand.dues < best.dues)
+        ) {
+          best = cand;
+        }
+      }
+    }
+  }
+
+  return (
+    best || {
+      units: 1,
+      monthlyDiscount: s72,
+      summaryLabel: '플러스72×1',
+    }
+  );
+}
+
+function formatShortManwon(amount: number): string {
+  const man = amount / 10000;
+  if (Math.abs(man - Math.round(man)) < 0.01) {
+    return `${Math.round(man)}.0만`.replace(/\.0만$/, '만');
+  }
+  return `${man.toFixed(1)}만`;
+}
+
+function formatManwonFixedOne(amount: number): string {
+  const man = amount / 10000;
+  return `${man.toFixed(1)}만`;
+}
+
+/**
  * 전산/엑셀 원본의 내부 접미사(예: '안심케어_1', '케어십_2')를 매장 고객용 표기로 깔끔히 정돈
  */
 function normalizeCareLabel(rawText?: string): string {
@@ -127,7 +272,6 @@ function formatSmartModelLines(rawModel?: string): { lines: string[]; fontCls: s
   if (!text) return { lines: [''], fontCls: 'text-[13.5px] whitespace-nowrap' };
 
   const len = text.length;
-  // 20자 이하(예: '15U50U-G.AR50K(PKG)' 19자)는 A5 모델명 칸(약 186px) 안에 한 줄로 깔끔하게 수용
   if (len <= 12) {
     return { lines: [text], fontCls: 'text-[13.5px] whitespace-nowrap' };
   }
@@ -138,7 +282,6 @@ function formatSmartModelLines(rawModel?: string): { lines: string[]; fontCls: s
     return { lines: [text], fontCls: 'text-[10.2px] whitespace-nowrap' };
   }
 
-  // 21자 이상 초장문 모델명: 1순위 '(' 앞, 2순위 공백, 3순위 중앙 근처 '-' 또는 '.' 뒤에서 자연스러운 2줄 분리
   const parenIdx = text.lastIndexOf('(');
   if (parenIdx >= 6 && parenIdx < len - 2) {
     return {
@@ -171,16 +314,11 @@ function formatSmartModelLines(rawModel?: string): { lines: string[]; fontCls: s
   return { lines: [text], fontCls: 'text-[9px] leading-tight break-all' };
 }
 
-/**
- * 긴 케어 명칭이나 서비스 내용을 줄바꿈(\n) 및 의미 구분자(·, /, ,) 기준으로 먼저 나눈 뒤
- * 단어·숫자('20%')·괄호('(60개월)') 중간 절단 없이 자연스럽게 줄바꿈
- */
 function splitSingleCareSegment(seg: string, maxLen: number): string[] {
   const text = seg.trim();
   if (!text) return [];
   if (text.length <= maxLen) return [text];
 
-  // 1순위: 구분자(·, /, +, |, ,) 기준 분할
   const delimiterRegex = /\s*(?:,|\/|\+|·|\|)\s*/;
   if (delimiterRegex.test(text)) {
     const parts = text
@@ -206,7 +344,6 @@ function splitSingleCareSegment(seg: string, maxLen: number): string[] {
 function splitByWordsOrParen(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
 
-  // 괄호 앞에 공백이 있거나 짧은 접두부가 있을 때만 괄호 앞에서 분리 (문장 맨 끝 '(60개월)' 때문에 앞 35자가 통째로 남는 현상 방지)
   const parenIdx = text.indexOf('(');
   if (parenIdx > 3 && parenIdx <= maxLen) {
     const beforeParen = text.slice(0, parenIdx).trim();
@@ -216,7 +353,6 @@ function splitByWordsOrParen(text: string, maxLen: number): string[] {
     }
   }
 
-  // 어절(공백) 기준 균형 2줄 분할 ('파손수리액의 20%' 처럼 짧은 단위어는 앞 단어와 함께 묶음)
   const words = text.split(' ');
   if (words.length >= 2) {
     let bestSplit = 1;
@@ -224,9 +360,10 @@ function splitByWordsOrParen(text: string, maxLen: number): string[] {
     for (let i = 1; i < words.length; i++) {
       const l1 = words.slice(0, i).join(' ');
       const l2 = words.slice(i).join(' ');
-      // 마지막 줄이 '20%' 처럼 4글자 이하 고아 단어가 되지 않도록 패널티 부여
       const orphanPenalty = l2.length <= 4 ? 20 : 0;
-      const overPenalty = Math.max(0, l1.length - (maxLen + 3)) * 4 + Math.max(0, l2.length - (maxLen + 3)) * 4;
+      const overPenalty =
+        Math.max(0, l1.length - (maxLen + 3)) * 4 +
+        Math.max(0, l2.length - (maxLen + 3)) * 4;
       const score = Math.abs(l1.length - l2.length) + orphanPenalty + overPenalty;
       if (score < bestScore) {
         bestScore = score;
@@ -261,7 +398,8 @@ export default function PopCard({
   product,
   cardBenefit,
   popMode = 'standard',
-  paperSize = 'a4-2up',
+  paperSize = 'a4-4up',
+  underPreedScope = 'optimal',
   isPrintSheet = false,
   isA3BrowserPrintScale = false,
   isA3Selected = false,
@@ -271,6 +409,8 @@ export default function PopCard({
   onQuickDownloadA3Pdf,
 }: PopCardProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const isHalfA5UnderMode = paperSize === 'a4-4up';
+
   const [scale, setScale] = useState(
     isPrintSheet
       ? isA3BrowserPrintScale
@@ -307,26 +447,210 @@ export default function PopCard({
 
   const formatNumber = (num: number) => new Intl.NumberFormat('ko-KR').format(num);
 
+  const safePeriod =
+    Number.isFinite(product.period) && product.period > 0 ? product.period : 60;
+
   // 60개월 구독은 무조건 롯데카드로 강제 세팅
-  const is60Months = product.period === 60;
+  const is60Months = safePeriod === 60;
   const activeCardBenefit = is60Months
     ? CARD_BENEFITS.find((c) => c.name.includes('롯데')) || cardBenefit
     : cardBenefit;
 
   const perceivedPrice = Math.max(0, product.monthlyFee - activeCardBenefit.discount);
-  const calculatedDownPayment = product.monthlyFee * product.period;
-  const totalBenefitPrice = perceivedPrice * product.period;
+  const calculatedDownPayment =
+    product.downPayment && product.downPayment >= product.monthlyFee * 12
+      ? product.downPayment
+      : product.monthlyFee * safePeriod;
+  const totalBenefitPrice = perceivedPrice * safePeriod;
 
-  // 상조모드(popMode === 'preed') 전용 1안·2안 계산
+  // -------------------- [신규] 전자가격표 하단 부착용 A5 반절 (A4 4분할) 모드 --------------------
+  if (isHalfA5UnderMode) {
+    const underPreed = getUnderPopPreedAllocation(
+      safePeriod,
+      perceivedPrice,
+      underPreedScope
+    );
+    const underFinalMonthly = Math.max(
+      0,
+      perceivedPrice - underPreed.monthlyDiscount
+    );
+    const underFinalTotal = underFinalMonthly * safePeriod;
+    const netStr = formatNumber(underFinalMonthly);
+    const bigNumPx =
+      netStr.length <= 2
+        ? 108
+        : netStr.length <= 3
+        ? 98
+        : netStr.length <= 5
+        ? 84
+        : netStr.length === 6
+        ? 70
+        : 58;
+
+    const cleanModelText = (product.modelName || '').trim() || '구독모델';
+    const topModelFontPx =
+      cleanModelText.length > 20 ? 9.5 : cleanModelText.length > 15 ? 10.2 : 11;
+
+    const effectiveHalfScale = isPrintSheet ? 1 : scale;
+    const halfStageW = BASE_CARD_WIDTH_PX * effectiveHalfScale;
+    const halfStageH = BASE_HALF_HEIGHT_PX * effectiveHalfScale;
+
+    return (
+      <div
+        ref={containerRef}
+        className={
+          isPrintSheet
+            ? 'w-full h-full flex items-center justify-center'
+            : 'w-full flex flex-col items-center print:w-full print:h-full'
+        }
+      >
+        <div
+          className={
+            isPrintSheet ? 'relative shrink-0' : 'relative print:!w-full print:!h-full'
+          }
+          style={{ width: `${halfStageW}px`, height: `${halfStageH}px` }}
+        >
+          <div
+            className={
+              isPrintSheet
+                ? 'pop-card-under-print w-[148.5mm] h-[105mm] flex flex-col overflow-hidden bg-[#B80012] select-none shrink-0 origin-top-left absolute top-0 left-0 m-0'
+                : 'pop-card-under-print w-[148.5mm] h-[105mm] rounded-xl shadow-lg flex flex-col overflow-hidden bg-[#B80012] select-none shrink-0 origin-top-left absolute top-0 left-0 print:!relative print:!transform-none print:w-full print:h-full print:rounded-none print:shadow-none print:m-0'
+            }
+            style={
+              effectiveHalfScale === 1
+                ? undefined
+                : { transform: `scale(${effectiveHalfScale})` }
+            }
+          >
+            {/* [1단] 상단 블랙 도킹 바: 위 구독가 직결 문구 + 우측 모델명·기간·계약금(소형) */}
+            <div
+              className="h-[74px] px-[21px] flex items-center justify-between border-b border-white/15 shrink-0"
+              style={{
+                background: 'linear-gradient(180deg, #0D1017 0%, #161B26 100%)',
+              }}
+            >
+              <div className="flex items-center gap-[8px] min-w-0">
+                <div className="w-[20px] h-[20px] bg-[#FFE600] text-[#0D1017] flex items-center justify-center text-[11.5px] font-black shrink-0">
+                  ▲
+                </div>
+                <div className="text-[18px] font-black text-white tracking-tight whitespace-nowrap leading-none">
+                  위 구독가에 <span className="text-[#FFE600]">프리드 혜택</span> 추가 시
+                </div>
+              </div>
+
+              <div className="flex flex-col items-end justify-center text-right shrink-0 ml-2 tabular-nums">
+                <div
+                  className="font-extrabold text-slate-200 tracking-tight whitespace-nowrap leading-tight"
+                  style={{ fontSize: `${topModelFontPx}px` }}
+                >
+                  {cleanModelText} · {safePeriod}개월
+                </div>
+                <div className="text-[9.8px] font-bold text-slate-400 tracking-tight whitespace-nowrap leading-tight mt-[2px]">
+                  계약금 {formatNumber(calculatedDownPayment)}원
+                </div>
+              </div>
+            </div>
+
+            {/* [2단] 메인 시그니처 크림슨 스테이지: 좌측 프리드 추가지원 / 우측 초대형 체감가 + 최종혜택금액(소형) */}
+            <div
+              className="flex-1 px-[24px] flex items-center justify-between relative overflow-hidden"
+              style={{
+                background:
+                  'repeating-linear-gradient(-45deg, rgba(255,255,255,0.042) 0px, rgba(255,255,255,0.042) 2px, transparent 2px, transparent 8px), radial-gradient(circle at 73% 40%, #F5001E 0%, #CA0015 58%, #92000D 100%)',
+              }}
+            >
+              <div className="flex flex-col items-start justify-center z-10">
+                <div
+                  className="bg-[#FFE600] text-[#0E1117] text-[14.5px] font-black px-[10px] py-[3.5px] tracking-tight whitespace-nowrap"
+                  style={{ boxShadow: '0 4px 10px rgba(60,0,6,0.32)' }}
+                >
+                  프리드 추가지원
+                </div>
+                <div
+                  className="mt-[7px] text-white flex items-baseline whitespace-nowrap tabular-nums"
+                  style={{ textShadow: '0 3px 8px rgba(55,0,6,0.55)' }}
+                >
+                  <span className="text-[29px] font-black leading-[0.95] tracking-tight">
+                    -{formatNumber(underPreed.monthlyDiscount)}
+                  </span>
+                  <span className="text-[15.5px] font-black ml-[3px]">원/월</span>
+                </div>
+                <div className="mt-[5px] text-[12px] font-extrabold text-rose-100/95 tracking-tight whitespace-nowrap tabular-nums">
+                  위 구독 혜택가 {formatNumber(perceivedPrice)}원 기준
+                </div>
+              </div>
+
+              <div className="flex flex-col items-end justify-center z-10">
+                <div
+                  className="text-[14.5px] font-black text-[#FFE600] tracking-tight mb-[2px] whitespace-nowrap"
+                  style={{ textShadow: '0 2px 6px rgba(55,0,6,0.5)' }}
+                >
+                  최종 결합 체감가
+                </div>
+                <div
+                  className="flex items-baseline text-white whitespace-nowrap tabular-nums"
+                  style={{ textShadow: '0 6px 14px rgba(58,0,7,0.75)' }}
+                >
+                  <span className="text-[29px] font-black mr-[5px]">월</span>
+                  <span
+                    className="font-black leading-[0.84] tracking-[-0.055em]"
+                    style={{ fontSize: `${bigNumPx}px` }}
+                  >
+                    {netStr}
+                  </span>
+                  <span className="text-[30px] font-black ml-[3px]">원~</span>
+                </div>
+                <div
+                  className="mt-[6px] px-[8px] py-[2.5px] text-[10.8px] font-extrabold text-amber-50 tracking-tight whitespace-nowrap tabular-nums"
+                  style={{
+                    backgroundColor: 'rgba(13, 16, 23, 0.38)',
+                    border: '1px solid rgba(255, 230, 0, 0.45)',
+                  }}
+                >
+                  {safePeriod}개월 최종혜택금액{' '}
+                  <strong className="text-[#FFE600] font-black">
+                    {formatNumber(underFinalTotal)}원
+                  </strong>
+                </div>
+              </div>
+            </div>
+
+            {/* [3단] 하단 화이트 요약 바 (지점명 무표기 범용 규격) */}
+            <div className="h-[88px] px-[21px] bg-white border-t-[4px] border-[#FFE600] flex flex-col justify-center gap-[5px] shrink-0">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-[6px] text-[16.5px] font-black tracking-tight whitespace-nowrap tabular-nums">
+                  <span className="text-[#1B64DA]">
+                    제휴카드 -{formatManwonFixedOne(activeCardBenefit.discount)}
+                  </span>
+                  <span className="text-slate-300 font-black">+</span>
+                  <span className="text-[#D60019]">
+                    프리드지원 -{formatShortManwon(underPreed.monthlyDiscount)}
+                  </span>
+                </div>
+                <div className="bg-[#0E1117] text-[#FFE600] text-[13px] font-black px-[9.5px] py-[3.5px] tracking-tight whitespace-nowrap shrink-0">
+                  만기 100% 환급형 · 직원문의
+                </div>
+              </div>
+              <div className="text-[9.4px] text-slate-500 font-bold tracking-tight whitespace-nowrap">
+                ※ {safePeriod}개월 약정 · 제휴카드 혜택(전월 30만원↑ 조건 충족 시) 및 프리드라이프(별도납입 · 만기 100% 환급) 결합 기준
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // -------------------- [기존] A5 세로 기본 쇼카드(A4 2분할) 및 A3 단독 포스터 모드 --------------------
   const plan1Monthly = perceivedPrice;
-  const plan1Total = plan1Monthly * product.period;
+  const plan1Total = plan1Monthly * safePeriod;
   const preedPlan =
-    popMode === 'preed' ? getAutoPreedPlan(product.period, perceivedPrice) : null;
+    popMode === 'preed' ? getAutoPreedPlan(safePeriod, perceivedPrice) : null;
   const isPreedRender = popMode === 'preed' && preedPlan !== null;
   const plan2Monthly = preedPlan
     ? Math.max(0, plan1Monthly - preedPlan.monthlyDiscount)
     : plan1Monthly;
-  const plan2Total = plan2Monthly * product.period;
+  const plan2Total = plan2Monthly * safePeriod;
 
   const warrantyYears = '5';
   const cleanCareServiceText = normalizeCareLabel(product.careServiceText);
@@ -346,7 +670,6 @@ export default function PopCard({
     19
   );
 
-  // 모델명·원금 글자 수 기반 자동 폰트 크기 및 자연스러운 줄바꿈 (괄호 중간 절단 원천 방지)
   const smartModel = formatSmartModelLines(product.modelName);
   const modelFontCls = smartModel.fontCls;
 
@@ -370,6 +693,7 @@ export default function PopCard({
   const stageHeightPx = BASE_CARD_HEIGHT_PX * effectiveScale;
   const showQuickA3Toolbar =
     !isPrintSheet &&
+    paperSize === 'a3-portrait' &&
     Boolean(onQuickPrintA3 || onQuickDownloadA3Pdf || onToggleA3Select);
 
   return (
@@ -381,67 +705,54 @@ export default function PopCard({
           : 'w-full flex flex-col items-center print:w-full print:h-full'
       }
     >
-      {/* 웹 미리보기 전용: 개별 연출(A3 세로) 선택 및 1클릭 단독 출력 툴바 */}
+      {/* A3 모드일 때만 간결한 상단 개별출력 바 표시 */}
       {showQuickA3Toolbar && (
         <div
           className={`no-print print:hidden mb-2 rounded-xl px-2.5 py-1.5 border flex items-center justify-between gap-1.5 flex-wrap transition-all ${
             isA3Selected
-              ? 'bg-emerald-50 border-emerald-400 shadow-xs'
-              : paperSize === 'a3-portrait'
-              ? 'bg-indigo-50/80 border-indigo-200'
-              : 'bg-white border-slate-200 shadow-2xs'
+              ? 'bg-emerald-50 border-emerald-400'
+              : 'bg-white border-slate-200'
           }`}
           style={{ width: `${stageWidthPx}px`, maxWidth: '100%' }}
         >
-          <div className="flex items-center gap-1.5 min-w-0">
-            {onToggleA3Select && (
-              <button
-                type="button"
-                onClick={() => onToggleA3Select(product.id)}
-                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-extrabold border transition-colors cursor-pointer whitespace-nowrap ${
-                  isA3Selected
-                    ? 'bg-emerald-600 text-white border-emerald-700'
-                    : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border-slate-200'
-                }`}
-                title="A3 세로 개별 연출 출력 대상으로 이 모델을 체크합니다"
-              >
-                {isA3Selected ? (
-                  <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-                ) : (
-                  <Square className="w-3.5 h-3.5 shrink-0 text-slate-400" />
-                )}
-                <span>{isA3Selected ? 'A3 연출 선택됨' : '개별연출 선택'}</span>
-              </button>
-            )}
-            {paperSize === 'a3-portrait' && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[10px] font-black whitespace-nowrap">
-                <Maximize2 className="w-2.5 h-2.5" />
-                A3 세로 297×420mm
-              </span>
-            )}
-          </div>
+          {onToggleA3Select && (
+            <button
+              type="button"
+              onClick={() => onToggleA3Select(product.id)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-extrabold border transition-colors cursor-pointer whitespace-nowrap ${
+                isA3Selected
+                  ? 'bg-emerald-600 text-white border-emerald-700'
+                  : 'bg-slate-50 hover:bg-emerald-50 text-slate-700 border-slate-200'
+              }`}
+            >
+              {isA3Selected ? (
+                <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <Square className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+              )}
+              <span>{isA3Selected ? '출력 선택됨' : '선택 출력 체크'}</span>
+            </button>
+          )}
 
           <div className="flex items-center gap-1 ml-auto">
             {onQuickPrintA3 && (
               <button
                 type="button"
                 onClick={() => onQuickPrintA3(product)}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-300 text-[11px] font-black transition-colors cursor-pointer whitespace-nowrap"
-                title="전체 모드를 바꾸지 않고 이 모델 1개만 즉시 A3 세로(297×420mm) 단독 포스터로 인쇄합니다"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-extrabold transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Printer className="w-3 h-3 shrink-0" />
-                <span>A3 단독인쇄</span>
+                <span>단독 인쇄</span>
               </button>
             )}
             {onQuickDownloadA3Pdf && (
               <button
                 type="button"
                 onClick={() => onQuickDownloadA3Pdf(product)}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black transition-colors cursor-pointer whitespace-nowrap"
-                title="이 모델 1개만 A3 세로(297×420mm) 고해상도 PDF로 즉시 저장합니다"
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-extrabold transition-colors cursor-pointer whitespace-nowrap"
               >
                 <FileText className="w-3 h-3 shrink-0" />
-                <span>A3 PDF</span>
+                <span>단독 PDF</span>
               </button>
             )}
           </div>
@@ -471,7 +782,6 @@ export default function PopCard({
           {/* [1단] 최상단 바 & 메인 타이틀 영역 */}
           <div className="text-center">
             <div className="grid grid-cols-[1fr_auto_1fr] items-center mb-1">
-              {/* 좌측: 슬림 캡슐형 5년 무상 A/S 배지 */}
               <div className="justify-self-start bg-gradient-to-r from-blue-900 to-blue-600 text-white rounded-full px-2.5 py-1 border border-blue-300 inline-flex items-center gap-1.5 shadow-2xs whitespace-nowrap shrink-0">
                 <span className="w-4.5 h-4.5 rounded-full bg-yellow-300 text-blue-900 font-black text-[11px] flex items-center justify-center shrink-0">
                   {warrantyYears}
@@ -481,7 +791,6 @@ export default function PopCard({
                 </span>
               </div>
 
-              {/* 정중앙 고정: 노란 별 5개 */}
               <div className="flex justify-center gap-1 px-2 shrink-0">
                 {[...Array(5)].map((_, i) => (
                   <svg
@@ -494,7 +803,6 @@ export default function PopCard({
                 ))}
               </div>
 
-              {/* 우측: 인쇄/PDF 시에는 편집용 버튼(+올케어, NEW 새로추가 등)을 완전히 제거해 깔끔한 매장 포스터로 출력 */}
               <div className="justify-self-end flex items-center gap-1 justify-end">
                 {isPrintSheet ? (
                   product.isAllCare ? (
@@ -512,7 +820,7 @@ export default function PopCard({
                         className="bg-indigo-800 hover:bg-indigo-900 text-yellow-300 px-2 py-0.5 rounded-full text-[10px] font-black no-print shadow-sm flex items-center gap-1 border border-indigo-600 transition-colors cursor-pointer whitespace-nowrap"
                       >
                         <span>🛡️</span>
-                        <span>올케어 적용됨</span>
+                        <span>올케어 ON</span>
                       </button>
                     ) : (
                       <button
@@ -540,12 +848,10 @@ export default function PopCard({
               </div>
             </div>
 
-            {/* 메인 타이틀 */}
             <h1 className="text-[28px] font-black text-slate-800 tracking-tight leading-tight whitespace-nowrap">
               구독하면 <span className="text-blue-700 italic text-[34px]">더!</span> 합리적인 선택
             </h1>
 
-            {/* 타이틀 바로 아래 서브 배너 (줄바꿈 이탈 100% 원천 차단) */}
             {product.isAllCare ? (
               <div className="mt-1.5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white px-3.5 py-1.5 rounded-xl shadow-md border-2 border-amber-400 inline-flex items-center justify-center gap-2 flex-nowrap whitespace-nowrap max-w-full">
                 <span className="text-sm shrink-0">🛡️</span>
@@ -568,9 +874,8 @@ export default function PopCard({
             )}
           </div>
 
-          {/* [2단] 제품 스펙 4칸 요약 바 (라벨 줄바꿈 겹침 완벽 방지) */}
+          {/* [2단] 제품 스펙 4칸 요약 바 */}
           <div className="grid grid-cols-[1.58fr_0.66fr_0.93fr_0.93fr] gap-1.5">
-            {/* 1칸: 제품 모델명 */}
             <div className="bg-white border-[1.5px] border-slate-300 rounded-[10px] py-2 px-2 text-center min-h-[62px] flex flex-col justify-center overflow-hidden">
               <div className="flex items-center justify-center gap-1 mb-1 flex-nowrap whitespace-nowrap">
                 {catText && (
@@ -589,17 +894,15 @@ export default function PopCard({
               </div>
             </div>
 
-            {/* 2칸: 구독기간 */}
             <div className="bg-white border-[1.5px] border-slate-300 rounded-[10px] py-2 px-1.5 text-center min-h-[62px] flex flex-col justify-center">
               <div className="text-[10px] text-slate-500 font-extrabold mb-1 whitespace-nowrap">
                 ⏳ 구독기간
               </div>
               <div className="text-[14.5px] font-black text-slate-800 whitespace-nowrap">
-                {product.period}개월
+                {safePeriod}개월
               </div>
             </div>
 
-            {/* 3칸: 구독원금 */}
             <div className="bg-white border-[1.5px] border-slate-300 rounded-[10px] py-2 px-1.5 text-center min-h-[62px] flex flex-col justify-center">
               <div className="text-[10px] text-slate-500 font-extrabold mb-1 whitespace-nowrap">
                 💰 구독원금
@@ -609,7 +912,6 @@ export default function PopCard({
               </div>
             </div>
 
-            {/* 4칸: 월 구독료 */}
             <div className="bg-white border-[1.5px] border-slate-300 rounded-[10px] py-2 px-1.5 text-center min-h-[62px] flex flex-col justify-center">
               <div className="text-[10px] text-slate-500 font-extrabold mb-1 whitespace-nowrap">
                 🗓️ 월 구독료
@@ -620,15 +922,13 @@ export default function PopCard({
             </div>
           </div>
 
-          {/* [3단] 케어 서비스 2칸 나란히 배치 (고정 높이 잘림 해제 -> 유연한 min-h) */}
+          {/* [3단] 케어 서비스 2칸 */}
           <div className="grid grid-cols-2 gap-2.5 min-h-[108px] items-stretch">
-            {/* 좌측 박스: 구독 케어 서비스 */}
             <div className="border-[1.5px] border-slate-800 rounded-[10px] overflow-hidden flex flex-col bg-white">
               <div className="bg-slate-800 text-white text-center py-1 font-extrabold text-[11px] shrink-0 whitespace-nowrap">
                 구독 케어 서비스
               </div>
               <div className="px-2.5 py-1.5 flex-1 flex flex-col justify-between gap-1">
-                {/* 상단: 케어 명칭 + 주기/횟수 배지 */}
                 <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1.5">
                   <div
                     className={`text-[10.5px] font-extrabold text-slate-800 leading-snug text-left min-w-0 ${
@@ -658,7 +958,6 @@ export default function PopCard({
                   </div>
                 </div>
 
-                {/* 하단: 서비스 내용 */}
                 <div className="flex flex-col justify-center text-left">
                   <span className="text-slate-400 font-extrabold text-[8.5px] leading-none mb-0.5 whitespace-nowrap">
                     · 서비스 내용
@@ -675,7 +974,6 @@ export default function PopCard({
               </div>
             </div>
 
-            {/* 우측 박스: 올케어 여부에 따라 분기 */}
             {product.isAllCare ? (
               <div className="border-[1.5px] border-indigo-900 rounded-[10px] overflow-hidden flex flex-col bg-indigo-50/30">
                 <div className="bg-indigo-950 text-amber-300 text-center py-1 font-extrabold text-[11px] whitespace-nowrap">
@@ -745,7 +1043,6 @@ export default function PopCard({
                 VS
               </div>
 
-              {/* 좌측 카드 [선택 1안 · 제휴카드만] */}
               <div className="bg-slate-50 border-2 border-slate-300 rounded-xl pt-[17px] pb-[9px] px-2.5 relative flex flex-col items-center justify-between gap-1.5">
                 <div className="absolute -top-[12px] left-1/2 -translate-x-1/2 bg-slate-800 text-white font-black px-3.5 py-0.5 rounded-full text-[11.5px] border-2 border-white shadow-sm whitespace-nowrap">
                   💳 선택 1안 · 제휴카드만
@@ -789,11 +1086,10 @@ export default function PopCard({
                 </div>
 
                 <div className="w-full bg-slate-200 text-slate-700 rounded-[7px] py-1 px-2 text-center text-[11px] font-extrabold whitespace-nowrap">
-                  {product.period}개월 총 체감가: {formatNumber(plan1Total)}원
+                  {safePeriod}개월 총 체감가: {formatNumber(plan1Total)}원
                 </div>
               </div>
 
-              {/* 우측 카드 [선택 2안 · 상조서비스 결합] */}
               <div className="bg-rose-50 border-[2.5px] border-rose-600 rounded-xl pt-[17px] pb-[9px] px-2.5 relative flex flex-col items-center justify-between gap-1.5 shadow-md">
                 <div className="absolute -top-[12px] left-1/2 -translate-x-1/2 bg-rose-600 text-white font-black px-3.5 py-0.5 rounded-full text-[11.5px] border-2 border-yellow-300 shadow-sm whitespace-nowrap">
                   👑 선택 2안 · 상조서비스 결합
@@ -841,7 +1137,7 @@ export default function PopCard({
                 </div>
 
                 <div className="w-full bg-rose-700 text-white rounded-[7px] py-1 px-2 text-center text-[11px] font-black whitespace-nowrap">
-                  {product.period}개월 총 체감가:{' '}
+                  {safePeriod}개월 총 체감가:{' '}
                   <span className="text-yellow-300">{formatNumber(plan2Total)}원</span>
                 </div>
               </div>
@@ -856,7 +1152,7 @@ export default function PopCard({
                 <div className="w-full bg-white border border-rose-200 rounded-lg px-3.5 py-1.5 text-[11.5px] flex flex-col gap-1">
                   <div className="flex items-center justify-between whitespace-nowrap">
                     <span className="font-bold text-slate-600">
-                      기본 월 구독료 ({product.period}개월)
+                      기본 월 구독료 ({safePeriod}개월)
                     </span>
                     <span className="font-extrabold text-slate-800">
                       월 {formatNumber(product.monthlyFee)}원
@@ -885,7 +1181,7 @@ export default function PopCard({
                 </div>
 
                 <div className="w-full bg-rose-700 text-white rounded-[7px] py-1.5 px-3 text-center text-[11.5px] font-black whitespace-nowrap">
-                  {product.period}개월 총 체감가:{' '}
+                  {safePeriod}개월 총 체감가:{' '}
                   <span className="text-yellow-300">
                     {formatNumber(totalBenefitPrice)}원
                   </span>
@@ -909,7 +1205,7 @@ export default function PopCard({
                   </div>
                   <div className="text-slate-300 text-[8.5px] font-bold tracking-tight whitespace-nowrap">
                     전월 30만원↑ 이용 시 매월 지급 (총{' '}
-                    {Math.round((activeCardBenefit.discount * product.period) / 10000)}만원)
+                    {Math.round((activeCardBenefit.discount * safePeriod) / 10000)}만원)
                   </div>
                 </div>
 
@@ -951,8 +1247,8 @@ export default function PopCard({
                     {formatNumber(activeCardBenefit.discount)}원 {activeCardBenefit.benefitType}
                   </div>
                   <div className="text-slate-300 text-[9.5px] font-bold">
-                    매월 {activeCardBenefit.benefitType}으로 지급! ({product.period}개월 총{' '}
-                    {Math.round((activeCardBenefit.discount * product.period) / 10000)}만원 혜택)
+                    매월 {activeCardBenefit.benefitType}으로 지급! ({safePeriod}개월 총{' '}
+                    {Math.round((activeCardBenefit.discount * safePeriod) / 10000)}만원 혜택)
                   </div>
                 </div>
               </div>
