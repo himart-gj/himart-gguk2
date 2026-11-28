@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   calculateGeneralHiPreedSummary,
@@ -35,6 +35,19 @@ import {
   syncFriendRemoteProfileFromCloud,
   syncViewerBaseUrlFromServer,
 } from '../utils/shareQuoteCodec';
+import {
+  buildNativeSmsHref,
+  clearConsultantBusinessCardDataUri,
+  compressBusinessCardFileToDataUri,
+  CONSULTANT_CARD_UPDATED_EVENT,
+  copyConsultantCardToClipboard,
+  hydrateConsultantBusinessCardFromIdb,
+  loadConsultantBusinessCardDataUri,
+  loadConsultantCardAutoInclude,
+  saveConsultantBusinessCardDataUri,
+  saveConsultantCardAutoInclude,
+  shareConsultantBusinessCardWithText,
+} from '../utils/consultantBusinessCard';
 import { isFriendRestrictedMode } from '../utils/friendAccessGuard';
 import { maskModelCodeAfter3, maskProposalStateModels } from '../utils/modelMasker';
 import { safeCopyText } from '../utils/mobileQaRuntime';
@@ -46,6 +59,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Image as ImageIcon,
   Layers,
   Link2,
   Lock,
@@ -54,6 +68,8 @@ import {
   Share2,
   ShieldCheck,
   Smartphone,
+  Trash2,
+  Upload,
   X,
 } from 'lucide-react';
 
@@ -345,6 +361,7 @@ export function composeCustomerShareMessages(params: {
   effectiveShareState: ProposalState;
   activeCompareList: QuoteMode[];
   activeUrl: string;
+  includeIphoneLinkTip?: boolean;
 }): { sms: string; kakao: string; preedMeta: SharedQuotePreedMeta } {
   const {
     profile,
@@ -352,6 +369,7 @@ export function composeCustomerShareMessages(params: {
     effectiveShareState,
     activeCompareList,
     activeUrl,
+    includeIphoneLinkTip = false,
   } = params;
   const preedMeta = detectSharedQuotePreedMeta(
     effectiveShareState,
@@ -390,7 +408,25 @@ export function composeCustomerShareMessages(params: {
     return `${sSum.finalTotalFee.toLocaleString()}원`;
   };
 
-  const honorific = customerName.trim() ? `${customerName.trim()} 고객님` : '고객님';
+  const cleanCustName = String(customerName || '')
+    .trim()
+    .replace(/\s*고객님$/, '')
+    .trim();
+  const honorific = cleanCustName ? `${cleanCustName} 고객님` : '고객님';
+  const cleanUrl = String(activeUrl || '').trim();
+
+  // 문자(SMS)는 요청 사양에 맞춰 초간결 2줄 + 독립 줄 URL(아이폰 자동링크 인식 최적화)로 고정
+  const sms = [
+    `${honorific} 견적제안서 입니다.`,
+    `아래 링크 클릭시 확인가능 합니다.`,
+    ...(cleanUrl ? ['', cleanUrl] : []),
+    ...(includeIphoneLinkTip
+      ? ['', `※ 아이폰은 보안상 '확인' 답장 후 링크 터치가 활성화됩니다.`]
+      : []),
+  ]
+    .join('\n')
+    .trim();
+
   const isMultiModeShare = activeCompareList.length >= 2;
   const multiModeTabLabels = activeCompareList
     .map((_, idx) => `${idx + 1}안`)
@@ -488,54 +524,6 @@ export function composeCustomerShareMessages(params: {
     ? validSharePlans.map((p) => `${p.planNum}안`).join('·')
     : '';
 
-  const shortItem =
-    itemLine.length > 42 ? `${itemLine.slice(0, 40)}...` : itemLine;
-
-  const sms = isMultiModeShare
-    ? [
-        `[${profile.storeName}] ${honorific} 맞춤 비교 견적서 안내`,
-        `품목: ${shortItem}`,
-        ...multiModeSummaries.map((s) => s.line),
-        ...(preedMeta.hasAnyPreed ? [preedMeta.smsGuideLine] : []),
-        ``,
-        `아래 링크에서 [${multiModeTabLabels}] 탭${
-          preedMeta.hasAnyPreed ? ' 및 프리드 안내서' : ''
-        }를 확인해 보세요.`,
-        ``,
-        activeUrl,
-        ``,
-        `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
-      ]
-        .join('\n')
-        .trim()
-    : [
-        `[${profile.storeName}] ${honorific} 맞춤 견적서 안내`,
-        `품목: ${shortItem}`,
-        `혜택: ${priceHighlight}`,
-        ...(hasMultipleGeneralPlans
-          ? validSharePlans.map((p) => {
-              if (effectiveShareState.quoteMode === 'subscription') {
-                return `• ${p.planNum}안: ${formatSubMonthlyShort(p.subSummary)}`;
-              }
-              if (effectiveShareState.quoteMode === 'hybrid') {
-                return `• ${p.planNum}안: 일시불 ${p.genSummary.rawNet.toLocaleString()}원 + ${formatSubMonthlyShort(p.subSummary)}`;
-              }
-              return `• ${p.planNum}안: 체감 ${p.genSummary.rawNet.toLocaleString()}원`;
-            })
-          : []),
-        ...(preedMeta.hasAnyPreed ? [preedMeta.smsGuideLine] : []),
-        ``,
-        hasMultipleGeneralPlans
-          ? `아래 링크를 누르시면 스마트폰에서 [${planRangeText}] 및 제휴카드·라이프케어 체감가를 직접 비교하실 수 있습니다.`
-          : `아래 전용 링크를 누르시면 스마트폰에서 상세 혜택 내역과 제휴카드·라이프케어 조건을 확인하실 수 있습니다.`,
-        ``,
-        activeUrl,
-        ``,
-        `담당: ${profile.name}${profile.phone ? ` (${profile.phone})` : ''}`,
-      ]
-        .join('\n')
-        .trim();
-
   const kakao = isMultiModeShare
     ? [
         `[${profile.storeName}] ${honorific} 맞춤 비교 견적서`,
@@ -547,7 +535,7 @@ export function composeCustomerShareMessages(params: {
           preedMeta.hasAnyPreed ? '과 함께 동봉된 프리드 안내서' : ''
         }를 직접 확인해 보세요.`,
         ``,
-        activeUrl,
+        cleanUrl,
         ``,
         `담당: ${profile.name} (${normalizeConsultantRoleTitle(profile.roleTitle)})${
           profile.phone ? ` / ${profile.phone}` : ''
@@ -579,7 +567,7 @@ export function composeCustomerShareMessages(params: {
           ? `아래 전용 링크에서 [${planRangeText}] 및 제휴카드·구좌별 체감가를 직접 비교하실 수 있습니다.`
           : `아래 전용 링크에서 상세 혜택과 제휴카드·구좌별 조건을 확인하실 수 있습니다.`,
         ``,
-        activeUrl,
+        cleanUrl,
         ``,
         `담당: ${profile.name} (${normalizeConsultantRoleTitle(profile.roleTitle)})${
           profile.phone ? ` / ${profile.phone}` : ''
@@ -621,6 +609,16 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
   const [selectedCompareModes, setSelectedCompareModes] = useState<QuoteMode[]>(
     () => getActiveCompareModes(state)
   );
+  const [includeIphoneTip, setIncludeIphoneTip] = useState<boolean>(false);
+
+  const [cardDataUri, setCardDataUri] = useState<string>(() =>
+    loadConsultantBusinessCardDataUri()
+  );
+  const [includeBusinessCard, setIncludeBusinessCard] = useState<boolean>(() =>
+    loadConsultantCardAutoInclude()
+  );
+  const [cardActionNotice, setCardActionNotice] = useState<string | null>(null);
+  const cardInputRef = useRef<HTMLInputElement | null>(null);
 
   const isFriendMode = isFriendRestrictedMode();
 
@@ -632,6 +630,16 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     setMaskSharedModels(Boolean(initialMaskModels));
     setSelectedCompareModes(getActiveCompareModes(state));
     setCopiedType(null);
+    setCardActionNotice(null);
+
+    setCardDataUri(loadConsultantBusinessCardDataUri());
+    setIncludeBusinessCard(loadConsultantCardAutoInclude());
+    void hydrateConsultantBusinessCardFromIdb().then((restored) => {
+      if (restored) {
+        setCardDataUri(restored);
+        setIncludeBusinessCard(loadConsultantCardAutoInclude());
+      }
+    });
 
     if (isFriendRestrictedMode()) {
       void syncFriendRemoteProfileFromCloud().then((updated) => {
@@ -644,14 +652,54 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     const onProfileUpdated = () => {
       setProfile(loadConsultantProfile());
     };
+    const onCardUpdated = () => {
+      setCardDataUri(loadConsultantBusinessCardDataUri());
+      setIncludeBusinessCard(loadConsultantCardAutoInclude());
+    };
     window.addEventListener(CONSULTANT_PROFILE_UPDATED_EVENT, onProfileUpdated);
+    window.addEventListener(CONSULTANT_CARD_UPDATED_EVENT, onCardUpdated);
     return () => {
       window.removeEventListener(
         CONSULTANT_PROFILE_UPDATED_EVENT,
         onProfileUpdated
       );
+      window.removeEventListener(CONSULTANT_CARD_UPDATED_EVENT, onCardUpdated);
     };
   }, [isOpen, customerName, customerPhone, initialMaskModels]);
+
+  const handleUploadBusinessCard = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const compressed = await compressBusinessCardFileToDataUri(file);
+      saveConsultantBusinessCardDataUri(compressed);
+      setCardDataUri(compressed);
+      setIncludeBusinessCard(true);
+      setCardActionNotice(
+        '✅ 본인 명함 사진이 저장되었습니다! 앞으로 제안서 발송 시 함께 보낼 수 있습니다.'
+      );
+    } catch {
+      setCardActionNotice(
+        '⚠️ 명함 사진을 불러오지 못했습니다. 다른 이미지로 다시 시도해 주세요.'
+      );
+    }
+  };
+
+  const handleRemoveBusinessCard = () => {
+    clearConsultantBusinessCardDataUri();
+    setCardDataUri('');
+    setIncludeBusinessCard(false);
+    setCardActionNotice('등록된 명함 사진이 삭제되었습니다.');
+  };
+
+  const handleToggleIncludeCard = () => {
+    const next = !includeBusinessCard;
+    setIncludeBusinessCard(next);
+    saveConsultantCardAutoInclude(next);
+  };
 
   const isModeDataValid = (targetState: ProposalState, m: QuoteMode): boolean => {
     const planData = resolveComparisonModePlanData(targetState, m);
@@ -809,6 +857,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     effectiveShareState,
     activeCompareList,
     activeUrl,
+    includeIphoneLinkTip: includeIphoneTip,
   });
   const preedMeta = composedMessages.preedMeta;
   const buildSmsShareMessage = () => composedMessages.sms;
@@ -816,6 +865,8 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
 
   const previewText =
     channelTab === 'sms' ? buildSmsShareMessage() : buildKakaoShareMessage();
+
+  const hasActiveCard = Boolean(cardDataUri && includeBusinessCard);
 
   const handleCopy = async (mode: 'sms' | 'kakao' | 'url') => {
     if (isGenerating || !activeUrl || hasEmptyModeWarning) return;
@@ -832,17 +883,43 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
     }
   };
 
-  const handleOpenNativeSmsApp = () => {
+  const handleOpenNativeSmsApp = async () => {
     if (isGenerating || !activeUrl || hasEmptyModeWarning) return;
-    const cleanPhone = custPhoneInput.replace(/[^0-9+]/g, '');
-    const body = encodeURIComponent(buildSmsShareMessage());
-    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-    const isIOS = /iPad|iPhone|iPod/i.test(ua);
-    const sep = isIOS ? '&' : '?';
-    const smsHref = cleanPhone
-      ? `sms:${cleanPhone}${sep}body=${body}`
-      : `sms:${sep}body=${body}`;
-    window.location.href = smsHref;
+    const smsText = buildSmsShareMessage();
+    if (hasActiveCard) {
+      const copiedImg = await copyConsultantCardToClipboard(cardDataUri);
+      if (copiedImg) {
+        setCardActionNotice(
+          '🪪 명함 이미지가 클립보드에 복사되었습니다! 열린 문자창(PC 휴대폰과 연결 Ctrl+V / 모바일 키보드 클립보드)에서 붙여넣기 하시면 명함도 함께 전송됩니다.'
+        );
+        await new Promise((r) => setTimeout(r, 260));
+      }
+    }
+    window.location.href = buildNativeSmsHref(custPhoneInput, smsText);
+  };
+
+  const handleShareCardAndMessageTogether = () => {
+    if (isGenerating || !activeUrl || hasEmptyModeWarning || !cardDataUri) return;
+    const bodyText =
+      channelTab === 'kakao' ? buildKakaoShareMessage() : buildSmsShareMessage();
+    // User Activation 보존을 위해 동기 호출
+    shareConsultantBusinessCardWithText({
+      dataUri: cardDataUri,
+      bodyText,
+      customerPhone: custPhoneInput,
+      storeName: profile.storeName,
+      consultantName: profile.name,
+    }).then((res) => {
+      if (res === 'shared') {
+        setCardActionNotice(
+          custPhoneInput.trim()
+            ? `✅ 명함 사진 + 제안서 공유창 전달 완료! (고객 번호 ${custPhoneInput.trim()} 자동 복사됨)`
+            : '✅ 명함 사진 + 제안서 문구가 함께 첨부되었습니다!'
+        );
+      } else if (res === 'unsupported') {
+        void handleOpenNativeSmsApp();
+      }
+    });
   };
 
   const handlePreviewCustomerScreen = () => {
@@ -876,6 +953,14 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
         className={`w-full sm:max-w-xl max-h-[94dvh] sm:max-h-[90dvh] flex flex-col rounded-t-2xl sm:rounded-2xl border border-t-[4px] border-t-[#E60012] shadow-2xl overflow-hidden schedule-sheet-enter ${shellCls}`}
         onClick={(e) => e.stopPropagation()}
       >
+        <input
+          ref={cardInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleUploadBusinessCard}
+          className="hidden"
+        />
+
         {/* 모달 상단 헤더 */}
         <div
           className={`px-5 py-4 border-b shrink-0 flex items-center justify-between gap-3 ${
@@ -1064,7 +1149,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
-                  고객 성함 (선택)
+                  고객 성함 (입력 시 &ldquo;OO 고객님 견적제안서 입니다.&rdquo; 표시)
                 </label>
                 <input
                   type="text"
@@ -1089,7 +1174,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-[11.5px] font-extrabold text-[#4E5968] dark:text-slate-300 mb-1">
-                  소속 지점명 (자동저장 · 고객 견적서 및 문자·카톡 상단 표기)
+                  소속 지점명 (자동저장 · 고객 견적서 및 카톡 상단 표기)
                 </label>
                 <input
                   type="text"
@@ -1143,6 +1228,91 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             </div>
           </div>
 
+          {/* STEP 4: 본인 명함 사진 업로드 & 자동 동봉 설정 (전 사용자 기기별 영구 저장) */}
+          <div
+            className={`rounded-xl border p-3.5 space-y-2.5 ${
+              cardDataUri && includeBusinessCard
+                ? isDark
+                  ? 'bg-blue-950/35 border-blue-500/40'
+                  : 'bg-[#EFF6FF] border-[#BFDBFE]'
+                : isDark
+                ? 'bg-[#0B1120] border-white/10'
+                : 'bg-[#F8FAFC] border-[#E5E8EB]'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <ImageIcon className="w-4 h-4 text-[#1B64DA] dark:text-blue-400 shrink-0" />
+                <span className="text-xs font-black break-keep">
+                  내 명함 사진 함께 보내기 (1회 등록 시 자동 유지)
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => cardInputRef.current?.click()}
+                  className={`px-2.5 py-1 rounded-lg text-[11.5px] font-extrabold inline-flex items-center gap-1 cursor-pointer border ${
+                    isDark
+                      ? 'bg-[#1E293B] border-white/15 text-slate-100 hover:bg-slate-700'
+                      : 'bg-white border-[#D1D6DB] text-[#191F28] hover:bg-[#F2F4F6]'
+                  }`}
+                >
+                  <Upload className="w-3 h-3" />
+                  <span>{cardDataUri ? '명함 교체' : '명함 등록'}</span>
+                </button>
+                {cardDataUri && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleToggleIncludeCard}
+                      className={`px-2.5 py-1 rounded-lg text-[11.5px] font-black cursor-pointer transition ${
+                        includeBusinessCard
+                          ? 'bg-[#1B64DA] text-white'
+                          : isDark
+                          ? 'bg-slate-800 text-slate-300 border border-white/10'
+                          : 'bg-white text-[#4E5968] border border-[#D1D6DB]'
+                      }`}
+                    >
+                      {includeBusinessCard ? '동봉 ON' : '동봉 OFF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveBusinessCard}
+                      title="등록된 명함 사진 삭제"
+                      className="p-1.5 rounded-lg text-[#8B95A1] hover:text-[#E60012] cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {cardDataUri ? (
+              <div className="flex items-center gap-3">
+                <img
+                  src={cardDataUri}
+                  alt="등록된 내 명함"
+                  className="w-20 max-h-14 object-contain rounded-lg border border-[#BFDBFE] dark:border-white/15 bg-white shrink-0"
+                />
+                <p className="text-[11.5px] font-semibold text-[#4E5968] dark:text-slate-300 leading-snug break-keep">
+                  • 모바일: <strong>[명함사진 + 문자 함께 보내기]</strong> 터치 시 명함 파일과 문구가 한 번에 첨부됩니다.
+                  <br />• PC·노트북: <strong>[문자앱 열기(명함 복사)]</strong> 클릭 후 열린 문자창에서 <strong>Ctrl+V</strong>만 누르면 명함이 바로 첨부됩니다.
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11.5px] font-medium text-[#8B95A1] leading-snug break-keep">
+                본인 명함 사진을 한 번 등록해 두면 앞으로 고객 제안서 문자·카톡 발송 시 명함을 함께 보낼 수 있습니다.
+              </p>
+            )}
+
+            {cardActionNotice && (
+              <div className="rounded-lg bg-white/90 dark:bg-[#0B1120] border border-[#BFDBFE] dark:border-blue-500/35 px-3 py-2 text-[11.5px] font-extrabold text-[#1B64DA] dark:text-blue-300 leading-snug break-keep">
+                {cardActionNotice}
+              </div>
+            )}
+          </div>
+
           {/* 미니 뷰어 도메인 연결 설정 (오너/내부 직원 기기 전용) */}
           {!isFriendMode && (
             <SecurityDomainConfigBox
@@ -1165,11 +1335,11 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
               <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1 text-xs leading-snug break-keep">
                 <div className="font-black text-emerald-800 dark:text-emerald-300">
-                  프리드 결합 감지됨 · 안내서 자동 동봉
+                  프리드 결합 감지됨 · 전용 링크 내 안내서 자동 동봉
                 </div>
                 <p className="text-[11.5px] font-semibold text-emerald-700 dark:text-emerald-200/90 mt-0.5">
-                  고객 전용 링크 열람 화면과 문자·카톡 안내문에{' '}
-                  <strong>웅진프리드라이프 {preedMeta.guideLabel}</strong>가 자동으로 함께 포함됩니다.
+                  고객이 링크를 열면 견적서와 함께{' '}
+                  <strong>웅진프리드라이프 {preedMeta.guideLabel}</strong>를 바로 열람할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -1267,9 +1437,27 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                   : 'bg-[#F8FAFC] border-[#E5E8EB] text-[#191F28]'
               }`}
             >
-              <div className="flex items-center justify-between text-[11.5px] font-extrabold text-[#8B95A1]">
+              <div className="flex items-center justify-between gap-2 flex-wrap text-[11.5px] font-extrabold text-[#8B95A1]">
                 <span>발송 문구 미리보기</span>
-                <span className="tabular-nums">{previewText.length}자</span>
+                <div className="flex items-center gap-2">
+                  {channelTab === 'sms' && (
+                    <button
+                      type="button"
+                      onClick={() => setIncludeIphoneTip((v) => !v)}
+                      className={`px-2 py-0.5 rounded-md border text-[11px] font-extrabold cursor-pointer transition ${
+                        includeIphoneTip
+                          ? 'bg-[#1B64DA] text-white border-[#1B64DA]'
+                          : isDark
+                          ? 'bg-[#131C2E] border-white/10 text-slate-300'
+                          : 'bg-white border-[#D1D6DB] text-[#4E5968]'
+                      }`}
+                      title="미등록 번호 문자 링크가 비활성화되는 아이폰 고객을 위한 답장 안내 1줄 추가"
+                    >
+                      {includeIphoneTip ? '🍎 아이폰 링크안내 포함됨' : '+ 아이폰 링크안내 1줄'}
+                    </button>
+                  )}
+                  <span className="tabular-nums">{previewText.length}자</span>
+                </div>
               </div>
               <pre className="whitespace-pre-wrap break-all font-sans text-xs leading-relaxed max-h-28 overflow-y-auto">
                 {previewText}
@@ -1279,66 +1467,103 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
 
           {/* 하단 발송 실행 버튼 */}
           {channelTab === 'sms' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                onClick={handleOpenNativeSmsApp}
-                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-              >
-                <Send className="w-4 h-4 shrink-0" />
-                <span>{isGenerating ? '링크 갱신 중...' : '휴대폰 문자앱 바로 열기'}</span>
-              </button>
+            <div className="space-y-2">
+              {hasActiveCard && (
+                <button
+                  type="button"
+                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                  onClick={handleShareCardAndMessageTogether}
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45 shadow-xs"
+                >
+                  <Share2 className="w-4 h-4 shrink-0" />
+                  <span>
+                    {isGenerating
+                      ? '링크 갱신 중...'
+                      : '🪪 명함사진 + 문자 함께 보내기 (MMS·카톡)'}
+                  </span>
+                </button>
+              )}
 
-              <button
-                type="button"
-                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                onClick={() => handleCopy('sms')}
-                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-              >
-                {copiedType === 'sms' ? (
-                  <>
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>문자 안내문+링크 복사됨</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 shrink-0" />
-                    <span>{isGenerating ? '링크 갱신 중...' : '문자 안내문 + 링크 복사'}</span>
-                  </>
-                )}
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                  onClick={() => void handleOpenNativeSmsApp()}
+                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+                >
+                  <Send className="w-4 h-4 shrink-0" />
+                  <span>
+                    {isGenerating
+                      ? '링크 갱신 중...'
+                      : hasActiveCard
+                      ? '문자앱 바로 열기 (명함 복사)'
+                      : '문자앱 바로 열기 (폰·PC)'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                  onClick={() => handleCopy('sms')}
+                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+                >
+                  {copiedType === 'sms' ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>문자 안내문+링크 복사됨</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 shrink-0" />
+                      <span>{isGenerating ? '링크 갱신 중...' : '문자 안내문 + 링크 복사'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                onClick={() => handleCopy('kakao')}
-                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-              >
-                {copiedType === 'kakao' ? (
-                  <>
-                    <Check className="w-4 h-4 text-[#1B64DA] shrink-0" />
-                    <span>카톡 안내문+링크 복사됨</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4 shrink-0" />
-                    <span>{isGenerating ? '링크 갱신 중...' : '카톡 안내문 + 링크 복사'}</span>
-                  </>
-                )}
-              </button>
+            <div className="space-y-2">
+              {hasActiveCard && (
+                <button
+                  type="button"
+                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                  onClick={handleShareCardAndMessageTogether}
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+                >
+                  <Share2 className="w-4 h-4 shrink-0" />
+                  <span>🪪 명함사진 + 카톡 안내문 함께 공유</span>
+                </button>
+              )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                  onClick={() => handleCopy('kakao')}
+                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+                >
+                  {copiedType === 'kakao' ? (
+                    <>
+                      <Check className="w-4 h-4 text-[#1B64DA] shrink-0" />
+                      <span>카톡 안내문+링크 복사됨</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 shrink-0" />
+                      <span>{isGenerating ? '링크 갱신 중...' : '카톡 안내문 + 링크 복사'}</span>
+                    </>
+                  )}
+                </button>
 
-              <button
-                type="button"
-                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                onClick={handlePreviewCustomerScreen}
-                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45"
-              >
-                <ExternalLink className="w-4 h-4 shrink-0" />
-                <span>고객 화면 새 탭 미리보기</span>
-              </button>
+                <button
+                  type="button"
+                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                  onClick={handlePreviewCustomerScreen}
+                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45"
+                >
+                  <ExternalLink className="w-4 h-4 shrink-0" />
+                  <span>고객 화면 새 탭 미리보기</span>
+                </button>
+              </div>
             </div>
           )}
 

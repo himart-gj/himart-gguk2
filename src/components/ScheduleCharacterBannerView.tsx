@@ -898,6 +898,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
 
               <button
                 type="button"
+                className="scb-inc-chip"
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenIncentiveTab?.('sales');
