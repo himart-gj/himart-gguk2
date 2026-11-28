@@ -32,6 +32,14 @@ import { formatShortManwon } from '../crm/utils/date';
 import { SpringNumberFlow } from './SpringNumberFlow';
 
 import { ScheduleCharacterBannerView } from './ScheduleCharacterBannerView';
+import {
+  getHideIncentiveAmountsPref,
+  getHomeBannerExpandedPref,
+  hydrateUiVisibilityPrefsFromIdb,
+  setHideIncentiveAmountsPref,
+  setHomeBannerExpandedPref,
+  UI_VISIBILITY_UPDATED_EVENT,
+} from '../utils/uiVisibilityPrefs';
 import { GiftCardRewardDetailModal } from '../crm/components/GiftCardRewardDetailModal';
 import {
   AllCareQuarterOverridesMap,
@@ -740,44 +748,41 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
       : { background: '#F2F4F6', color: '#191F28' };
   }, [isDark, liveMood.pillTone]);
 
-  const BANNER_EXPANDED_STORAGE_KEY = 'himart_home_banner_expanded_v1';
-  const [isExpanded, setIsExpandedState] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    try {
-      const saved = localStorage.getItem(BANNER_EXPANDED_STORAGE_KEY);
-      if (saved === '0') return false;
-      if (saved === '1') return true;
-    } catch {
-      // ignore
-    }
-    return true;
-  });
+  const [isExpanded, setIsExpandedState] = useState<boolean>(() =>
+    getHomeBannerExpandedPref()
+  );
 
   const setIsExpanded = (updater: boolean | ((prev: boolean) => boolean)) => {
     setIsExpandedState((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      try {
-        localStorage.setItem(BANNER_EXPANDED_STORAGE_KEY, next ? '1' : '0');
-      } catch {
-        // ignore
-      }
+      setHomeBannerExpandedPref(next);
       return next;
     });
   };
-  const [hideAmounts, setHideAmounts] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('himart_hide_home_incentive_amounts') === '1';
-  });
+
+  const [hideAmounts, setHideAmounts] = useState<boolean>(() =>
+    getHideIncentiveAmountsPref()
+  );
+
+  useEffect(() => {
+    void hydrateUiVisibilityPrefsFromIdb();
+    const syncVisibility = () => {
+      setIsExpandedState(getHomeBannerExpandedPref());
+      setHideAmounts(getHideIncentiveAmountsPref());
+    };
+    window.addEventListener(UI_VISIBILITY_UPDATED_EVENT, syncVisibility);
+    window.addEventListener('storage', syncVisibility);
+    return () => {
+      window.removeEventListener(UI_VISIBILITY_UPDATED_EVENT, syncVisibility);
+      window.removeEventListener('storage', syncVisibility);
+    };
+  }, []);
 
   const toggleHideAmounts = (e: React.MouseEvent) => {
     e.stopPropagation();
     setHideAmounts((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem('himart_hide_home_incentive_amounts', next ? '1' : '0');
-      } catch {
-        // ignore
-      }
+      setHideIncentiveAmountsPref(next);
       return next;
     });
   };

@@ -59,6 +59,10 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
     userName,
     userRole,
   } = ctx;
+
+  const isFriendStripFullyHidden = Boolean(hideScheduleSection && hideAmounts);
+  const showExpandBody = Boolean(isExpanded && !isFriendStripFullyHidden);
+
   return (
     <div
       className={`scb-root ${isDark ? 'is-dark' : 'is-light'}`}
@@ -633,7 +637,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
       `}</style>
 
       <div
-        className={`scb-header-bar ${!isExpanded ? 'is-collapsed' : ''}`}
+        className={`scb-header-bar ${!showExpandBody ? 'is-collapsed' : ''}`}
         onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
       >
         <div className="scb-header-left">
@@ -644,11 +648,11 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
               : '오늘의 근무 · 실적 브리핑'}
           </span>
           {hideScheduleSection ? (
-            !isExpanded && (
+            (!isExpanded || hideAmounts) && (
               <span className="scb-header-sub">
                 {hideAmounts
-                  ? `· ${currentMonthNum}월 실적 요약 접힘`
-                  : `· ${currentMonthNum}월 수당 +${monthlyIncentiveSummary.grandTotalIncentive.toLocaleString()}원 · 구독 ${monthlyIncentiveSummary.grossSubscriptionCount}건`}
+                  ? `· 수당표 숨김중`
+                  : `· ${currentMonthNum}월 실적 요약 접힘`}
               </span>
             )
           ) : (
@@ -661,16 +665,20 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
         </div>
 
         <div className="scb-compact-actions">
-          {isExpanded && (
-            <button
-              type="button"
-              className="scb-ghost-btn"
-              onClick={toggleHideAmounts}
-              title="고객 동석 상담 시 수당 금액 숨김/표시"
-            >
-              {hideAmounts ? '수당 표시' : '수당 가림'}
-            </button>
-          )}
+          <button
+            type="button"
+            className="scb-ghost-btn"
+            onClick={toggleHideAmounts}
+            title="고객 동석 상담 시 수당표 숨김/표시 (앱 재실행 후에도 유지)"
+          >
+            {hideScheduleSection
+              ? hideAmounts
+                ? '수당표 표시'
+                : '수당표 숨김'
+              : hideAmounts
+              ? '수당 표시'
+              : '수당 가림'}
+          </button>
           {!hideScheduleSection && (
             <button
               type="button"
@@ -683,20 +691,22 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
               전체 휴무표
             </button>
           )}
-          <button
-            type="button"
-            className="scb-ghost-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsExpanded((prev) => !prev);
-            }}
-          >
-            {isExpanded ? '접기 ▴' : '펼치기 ▾'}
-          </button>
+          {!isFriendStripFullyHidden && (
+            <button
+              type="button"
+              className="scb-ghost-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded((prev: boolean) => !prev);
+              }}
+            >
+              {isExpanded ? '접기 ▴' : '펼치기 ▾'}
+            </button>
+          )}
         </div>
       </div>
 
-      {isExpanded && (
+      {showExpandBody && (
         <div className="scb-expand-body">
           {!hideScheduleSection && (
             <div className="scb-top-split">
@@ -723,7 +733,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
                     className="scb-user-pill"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setIsPickerOpen((prev) => !prev);
+                      setIsPickerOpen((prev: boolean) => !prev);
                     }}
                     title="내 이름 빠른 선택·변경"
                   >
@@ -767,7 +777,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
               role="region"
               aria-label="직원 이름 빠른 선택"
             >
-              {dynamicRoster.map((staff) => {
+              {dynamicRoster.map((staff: any) => {
                 const active = staff.name === userName;
                 return (
                   <button
@@ -787,6 +797,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
             </div>
           )}
 
+          {!isFriendStripFullyHidden && (
           <div
             className="scb-incentive-strip"
             onClick={(e) => {
@@ -887,7 +898,6 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
 
               <button
                 type="button"
-                className="scb-inc-chip"
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenIncentiveTab?.('sales');
@@ -899,10 +909,11 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
               </button>
             </div>
           </div>
+          )}
 
           {!hideScheduleSection && (
             <div className="scb-week-grid" onClick={onOpenScheduleModal}>
-              {trackDays.map((item) => {
+              {trackDays.map((item: any) => {
                 const stateText = !item.isRegistered
                   ? '미등록'
                   : item.code === 'O'
