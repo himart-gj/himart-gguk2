@@ -144,7 +144,9 @@ export const CrmSalesAndIncentivePanel: React.FC<
   const handleToggleIncentiveBarHidden = () => {
     const next = !isIncentiveBarHidden;
     setIsIncentiveBarHidden(next);
+    setHideIncentiveAmounts(next);
     setCrmIncentiveBarHiddenPref(next);
+    setHideIncentiveAmountsPref(next);
     if (next) {
       setIsExpanded(false);
     }
@@ -611,7 +613,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
                 <button
                   type="button"
                   onClick={handleToggleHideIncentiveAmounts}
-                  title="수당 금액 숫자 가림/표시 (홈 화면과 연동 · 재실행 후 유지)"
+                  title="수치 블러 전환 (홈 화면과 연동 · 재실행 후 유지)"
                   className={`inline-flex items-center gap-1 px-2 py-1 rounded-xl border text-[11.5px] font-extrabold shrink-0 cursor-pointer schedule-tactile ${subSurfaceCls}`}
                 >
                   {hideIncentiveAmounts ? (
@@ -619,7 +621,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
                   ) : (
                     <EyeOff className="w-3.5 h-3.5 opacity-75" />
                   )}
-                  <span>{hideIncentiveAmounts ? '금액표시' : '금액가림'}</span>
+                  <span>{hideIncentiveAmounts ? '숫자 표시' : '숫자 블러'}</span>
                 </button>
               </>
             )}
@@ -627,24 +629,24 @@ export const CrmSalesAndIncentivePanel: React.FC<
             <button
               type="button"
               onClick={handleToggleIncentiveBarHidden}
-              title="상단 수당·정산 요약표 전체 숨김/표시 (앱을 껐다 켜도 유지됩니다)"
+              title="고객 동석 상담용 클린 화면 전환 (앱을 껐다 켜도 유지됩니다)"
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11.5px] font-extrabold shrink-0 cursor-pointer schedule-tactile ${
                 isIncentiveBarHidden
                   ? isDark
-                    ? 'bg-slate-800 border-slate-700 text-slate-200'
-                    : 'bg-[#191F28] border-[#191F28] text-white'
+                    ? 'bg-blue-500/20 border-blue-400/40 text-blue-200'
+                    : 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1B64DA]'
                   : subSurfaceCls
               }`}
             >
               {isIncentiveBarHidden ? (
                 <>
                   <Eye className="w-3.5 h-3.5" />
-                  <span>수당표 표시</span>
+                  <span>상담 모드 ON</span>
                 </>
               ) : (
                 <>
                   <EyeOff className="w-3.5 h-3.5 opacity-75" />
-                  <span>수당표 숨김</span>
+                  <span>상담 모드</span>
                 </>
               )}
             </button>

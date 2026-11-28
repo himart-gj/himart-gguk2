@@ -36,6 +36,7 @@ import {
   getHideIncentiveAmountsPref,
   getHomeBannerExpandedPref,
   hydrateUiVisibilityPrefsFromIdb,
+  setCrmIncentiveBarHiddenPref,
   setHideIncentiveAmountsPref,
   setHomeBannerExpandedPref,
   UI_VISIBILITY_UPDATED_EVENT,
@@ -778,11 +779,12 @@ export const ScheduleCharacterBanner: React.FC<ScheduleCharacterBannerProps> = (
     };
   }, []);
 
-  const toggleHideAmounts = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleHideAmounts = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setHideAmounts((prev) => {
       const next = !prev;
       setHideIncentiveAmountsPref(next);
+      setCrmIncentiveBarHiddenPref(next);
       return next;
     });
   };
