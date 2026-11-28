@@ -998,7 +998,7 @@ export function PopPrinterApp({ onBackToHome, backLabel }: PopPrinterAppProps) {
                       {quad.map((product) => (
                         <div
                           key={product.id}
-                          className="w-[148.5mm] h-[105mm] relative overflow-hidden box-border"
+                          className="w-[148.5mm] h-[105mm] p-[6mm] flex items-center justify-center relative overflow-hidden box-border bg-white"
                         >
                           <PopCard
                             product={product}

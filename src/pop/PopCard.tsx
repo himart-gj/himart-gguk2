@@ -14,7 +14,9 @@ import { inferCategoryFromModelCode } from '../utils/aiImageParser';
 const A3_PORTRAIT_BROWSER_PRINT_SCALE = 1.9;
 const BASE_CARD_WIDTH_PX = 561.26; // 148.5mm @ 96 DPI
 const BASE_CARD_HEIGHT_PX = 793.7; // 210.0mm @ 96 DPI
-const BASE_HALF_HEIGHT_PX = 396.85; // 105.0mm @ 96 DPI (A5 세로 반절 · A4 4분할)
+// A4 4분할(148.5×105mm 칸) 내부 상하좌우 6mm 균등 안전 재단 여백 반영 실물 규격: 136.5mm × 93mm
+const BASE_UNDER_WIDTH_PX = 515.91; // 136.5mm @ 96 DPI
+const BASE_UNDER_HEIGHT_PX = 351.5; // 93.0mm @ 96 DPI
 
 interface PopCardProps {
   product: ProductData;
@@ -126,13 +128,15 @@ function getAutoPreedPlan(period: number, cardPerceivedPrice: number): PreedPlan
  */
 function getUnderPopPreedAllocation(
   period: number,
+  baseMonthlyFee: number,
   afterCardMonthly: number,
   scope: UnderPreedScope = 'optimal'
 ): OptimalUnderPreedInfo {
   const safePeriod = Number.isFinite(period) && period > 0 ? period : 60;
-  if (afterCardMonthly <= 0) {
+  if (baseMonthlyFee <= 0) {
     return { units: 0, monthlyDiscount: 0, summaryLabel: '결합없음' };
   }
+  const targetMonthly = afterCardMonthly > 0 ? afterCardMonthly : baseMonthlyFee;
 
   const s72 =
     safePeriod === 36
@@ -154,10 +158,10 @@ function getUnderPopPreedAllocation(
       : Math.round(1080000 / safePeriod);
 
   if (scope === 'single') {
-    if (afterCardMonthly >= s108) {
+    if (targetMonthly >= s108) {
       return { units: 1, monthlyDiscount: s108, summaryLabel: '플러스108×1' };
     }
-    if (afterCardMonthly >= s90) {
+    if (targetMonthly >= s90) {
       return { units: 1, monthlyDiscount: s90, summaryLabel: '플러스90×1' };
     }
     return { units: 1, monthlyDiscount: s72, summaryLabel: '플러스72×1' };
@@ -181,7 +185,7 @@ function getUnderPopPreedAllocation(
 
         const sup = c72 * s72 + c90 * s90 + c108 * s108;
         const dues = c72 * 40000 + c90 * 50000 + c108 * 60000;
-        const rem = afterCardMonthly - sup;
+        const rem = targetMonthly - sup;
 
         let tier = 4;
         let dist = Math.abs(rem);
@@ -428,7 +432,8 @@ export default function PopCard({
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const availableWidth = entry.contentRect.width;
-        const targetWidth = BASE_CARD_WIDTH_PX;
+        const targetWidth =
+          paperSize === 'a4-4up' ? BASE_UNDER_WIDTH_PX : BASE_CARD_WIDTH_PX;
         if (availableWidth < targetWidth) {
           setScale(availableWidth / targetWidth);
         } else if (paperSize === 'a3-portrait') {
@@ -464,32 +469,42 @@ export default function PopCard({
       : product.monthlyFee * safePeriod;
   const totalBenefitPrice = perceivedPrice * safePeriod;
 
-  // -------------------- [신규] 전자가격표 하단 부착용 A5 반절 (A4 4분할) 모드 --------------------
+  // -------------------- [신규] 전자가격표 하단 부착용 A5 반절 (A4 4분할 · 6mm 균등 재단 여백) 모드 --------------------
   if (isHalfA5UnderMode) {
     const underPreed = getUnderPopPreedAllocation(
       safePeriod,
+      product.monthlyFee,
       perceivedPrice,
       underPreedScope
     );
-    const underFinalMonthly = Math.max(
+    // 메인 체감가: 카드 사용실적 없이 프리드 혜택만 적용한 월 체감가
+    const noCardMainMonthly = Math.max(
       0,
-      perceivedPrice - underPreed.monthlyDiscount
+      product.monthlyFee - underPreed.monthlyDiscount
     );
-    const underFinalTotal = underFinalMonthly * safePeriod;
-    const netStr = formatNumber(underFinalMonthly);
+    const noCardMainTotal = noCardMainMonthly * safePeriod;
 
-    // 메인 체감가 숫자를 카드 전체에서 압도적으로 크게 확대 (자릿수별 무충돌 최대치)
+    // 하단 소형 병기: 카드 사용실적 추가 시 월 체감가
+    const withCardSubMonthly = Math.max(
+      0,
+      noCardMainMonthly - activeCardBenefit.discount
+    );
+    const withCardSubTotal = withCardSubMonthly * safePeriod;
+
+    const netStr = formatNumber(noCardMainMonthly);
+
+    // 메인 체감가 글씨 크기: 가로 충돌 0px 보장 + 세로 1.20배 포스터형 장체(Tall Display)로 체감 크기 극대화
     const bigNumPx =
       netStr.length <= 2
-        ? 154
+        ? 132
         : netStr.length <= 3
-        ? 134
+        ? 120
         : netStr.length <= 5
-        ? 106
+        ? 104
         : netStr.length === 6
-        ? 88
-        : 72;
-    const unitSidePx = netStr.length <= 3 ? 34 : netStr.length <= 5 ? 28 : 24;
+        ? 91
+        : 76;
+    const unitSidePx = netStr.length <= 3 ? 27 : netStr.length <= 5 ? 23 : 20.5;
 
     const cleanModelText = (product.modelName || '').trim() || '구독모델';
     const inferredCategory = inferCategoryFromModelCode(cleanModelText, product.category);
@@ -498,11 +513,11 @@ export default function PopCard({
         ? inferredCategory
         : (product.category || '').trim();
     const topModelFontPx =
-      cleanModelText.length > 20 ? 9.2 : cleanModelText.length > 15 ? 9.8 : 10.5;
+      cleanModelText.length > 20 ? 8.8 : cleanModelText.length > 15 ? 9.4 : 10;
 
     const effectiveHalfScale = isPrintSheet ? 1 : scale;
-    const halfStageW = BASE_CARD_WIDTH_PX * effectiveHalfScale;
-    const halfStageH = BASE_HALF_HEIGHT_PX * effectiveHalfScale;
+    const halfStageW = BASE_UNDER_WIDTH_PX * effectiveHalfScale;
+    const halfStageH = BASE_UNDER_HEIGHT_PX * effectiveHalfScale;
 
     return (
       <div
@@ -515,15 +530,15 @@ export default function PopCard({
       >
         <div
           className={
-            isPrintSheet ? 'relative shrink-0' : 'relative print:!w-full print:!h-full'
+            isPrintSheet ? 'relative shrink-0' : 'relative print:!w-[136.5mm] print:!h-[93mm]'
           }
           style={{ width: `${halfStageW}px`, height: `${halfStageH}px` }}
         >
           <div
             className={
               isPrintSheet
-                ? 'pop-card-under-print w-[148.5mm] h-[105mm] flex flex-col overflow-hidden bg-[#B80012] select-none shrink-0 origin-top-left absolute top-0 left-0 m-0'
-                : 'pop-card-under-print w-[148.5mm] h-[105mm] rounded-xl shadow-lg flex flex-col overflow-hidden bg-[#B80012] select-none shrink-0 origin-top-left absolute top-0 left-0 print:!relative print:!transform-none print:w-full print:h-full print:rounded-none print:shadow-none print:m-0'
+                ? 'pop-card-under-print w-[136.5mm] h-[93mm] border border-slate-300 flex flex-col overflow-hidden bg-[#B80012] select-none shrink-0 origin-top-left absolute top-0 left-0 m-0 box-border'
+                : 'pop-card-under-print w-[136.5mm] h-[93mm] rounded-xl shadow-lg border border-slate-300 flex flex-col overflow-hidden bg-[#B80012] select-none shrink-0 origin-top-left absolute top-0 left-0 box-border print:!relative print:!transform-none print:rounded-none print:shadow-none print:m-0'
             }
             style={
               effectiveHalfScale === 1
@@ -531,25 +546,25 @@ export default function PopCard({
                 : { transform: `scale(${effectiveHalfScale})` }
             }
           >
-            {/* [1단] 상단 슬림 블랙 도킹 바 (68px): 위 구독가 직결 문구 + 우측 품목명·모델명·계약금(소형) */}
+            {/* [1단] 상단 블랙 바 (56px): '카드 사용실적 없이도' + 우측 품목명·모델명·계약금 */}
             <div
-              className="h-[68px] px-[19px] flex items-center justify-between border-b border-white/15 shrink-0"
+              className="h-[56px] px-[16px] flex items-center justify-between border-b border-white/15 shrink-0"
               style={{
                 background: 'linear-gradient(180deg, #0D1017 0%, #161B26 100%)',
               }}
             >
               <div className="flex items-center gap-[7px] min-w-0">
-                <div className="w-[19px] h-[19px] bg-[#FFE600] text-[#0D1017] flex items-center justify-center text-[11px] font-black shrink-0">
-                  ▲
+                <div className="bg-[#FFE600] text-[#0D1017] px-[6.5px] py-[3px] text-[10px] font-black tracking-tight leading-none whitespace-nowrap shrink-0">
+                  무실적 혜택
                 </div>
-                <div className="text-[17px] font-black text-white tracking-tight whitespace-nowrap leading-none">
-                  위 구독가에 <span className="text-[#FFE600]">프리드 혜택</span> 추가 시
+                <div className="text-[16.5px] font-black text-white tracking-tight whitespace-nowrap leading-none">
+                  <span className="text-[#FFE600]">카드 사용실적</span> 없이도
                 </div>
               </div>
 
-              <div className="flex flex-col items-end justify-center text-right shrink-0 ml-2 tabular-nums gap-[1px]">
+              <div className="flex flex-col items-end justify-center text-right shrink-0 ml-2 tabular-nums gap-[0.5px]">
                 {displayCategory && (
-                  <div className="text-[9.8px] font-black text-[#FFE600] tracking-tight whitespace-nowrap leading-tight max-w-[195px] truncate">
+                  <div className="text-[9.2px] font-black text-[#FFE600] tracking-tight whitespace-nowrap leading-tight max-w-[180px] truncate">
                     {displayCategory}
                   </div>
                 )}
@@ -559,101 +574,115 @@ export default function PopCard({
                 >
                   {cleanModelText} · {safePeriod}개월
                 </div>
-                <div className="text-[9.2px] font-bold text-slate-400 tracking-tight whitespace-nowrap leading-tight">
+                <div className="text-[8.6px] font-bold text-slate-400 tracking-tight whitespace-nowrap leading-tight">
                   계약금 {formatNumber(calculatedDownPayment)}원
                 </div>
               </div>
             </div>
 
-            {/* [2단] 확장된 메인 크림슨 스테이지: 좌측 가전지원금(xx개월) 2단 블록 / 우측 초대형 메인 체감가 */}
+            {/* [2단] 메인 크림슨 스테이지: 좌측 컴팩트 가전지원금 / 우측 초대형 메인 체감가 + 하단 카드실적 추가 소형 바 */}
             <div
-              className="flex-1 px-[22px] flex items-center justify-between relative overflow-hidden"
+              className="flex-1 px-[14px] flex items-center justify-between gap-[10px] relative overflow-hidden"
               style={{
                 background:
                   'repeating-linear-gradient(-45deg, rgba(255,255,255,0.042) 0px, rgba(255,255,255,0.042) 2px, transparent 2px, transparent 8px), radial-gradient(circle at 72% 42%, #F5001E 0%, #CA0015 58%, #92000D 100%)',
               }}
             >
-              <div className="flex flex-col items-start justify-center -translate-y-[3px] z-10 shrink-0">
+              <div className="flex flex-col items-start justify-center -translate-y-[4px] z-10 shrink-0">
                 <div
-                  className="bg-[#FFE600] text-[#0E1117] text-[13.5px] font-black px-[10px] py-[3.5px] tracking-tight whitespace-nowrap tabular-nums"
+                  className="bg-[#FFE600] text-[#0E1117] text-[10.8px] font-black px-[7.5px] py-[2.5px] tracking-tight whitespace-nowrap tabular-nums"
                   style={{ boxShadow: '0 4px 10px rgba(60,0,6,0.34)' }}
                 >
                   가전지원금({safePeriod}개월)
                 </div>
                 <div
-                  className="mt-[8px] text-white flex items-baseline whitespace-nowrap tabular-nums"
+                  className="mt-[6px] text-white flex items-baseline whitespace-nowrap tabular-nums"
                   style={{ textShadow: '0 4px 10px rgba(55,0,6,0.58)' }}
                 >
-                  <span className="text-[31px] font-black leading-[0.94] tracking-tight">
+                  <span className="text-[21.5px] font-black leading-[0.94] tracking-tight">
                     -{formatNumber(underPreed.monthlyDiscount)}
                   </span>
-                  <span className="text-[15.5px] font-black ml-[3px]">원/월</span>
+                  <span className="text-[11px] font-black ml-[2px]">원/월</span>
                 </div>
               </div>
 
-              <div className="flex flex-col items-end justify-center z-10 min-w-0">
+              <div className="flex flex-col items-end justify-center z-10 shrink-0">
                 <div
-                  className="text-[15px] font-black text-[#FFE600] tracking-tight mb-[3px] whitespace-nowrap leading-none"
+                  className="text-[12.5px] font-black text-[#FFE600] tracking-tight mb-[9px] whitespace-nowrap leading-none"
                   style={{ textShadow: '0 2px 6px rgba(55,0,6,0.5)' }}
                 >
-                  최종 결합 체감가
+                  프리드 결합 월 체감가
                 </div>
                 <div
                   className="flex items-baseline text-white whitespace-nowrap tabular-nums"
-                  style={{ textShadow: '0 8px 20px rgba(48,0,6,0.82)' }}
+                  style={{ textShadow: '0 8px 20px rgba(48,0,6,0.84)' }}
                 >
                   <span
-                    className="font-black mr-[5px] leading-none"
+                    className="font-black mr-[4px] leading-none whitespace-nowrap"
                     style={{ fontSize: `${unitSidePx}px` }}
                   >
                     월
                   </span>
                   <span
-                    className="font-black leading-[0.8] tracking-[-0.06em]"
-                    style={{ fontSize: `${bigNumPx}px` }}
+                    className="inline-block font-black leading-[0.82] tracking-[-0.06em] whitespace-nowrap"
+                    style={{
+                      fontSize: `${bigNumPx}px`,
+                      transform: 'scaleY(1.20)',
+                      transformOrigin: 'center 78%',
+                    }}
                   >
                     {netStr}
                   </span>
                   <span
-                    className="font-black ml-[3px] leading-none"
+                    className="font-black ml-[2.5px] leading-none whitespace-nowrap"
                     style={{ fontSize: `${unitSidePx + 1}px` }}
                   >
                     원~
                   </span>
                 </div>
+
+                <div className="mt-[4px] text-[8.8px] font-extrabold text-rose-100/90 tracking-tight whitespace-nowrap tabular-nums leading-none">
+                  {safePeriod}개월 최종혜택금액 {formatNumber(noCardMainTotal)}원
+                </div>
+
                 <div
-                  className="mt-[7px] px-[8px] py-[2px] text-[10.4px] font-extrabold text-amber-50 tracking-tight whitespace-nowrap tabular-nums"
-                  style={{
-                    backgroundColor: 'rgba(13, 16, 23, 0.42)',
-                    border: '1px solid rgba(255, 230, 0, 0.48)',
-                  }}
+                  className="mt-[4px] bg-[#0D1017] border-[1.5px] border-[#FFE600] px-[8px] py-[2.5px] flex items-baseline gap-[5px] whitespace-nowrap tabular-nums"
+                  style={{ boxShadow: '0 4px 10px rgba(45,0,5,0.48)' }}
                 >
-                  {safePeriod}개월 최종혜택금액{' '}
-                  <strong className="text-[#FFE600] font-black">
-                    {formatNumber(underFinalTotal)}원
-                  </strong>
+                  <span className="text-[9.4px] font-extrabold text-slate-200 tracking-tight">
+                    카드 사용실적 추가 시
+                  </span>
+                  <span className="text-[12.2px] font-black text-[#FFE600] leading-none">
+                    월 {formatNumber(withCardSubMonthly)}원~
+                  </span>
+                  <span className="text-[8.2px] font-bold text-slate-400">
+                    (최종 {formatNumber(withCardSubTotal)}원)
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* [3단] 하단 슬림 화이트 요약 바 (78px · 지점명 무표기 범용 규격) */}
-            <div className="h-[78px] px-[19px] bg-white border-t-[4px] border-[#FFE600] flex flex-col justify-center gap-[4px] shrink-0">
+            {/* [3단] 하단 슬림 화이트 요약 바 (62px · 지점명 무표기 범용 규격) */}
+            <div className="h-[62px] px-[16px] bg-white border-t-[3.5px] border-[#FFE600] flex flex-col justify-center gap-[3px] shrink-0">
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-[6px] text-[15.5px] font-black tracking-tight whitespace-nowrap tabular-nums">
-                  <span className="text-[#1B64DA]">
-                    제휴카드 -{formatManwonFixedOne(activeCardBenefit.discount)}
+                <div className="flex items-center gap-[4.5px] text-[13.5px] font-black tracking-tight whitespace-nowrap tabular-nums">
+                  <span className="text-slate-800">
+                    월 {formatNumber(product.monthlyFee)}원
                   </span>
-                  <span className="text-slate-300 font-black">+</span>
+                  <span className="text-slate-400 font-black">→</span>
                   <span className="text-[#D60019]">
-                    프리드지원 -{formatShortManwon(underPreed.monthlyDiscount)}
+                    프리드 -{formatShortManwon(underPreed.monthlyDiscount)}
+                  </span>
+                  <span className="text-[#1B64DA] text-[11.5px]">
+                    (+카드추가 -{formatManwonFixedOne(activeCardBenefit.discount)})
                   </span>
                 </div>
-                <div className="bg-[#0E1117] text-[#FFE600] text-[12.5px] font-black px-[9px] py-[3px] tracking-tight whitespace-nowrap shrink-0">
+                <div className="bg-[#0E1117] text-[#FFE600] text-[11px] font-black px-[8px] py-[2.5px] tracking-tight whitespace-nowrap shrink-0">
                   만기 100% 환급형 · 직원문의
                 </div>
               </div>
-              <div className="text-[9.1px] text-slate-500 font-bold tracking-tight whitespace-nowrap">
-                ※ {safePeriod}개월 약정 · 제휴카드 혜택(전월 30만원↑ 조건 충족 시) 및 프리드라이프(별도납입 · 만기 100% 환급) 결합 기준
+              <div className="text-[8.1px] text-slate-500 font-bold tracking-tight whitespace-nowrap">
+                ※ {safePeriod}개월 약정 · 프리드라이프(별도납입 · 만기 100% 환급) 결합 기준 · 카드 추가 시 전월 30만원↑ 조건 충족 기준
               </div>
             </div>
           </div>
