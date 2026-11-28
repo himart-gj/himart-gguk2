@@ -7,6 +7,8 @@ import {
   ChevronRight,
   ChevronUp,
   Coins,
+  Eye,
+  EyeOff,
   Gift,
   Copy,
   Download,
@@ -27,6 +29,14 @@ import {
   X,
 } from 'lucide-react';
 import { CrmModelIncentiveTabSection } from './CrmModelIncentiveTabSection';
+import {
+  getCrmIncentiveBarHiddenPref,
+  getHideIncentiveAmountsPref,
+  hydrateUiVisibilityPrefsFromIdb,
+  setCrmIncentiveBarHiddenPref,
+  setHideIncentiveAmountsPref,
+  UI_VISIBILITY_UPDATED_EVENT,
+} from '../../utils/uiVisibilityPrefs';
 import { GiftCardRewardDetailModal } from './GiftCardRewardDetailModal';
 import {
   AllCareQuarterOverridesMap,
@@ -110,6 +120,41 @@ export const CrmSalesAndIncentivePanel: React.FC<
   defaultExpanded = false,
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(defaultExpanded);
+  const [isIncentiveBarHidden, setIsIncentiveBarHidden] = useState<boolean>(() =>
+    defaultExpanded ? false : getCrmIncentiveBarHiddenPref()
+  );
+  const [hideIncentiveAmounts, setHideIncentiveAmounts] = useState<boolean>(() =>
+    getHideIncentiveAmountsPref()
+  );
+
+  useEffect(() => {
+    void hydrateUiVisibilityPrefsFromIdb();
+    const syncPrefs = () => {
+      setIsIncentiveBarHidden(getCrmIncentiveBarHiddenPref());
+      setHideIncentiveAmounts(getHideIncentiveAmountsPref());
+    };
+    window.addEventListener(UI_VISIBILITY_UPDATED_EVENT, syncPrefs);
+    window.addEventListener('storage', syncPrefs);
+    return () => {
+      window.removeEventListener(UI_VISIBILITY_UPDATED_EVENT, syncPrefs);
+      window.removeEventListener('storage', syncPrefs);
+    };
+  }, []);
+
+  const handleToggleIncentiveBarHidden = () => {
+    const next = !isIncentiveBarHidden;
+    setIsIncentiveBarHidden(next);
+    setCrmIncentiveBarHiddenPref(next);
+    if (next) {
+      setIsExpanded(false);
+    }
+  };
+
+  const handleToggleHideIncentiveAmounts = () => {
+    const next = !hideIncentiveAmounts;
+    setHideIncentiveAmounts(next);
+    setHideIncentiveAmountsPref(next);
+  };
   const [incentiveBasis, setIncentiveBasis] =
     useState<IncentiveMonthBasis>('contract');
   const [salesSubView, setSalesSubView] = useState<
@@ -515,50 +560,98 @@ export const CrmSalesAndIncentivePanel: React.FC<
           </div>
 
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            <button
-              type="button"
-              onClick={() => setIsGiftCardModalOpen(true)}
-              title="클릭하여 구독·올케어 상품권 시상 상세 내역 보기"
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
-                giftCardReport.totalGiftCardAmount > 0
-                  ? isDark
-                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
-                    : 'bg-amber-50 border-amber-300 text-amber-950'
-                  : isDark
-                  ? 'bg-amber-500/10 border-amber-400/30 text-amber-200/90'
-                  : 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
-              }`}
-            >
-              <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-              <span>상품권시상</span>
-              <span className="font-mono tabular-nums text-[#D97706] dark:text-amber-300">
-                +{formatCurrency(giftCardReport.totalGiftCardAmount)}원
-              </span>
-            </button>
+            {!isIncentiveBarHidden && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsGiftCardModalOpen(true)}
+                  title="클릭하여 구독·올케어 상품권 시상 상세 내역 보기"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
+                    giftCardReport.totalGiftCardAmount > 0
+                      ? isDark
+                        ? 'bg-amber-500/20 border-amber-400/50 text-amber-200'
+                        : 'bg-amber-50 border-amber-300 text-amber-950'
+                      : isDark
+                      ? 'bg-amber-500/10 border-amber-400/30 text-amber-200/90'
+                      : 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
+                  }`}
+                >
+                  <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>상품권시상</span>
+                  <span className="font-mono tabular-nums text-[#D97706] dark:text-amber-300">
+                    {hideIncentiveAmounts
+                      ? '••••원'
+                      : `+${formatCurrency(giftCardReport.totalGiftCardAmount)}원`}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded((v) => !v)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
+                    isDark
+                      ? 'bg-blue-500/15 border-blue-400/35 text-blue-200'
+                      : 'bg-[#EFF6FF] border-[#BFDBFE] text-[#191F28]'
+                  }`}
+                >
+                  <Coins className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
+                  <span>수당</span>
+                  <span className="font-mono tabular-nums text-[#1B64DA] dark:text-blue-300">
+                    {hideIncentiveAmounts
+                      ? '••••원'
+                      : `+${formatCurrency(report.grandTotalIncentive)}원`}
+                  </span>
+                  {isExpanded ? (
+                    <ChevronUp className="w-3.5 h-3.5 opacity-75" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 opacity-75" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleHideIncentiveAmounts}
+                  title="수당 금액 숫자 가림/표시 (홈 화면과 연동 · 재실행 후 유지)"
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-xl border text-[11.5px] font-extrabold shrink-0 cursor-pointer schedule-tactile ${subSurfaceCls}`}
+                >
+                  {hideIncentiveAmounts ? (
+                    <Eye className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400" />
+                  ) : (
+                    <EyeOff className="w-3.5 h-3.5 opacity-75" />
+                  )}
+                  <span>{hideIncentiveAmounts ? '금액표시' : '금액가림'}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
-              onClick={() => setIsExpanded((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-black shrink-0 cursor-pointer schedule-tactile ${
-                isDark
-                  ? 'bg-blue-500/15 border-blue-400/35 text-blue-200'
-                  : 'bg-[#EFF6FF] border-[#BFDBFE] text-[#191F28]'
+              onClick={handleToggleIncentiveBarHidden}
+              title="상단 수당·정산 요약표 전체 숨김/표시 (앱을 껐다 켜도 유지됩니다)"
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border text-[11.5px] font-extrabold shrink-0 cursor-pointer schedule-tactile ${
+                isIncentiveBarHidden
+                  ? isDark
+                    ? 'bg-slate-800 border-slate-700 text-slate-200'
+                    : 'bg-[#191F28] border-[#191F28] text-white'
+                  : subSurfaceCls
               }`}
             >
-              <Coins className="w-3.5 h-3.5 text-[#1B64DA] dark:text-blue-400 shrink-0" />
-              <span>수당</span>
-              <span className="font-mono tabular-nums text-[#1B64DA] dark:text-blue-300">
-                +{formatCurrency(report.grandTotalIncentive)}원
-              </span>
-              {isExpanded ? (
-                <ChevronUp className="w-3.5 h-3.5 opacity-75" />
+              {isIncentiveBarHidden ? (
+                <>
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>수당표 표시</span>
+                </>
               ) : (
-                <ChevronDown className="w-3.5 h-3.5 opacity-75" />
+                <>
+                  <EyeOff className="w-3.5 h-3.5 opacity-75" />
+                  <span>수당표 숨김</span>
+                </>
               )}
             </button>
           </div>
         </div>
 
+        {!isIncentiveBarHidden && (
         <div className="grid grid-cols-1 min-[380px]:grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-1.5">
           <button
             type="button"
@@ -624,7 +717,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
           >
             <span className="text-[11.5px] font-extrabold shrink-0">프리드</span>
             <span className="font-black font-mono tabular-nums text-[#1B64DA] dark:text-blue-400 truncate">
-              +{formatShortManwon(report.freedSummary.totalIncentive)}
+              {hideIncentiveAmounts ? '••••' : `+${formatShortManwon(report.freedSummary.totalIncentive)}`}
               <span className={`ml-0.5 text-[11.5px] font-normal ${mutedCls}`}>
                 ({report.freedSummary.totalCount})
               </span>
@@ -645,7 +738,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
           >
             <span className="text-[11.5px] font-extrabold shrink-0">모델수당</span>
             <span className="font-black font-mono tabular-nums text-[#1B64DA] dark:text-blue-400 truncate">
-              +{formatShortManwon(report.modelIncentiveTotal)}
+              {hideIncentiveAmounts ? '••••' : `+${formatShortManwon(report.modelIncentiveTotal)}`}
               <span className={`ml-0.5 text-[11.5px] font-normal ${mutedCls}`}>
                 ({report.matchedModelUnitCount > 0
                   ? `${report.matchedModelUnitCount}대`
@@ -772,6 +865,7 @@ export const CrmSalesAndIncentivePanel: React.FC<
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {isExpanded && (
