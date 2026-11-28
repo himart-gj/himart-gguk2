@@ -206,18 +206,16 @@ export const SMSModal: React.FC<SMSModalProps> = ({
       maxWidthClass="max-w-lg"
       bodyClassName="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1"
       footer={
-        <div className="space-y-2">
-          {hasActiveCard && (
-            <button
-              type="button"
-              onClick={handleDirectShareWithBusinessCard}
-              className="w-full flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-xs sm:text-sm font-extrabold bg-[#191F28] hover:bg-slate-800 dark:bg-[#60A5FA] dark:hover:bg-blue-300 text-white dark:text-[#0B1120] shadow-xs transition cursor-pointer"
-            >
-              <Share2 className="w-4 h-4 shrink-0" />
-              <span>🪪 명함파일+문자 자동첨부 발송 (MMS·카톡 추천)</span>
-            </button>
-          )}
-
+        hasActiveCard ? (
+          <button
+            type="button"
+            onClick={handleDirectShareWithBusinessCard}
+            className="w-full min-h-[46px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs sm:text-sm font-black bg-[#1B64DA] hover:bg-[#1552B5] text-white shadow-xs transition cursor-pointer"
+          >
+            <Share2 className="w-4 h-4 shrink-0" />
+            <span>🪪 명함사진 + 문자 함께 보내기</span>
+          </button>
+        ) : (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
             <button
               type="button"
@@ -247,15 +245,11 @@ export const SMSModal: React.FC<SMSModalProps> = ({
               className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-extrabold bg-[#E60012] hover:bg-[#C8000F] text-white shadow-xs transition cursor-pointer"
             >
               <Smartphone className="w-4 h-4" />
-              <span>
-                {hasActiveCard
-                  ? '번호자동 문자앱 (명함복사)'
-                  : '휴대폰·PC 문자앱 열기'}
-              </span>
+              <span>휴대폰·PC 문자앱 열기</span>
               <Send className="w-3.5 h-3.5 ml-0.5" />
             </button>
           </div>
-        </div>
+        )
       }
     >
       <input
@@ -289,7 +283,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
             </div>
             <p className="text-[11.5px] text-[#4E5968] dark:text-slate-300 font-semibold leading-snug mt-0.5">
               {cardDataUri
-                ? '[명함파일+문자 자동첨부] 터치 시 사진+문구가 함께 첨부됩니다.'
+                ? '하단 파란색 [명함사진 + 문자 함께 보내기] 터치 시 사진과 문구가 함께 전송됩니다.'
                 : '본인 명함을 1회 등록해 두면 문자 발송 시 계속 함께 보낼 수 있습니다.'}
             </p>
           </div>

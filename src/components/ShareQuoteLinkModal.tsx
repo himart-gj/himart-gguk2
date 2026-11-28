@@ -909,7 +909,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
       customerPhone: custPhoneInput,
       storeName: profile.storeName,
       consultantName: profile.name,
-    }).then((res) => {
+    }).then(async (res) => {
       if (res === 'shared') {
         setCardActionNotice(
           custPhoneInput.trim()
@@ -917,7 +917,16 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             : '✅ 명함 사진 + 제안서 문구가 함께 첨부되었습니다!'
         );
       } else if (res === 'unsupported') {
-        void handleOpenNativeSmsApp();
+        if (channelTab === 'kakao') {
+          await safeCopyText(bodyText);
+          setCopiedType('kakao');
+          setTimeout(() => setCopiedType(null), 3000);
+          setCardActionNotice(
+            '✅ 카톡 안내문이 복사되었습니다! PC에서는 카카오톡 창에 붙여넣어 전송해 주세요.'
+          );
+        } else {
+          void handleOpenNativeSmsApp();
+        }
       }
     });
   };
@@ -1296,8 +1305,7 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
                   className="w-20 max-h-14 object-contain rounded-lg border border-[#BFDBFE] dark:border-white/15 bg-white shrink-0"
                 />
                 <p className="text-[11.5px] font-semibold text-[#4E5968] dark:text-slate-300 leading-snug break-keep">
-                  • 모바일: <strong>[명함사진 + 문자 함께 보내기]</strong> 터치 시 명함 파일과 문구가 한 번에 첨부됩니다.
-                  <br />• PC·노트북: <strong>[문자앱 열기(명함 복사)]</strong> 클릭 후 열린 문자창에서 <strong>Ctrl+V</strong>만 누르면 명함이 바로 첨부됩니다.
+                  하단 파란색 <strong>[명함사진 함께 보내기]</strong> 버튼을 누르면 명함 이미지와 제안서 문구가 함께 전송됩니다.
                 </p>
               </div>
             ) : (
@@ -1335,11 +1343,11 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
               <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1 text-xs leading-snug break-keep">
                 <div className="font-black text-emerald-800 dark:text-emerald-300">
-                  프리드 결합 감지됨 · 전용 링크 내 안내서 자동 동봉
+                  프리드 결합 감지됨 · 고객 뷰어 상단 안내서 팝업 제공
                 </div>
                 <p className="text-[11.5px] font-semibold text-emerald-700 dark:text-emerald-200/90 mt-0.5">
-                  고객이 링크를 열면 견적서와 함께{' '}
-                  <strong>웅진프리드라이프 {preedMeta.guideLabel}</strong>를 바로 열람할 수 있습니다.
+                  고객이 링크를 열면 최상단 담당자 라인의{' '}
+                  <strong>[프리드 안내서]</strong> 버튼으로 상세 팝업을 확인할 수 있습니다.
                 </p>
               </div>
             </div>
@@ -1465,125 +1473,92 @@ export const ShareQuoteLinkModal: React.FC<ShareQuoteLinkModalProps> = ({
             </div>
           </div>
 
-          {/* 하단 발송 실행 버튼 */}
-          {channelTab === 'sms' ? (
-            <div className="space-y-2">
-              {hasActiveCard && (
-                <button
-                  type="button"
-                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                  onClick={handleShareCardAndMessageTogether}
-                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45 shadow-xs"
-                >
-                  <Share2 className="w-4 h-4 shrink-0" />
-                  <span>
-                    {isGenerating
-                      ? '링크 갱신 중...'
-                      : '🪪 명함사진 + 문자 함께 보내기 (MMS·카톡)'}
-                  </span>
-                </button>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                  onClick={() => void handleOpenNativeSmsApp()}
-                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-                >
-                  <Send className="w-4 h-4 shrink-0" />
-                  <span>
-                    {isGenerating
-                      ? '링크 갱신 중...'
-                      : hasActiveCard
-                      ? '문자앱 바로 열기 (명함 복사)'
-                      : '문자앱 바로 열기 (폰·PC)'}
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                  onClick={() => handleCopy('sms')}
-                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-                >
-                  {copiedType === 'sms' ? (
-                    <>
-                      <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>문자 안내문+링크 복사됨</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 shrink-0" />
-                      <span>{isGenerating ? '링크 갱신 중...' : '문자 안내문 + 링크 복사'}</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {hasActiveCard && (
-                <button
-                  type="button"
-                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                  onClick={handleShareCardAndMessageTogether}
-                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-                >
-                  <Share2 className="w-4 h-4 shrink-0" />
-                  <span>🪪 명함사진 + 카톡 안내문 함께 공유</span>
-                </button>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                  onClick={() => handleCopy('kakao')}
-                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
-                >
-                  {copiedType === 'kakao' ? (
-                    <>
-                      <Check className="w-4 h-4 text-[#1B64DA] shrink-0" />
-                      <span>카톡 안내문+링크 복사됨</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-4 h-4 shrink-0" />
-                      <span>{isGenerating ? '링크 갱신 중...' : '카톡 안내문 + 링크 복사'}</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
-                  onClick={handlePreviewCustomerScreen}
-                  className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-45"
-                >
-                  <ExternalLink className="w-4 h-4 shrink-0" />
-                  <span>고객 화면 새 탭 미리보기</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {channelTab === 'sms' && (
-            <div className="flex items-center justify-between gap-2 pt-0.5">
-              <span className="text-[11.5px] text-[#8B95A1] font-semibold flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-[#1B64DA] shrink-0" />
-                <span>고객 전용 격리 뷰어로 안전하게 연결됩니다</span>
+          {/* 하단 발송 실행 버튼: 명함 동봉 활성 시 파란 단일 버튼만 깔끔하게 노출 */}
+          {hasActiveCard ? (
+            <button
+              type="button"
+              disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+              onClick={handleShareCardAndMessageTogether}
+              className="w-full min-h-[46px] py-3 px-4 rounded-xl bg-[#1B64DA] hover:bg-[#1552B5] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45 shadow-xs"
+            >
+              <Share2 className="w-4 h-4 shrink-0" />
+              <span>
+                {isGenerating
+                  ? '링크 갱신 중...'
+                  : channelTab === 'kakao'
+                  ? '🪪 명함사진 + 카톡 함께 보내기'
+                  : '🪪 명함사진 + 문자 함께 보내기'}
               </span>
+            </button>
+          ) : channelTab === 'sms' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
                 type="button"
-                disabled={!activeUrl || hasEmptyModeWarning}
-                onClick={handlePreviewCustomerScreen}
-                className="text-xs font-extrabold text-[#1B64DA] hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 whitespace-nowrap"
+                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                onClick={() => void handleOpenNativeSmsApp()}
+                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#E60012] hover:bg-[#C8000F] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>고객 화면 미리보기</span>
+                <Send className="w-4 h-4 shrink-0" />
+                <span>
+                  {isGenerating ? '링크 갱신 중...' : '문자앱 바로 열기 (폰·PC)'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+                onClick={() => handleCopy('sms')}
+                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-[#191F28] hover:bg-[#262F3D] text-white text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+              >
+                {copiedType === 'sms' ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>문자 안내문+링크 복사됨</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 shrink-0" />
+                    <span>{isGenerating ? '링크 갱신 중...' : '문자 안내문 + 링크 복사'}</span>
+                  </>
+                )}
               </button>
             </div>
+          ) : (
+            <button
+              type="button"
+              disabled={isGenerating || !activeUrl || hasEmptyModeWarning}
+              onClick={() => handleCopy('kakao')}
+              className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#FEE500] hover:bg-[#FDD835] text-[#191919] text-xs sm:text-sm font-black flex items-center justify-center gap-2 cursor-pointer disabled:opacity-45"
+            >
+              {copiedType === 'kakao' ? (
+                <>
+                  <Check className="w-4 h-4 text-[#1B64DA] shrink-0" />
+                  <span>카톡 안내문+링크 복사됨</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 shrink-0" />
+                  <span>{isGenerating ? '링크 갱신 중...' : '카톡 안내문 + 링크 복사'}</span>
+                </>
+              )}
+            </button>
           )}
+
+          <div className="flex items-center justify-between gap-2 pt-0.5">
+            <span className="text-[11.5px] text-[#8B95A1] font-semibold flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-[#1B64DA] shrink-0" />
+              <span>고객 전용 격리 뷰어로 안전하게 연결됩니다</span>
+            </span>
+            <button
+              type="button"
+              disabled={!activeUrl || hasEmptyModeWarning}
+              onClick={handlePreviewCustomerScreen}
+              className="text-xs font-extrabold text-[#1B64DA] hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-45 whitespace-nowrap"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>고객 화면 미리보기</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>,

@@ -67,7 +67,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
     <div
       className={`scb-root ${isDark ? 'is-dark' : 'is-light'}`}
       role="region"
-      aria-label={hideScheduleSection ? '이달의 실시간 실적 · 수당 브리핑' : '근무 스케줄 및 실적 라운지'}
+      aria-label={hideScheduleSection ? '스마트 가전 상담 라운지' : '근무 스케줄 및 매장 라운지'}
     >
       <style>{`
         .scb-root {
@@ -644,15 +644,19 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
           <span className="scb-brand-dot" aria-hidden="true" />
           <span className="scb-header-eyebrow">
             {hideScheduleSection
-              ? '이달의 실시간 실적 · 수당 브리핑'
+              ? hideAmounts
+                ? '스마트 가전 상담 라운지'
+                : '이달의 실시간 브리핑'
+              : hideAmounts
+              ? '오늘의 매장 · 근무 라운지'
               : '오늘의 근무 · 실적 브리핑'}
           </span>
           {hideScheduleSection ? (
             (!isExpanded || hideAmounts) && (
               <span className="scb-header-sub">
                 {hideAmounts
-                  ? `· 수당표 숨김중`
-                  : `· ${currentMonthNum}월 실적 요약 접힘`}
+                  ? '· 고객 맞춤 상담 모드'
+                  : `· ${currentMonthNum}월 브리핑 접힘`}
               </span>
             )
           ) : (
@@ -667,17 +671,11 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
         <div className="scb-compact-actions">
           <button
             type="button"
-            className="scb-ghost-btn"
+            className={`scb-ghost-btn ${hideAmounts ? 'is-primary' : ''}`}
             onClick={toggleHideAmounts}
-            title="고객 동석 상담 시 수당표 숨김/표시 (앱 재실행 후에도 유지)"
+            title="고객 동석 상담용 클린 화면 전환 (앱 재실행 후에도 유지)"
           >
-            {hideScheduleSection
-              ? hideAmounts
-                ? '수당표 표시'
-                : '수당표 숨김'
-              : hideAmounts
-              ? '수당 표시'
-              : '수당 가림'}
+            {hideAmounts ? '상담 모드 ON' : '상담 모드'}
           </button>
           {!hideScheduleSection && (
             <button
@@ -797,7 +795,7 @@ export const ScheduleCharacterBannerView: React.FC<{ ctx: Record<string, any> }>
             </div>
           )}
 
-          {!isFriendStripFullyHidden && (
+          {!hideAmounts && (
           <div
             className="scb-incentive-strip"
             onClick={(e) => {
